@@ -1,0 +1,28 @@
+{
+  "name": "cerebro",
+  "private": true,
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "prettier": "^3.7.4",
+    "turbo": "^2.5.8"
+  },
+  "packageManager": "pnpm@10.20.0",
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "10.20.0"
+    }
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron",
+      "esbuild"
+    ]
+  }
+}
