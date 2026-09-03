@@ -31,9 +31,7 @@ export function WorkspaceView({
         <div className="space-y-1">
           <h2 className="text-lg font-semibold">Create your first workspace</h2>
           <p className="max-w-md text-sm text-muted-foreground">
-            Link a Git repository to a workspace. Cerebro clones the default branch into{' '}
-            <code className="rounded bg-muted px-1 py-0.5 text-xs">~/cerebro</code> and keeps the
-            mapping in SQLite.
+            Link a Git repository to a workspace.
           </p>
         </div>
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
