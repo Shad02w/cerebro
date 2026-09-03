@@ -9,6 +9,7 @@ import {
   type Page,
   _electron as electron
 } from '@playwright/test'
+import { electronAppArgs } from './fixtures'
 import { startMockGitHubServer, type MockGitHubServer } from './mock-github'
 
 const desktopRoot = path.resolve(__dirname, '..')
@@ -47,7 +48,7 @@ export const test = base.extend<GitHubFixtures>({
 
     const electronApp = await electron.launch({
       executablePath: electronBinary,
-      args: ['.', `--user-data-dir=${userDataDir}`],
+      args: electronAppArgs(userDataDir),
       cwd: desktopRoot,
       timeout: 60_000,
       env: {
