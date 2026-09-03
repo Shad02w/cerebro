@@ -66,7 +66,8 @@ export function AddWorkspaceDialog({
           <DialogHeader>
             <DialogTitle>Add workspace</DialogTitle>
             <DialogDescription>
-              Paste a Git URL. Cerebro will clone the default branch into ~/cerebro and map that
+              Paste a Git URL. Cerebro clones the default branch into{' '}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">~/cerebro</code> and maps that
               repository to a new workspace.
             </DialogDescription>
           </DialogHeader>
