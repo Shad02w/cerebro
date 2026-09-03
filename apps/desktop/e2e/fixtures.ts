@@ -14,6 +14,17 @@ const require = createRequire(path.join(desktopRoot, 'package.json'))
 const electronBinary = require('electron') as unknown as string
 const mainEntry = path.join(desktopRoot, 'out/main/index.js')
 
+export function electronAppArgs(userDataDir: string): string[] {
+  const args = ['.', `--user-data-dir=${userDataDir}`]
+  if (process.env.HEADED !== '1') {
+    args.push('--headless')
+  }
+  if (process.env.CI) {
+    args.push('--no-sandbox', '--disable-gpu')
+  }
+  return args
+}
+
 type Fixtures = {
   electronApp: ElectronApplication
   page: Page
@@ -38,7 +49,7 @@ export const test = base.extend<Fixtures>({
 
     const electronApp = await electron.launch({
       executablePath: electronBinary,
-      args: ['.', `--user-data-dir=${userDataDir}`],
+      args: electronAppArgs(userDataDir),
       cwd: desktopRoot,
       timeout: 60_000,
       env: {
