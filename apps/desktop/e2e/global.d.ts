@@ -1,4 +1,4 @@
-import type { CerebroApi } from '../shared/types'
+import type { CerebroApi } from '../src/shared/types'
 
 declare global {
   interface Window {

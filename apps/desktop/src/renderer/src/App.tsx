@@ -1,34 +1,72 @@
-import Versions from './components/Versions'
-import electronLogo from './assets/electron.svg'
+import { useState } from 'react'
+import { AddWorkspaceDialog } from '@/components/add-workspace-dialog'
+import { AppSidebar } from '@/components/app-sidebar'
+import { WorkspaceView } from '@/components/workspace-view'
+import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from '@/components/ui/sidebar'
+import { useWorkspaces } from '@/hooks/use-workspaces'
 
-function App(): React.JSX.Element {
-  const ipcHandle = (): void => window.electron.ipcRenderer.send('ping')
+function TitlebarSidebarTrigger(): React.JSX.Element {
+  return (
+    <div className="app-no-drag fixed top-[10px] left-[78px] z-50">
+      <SidebarTrigger className="app-no-drag size-6" />
+    </div>
+  )
+}
+
+function WorkspaceHeader({ title }: { title: string }): React.JSX.Element {
+  const { state } = useSidebar()
+  const collapsed = state === 'collapsed'
 
   return (
-    <>
-      <img alt="logo" className="logo" src={electronLogo} />
-      <div className="creator">Powered by electron-vite</div>
-      <div className="text">
-        Build an Electron app with <span className="react">React</span>
-        &nbsp;and <span className="ts">TypeScript</span>
+    <header className="flex h-10 shrink-0 items-center border-b">
+      {collapsed ? <div className="w-[108px] shrink-0" /> : null}
+      <div className="app-drag-region flex h-full min-w-0 flex-1 items-center px-3">
+        <span className="text-sm text-muted-foreground">{title}</span>
       </div>
-      <p className="tip">
-        Please try pressing <code>F12</code> to open the devTool
-      </p>
-      <div className="actions">
-        <div className="action">
-          <a href="https://electron-vite.org/" target="_blank" rel="noreferrer">
-            Documentation
-          </a>
-        </div>
-        <div className="action">
-          <a target="_blank" rel="noreferrer" onClick={ipcHandle}>
-            Send IPC
-          </a>
-        </div>
-      </div>
-      <Versions></Versions>
-    </>
+    </header>
+  )
+}
+
+function App(): React.JSX.Element {
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const {
+    workspaces,
+    activeWorkspaceId,
+    activeWorkspace,
+    loading,
+    error,
+    createWorkspace,
+    selectWorkspace
+  } = useWorkspaces()
+
+  return (
+    <SidebarProvider className="h-full">
+      <TitlebarSidebarTrigger />
+      <AppSidebar
+        workspaces={workspaces}
+        activeWorkspaceId={activeWorkspaceId}
+        onSelectWorkspace={(id): void => {
+          void selectWorkspace(id)
+        }}
+        onAddWorkspace={(): void => setDialogOpen(true)}
+      />
+      <SidebarInset>
+        <WorkspaceHeader title={activeWorkspace?.name ?? 'Workspaces'} />
+        <WorkspaceView
+          workspace={activeWorkspace}
+          loading={loading}
+          error={error}
+          onAddWorkspace={(): void => setDialogOpen(true)}
+        />
+      </SidebarInset>
+      <AddWorkspaceDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        onCreate={async (gitUrl): Promise<void> => {
+          await createWorkspace(gitUrl)
+        }}
+      />
+    </SidebarProvider>
   )
 }
 
