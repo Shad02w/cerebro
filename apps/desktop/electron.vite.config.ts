@@ -15,7 +15,7 @@ export default defineConfig({
     },
     build: {
       rollupOptions: {
-        external: ['node:sqlite']
+        external: ['node:sqlite', 'node-pty']
       }
     }
   },

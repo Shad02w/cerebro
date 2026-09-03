@@ -76,6 +76,7 @@ export function AppSidebar({
                         size="sm"
                         isActive={section.id === settingsSection}
                         onClick={(): void => onSelectSettingsSection(section.id)}
+                        data-testid={`settings-nav-${section.id}`}
                       >
                         <Icon />
                         <span>{section.label}</span>
@@ -119,9 +120,9 @@ export function AppSidebar({
                           {workspace.repositories.map((repository) => (
                             <SidebarMenuSubItem key={repository.id}>
                               <SidebarMenuSubButton asChild size="sm">
-                                <span>
+                                <span data-testid={`repository-branch-${repository.id}`}>
                                   <GitBranch />
-                                  <span>{repository.name}</span>
+                                  <span>{repository.defaultBranch}</span>
                                 </span>
                               </SidebarMenuSubButton>
                             </SidebarMenuSubItem>
@@ -145,7 +146,11 @@ export function AppSidebar({
                 <span>Back</span>
               </SidebarMenuButton>
             ) : (
-              <SidebarMenuButton className="app-no-drag rounded-full" onClick={onOpenSettings}>
+              <SidebarMenuButton
+                className="app-no-drag rounded-full"
+                onClick={onOpenSettings}
+                data-testid="settings-button"
+              >
                 <Settings />
                 <span>Settings</span>
               </SidebarMenuButton>

@@ -5,6 +5,7 @@ import icon from '../../resources/icon.png?asset'
 import { closeDb } from './db'
 import { registerSettingsIpc, registerWorkspaceIpc } from './ipc'
 import { ensureCerebroHome } from './paths'
+import { killAllPtys } from './pty'
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -77,5 +78,6 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  killAllPtys()
   closeDb()
 })

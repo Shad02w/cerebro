@@ -5,6 +5,8 @@ import { SettingsView } from '@/components/settings-view'
 import { WorkspaceView } from '@/components/workspace-view'
 import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from '@/components/ui/sidebar'
 import { useAppRoute } from '@/hooks/use-app-route'
+import { useGitHub } from '@/hooks/use-github'
+import { useSettings } from '@/hooks/use-settings'
 import { useWorkspaces } from '@/hooks/use-workspaces'
 import { navigate, settingsPath, workspacesPath } from '@/lib/app-route'
 
@@ -26,16 +28,17 @@ function ExpandSidebarOnSettings({ enabled }: { enabled: boolean }): null {
   return null
 }
 
-function WorkspaceHeader({ title }: { title: string }): React.JSX.Element {
+function WorkspaceHeader(): React.JSX.Element {
   const { state } = useSidebar()
   const collapsed = state === 'collapsed'
 
   return (
-    <header className="flex h-10 shrink-0 items-center border-b">
+    <header
+      data-testid="content-drag-header"
+      className={collapsed ? 'flex h-10 shrink-0 items-center' : 'flex h-3 shrink-0 items-center'}
+    >
       {collapsed ? <div className="w-[108px] shrink-0" /> : null}
-      <div className="app-drag-region flex h-full min-w-0 flex-1 items-center px-3">
-        <span className="text-sm text-muted-foreground">{title}</span>
-      </div>
+      <div className="app-drag-region h-full min-w-0 flex-1" />
     </header>
   )
 }
@@ -53,6 +56,21 @@ function App(): React.JSX.Element {
     createWorkspace,
     selectWorkspace
   } = useWorkspaces()
+  const {
+    settings,
+    loading: settingsLoading,
+    error: settingsError,
+    update: updateSettings,
+    pickDirectory
+  } = useSettings()
+  const {
+    status: githubStatus,
+    loading: githubLoading,
+    error: githubError,
+    beginDeviceFlow,
+    cancelDeviceFlow,
+    disconnect: disconnectGitHub
+  } = useGitHub()
 
   return (
     <SidebarProvider className="h-full">
@@ -64,6 +82,7 @@ function App(): React.JSX.Element {
         activeWorkspaceId={activeWorkspaceId}
         settingsSection={isSettings ? route.section : 'general'}
         onSelectWorkspace={(id): void => {
+          navigate(workspacesPath())
           void selectWorkspace(id)
         }}
         onAddWorkspace={(): void => setDialogOpen(true)}
@@ -79,14 +98,31 @@ function App(): React.JSX.Element {
       />
       <SidebarInset>
         {isSettings ? (
-          <SettingsView section={route.section} />
+          <SettingsView
+            section={route.section}
+            settings={settings}
+            loading={settingsLoading}
+            error={settingsError}
+            onUpdate={updateSettings}
+            onPickDirectory={pickDirectory}
+            githubStatus={githubStatus}
+            githubLoading={githubLoading}
+            githubError={githubError}
+            onConnectGitHub={beginDeviceFlow}
+            onCancelGitHub={cancelDeviceFlow}
+            onDisconnectGitHub={disconnectGitHub}
+          />
         ) : (
           <>
-            <WorkspaceHeader title={activeWorkspace?.name ?? 'Workspaces'} />
+            <WorkspaceHeader />
             <WorkspaceView
               workspace={activeWorkspace}
+              activeWorkspaceId={activeWorkspaceId}
               loading={loading}
               error={error}
+              defaultCloneDir={settings?.defaultCloneDir ?? null}
+              terminalFontSize={settings?.terminalFontSize ?? null}
+              terminalFontFamily={settings?.terminalFontFamily ?? null}
               onAddWorkspace={(): void => setDialogOpen(true)}
             />
           </>
@@ -95,6 +131,7 @@ function App(): React.JSX.Element {
       <AddWorkspaceDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
+        defaultCloneDir={settings?.defaultCloneDir ?? null}
         onCreate={async (gitUrl): Promise<void> => {
           await createWorkspace(gitUrl)
         }}

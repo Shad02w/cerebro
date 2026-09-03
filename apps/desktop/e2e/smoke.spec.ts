@@ -26,5 +26,5 @@ test('launches the real Electron window with preload and empty state', async ({
   await expect(dialog).toBeVisible()
   await expect(dialog.getByRole('heading', { name: 'Add workspace' })).toBeVisible()
   await expect(dialog).toContainText('clones the default branch into')
-  await expect(dialog.getByText('~/cerebro')).toBeVisible()
+  await expect(dialog.locator('code')).toBeVisible()
 })

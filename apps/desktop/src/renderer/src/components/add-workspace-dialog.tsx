@@ -15,12 +15,14 @@ import { Label } from '@/components/ui/label'
 type AddWorkspaceDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
+  defaultCloneDir: string | null
   onCreate: (gitUrl: string) => Promise<void>
 }
 
 export function AddWorkspaceDialog({
   open,
   onOpenChange,
+  defaultCloneDir,
   onCreate
 }: AddWorkspaceDialogProps): React.JSX.Element {
   const [gitUrl, setGitUrl] = useState('')
@@ -67,8 +69,10 @@ export function AddWorkspaceDialog({
             <DialogTitle>Add workspace</DialogTitle>
             <DialogDescription>
               Paste a Git URL. Cerebro clones the default branch into{' '}
-              <code className="rounded bg-muted px-1 py-0.5 text-xs">~/cerebro</code> and maps that
-              repository to a new workspace.
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">
+                {defaultCloneDir ?? '~/cerebro'}
+              </code>{' '}
+              and maps that repository to a new workspace.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">

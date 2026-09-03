@@ -1,0 +1,3 @@
+MesloLGS NF (bundled as "Cerebro Mono") is from
+https://github.com/romkatv/powerlevel10k-media
+Apache License 2.0. Scoped to the terminal emulator only.

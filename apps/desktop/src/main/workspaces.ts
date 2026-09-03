@@ -1,10 +1,10 @@
-import { existsSync, mkdirSync, rmSync } from 'node:fs'
+import { existsSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import type { LinkedRepository, Workspace, WorkspaceListResult } from '../shared/types'
 import { getDb, toId } from './db'
 import { cloneRepository, parseGitUrl } from './git'
 import { isReservedName } from './paths'
-import { getCloneLocation } from './settings'
+import { ensureCloneRoot } from './settings'
 
 const ACTIVE_WORKSPACE_KEY = 'active_workspace_id'
 
@@ -48,14 +48,13 @@ function mapWorkspace(row: WorkspaceRow, repositories: LinkedRepository[]): Work
 }
 
 function allocateLocalPath(baseName: string): string {
-  const home = getCloneLocation()
-  mkdirSync(home, { recursive: true })
+  const root = ensureCloneRoot()
   const slug = isReservedName(baseName) ? `${baseName}-repo` : baseName
-  let candidate = join(home, slug)
+  let candidate = join(root, slug)
   let suffix = 2
 
   while (existsSync(candidate)) {
-    candidate = join(home, `${slug}-${suffix}`)
+    candidate = join(root, `${slug}-${suffix}`)
     suffix += 1
   }
 
@@ -126,6 +125,34 @@ export function setActiveWorkspace(workspaceId: number): WorkspaceListResult {
 
   setActiveWorkspaceId(workspaceId, db)
   return listWorkspaces()
+}
+
+/** Absolute checkout path for the workspace's primary linked repository. */
+export function getWorkspaceLocalPath(workspaceId: number): string {
+  const db = getDb()
+  const workspace = db.prepare('SELECT id FROM workspaces WHERE id = ?').get(workspaceId) as
+    { id: number } | undefined
+  if (!workspace) {
+    throw new Error('Workspace not found.')
+  }
+
+  const repository = db
+    .prepare(
+      `
+        SELECT local_path
+        FROM repositories
+        WHERE workspace_id = ?
+        ORDER BY created_at ASC, id ASC
+        LIMIT 1
+      `
+    )
+    .get(workspaceId) as { local_path: string } | undefined
+
+  if (!repository?.local_path) {
+    throw new Error('Workspace has no linked repository path.')
+  }
+
+  return repository.local_path
 }
 
 export async function createWorkspaceFromGitUrl(gitUrl: string): Promise<Workspace> {

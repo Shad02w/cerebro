@@ -1,0 +1,41 @@
+@font-face {
+  font-family: 'Cerebro Mono';
+  src: url('./fonts/MesloLGS-NF-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Cerebro Mono';
+  src: url('./fonts/MesloLGS-NF-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+}
+
+.terminal-host {
+  height: 100%;
+  width: 100%;
+  padding: 4px 8px 8px;
+  overflow: hidden;
+}
+
+.terminal-host .xterm {
+  height: 100%;
+  width: 100%;
+  padding: 0;
+}
+
+.terminal-host .xterm .xterm-viewport {
+  background-color: #0a0a0a;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.terminal-host .xterm .xterm-viewport::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}

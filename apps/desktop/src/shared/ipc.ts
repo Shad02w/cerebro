@@ -5,8 +5,23 @@ export const IPC = {
     setActive: 'cerebro:workspaces:set-active'
   },
   settings: {
-    getCloneLocation: 'cerebro:settings:get-clone-location',
-    setCloneLocation: 'cerebro:settings:set-clone-location',
-    chooseCloneLocation: 'cerebro:settings:choose-clone-location'
+    get: 'cerebro:settings:get',
+    set: 'cerebro:settings:set',
+    pickDirectory: 'cerebro:settings:pick-directory'
+  },
+  github: {
+    getStatus: 'cerebro:github:get-status',
+    beginDeviceFlow: 'cerebro:github:begin-device-flow',
+    cancelDeviceFlow: 'cerebro:github:cancel-device-flow',
+    disconnect: 'cerebro:github:disconnect',
+    status: 'cerebro:github:status'
+  },
+  pty: {
+    open: 'cerebro:pty:open',
+    write: 'cerebro:pty:write',
+    resize: 'cerebro:pty:resize',
+    kill: 'cerebro:pty:kill',
+    data: 'cerebro:pty:data',
+    exit: 'cerebro:pty:exit'
   }
 } as const

@@ -1,8 +1,9 @@
 import { mkdir } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { expect, test } from './fixtures'
 
-const artifactsDir = '/opt/cursor/artifacts'
+const artifactsDir = process.env.CEREBRO_E2E_ARTIFACTS ?? path.join(tmpdir(), 'cerebro-e2e-artifacts')
 
 test('settings reuses the app sidebar and navigates by hash route', async ({ page }) => {
   await mkdir(artifactsDir, { recursive: true })
@@ -62,7 +63,9 @@ test('settings reuses the app sidebar and navigates by hash route', async ({ pag
   await terminalNav.click()
   await expect.poll(() => page.evaluate(() => window.location.hash)).toBe('#/settings/terminal')
   await expect(content.getByRole('heading', { name: 'Terminal' })).toBeVisible()
-  await expect(content.getByText('This section is not available yet.')).toBeVisible()
+  await expect(page.getByTestId('settings-terminal')).toBeVisible()
+  await expect(page.getByTestId('settings-font-size')).toBeVisible()
+  await expect(page.getByTestId('settings-font-family')).toBeVisible()
 
   await page.screenshot({
     path: path.join(artifactsDir, 'settings-terminal.png'),
@@ -72,6 +75,7 @@ test('settings reuses the app sidebar and navigates by hash route', async ({ pag
   await integrationsNav.click()
   await expect.poll(() => page.evaluate(() => window.location.hash)).toBe('#/settings/integrations')
   await expect(content.getByRole('heading', { name: 'Integrations' })).toBeVisible()
+  await expect(page.getByTestId('github-integration-card')).toBeVisible()
 
   await page.screenshot({
     path: path.join(artifactsDir, 'settings-integrations.png'),
@@ -103,4 +107,7 @@ test('persists the default clone location from settings', async ({ page }) => {
   await page.getByRole('button', { name: 'Back' }).click()
   await page.getByRole('button', { name: 'Settings' }).click()
   await expect(page.getByLabel('Default clone location')).toHaveValue(custom)
+
+  const settings = await page.evaluate(async () => window.cerebro.getSettings())
+  expect(settings.defaultCloneDir).toBe(custom)
 })

@@ -1,11 +1,37 @@
 import { ipcMain } from 'electron'
 import { IPC } from '../shared/ipc'
-import { chooseCloneLocation, getCloneLocation, setCloneLocation } from './settings'
+import type { AppSettingsPatch } from '../shared/types'
+import { registerGitHubIpc } from './github'
+import { registerPtyIpc } from './pty'
+import { getSettings, pickDirectory, setSettings } from './settings'
 import { createWorkspaceFromGitUrl, listWorkspaces, setActiveWorkspace } from './workspaces'
 
 function errorMessage(error: unknown): string {
   if (error instanceof Error && error.message) return error.message
   return 'Something went wrong.'
+}
+
+export function registerSettingsIpc(): void {
+  ipcMain.handle(IPC.settings.get, () => getSettings())
+
+  ipcMain.handle(IPC.settings.set, (_event, patch: unknown) => {
+    if (!patch || typeof patch !== 'object') {
+      throw new Error('Settings patch is required.')
+    }
+    try {
+      return setSettings(patch as AppSettingsPatch)
+    } catch (error) {
+      throw new Error(errorMessage(error))
+    }
+  })
+
+  ipcMain.handle(IPC.settings.pickDirectory, async (event) => {
+    try {
+      return await pickDirectory(event.sender)
+    } catch (error) {
+      throw new Error(errorMessage(error))
+    }
+  })
 }
 
 export function registerWorkspaceIpc(): void {
@@ -28,27 +54,7 @@ export function registerWorkspaceIpc(): void {
     }
     return setActiveWorkspace(workspaceId)
   })
-}
 
-export function registerSettingsIpc(): void {
-  ipcMain.handle(IPC.settings.getCloneLocation, () => getCloneLocation())
-
-  ipcMain.handle(IPC.settings.setCloneLocation, (_event, location: unknown) => {
-    if (typeof location !== 'string') {
-      throw new Error('Clone location is required.')
-    }
-    try {
-      return setCloneLocation(location)
-    } catch (error) {
-      throw new Error(errorMessage(error))
-    }
-  })
-
-  ipcMain.handle(IPC.settings.chooseCloneLocation, async (event) => {
-    try {
-      return await chooseCloneLocation(event)
-    } catch (error) {
-      throw new Error(errorMessage(error))
-    }
-  })
+  registerGitHubIpc(ipcMain)
+  registerPtyIpc()
 }
