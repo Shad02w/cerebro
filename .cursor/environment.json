@@ -1,0 +1,4 @@
+{
+  "name": "Cerebro",
+  "install": "pnpm install --frozen-lockfile"
+}
