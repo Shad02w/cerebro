@@ -1,9 +1,10 @@
-import { existsSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import type { LinkedRepository, Workspace, WorkspaceListResult } from '../shared/types'
 import { getDb, toId } from './db'
 import { cloneRepository, parseGitUrl } from './git'
-import { ensureCerebroHome, isReservedName } from './paths'
+import { isReservedName } from './paths'
+import { getCloneLocation } from './settings'
 
 const ACTIVE_WORKSPACE_KEY = 'active_workspace_id'
 
@@ -47,7 +48,8 @@ function mapWorkspace(row: WorkspaceRow, repositories: LinkedRepository[]): Work
 }
 
 function allocateLocalPath(baseName: string): string {
-  const home = ensureCerebroHome()
+  const home = getCloneLocation()
+  mkdirSync(home, { recursive: true })
   const slug = isReservedName(baseName) ? `${baseName}-repo` : baseName
   let candidate = join(home, slug)
   let suffix = 2

@@ -25,4 +25,7 @@ export type CerebroApi = {
   listWorkspaces: () => Promise<WorkspaceListResult>
   createWorkspace: (gitUrl: string) => Promise<Workspace>
   setActiveWorkspace: (workspaceId: number) => Promise<WorkspaceListResult>
+  getCloneLocation: () => Promise<string>
+  setCloneLocation: (location: string) => Promise<string>
+  chooseCloneLocation: () => Promise<string | null>
 }
