@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { SETTINGS_SECTIONS } from '@/lib/settings-sections'
 import type { SettingsSectionId } from '@/lib/app-route'
 import { Button } from '@/components/ui/button'
@@ -14,13 +14,17 @@ function GeneralSettings(): React.JSX.Element {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const savedRef = useRef('')
 
   useEffect(() => {
     let cancelled = false
     void window.cerebro
       .getCloneLocation()
       .then((path) => {
-        if (!cancelled) setCloneLocation(path)
+        if (!cancelled) {
+          savedRef.current = path
+          setCloneLocation(path)
+        }
       })
       .catch((err: unknown) => {
         if (!cancelled) {
@@ -36,10 +40,13 @@ function GeneralSettings(): React.JSX.Element {
   }, [])
 
   const persist = useCallback(async (next: string): Promise<void> => {
+    const trimmed = next.trim()
+    if (!trimmed || trimmed === savedRef.current) return
     setSaving(true)
     setError(null)
     try {
-      const saved = await window.cerebro.setCloneLocation(next)
+      const saved = await window.cerebro.setCloneLocation(trimmed)
+      savedRef.current = saved
       setCloneLocation(saved)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update clone location.')
@@ -53,7 +60,10 @@ function GeneralSettings(): React.JSX.Element {
     setError(null)
     try {
       const next = await window.cerebro.chooseCloneLocation()
-      if (next) setCloneLocation(next)
+      if (next) {
+        savedRef.current = next
+        setCloneLocation(next)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update clone location.')
     } finally {
@@ -72,8 +82,8 @@ function GeneralSettings(): React.JSX.Element {
             disabled={loading || saving}
             className="font-mono text-sm"
             onChange={(event): void => setCloneLocation(event.target.value)}
-            onBlur={(): void => {
-              if (!loading) void persist(cloneLocation)
+            onBlur={(event): void => {
+              if (!loading) void persist(event.currentTarget.value)
             }}
             onKeyDown={(event): void => {
               if (event.key === 'Enter') {
@@ -107,7 +117,7 @@ export function SettingsView({ section }: SettingsViewProps): React.JSX.Element 
 
   return (
     <div className="app-drag-region relative flex min-h-0 flex-1 flex-col">
-      <div className="app-no-drag flex-1 overflow-auto px-8 pb-8 pt-12">
+      <div className="app-no-drag flex-1 overflow-auto p-6">
         <div className="flex max-w-2xl flex-col gap-6">
           <div className="space-y-1">
             <h1 className="flex items-center gap-2 text-2xl font-semibold">
