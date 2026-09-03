@@ -25,6 +25,6 @@ test('launches the real Electron window with preload and empty state', async ({
   const dialog = page.getByRole('dialog')
   await expect(dialog).toBeVisible()
   await expect(dialog.getByRole('heading', { name: 'Add workspace' })).toBeVisible()
-  await expect(dialog.getByText(/clone the default branch into/i)).toBeVisible()
+  await expect(dialog).toContainText('clone the default branch into')
   await expect(dialog.getByText('~/cerebro')).toBeVisible()
 })
