@@ -72,15 +72,24 @@ function GeneralSettings(): React.JSX.Element {
   }, [])
 
   return (
-    <div className="space-y-3">
-      <div className="grid gap-2">
-        <Label htmlFor="clone-location">Default clone location</Label>
-        <div className="flex gap-2">
+    <section className="space-y-3">
+      <h2 className="text-xs font-medium text-muted-foreground">Workspaces</h2>
+      <div className="flex items-start justify-between gap-6">
+        <div className="min-w-0 flex-1 space-y-1">
+          <Label htmlFor="clone-location" className="text-[13px] font-medium">
+            Default clone location
+          </Label>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            New workspaces are cloned into this folder. Existing checkouts are not moved.
+          </p>
+          {error ? <p className="text-xs text-destructive">{error}</p> : null}
+        </div>
+        <div className="flex w-[min(24rem,48%)] shrink-0 items-center gap-2">
           <Input
             id="clone-location"
             value={loading ? 'Loading…' : cloneLocation}
             disabled={loading || saving}
-            className="font-mono text-sm"
+            className="h-7 font-mono text-xs"
             onChange={(event): void => setCloneLocation(event.target.value)}
             onBlur={(event): void => {
               if (!loading) void persist(event.currentTarget.value)
@@ -94,6 +103,7 @@ function GeneralSettings(): React.JSX.Element {
           <Button
             type="button"
             variant="outline"
+            size="xs"
             disabled={loading || saving}
             onClick={(): void => {
               void handleChooseFolder()
@@ -103,33 +113,22 @@ function GeneralSettings(): React.JSX.Element {
           </Button>
         </div>
       </div>
-      <p className="text-xs text-muted-foreground">
-        New workspaces are cloned into this folder. Existing checkouts are not moved.
-      </p>
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
-    </div>
+    </section>
   )
 }
 
 export function SettingsView({ section }: SettingsViewProps): React.JSX.Element {
   const meta = SETTINGS_SECTIONS.find((item) => item.id === section) ?? SETTINGS_SECTIONS[0]
-  const Icon = meta.icon
 
   return (
     <div className="app-drag-region relative flex min-h-0 flex-1 flex-col">
-      <div className="app-no-drag flex-1 overflow-auto p-6">
-        <div className="flex max-w-2xl flex-col gap-6">
-          <div className="space-y-1">
-            <h1 className="flex items-center gap-2 text-2xl font-semibold">
-              <Icon className="size-6" />
-              {meta.label}
-            </h1>
-            <p className="text-sm text-muted-foreground">{meta.description}</p>
-          </div>
+      <div className="app-no-drag flex-1 overflow-auto px-8 py-6">
+        <div className="mx-auto flex w-full max-w-3xl flex-col gap-8">
+          <h1 className="text-xl font-semibold tracking-tight">{meta.label}</h1>
           {section === 'general' ? (
             <GeneralSettings />
           ) : (
-            <p className="text-sm text-muted-foreground">This section is not available yet.</p>
+            <p className="text-xs text-muted-foreground">This section is not available yet.</p>
           )}
         </div>
       </div>

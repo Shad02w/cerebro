@@ -41,8 +41,11 @@ test('settings reuses the app sidebar and navigates by hash route', async ({ pag
   const content = page.locator('[data-slot="sidebar-inset"]')
   await expect(content.getByRole('button', { name: 'Terminal' })).toHaveCount(0)
   await expect(content.getByRole('heading', { name: 'General' })).toBeVisible()
-  await expect(content.getByText('Configure where Cerebro clones new repositories.')).toBeVisible()
+  await expect(content.getByRole('heading', { name: 'Workspaces' })).toBeVisible()
   await expect(content.getByLabel('Default clone location')).toBeVisible()
+  await expect(
+    content.getByText('New workspaces are cloned into this folder. Existing checkouts are not moved.')
+  ).toBeVisible()
   await expect(content.getByRole('button', { name: 'Choose folder' })).toBeVisible()
 
   const insetBox = await content.boundingBox()

@@ -73,6 +73,7 @@ export function AppSidebar({
                     <SidebarMenuItem key={section.id}>
                       <SidebarMenuButton
                         className="app-no-drag"
+                        size="sm"
                         isActive={section.id === settingsSection}
                         onClick={(): void => onSelectSettingsSection(section.id)}
                       >
