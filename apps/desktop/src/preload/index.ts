@@ -5,7 +5,10 @@ import type { CerebroApi } from '../shared/types'
 const api: CerebroApi = {
   listWorkspaces: () => ipcRenderer.invoke(IPC.workspaces.list),
   createWorkspace: (gitUrl) => ipcRenderer.invoke(IPC.workspaces.create, gitUrl),
-  setActiveWorkspace: (workspaceId) => ipcRenderer.invoke(IPC.workspaces.setActive, workspaceId)
+  setActiveWorkspace: (workspaceId) => ipcRenderer.invoke(IPC.workspaces.setActive, workspaceId),
+  getCloneLocation: () => ipcRenderer.invoke(IPC.settings.getCloneLocation),
+  setCloneLocation: (location) => ipcRenderer.invoke(IPC.settings.setCloneLocation, location),
+  chooseCloneLocation: () => ipcRenderer.invoke(IPC.settings.chooseCloneLocation)
 }
 
 if (!process.contextIsolated) {

@@ -3,7 +3,7 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { closeDb } from './db'
-import { registerWorkspaceIpc } from './ipc'
+import { registerSettingsIpc, registerWorkspaceIpc } from './ipc'
 import { ensureCerebroHome } from './paths'
 
 function createWindow(): void {
@@ -57,6 +57,7 @@ app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.cerebro.app')
   ensureCerebroHome()
   registerWorkspaceIpc()
+  registerSettingsIpc()
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
