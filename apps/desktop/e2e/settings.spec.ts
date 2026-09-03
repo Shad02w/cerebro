@@ -12,6 +12,11 @@ test('settings reuses the app sidebar and navigates by hash route', async ({ pag
   await expect(page.getByRole('button', { name: 'Settings' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Integrations' })).toHaveCount(0)
 
+  await page.screenshot({
+    path: path.join(artifactsDir, 'workspaces-settings-entry.png'),
+    fullPage: true
+  })
+
   await page.getByRole('button', { name: 'Settings' }).click()
 
   await expect.poll(() => page.evaluate(() => window.location.hash)).toBe('#/settings/general')
