@@ -1,4 +1,4 @@
-import { ArrowLeft, FolderGit2, GitBranch, Plus, Settings } from 'lucide-react'
+import { ArrowLeft, FolderGit2, GitBranch, MoreHorizontal, Plus, Settings } from 'lucide-react'
 import type { Workspace } from '@shared/types'
 import type { SettingsSectionId } from '@/lib/app-route'
 import { SETTINGS_SECTIONS } from '@/lib/settings-sections'
@@ -12,6 +12,7 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuSub,
@@ -115,6 +116,15 @@ export function AppSidebar({
                         <FolderGit2 />
                         <span>{workspace.name}</span>
                       </SidebarMenuButton>
+                      <SidebarMenuAction
+                        className="app-no-drag"
+                        showOnHover
+                        title="More"
+                        data-testid={`workspace-more-${workspace.id}`}
+                      >
+                        <MoreHorizontal />
+                        <span className="sr-only">More</span>
+                      </SidebarMenuAction>
                       {workspace.repositories.length > 0 ? (
                         <SidebarMenuSub>
                           {workspace.repositories.map((repository) => (
@@ -125,6 +135,15 @@ export function AppSidebar({
                                   <span>{repository.defaultBranch}</span>
                                 </span>
                               </SidebarMenuSubButton>
+                              <SidebarMenuAction
+                                className="app-no-drag"
+                                showOnHover
+                                title="More"
+                                data-testid={`repository-more-${repository.id}`}
+                              >
+                                <MoreHorizontal />
+                                <span className="sr-only">More</span>
+                              </SidebarMenuAction>
                             </SidebarMenuSubItem>
                           ))}
                         </SidebarMenuSub>
