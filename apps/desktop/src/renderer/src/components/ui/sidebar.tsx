@@ -603,6 +603,17 @@ function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
   )
 }
 
+function SidebarMenuRow({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="sidebar-menu-row"
+      data-sidebar="menu-row"
+      className={cn("group/menu-row relative w-full", className)}
+      {...props}
+    />
+  )
+}
+
 const sidebarMenuButtonVariants = cva(
   "peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm ring-sidebar-ring outline-hidden transition-[width,height,padding] group-has-data-[sidebar=menu-action]/menu-item:pr-8 group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0",
   {
@@ -699,10 +710,10 @@ function SidebarMenuAction({
         "peer-data-[size=lg]/menu-button:top-2.5",
         "group-data-[collapsible=icon]:hidden",
         showOnHover &&
-          // Bind visibility to this row's button (peer), not the wrapping menu-item.
-          // Nested trees put children inside the parent `group/menu-item`, so
-          // group-hover would reveal every descendant more-action at once.
-          "hover:opacity-100 focus-visible:opacity-100 peer-hover/menu-button:opacity-100 peer-focus-visible/menu-button:opacity-100 peer-data-[active=true]/menu-button:text-sidebar-accent-foreground data-[state=open]:opacity-100 md:opacity-0",
+          // Hover is scoped to `group/menu-row` (the row wrapper), not the
+          // wrapping menu-item. Nested trees keep children inside the parent
+          // item, so item-level group-hover would reveal every descendant action.
+          "group-focus-within/menu-row:opacity-100 group-hover/menu-row:opacity-100 peer-data-[active=true]/menu-button:text-sidebar-accent-foreground data-[state=open]:opacity-100 md:opacity-0",
         className
       )}
       {...props}
@@ -848,6 +859,7 @@ export {
   SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuRow,
   SidebarMenuSkeleton,
   SidebarMenuSub,
   SidebarMenuSubButton,

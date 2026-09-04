@@ -15,6 +15,7 @@ import {
   SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuRow,
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
@@ -108,42 +109,46 @@ export function AppSidebar({
                 <SidebarMenu>
                   {workspaces.map((workspace) => (
                     <SidebarMenuItem key={workspace.id}>
-                      <SidebarMenuButton
-                        className="app-no-drag"
-                        isActive={workspace.id === activeWorkspaceId}
-                        onClick={(): void => onSelectWorkspace(workspace.id)}
-                      >
-                        <FolderGit2 />
-                        <span>{workspace.name}</span>
-                      </SidebarMenuButton>
-                      <SidebarMenuAction
-                        className="app-no-drag"
-                        showOnHover
-                        title="More"
-                        data-testid={`workspace-more-${workspace.id}`}
-                      >
-                        <MoreHorizontal />
-                        <span className="sr-only">More</span>
-                      </SidebarMenuAction>
+                      <SidebarMenuRow>
+                        <SidebarMenuButton
+                          className="app-no-drag"
+                          isActive={workspace.id === activeWorkspaceId}
+                          onClick={(): void => onSelectWorkspace(workspace.id)}
+                        >
+                          <FolderGit2 />
+                          <span>{workspace.name}</span>
+                        </SidebarMenuButton>
+                        <SidebarMenuAction
+                          className="app-no-drag"
+                          showOnHover
+                          title="More"
+                          data-testid={`workspace-more-${workspace.id}`}
+                        >
+                          <MoreHorizontal />
+                          <span className="sr-only">More</span>
+                        </SidebarMenuAction>
+                      </SidebarMenuRow>
                       {workspace.repositories.length > 0 ? (
                         <SidebarMenuSub>
                           {workspace.repositories.map((repository) => (
                             <SidebarMenuSubItem key={repository.id}>
-                              <SidebarMenuSubButton asChild size="sm">
-                                <span data-testid={`repository-branch-${repository.id}`}>
-                                  <GitBranch />
-                                  <span>{repository.defaultBranch}</span>
-                                </span>
-                              </SidebarMenuSubButton>
-                              <SidebarMenuAction
-                                className="app-no-drag"
-                                showOnHover
-                                title="More"
-                                data-testid={`repository-more-${repository.id}`}
-                              >
-                                <MoreHorizontal />
-                                <span className="sr-only">More</span>
-                              </SidebarMenuAction>
+                              <SidebarMenuRow>
+                                <SidebarMenuSubButton asChild size="sm">
+                                  <span data-testid={`repository-branch-${repository.id}`}>
+                                    <GitBranch />
+                                    <span>{repository.defaultBranch}</span>
+                                  </span>
+                                </SidebarMenuSubButton>
+                                <SidebarMenuAction
+                                  className="app-no-drag"
+                                  showOnHover
+                                  title="More"
+                                  data-testid={`repository-more-${repository.id}`}
+                                >
+                                  <MoreHorizontal />
+                                  <span className="sr-only">More</span>
+                                </SidebarMenuAction>
+                              </SidebarMenuRow>
                             </SidebarMenuSubItem>
                           ))}
                         </SidebarMenuSub>
