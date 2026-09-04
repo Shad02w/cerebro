@@ -608,7 +608,7 @@ function SidebarMenuRow({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="sidebar-menu-row"
       data-sidebar="menu-row"
-      className={cn("group/menu-row relative w-full", className)}
+      className={cn("relative w-full", className)}
       {...props}
     />
   )
