@@ -35,7 +35,7 @@ export const test = base.extend<GitHubFixtures>({
       await access(mainEntry)
     } catch {
       throw new Error(
-        'Desktop app is not built. Run `pnpm --filter desktop test:e2e` (builds then tests) or `pnpm --filter desktop build` first.'
+        'Desktop app is not built. Run `pnpm --filter desktop build`, then `pnpm --filter desktop test:e2e:repeat github.spec.ts`.'
       )
     }
 

@@ -15,8 +15,24 @@ importers:
         specifier: ^2.5.8
         version: 2.10.12
 
+  apps/cli:
+    dependencies:
+      '@cerebro/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+    devDependencies:
+      '@types/node':
+        specifier: ^22.19.1
+        version: 22.20.1
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   apps/desktop:
     dependencies:
+      '@cerebro/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@electron-toolkit/preload':
         specifier: ^3.0.2
         version: 3.0.2(electron@39.8.10)
@@ -126,6 +142,15 @@ importers:
       vite:
         specifier: ^7.2.6
         version: 7.3.6(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.13)
+
+  packages/core:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.19.1
+        version: 22.20.1
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
 
 packages:
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { AddProjectDialog } from '@/components/add-project-dialog'
 import { AddWorkspaceDialog } from '@/components/add-workspace-dialog'
 import { AppSidebar } from '@/components/app-sidebar'
 import { SettingsView } from '@/components/settings-view'
@@ -6,14 +7,37 @@ import { WorkspaceView } from '@/components/workspace-view'
 import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from '@/components/ui/sidebar'
 import { useAppRoute } from '@/hooks/use-app-route'
 import { useGitHub } from '@/hooks/use-github'
+import { useProjects } from '@/hooks/use-projects'
 import { useSettings } from '@/hooks/use-settings'
-import { useWorkspaces } from '@/hooks/use-workspaces'
-import { navigate, settingsPath, workspacesPath } from '@/lib/app-route'
+import { navigate, projectsPath, settingsPath } from '@/lib/app-route'
+import type { Project } from '@shared/types'
 
-function TitlebarSidebarTrigger(): React.JSX.Element {
+// Matches BrowserWindow trafficLightPosition in src/main/index.ts.
+// Lights are 12px; icon-xs is 24px. Center the control on the lights so the
+// 12px icon lines up with the circles (top-aligning the 24px hit target sits too low).
+const TRAFFIC_LIGHT_Y = 16
+const TRAFFIC_LIGHT_SIZE = 12
+const TITLEBAR_TRIGGER_LEFT = 78
+const TITLEBAR_TRIGGER_TOP = TRAFFIC_LIGHT_Y + TRAFFIC_LIGHT_SIZE / 2
+
+function WindowDragOverlay({
+  showSidebarTrigger
+}: {
+  showSidebarTrigger: boolean
+}): React.JSX.Element {
   return (
-    <div className="app-no-drag fixed top-[10px] left-[78px] z-50">
-      <SidebarTrigger className="app-no-drag size-6" />
+    <div
+      data-testid="window-drag-overlay"
+      className="app-drag-region fixed inset-x-0 top-0 z-40 h-10"
+    >
+      {showSidebarTrigger ? (
+        <div
+          className="app-no-drag absolute -translate-y-1/2"
+          style={{ top: TITLEBAR_TRIGGER_TOP, left: TITLEBAR_TRIGGER_LEFT }}
+        >
+          <SidebarTrigger size="icon-xs" className="app-no-drag size-6" />
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -28,34 +52,25 @@ function ExpandSidebarOnSettings({ enabled }: { enabled: boolean }): null {
   return null
 }
 
-function WorkspaceHeader(): React.JSX.Element {
-  const { state } = useSidebar()
-  const collapsed = state === 'collapsed'
-
-  return (
-    <header
-      data-testid="content-drag-header"
-      className={collapsed ? 'flex h-10 shrink-0 items-center' : 'flex h-3 shrink-0 items-center'}
-    >
-      {collapsed ? <div className="w-[108px] shrink-0" /> : null}
-      <div className="app-drag-region h-full min-w-0 flex-1" />
-    </header>
-  )
-}
-
 function App(): React.JSX.Element {
   const route = useAppRoute()
   const isSettings = route.name === 'settings'
-  const [dialogOpen, setDialogOpen] = useState(false)
+  const [projectDialogOpen, setProjectDialogOpen] = useState(false)
+  const [workspaceDialogProject, setWorkspaceDialogProject] = useState<Project | null>(null)
   const {
-    workspaces,
+    projects,
     activeWorkspaceId,
     activeWorkspace,
     loading,
     error,
+    createProject,
+    createProjectFromDirectory,
+    selectWorkspace,
     createWorkspace,
-    selectWorkspace
-  } = useWorkspaces()
+    removeWorkspace,
+    removeProject,
+    listProjectBranches
+  } = useProjects()
   const {
     settings,
     loading: settingsLoading,
@@ -75,17 +90,24 @@ function App(): React.JSX.Element {
   return (
     <SidebarProvider className="h-full">
       <ExpandSidebarOnSettings enabled={isSettings} />
-      {isSettings ? null : <TitlebarSidebarTrigger />}
+      <WindowDragOverlay showSidebarTrigger={!isSettings} />
       <AppSidebar
-        mode={isSettings ? 'settings' : 'workspaces'}
-        workspaces={workspaces}
+        mode={isSettings ? 'settings' : 'projects'}
+        projects={projects}
         activeWorkspaceId={activeWorkspaceId}
         settingsSection={isSettings ? route.section : 'general'}
         onSelectWorkspace={(id): void => {
-          navigate(workspacesPath())
+          navigate(projectsPath())
           void selectWorkspace(id)
         }}
-        onAddWorkspace={(): void => setDialogOpen(true)}
+        onAddProject={(): void => setProjectDialogOpen(true)}
+        onAddWorkspace={(project): void => setWorkspaceDialogProject(project)}
+        onRemoveProject={(projectId, deleteFiles): void => {
+          void removeProject(projectId, deleteFiles)
+        }}
+        onRemoveWorkspace={(workspaceId, deleteFiles): void => {
+          void removeWorkspace(workspaceId, deleteFiles)
+        }}
         onSelectSettingsSection={(section): void => {
           navigate(settingsPath(section))
         }}
@@ -93,7 +115,7 @@ function App(): React.JSX.Element {
           navigate(settingsPath('general'))
         }}
         onBack={(): void => {
-          navigate(workspacesPath())
+          navigate(projectsPath())
         }}
       />
       <SidebarInset>
@@ -113,27 +135,40 @@ function App(): React.JSX.Element {
             onDisconnectGitHub={disconnectGitHub}
           />
         ) : (
-          <>
-            <WorkspaceHeader />
-            <WorkspaceView
-              workspace={activeWorkspace}
-              activeWorkspaceId={activeWorkspaceId}
-              loading={loading}
-              error={error}
-              defaultCloneDir={settings?.defaultCloneDir ?? null}
-              terminalFontSize={settings?.terminalFontSize ?? null}
-              terminalFontFamily={settings?.terminalFontFamily ?? null}
-              onAddWorkspace={(): void => setDialogOpen(true)}
-            />
-          </>
+          <WorkspaceView
+            workspace={activeWorkspace}
+            activeWorkspaceId={activeWorkspaceId}
+            hasProjects={projects.length > 0}
+            loading={loading}
+            error={error}
+            terminalFontSize={settings?.terminalFontSize ?? null}
+            terminalFontFamily={settings?.terminalFontFamily ?? null}
+            onAddProject={(): void => setProjectDialogOpen(true)}
+          />
         )}
       </SidebarInset>
-      <AddWorkspaceDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
+      <AddProjectDialog
+        open={projectDialogOpen}
+        onOpenChange={setProjectDialogOpen}
         defaultCloneDir={settings?.defaultCloneDir ?? null}
         onCreate={async (gitUrl): Promise<void> => {
-          await createWorkspace(gitUrl)
+          await createProject(gitUrl)
+        }}
+        onPickDirectory={(): Promise<string | null> => window.cerebro.pickProjectDirectory()}
+        onCreateFromDirectory={async (directory): Promise<void> => {
+          await createProjectFromDirectory(directory)
+        }}
+      />
+      <AddWorkspaceDialog
+        open={workspaceDialogProject != null}
+        projectId={workspaceDialogProject?.id ?? null}
+        projectName={workspaceDialogProject?.name ?? null}
+        onOpenChange={(open): void => {
+          if (!open) setWorkspaceDialogProject(null)
+        }}
+        onListBranches={listProjectBranches}
+        onCreate={async (projectId, branch): Promise<void> => {
+          await createWorkspace(projectId, branch)
         }}
       />
     </SidebarProvider>

@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "lib": ["ES2022"],
+    "rootDir": "src",
+    "outDir": "dist",
+    "declaration": false,
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "typeRoots": ["../../apps/desktop/node_modules/@types", "../../node_modules/@types"],
+    "paths": {
+      "@cerebro/core": ["../../packages/core/dist/index.d.ts"]
+    }
+  },
+  "include": ["src/**/*"]
+}

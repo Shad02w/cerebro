@@ -2,7 +2,7 @@ export const SETTINGS_SECTION_IDS = ['general', 'terminal', 'integrations'] as c
 
 export type SettingsSectionId = (typeof SETTINGS_SECTION_IDS)[number]
 
-export type AppRoute = { name: 'workspaces' } | { name: 'settings'; section: SettingsSectionId }
+export type AppRoute = { name: 'projects' } | { name: 'settings'; section: SettingsSectionId }
 
 export function isSettingsSectionId(value: string): value is SettingsSectionId {
   return (SETTINGS_SECTION_IDS as readonly string[]).includes(value)
@@ -14,7 +14,7 @@ export function parseAppPath(pathname: string): AppRoute {
     const rest = path === '/settings' ? 'general' : path.slice('/settings/'.length)
     return { name: 'settings', section: isSettingsSectionId(rest) ? rest : 'general' }
   }
-  return { name: 'workspaces' }
+  return { name: 'projects' }
 }
 
 export function pathFromHash(hash: string): string {
@@ -23,8 +23,13 @@ export function pathFromHash(hash: string): string {
   return raw.startsWith('/') ? raw : `/${raw}`
 }
 
-export function workspacesPath(): string {
+export function projectsPath(): string {
   return '#/'
+}
+
+/** @deprecated Use projectsPath */
+export function workspacesPath(): string {
+  return projectsPath()
 }
 
 export function settingsPath(section: SettingsSectionId = 'general'): string {

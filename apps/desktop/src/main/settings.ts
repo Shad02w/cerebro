@@ -137,11 +137,11 @@ function mergeSettings(stored: StoredSettings): AppSettings {
   return { defaultCloneDir, terminalFontSize, terminalFontFamily }
 }
 
-export function getSettings(): AppSettings {
+function getSettings(): AppSettings {
   return mergeSettings(readStored())
 }
 
-export function setSettings(patch: AppSettingsPatch): AppSettings {
+function setSettings(patch: AppSettingsPatch): AppSettings {
   const stored = readStored()
   const next: StoredSettings = { ...stored }
 
@@ -173,19 +173,32 @@ export function setSettings(patch: AppSettingsPatch): AppSettings {
 }
 
 /** Parent directory for new clones; creates the directory if needed. */
-export function ensureCloneRoot(): string {
+function ensureCloneRoot(): string {
   const root = getSettings().defaultCloneDir
   mkdirSync(root, { recursive: true })
   return root
 }
 
 export async function pickDirectory(sender: Electron.WebContents): Promise<string | null> {
-  const window = BrowserWindow.fromWebContents(sender)
-  const options: Electron.OpenDialogOptions = {
-    properties: ['openDirectory', 'createDirectory'],
+  return showDirectoryPicker(sender, {
     title: 'Choose default clone location',
-    defaultPath: getSettings().defaultCloneDir
-  }
+    defaultPath: getSettings().defaultCloneDir,
+    properties: ['openDirectory', 'createDirectory']
+  })
+}
+
+export async function pickProjectDirectory(sender: Electron.WebContents): Promise<string | null> {
+  return showDirectoryPicker(sender, {
+    title: 'Add project folder',
+    properties: ['openDirectory']
+  })
+}
+
+async function showDirectoryPicker(
+  sender: Electron.WebContents,
+  options: Electron.OpenDialogOptions
+): Promise<string | null> {
+  const window = BrowserWindow.fromWebContents(sender)
   const result = window
     ? await dialog.showOpenDialog(window, options)
     : await dialog.showOpenDialog(options)
@@ -195,3 +208,5 @@ export async function pickDirectory(sender: Electron.WebContents): Promise<strin
   }
   return result.filePaths[0] ?? null
 }
+
+export { getSettings, setSettings, ensureCloneRoot } from '@cerebro/core'

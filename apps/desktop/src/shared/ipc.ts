@@ -1,8 +1,18 @@
 export const IPC = {
+  projects: {
+    list: 'cerebro:projects:list',
+    create: 'cerebro:projects:create',
+    createFromDirectory: 'cerebro:projects:create-from-directory',
+    pickDirectory: 'cerebro:projects:pick-directory',
+    listBranches: 'cerebro:projects:list-branches',
+    remove: 'cerebro:projects:remove',
+    /** Sent by the main process when an external source (CLI) mutates the DB. */
+    invalidate: 'cerebro:projects:list:invalidate'
+  },
   workspaces: {
-    list: 'cerebro:workspaces:list',
+    setActive: 'cerebro:workspaces:set-active',
     create: 'cerebro:workspaces:create',
-    setActive: 'cerebro:workspaces:set-active'
+    remove: 'cerebro:workspaces:remove'
   },
   settings: {
     get: 'cerebro:settings:get',
@@ -15,6 +25,9 @@ export const IPC = {
     cancelDeviceFlow: 'cerebro:github:cancel-device-flow',
     disconnect: 'cerebro:github:disconnect',
     status: 'cerebro:github:status'
+  },
+  shell: {
+    openExternal: 'cerebro:shell:open-external'
   },
   pty: {
     open: 'cerebro:pty:open',

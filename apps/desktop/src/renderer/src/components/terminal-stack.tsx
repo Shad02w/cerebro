@@ -1,12 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
-import { WebglAddon } from '@xterm/addon-webgl'
 import { CanvasAddon } from '@xterm/addon-canvas'
 import '@xterm/xterm/css/xterm.css'
 import '@/assets/terminal.css'
 import { DEFAULT_TERMINAL_FONT_SIZE, TERMINAL_FONT_FAMILY_AUTO } from '@shared/types'
 import { resolveTerminalFontFamily } from '@/lib/terminal-font'
+import { TerminalTabBar, type TerminalTab } from '@/components/terminal-tab-bar'
 
 const TERMINAL_THEME = {
   background: '#0a0a0a',
@@ -22,16 +22,53 @@ const TERMINAL_THEME = {
 
 type TerminalSessionProps = {
   workspaceId: number
+  tabId: number
   active: boolean
   fontSize: number
   fontFamilyPreference: string
+  onProcessExit: (tabId: number) => void
+}
+
+function waitForUsableSize(host: HTMLElement, isCancelled: () => boolean): Promise<void> {
+  if (host.clientWidth >= 2 && host.clientHeight >= 2) return Promise.resolve()
+
+  return new Promise((resolve) => {
+    const finish = (): void => {
+      observer.disconnect()
+      window.clearTimeout(timeout)
+      resolve()
+    }
+    const observer = new ResizeObserver(() => {
+      if (isCancelled() || (host.clientWidth >= 2 && host.clientHeight >= 2)) finish()
+    })
+    observer.observe(host)
+    const timeout = window.setTimeout(finish, 1000)
+  })
+}
+
+function fitSession(
+  terminal: Terminal,
+  fitAddon: FitAddon,
+  sessionId: number | null,
+  exited: boolean
+): void {
+  fitAddon.fit()
+  if (sessionId != null && !exited) {
+    void window.cerebro.resizePty(
+      sessionId,
+      Math.max(2, terminal.cols),
+      Math.max(1, terminal.rows)
+    )
+  }
 }
 
 function TerminalSession({
   workspaceId,
+  tabId,
   active,
   fontSize,
-  fontFamilyPreference
+  fontFamilyPreference,
+  onProcessExit
 }: TerminalSessionProps): React.JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
@@ -40,8 +77,11 @@ function TerminalSession({
   const exitedRef = useRef(false)
   const removeDataListenerRef = useRef<(() => void) | null>(null)
   const removeExitListenerRef = useRef<(() => void) | null>(null)
-  const wirePtyRef = useRef<(() => Promise<void>) | null>(null)
+  const onProcessExitRef = useRef(onProcessExit)
+  const [ready, setReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  onProcessExitRef.current = onProcessExit
 
   useEffect(() => {
     const host = hostRef.current
@@ -57,22 +97,12 @@ function TerminalSession({
       removeExitListenerRef.current = null
     }
 
-    const attachRenderer = (term: Terminal): void => {
-      try {
-        const webgl = new WebglAddon()
-        webgl.onContextLoss(() => {
-          webgl.dispose()
-          term.loadAddon(new CanvasAddon())
-        })
-        term.loadAddon(webgl)
-      } catch {
-        term.loadAddon(new CanvasAddon())
-      }
-    }
-
     void (async () => {
       try {
         const fontFamily = await resolveTerminalFontFamily(fontFamilyPreference)
+        if (cancelled || !hostRef.current) return
+
+        await waitForUsableSize(hostRef.current, () => cancelled)
         if (cancelled || !hostRef.current) return
 
         const fitAddon = new FitAddon()
@@ -88,7 +118,11 @@ function TerminalSession({
         })
         terminal.loadAddon(fitAddon)
         terminal.open(hostRef.current)
-        attachRenderer(terminal)
+        try {
+          terminal.loadAddon(new CanvasAddon())
+        } catch {
+          // Canvas renderer is optional; xterm's default renderer still works.
+        }
         fitAddon.fit()
         hostRef.current.dataset.terminalFont = fontFamily.replaceAll('"', '')
         hostRef.current.dataset.terminalFontSize = String(fontSize)
@@ -99,39 +133,34 @@ function TerminalSession({
           void window.cerebro.writePty(sessionId, data)
         })
 
-        const wirePty = async (): Promise<void> => {
-          if (!terminalRef.current || !fitAddonRef.current) return
-          fitAddonRef.current.fit()
-          const cols = Math.max(2, terminalRef.current.cols)
-          const rows = Math.max(1, terminalRef.current.rows)
-          const { sessionId } = await window.cerebro.openPty(workspaceId, cols, rows)
-          if (cancelled) {
-            void window.cerebro.killPty(sessionId)
-            return
-          }
-
-          clearPtyListeners()
-          sessionIdRef.current = sessionId
-          exitedRef.current = false
-
-          removeDataListenerRef.current = window.cerebro.onPtyData((event) => {
-            if (event.sessionId !== sessionIdRef.current) return
-            terminalRef.current?.write(event.data)
-          })
-
-          removeExitListenerRef.current = window.cerebro.onPtyExit((event) => {
-            if (event.sessionId !== sessionIdRef.current) return
-            exitedRef.current = true
-            sessionIdRef.current = null
-            terminalRef.current?.writeln(`\r\n[Process exited with code ${event.exitCode}]`)
-          })
-        }
-
         terminalRef.current = terminal
         fitAddonRef.current = fitAddon
-        wirePtyRef.current = wirePty
 
-        await wirePty()
+        const cols = Math.max(2, terminal.cols)
+        const rows = Math.max(1, terminal.rows)
+        const { sessionId } = await window.cerebro.openPty(workspaceId, cols, rows)
+        if (cancelled) {
+          void window.cerebro.killPty(sessionId)
+          return
+        }
+
+        clearPtyListeners()
+        sessionIdRef.current = sessionId
+        exitedRef.current = false
+
+        removeDataListenerRef.current = window.cerebro.onPtyData((event) => {
+          if (event.sessionId !== sessionIdRef.current) return
+          terminalRef.current?.write(event.data)
+        })
+
+        removeExitListenerRef.current = window.cerebro.onPtyExit((event) => {
+          if (event.sessionId !== sessionIdRef.current) return
+          exitedRef.current = true
+          sessionIdRef.current = null
+          onProcessExitRef.current(tabId)
+        })
+
+        setReady(true)
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Failed to open terminal.')
@@ -141,8 +170,8 @@ function TerminalSession({
 
     return () => {
       cancelled = true
+      setReady(false)
       clearPtyListeners()
-      wirePtyRef.current = null
       const sessionId = sessionIdRef.current
       sessionIdRef.current = null
       if (sessionId != null) {
@@ -152,9 +181,9 @@ function TerminalSession({
       terminalRef.current = null
       fitAddonRef.current = null
     }
-    // Recreate only when the workspace changes; font updates apply live below.
+    // Recreate only when the tab changes; font updates apply live below.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: font props handled in separate effect
-  }, [workspaceId])
+  }, [workspaceId, tabId])
 
   useEffect(() => {
     const terminal = terminalRef.current
@@ -187,30 +216,20 @@ function TerminalSession({
     }
   }, [fontSize, fontFamilyPreference])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    if (!active || !ready) return
     const terminal = terminalRef.current
     const fitAddon = fitAddonRef.current
-    if (!active || !terminal || !fitAddon) return
+    if (!terminal || !fitAddon) return
 
-    const activate = async (): Promise<void> => {
-      fitAddon.fit()
+    const frame = window.requestAnimationFrame(() => {
+      fitSession(terminal, fitAddon, sessionIdRef.current, exitedRef.current)
       terminal.refresh(0, Math.max(0, terminal.rows - 1))
       terminal.focus()
+    })
 
-      if (exitedRef.current || sessionIdRef.current == null) {
-        try {
-          await wirePtyRef.current?.()
-          setError(null)
-        } catch (err) {
-          setError(err instanceof Error ? err.message : 'Failed to reopen terminal.')
-        }
-      } else {
-        void window.cerebro.resizePty(sessionIdRef.current, terminal.cols, terminal.rows)
-      }
-    }
-
-    void activate()
-  }, [active, workspaceId])
+    return () => window.cancelAnimationFrame(frame)
+  }, [active, ready, workspaceId, tabId])
 
   useEffect(() => {
     const host = hostRef.current
@@ -219,12 +238,8 @@ function TerminalSession({
     const observer = new ResizeObserver(() => {
       const terminal = terminalRef.current
       const fitAddon = fitAddonRef.current
-      const sessionId = sessionIdRef.current
       if (!terminal || !fitAddon) return
-      fitAddon.fit()
-      if (sessionId != null && !exitedRef.current) {
-        void window.cerebro.resizePty(sessionId, terminal.cols, terminal.rows)
-      }
+      fitSession(terminal, fitAddon, sessionIdRef.current, exitedRef.current)
     })
 
     observer.observe(host)
@@ -234,6 +249,7 @@ function TerminalSession({
   return (
     <div
       data-terminal-workspace-id={workspaceId}
+      data-terminal-tab-id={tabId}
       data-terminal-active={active ? 'true' : 'false'}
       className="absolute inset-0"
       style={{
@@ -252,6 +268,38 @@ function TerminalSession({
   )
 }
 
+type WorkspaceTabsState = {
+  tabs: TerminalTab[]
+  activeTabId: number | null
+  nextLabel: number
+}
+
+let nextTabId = 1
+
+function createTab(labelNumber: number): TerminalTab {
+  const id = nextTabId
+  nextTabId += 1
+  return { id, label: `Terminal ${labelNumber}` }
+}
+
+function createWorkspaceTabs(): WorkspaceTabsState {
+  const tab = createTab(1)
+  return { tabs: [tab], activeTabId: tab.id, nextLabel: 2 }
+}
+
+function closeTabInWorkspace(workspace: WorkspaceTabsState, tabId: number): WorkspaceTabsState {
+  const index = workspace.tabs.findIndex((tab) => tab.id === tabId)
+  if (index < 0) return workspace
+
+  const tabs = workspace.tabs.filter((tab) => tab.id !== tabId)
+  if (workspace.activeTabId !== tabId) {
+    return { ...workspace, tabs }
+  }
+
+  const next = tabs[index] ?? tabs[index - 1] ?? null
+  return { ...workspace, tabs, activeTabId: next?.id ?? null }
+}
+
 type TerminalStackProps = {
   activeWorkspaceId: number | null
   fontSize: number | null
@@ -263,28 +311,93 @@ export function TerminalStack({
   fontSize,
   fontFamily
 }: TerminalStackProps): React.JSX.Element {
-  const [openedIds, setOpenedIds] = useState<number[]>([])
+  const [byWorkspace, setByWorkspace] = useState<Record<number, WorkspaceTabsState>>({})
   const resolvedFontSize = fontSize ?? DEFAULT_TERMINAL_FONT_SIZE
   const resolvedFontFamily = fontFamily ?? TERMINAL_FONT_FAMILY_AUTO
 
-  if (activeWorkspaceId != null && !openedIds.includes(activeWorkspaceId)) {
-    setOpenedIds([...openedIds, activeWorkspaceId])
+  const activeWorkspace =
+    activeWorkspaceId != null ? (byWorkspace[activeWorkspaceId] ?? null) : null
+  const tabs = activeWorkspace?.tabs ?? []
+  const activeTabId = activeWorkspace?.activeTabId ?? null
+
+  const selectTab = (tabId: number): void => {
+    if (activeWorkspaceId == null) return
+    setByWorkspace((current) => {
+      const workspace = current[activeWorkspaceId]
+      if (!workspace) return current
+      return {
+        ...current,
+        [activeWorkspaceId]: { ...workspace, activeTabId: tabId }
+      }
+    })
   }
 
+  const closeTab = (workspaceId: number, tabId: number): void => {
+    setByWorkspace((current) => {
+      const workspace = current[workspaceId]
+      if (!workspace) return current
+      return {
+        ...current,
+        [workspaceId]: closeTabInWorkspace(workspace, tabId)
+      }
+    })
+  }
+
+  const addTab = (): void => {
+    if (activeWorkspaceId == null) return
+    setByWorkspace((current) => {
+      const workspace = current[activeWorkspaceId]
+      if (!workspace) {
+        return { ...current, [activeWorkspaceId]: createWorkspaceTabs() }
+      }
+      const tab = createTab(workspace.nextLabel)
+      return {
+        ...current,
+        [activeWorkspaceId]: {
+          tabs: [...workspace.tabs, tab],
+          activeTabId: tab.id,
+          nextLabel: workspace.nextLabel + 1
+        }
+      }
+    })
+  }
+
+  const sessions = Object.entries(byWorkspace).flatMap(([workspaceIdValue, workspace]) => {
+    const workspaceId = Number(workspaceIdValue)
+    return workspace.tabs.map((tab) => ({
+      workspaceId,
+      tab,
+      active: workspaceId === activeWorkspaceId && tab.id === workspace.activeTabId
+    }))
+  })
+
   return (
-    <div
-      data-testid="terminal-stack"
-      className="relative min-h-0 flex-1 overflow-hidden bg-[#0a0a0a]"
-    >
-      {openedIds.map((workspaceId) => (
-        <TerminalSession
-          key={workspaceId}
-          workspaceId={workspaceId}
-          active={workspaceId === activeWorkspaceId}
-          fontSize={resolvedFontSize}
-          fontFamilyPreference={resolvedFontFamily}
+    <div data-testid="terminal-stack" className="flex min-h-0 flex-1 flex-col">
+      {activeWorkspaceId != null ? (
+        <TerminalTabBar
+          tabs={tabs}
+          activeTabId={activeTabId}
+          onSelect={selectTab}
+          onClose={(tabId): void => closeTab(activeWorkspaceId, tabId)}
+          onNewTab={addTab}
         />
-      ))}
+      ) : null}
+      <div
+        data-testid="terminal-sessions"
+        className="relative min-h-0 flex-1 overflow-hidden bg-[#0a0a0a]"
+      >
+        {sessions.map(({ workspaceId, tab, active }) => (
+          <TerminalSession
+            key={tab.id}
+            workspaceId={workspaceId}
+            tabId={tab.id}
+            active={active}
+            fontSize={resolvedFontSize}
+            fontFamilyPreference={resolvedFontFamily}
+            onProcessExit={(exitedTabId): void => closeTab(workspaceId, exitedTabId)}
+          />
+        ))}
+      </div>
     </div>
   )
 }

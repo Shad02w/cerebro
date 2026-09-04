@@ -8,10 +8,14 @@ const artifactsDir = process.env.CEREBRO_E2E_ARTIFACTS ?? path.join(tmpdir(), 'c
 test('settings reuses the app sidebar and navigates by hash route', async ({ page }) => {
   await mkdir(artifactsDir, { recursive: true })
 
-  await expect(page.getByRole('heading', { name: 'Create your first workspace' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Create your first project' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Toggle Sidebar' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Settings' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Integrations' })).toHaveCount(0)
+
+  const settingsRadius = await page
+    .getByTestId('settings-button')
+    .evaluate((el) => getComputedStyle(el).borderRadius)
 
   await page.screenshot({
     path: path.join(artifactsDir, 'workspaces-settings-entry.png'),
@@ -25,7 +29,7 @@ test('settings reuses the app sidebar and navigates by hash route', async ({ pag
   await expect(page.getByRole('button', { name: 'Settings' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Back' })).toBeVisible()
   await expect(page.locator('[data-slot="sidebar-inset"] > header')).toHaveCount(0)
-  await expect(page.getByText('No workspaces yet. Use + to clone a Git repository.')).toHaveCount(0)
+  await expect(page.getByText('No projects yet. Use + to clone a repository or open a folder.')).toHaveCount(0)
 
   const sidebar = page.locator('[data-slot="sidebar"]')
   const generalNav = sidebar.getByRole('button', { name: 'General' })
@@ -35,6 +39,12 @@ test('settings reuses the app sidebar and navigates by hash route', async ({ pag
   await expect(generalNav).toBeVisible()
   await expect(terminalNav).toBeVisible()
   await expect(integrationsNav).toBeVisible()
+
+  const navRadius = await generalNav.evaluate((el) => getComputedStyle(el).borderRadius)
+  const backRadius = await page.getByRole('button', { name: 'Back' }).evaluate((el) => getComputedStyle(el).borderRadius)
+  expect(settingsRadius).toBe(navRadius)
+  expect(backRadius).toBe(navRadius)
+
   await expect(generalNav.locator('svg')).toHaveCount(1)
   await expect(terminalNav.locator('svg')).toHaveCount(1)
   await expect(integrationsNav.locator('svg')).toHaveCount(1)
@@ -42,10 +52,10 @@ test('settings reuses the app sidebar and navigates by hash route', async ({ pag
   const content = page.locator('[data-slot="sidebar-inset"]')
   await expect(content.getByRole('button', { name: 'Terminal' })).toHaveCount(0)
   await expect(content.getByRole('heading', { name: 'General' })).toBeVisible()
-  await expect(content.getByRole('heading', { name: 'Workspaces' })).toBeVisible()
+  await expect(content.getByRole('heading', { name: 'Projects' })).toBeVisible()
   await expect(content.getByLabel('Default clone location')).toBeVisible()
   await expect(
-    content.getByText('New workspaces are cloned into this folder. Existing checkouts are not moved.')
+    content.getByText('New projects are cloned into this folder. Existing checkouts are not moved.')
   ).toBeVisible()
   await expect(content.getByRole('button', { name: 'Choose folder' })).toBeVisible()
 
@@ -84,7 +94,7 @@ test('settings reuses the app sidebar and navigates by hash route', async ({ pag
 
   await page.getByRole('button', { name: 'Back' }).click()
   await expect.poll(() => page.evaluate(() => window.location.hash)).toBe('#/')
-  await expect(page.getByRole('heading', { name: 'Create your first workspace' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Create your first project' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Toggle Sidebar' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Settings' })).toBeVisible()
 })

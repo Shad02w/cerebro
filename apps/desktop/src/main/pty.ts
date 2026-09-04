@@ -6,7 +6,8 @@ import { ipcMain } from 'electron'
 import * as pty from 'node-pty'
 import { IPC } from '../shared/ipc'
 import type { PtyExitEvent, PtyOpenResult } from '../shared/types'
-import { getWorkspaceLocalPath } from './workspaces'
+import { getWorkspaceLocalPath, getWorkspaceProjectId } from './projects'
+import { getCerebroHome } from './paths'
 
 type PtySession = {
   sessionId: number
@@ -15,7 +16,8 @@ type PtySession = {
   webContents: WebContents
 }
 
-const sessionsByWorkspaceId = new Map<number, PtySession>()
+const sessionsById = new Map<number, PtySession>()
+let nextSessionId = 1
 
 function isUsableShell(shell: string | null | undefined): shell is string {
   if (!shell || shell === '/bin/false' || shell === '/usr/bin/false') return false
@@ -58,10 +60,10 @@ export function resolveDefaultShell(): { file: string; args: string[] } {
   return { file: fallback, args: loginArgsForShell(fallback) }
 }
 
-function disposeSession(workspaceId: number): void {
-  const session = sessionsByWorkspaceId.get(workspaceId)
+function disposeSession(sessionId: number): void {
+  const session = sessionsById.get(sessionId)
   if (!session) return
-  sessionsByWorkspaceId.delete(workspaceId)
+  sessionsById.delete(sessionId)
   try {
     session.process.kill()
   } catch {
@@ -79,26 +81,23 @@ function emitExit(session: PtySession, exitCode: number, signal?: number): void 
   session.webContents.send(IPC.pty.exit, payload)
 }
 
-export function openPty(
+export async function openPty(
   webContents: WebContents,
   workspaceId: number,
   cols: number,
   rows: number
-): PtyOpenResult {
-  const existing = sessionsByWorkspaceId.get(workspaceId)
-  if (existing) {
-    existing.webContents = webContents
-    try {
-      existing.process.resize(Math.max(2, cols), Math.max(1, rows))
-    } catch {
-      // Ignore resize failures on a dying process.
-    }
-    return { sessionId: existing.sessionId }
-  }
-
+): Promise<PtyOpenResult> {
   const cwd = getWorkspaceLocalPath(workspaceId)
   if (!existsSync(cwd)) {
     throw new Error(`Workspace path does not exist: ${cwd}`)
+  }
+
+  // Resolve project ID for env injection (best-effort; ignore if workspace lookup fails).
+  let projectId: number | null = null
+  try {
+    projectId = await getWorkspaceProjectId(workspaceId)
+  } catch {
+    // Non-fatal; env vars will just be omitted.
   }
 
   const { file, args } = resolveDefaultShell()
@@ -109,6 +108,15 @@ export function openPty(
   env.TERM = 'xterm-256color'
   env.COLORTERM = 'truecolor'
 
+  // Inject Cerebro context so agents running inside a workspace terminal can
+  // use the CLI without specifying --project / --workspace flags.
+  env.CEREBRO_HOME = getCerebroHome()
+  env.CEREBRO_WORKSPACE_ID = String(workspaceId)
+  env.CEREBRO_WORKSPACE_PATH = cwd
+  if (projectId !== null) {
+    env.CEREBRO_PROJECT_ID = String(projectId)
+  }
+
   const processHandle = pty.spawn(file, args, {
     name: 'xterm-256color',
     cols: Math.max(2, cols),
@@ -117,13 +125,15 @@ export function openPty(
     env
   })
 
+  const sessionId = nextSessionId
+  nextSessionId += 1
   const session: PtySession = {
-    sessionId: workspaceId,
+    sessionId,
     workspaceId,
     process: processHandle,
     webContents
   }
-  sessionsByWorkspaceId.set(workspaceId, session)
+  sessionsById.set(sessionId, session)
 
   processHandle.onData((data) => {
     if (session.webContents.isDestroyed()) return
@@ -131,9 +141,9 @@ export function openPty(
   })
 
   processHandle.onExit(({ exitCode, signal }) => {
-    const current = sessionsByWorkspaceId.get(workspaceId)
+    const current = sessionsById.get(sessionId)
     if (current?.process === processHandle) {
-      sessionsByWorkspaceId.delete(workspaceId)
+      sessionsById.delete(sessionId)
     }
     emitExit(session, exitCode, signal)
   })
@@ -142,13 +152,13 @@ export function openPty(
 }
 
 export function writePty(sessionId: number, data: string): void {
-  const session = sessionsByWorkspaceId.get(sessionId)
+  const session = sessionsById.get(sessionId)
   if (!session) return
   session.process.write(data)
 }
 
 export function resizePty(sessionId: number, cols: number, rows: number): void {
-  const session = sessionsByWorkspaceId.get(sessionId)
+  const session = sessionsById.get(sessionId)
   if (!session) return
   try {
     session.process.resize(Math.max(2, cols), Math.max(1, rows))
@@ -161,9 +171,18 @@ export function killPty(sessionId: number): void {
   disposeSession(sessionId)
 }
 
+/** Kill every PTY session for a workspace. Safe when none are open. */
+export function killPtyForWorkspace(workspaceId: number): void {
+  for (const session of [...sessionsById.values()]) {
+    if (session.workspaceId === workspaceId) {
+      disposeSession(session.sessionId)
+    }
+  }
+}
+
 export function killAllPtys(): void {
-  for (const workspaceId of [...sessionsByWorkspaceId.keys()]) {
-    disposeSession(workspaceId)
+  for (const sessionId of [...sessionsById.keys()]) {
+    disposeSession(sessionId)
   }
 }
 
