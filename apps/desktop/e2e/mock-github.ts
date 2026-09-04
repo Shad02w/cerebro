@@ -1,9 +1,23 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 
+export type MockPullRequest = {
+  number: number
+  title: string
+  url: string
+  createdAt: string
+  updatedAt: string
+  state: 'OPEN' | 'CLOSED' | 'MERGED'
+  reviewDecision: 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED' | null
+  mergeable: 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN'
+  headRefName: string
+  repoFullName: string
+}
+
 export type MockGitHubServer = {
   baseUrl: string
   authorize: (deviceCode?: string) => void
   lastUserCode: () => string | null
+  setPullRequests: (owner: string, repo: string, pullRequests: MockPullRequest[]) => void
   close: () => Promise<void>
 }
 
@@ -32,9 +46,14 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.end(payload)
 }
 
+function repoKey(owner: string, repo: string): string {
+  return `${owner.toLowerCase()}/${repo.toLowerCase()}`
+}
+
 export async function startMockGitHubServer(): Promise<MockGitHubServer> {
   const devices = new Map<string, PendingDevice>()
   const tokens = new Map<string, string>()
+  const pullRequestsByRepo = new Map<string, MockPullRequest[]>()
   let counter = 0
   let lastUserCode: string | null = null
   let baseUrl = 'http://127.0.0.1'
@@ -112,6 +131,53 @@ export async function startMockGitHubServer(): Promise<MockGitHubServer> {
         return
       }
 
+      if (method === 'POST' && url.pathname === '/graphql') {
+        const auth = req.headers.authorization ?? ''
+        const token = auth.replace(/^(?:Bearer|token)\s+/i, '').trim()
+        if (!token || !tokens.has(token)) {
+          sendJson(res, 401, { message: 'Bad credentials' })
+          return
+        }
+
+        const body = await readBody(req)
+        let parsed: { variables?: { owner?: string; name?: string } } = {}
+        try {
+          parsed = JSON.parse(body) as { variables?: { owner?: string; name?: string } }
+        } catch {
+          sendJson(res, 400, { message: 'Invalid JSON' })
+          return
+        }
+
+        const owner = parsed.variables?.owner ?? 'octocat'
+        const name = parsed.variables?.name ?? 'hello-world'
+        const nodes = pullRequestsByRepo.get(repoKey(owner, name)) ?? []
+
+        sendJson(res, 200, {
+          data: {
+            repository: {
+              pullRequests: {
+                nodes: nodes.map((pr) => ({
+                  number: pr.number,
+                  title: pr.title,
+                  url: pr.url,
+                  createdAt: pr.createdAt,
+                  updatedAt: pr.updatedAt,
+                  state: pr.state,
+                  isDraft: false,
+                  reviewDecision: pr.reviewDecision,
+                  mergeable: pr.mergeable,
+                  headRefName: pr.headRefName,
+                  repository: {
+                    nameWithOwner: pr.repoFullName
+                  }
+                }))
+              }
+            }
+          }
+        })
+        return
+      }
+
       if (method === 'GET' && url.pathname === '/avatar.png') {
         const png = Buffer.from(
           'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
@@ -160,6 +226,9 @@ export async function startMockGitHubServer(): Promise<MockGitHubServer> {
       if (latest) latest.authorized = true
     },
     lastUserCode: (): string | null => lastUserCode,
+    setPullRequests: (owner, repo, pullRequests): void => {
+      pullRequestsByRepo.set(repoKey(owner, repo), pullRequests)
+    },
     close: async (): Promise<void> => {
       await new Promise<void>((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()))

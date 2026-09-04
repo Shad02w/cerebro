@@ -1,6 +1,6 @@
 export type LinkedRepository = {
   id: number
-  workspaceId: number
+  projectId: number
   gitUrl: string
   name: string
   localPath: string
@@ -8,17 +8,61 @@ export type LinkedRepository = {
   createdAt: string
 }
 
+export type WorkspacePullRequestState = 'open' | 'closed' | 'merged'
+
+export type WorkspacePullRequestReviewDecision =
+  'approved' | 'changes_requested' | 'review_required' | 'none'
+
+export type WorkspacePullRequest = {
+  number: number
+  title: string
+  url: string
+  createdAt: string
+  state: WorkspacePullRequestState
+  reviewDecision: WorkspacePullRequestReviewDecision
+  mergeable: boolean | null
+  repoFullName: string
+}
+
+export type WorkspaceKind = 'default' | 'worktree'
+
 export type Workspace = {
   id: number
+  projectId: number
+  repositoryId: number
+  kind: WorkspaceKind
+  branch: string
+  localPath: string
+  createdAt: string
+  pullRequest: WorkspacePullRequest | null
+}
+
+export type ProjectGitHub = {
+  owner: string
+  repo: string
+}
+
+export type ProjectKind = 'clone' | 'directory' | 'multi-root'
+
+export type Project = {
+  id: number
   name: string
+  kind: ProjectKind
   createdAt: string
   updatedAt: string
   repositories: LinkedRepository[]
+  workspaces: Workspace[]
+  github: ProjectGitHub | null
 }
 
-export type WorkspaceListResult = {
-  workspaces: Workspace[]
+export type ProjectListResult = {
+  projects: Project[]
   activeWorkspaceId: number | null
+}
+
+export type ProjectBranch = {
+  name: string
+  hasWorkspace: boolean
 }
 
 export type PtyOpenResult = {
@@ -69,9 +113,16 @@ export type GitHubStatus =
   | { state: 'error'; message: string }
 
 export type CerebroApi = {
-  listWorkspaces: () => Promise<WorkspaceListResult>
-  createWorkspace: (gitUrl: string) => Promise<Workspace>
-  setActiveWorkspace: (workspaceId: number) => Promise<WorkspaceListResult>
+  listProjects: () => Promise<ProjectListResult>
+  createProject: (gitUrl: string) => Promise<Project>
+  createProjectFromDirectory: (directory: string) => Promise<Project>
+  pickProjectDirectory: () => Promise<string | null>
+  removeProject: (projectId: number, deleteFiles: boolean) => Promise<ProjectListResult>
+  setActiveWorkspace: (workspaceId: number) => Promise<ProjectListResult>
+  createWorkspace: (projectId: number, branch: string) => Promise<Workspace>
+  removeWorkspace: (workspaceId: number, deleteFiles: boolean) => Promise<ProjectListResult>
+  listProjectBranches: (projectId: number) => Promise<ProjectBranch[]>
+  openExternal: (url: string) => Promise<void>
   getSettings: () => Promise<AppSettings>
   setSettings: (patch: AppSettingsPatch) => Promise<AppSettings>
   pickDirectory: () => Promise<string | null>
@@ -80,6 +131,8 @@ export type CerebroApi = {
   cancelGitHubDeviceFlow: () => Promise<GitHubStatus>
   disconnectGitHub: () => Promise<GitHubStatus>
   onGitHubStatus: (listener: (status: GitHubStatus) => void) => () => void
+  /** Subscribe to project-list invalidation events (emitted after CLI mutations). */
+  onProjectsInvalidate: (listener: () => void) => () => void
   openPty: (workspaceId: number, cols: number, rows: number) => Promise<PtyOpenResult>
   writePty: (sessionId: number, data: string) => Promise<void>
   resizePty: (sessionId: number, cols: number, rows: number) => Promise<void>

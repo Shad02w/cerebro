@@ -138,14 +138,14 @@ function GeneralSettings({
 
   return (
     <section className="space-y-3" data-testid="settings-general">
-      <h2 className="text-xs font-medium text-muted-foreground">Workspaces</h2>
+      <h2 className="text-xs font-medium text-muted-foreground">Projects</h2>
       <div className="flex items-start justify-between gap-6">
         <div className="min-w-0 flex-1 space-y-1">
           <Label htmlFor="clone-location" className="text-[13px] font-medium">
             Default clone location
           </Label>
           <p className="text-xs leading-relaxed text-muted-foreground">
-            New workspaces are cloned into this folder. Existing checkouts are not moved.
+            New projects are cloned into this folder. Existing checkouts are not moved.
           </p>
           {localError || error ? (
             <p className="text-xs text-destructive">{localError ?? error}</p>

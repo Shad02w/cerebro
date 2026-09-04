@@ -89,11 +89,11 @@
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.556 0 0);
   --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.871 0.006 286.286); /* zinc-300 */
   --sidebar-primary: oklch(0.922 0 0);
   --sidebar-primary-foreground: oklch(0.205 0 0);
   --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-accent-foreground: oklch(0.92 0.004 286.32); /* zinc-200 */
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
 }
@@ -129,7 +129,7 @@
     opacity: 0;
   }
 
-  [data-sidebar='menu-row']:is(:hover, :focus-within) > [data-sidebar='menu-action'][data-show-on-hover],
+  [data-sidebar='menu-row']:is(:hover, :focus-within) [data-sidebar='menu-action'][data-show-on-hover],
   [data-sidebar='menu-action'][data-show-on-hover]:focus-visible,
   [data-sidebar='menu-action'][data-show-on-hover][data-state='open'] {
     opacity: 1;

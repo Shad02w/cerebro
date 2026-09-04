@@ -4,7 +4,10 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { closeDb } from './db'
 import { registerSettingsIpc, registerWorkspaceIpc } from './ipc'
+import { startSocketServer, stopSocketServer } from './ipc-socket'
+import { setAppMenu } from './menu'
 import { ensureCerebroHome } from './paths'
+import { clearActiveWorkspace } from './projects'
 import { killAllPtys } from './pty'
 
 function createWindow(): void {
@@ -18,6 +21,7 @@ function createWindow(): void {
     title: 'Cerebro',
     backgroundColor: '#0a0a0a',
     titleBarStyle: 'hiddenInset',
+    // Keep in sync with TRAFFIC_LIGHT_Y / WindowDragOverlay in the renderer.
     trafficLightPosition: { x: 16, y: 16 },
     ...(process.platform !== 'darwin'
       ? {
@@ -56,9 +60,12 @@ function createWindow(): void {
 app.whenReady().then(() => {
   nativeTheme.themeSource = 'dark'
   electronApp.setAppUserModelId('com.cerebro.app')
+  setAppMenu()
   ensureCerebroHome()
+  clearActiveWorkspace()
   registerWorkspaceIpc()
   registerSettingsIpc()
+  startSocketServer()
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
@@ -78,6 +85,7 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  stopSocketServer()
   killAllPtys()
   closeDb()
 })

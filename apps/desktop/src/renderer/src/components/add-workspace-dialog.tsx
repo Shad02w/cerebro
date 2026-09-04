@@ -1,5 +1,6 @@
-import { type FormEvent, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
+import type { ProjectBranch } from '@shared/types'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -9,30 +10,49 @@ import {
   DialogHeader,
   DialogTitle
 } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select'
+import { Skeleton } from '@/components/ui/skeleton'
 
 type AddWorkspaceDialogProps = {
   open: boolean
+  projectId: number | null
+  projectName: string | null
   onOpenChange: (open: boolean) => void
-  defaultCloneDir: string | null
-  onCreate: (gitUrl: string) => Promise<void>
+  onListBranches: (projectId: number) => Promise<ProjectBranch[]>
+  onCreate: (projectId: number, branch: string) => Promise<void>
 }
+
+type BranchLoadState =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'ready'; branches: ProjectBranch[]; branch: string }
+  | { status: 'error'; message: string }
 
 export function AddWorkspaceDialog({
   open,
+  projectId,
+  projectName,
   onOpenChange,
-  defaultCloneDir,
+  onListBranches,
   onCreate
 }: AddWorkspaceDialogProps): React.JSX.Element {
-  const [gitUrl, setGitUrl] = useState('')
+  const [loadState, setLoadState] = useState<BranchLoadState>({ status: 'idle' })
+  const [branch, setBranch] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [submitError, setSubmitError] = useState<string | null>(null)
 
   const reset = (): void => {
-    setGitUrl('')
-    setError(null)
+    setLoadState({ status: 'idle' })
+    setBranch('')
     setSubmitting(false)
+    setSubmitError(null)
   }
 
   const handleOpenChange = (nextOpen: boolean): void => {
@@ -41,22 +61,56 @@ export function AddWorkspaceDialog({
     onOpenChange(nextOpen)
   }
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
+  useEffect(() => {
+    if (!open || projectId == null) return
+
+    let cancelled = false
+
+    void onListBranches(projectId)
+      .then((result) => {
+        if (cancelled) return
+        const available = result.filter((item) => !item.hasWorkspace)
+        setLoadState({
+          status: 'ready',
+          branches: available,
+          branch: available[0]?.name ?? ''
+        })
+        setBranch(available[0]?.name ?? '')
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setLoadState({
+            status: 'error',
+            message: err instanceof Error ? err.message : 'Failed to list branches.'
+          })
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [open, projectId, onListBranches])
+
+  // Show loading while the first fetch for this open session is in flight.
+  const loading = open && projectId != null && loadState.status === 'idle'
+  const branches = loadState.status === 'ready' ? loadState.branches : []
+  const error = submitError ?? (loadState.status === 'error' ? loadState.message : null)
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault()
-    const url = gitUrl.trim()
-    if (!url) {
-      setError('Enter a Git URL.')
+    if (projectId == null || !branch) {
+      setSubmitError('Select a branch.')
       return
     }
 
     setSubmitting(true)
-    setError(null)
+    setSubmitError(null)
     try {
-      await onCreate(url)
+      await onCreate(projectId, branch)
       reset()
       onOpenChange(false)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to clone the repository.')
+      setSubmitError(err instanceof Error ? err.message : 'Failed to create workspace.')
       setSubmitting(false)
     }
   }
@@ -68,24 +122,45 @@ export function AddWorkspaceDialog({
           <DialogHeader>
             <DialogTitle>Add workspace</DialogTitle>
             <DialogDescription>
-              Paste a Git URL. Cerebro clones the default branch into{' '}
-              <code className="rounded bg-muted px-1 py-0.5 text-xs">
-                {defaultCloneDir ?? '~/cerebro'}
-              </code>{' '}
-              and maps that repository to a new workspace.
+              Create a git worktree from an existing branch
+              {projectName ? (
+                <>
+                  {' '}
+                  in <span className="font-medium text-foreground">{projectName}</span>
+                </>
+              ) : null}
+              .
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
             <div className="grid gap-2">
-              <Label htmlFor="git-url">Git URL</Label>
-              <Input
-                id="git-url"
-                autoFocus
-                value={gitUrl}
-                disabled={submitting}
-                placeholder="https://github.com/org/repo.git"
-                onChange={(event): void => setGitUrl(event.target.value)}
-              />
+              <Label htmlFor="workspace-branch">Branch</Label>
+              {loading ? (
+                <Skeleton
+                  className="h-9 w-full"
+                  data-testid="workspace-branch-skeleton"
+                  aria-label="Loading branches"
+                />
+              ) : (
+                <Select value={branch || undefined} onValueChange={setBranch} disabled={submitting}>
+                  <SelectTrigger
+                    id="workspace-branch"
+                    className="w-full"
+                    data-testid="workspace-branch-select"
+                  >
+                    <SelectValue
+                      placeholder={branches.length ? 'Select a branch' : 'No branches available'}
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {branches.map((item) => (
+                      <SelectItem key={item.name} value={item.name}>
+                        {item.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             {error ? <p className="text-sm text-destructive">{error}</p> : null}
           </div>
@@ -98,9 +173,9 @@ export function AddWorkspaceDialog({
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={submitting}>
+            <Button type="submit" disabled={submitting || loading || !branch}>
               {submitting ? <Loader2 className="animate-spin" /> : null}
-              {submitting ? 'Cloning…' : 'Clone repository'}
+              {submitting ? 'Creating…' : 'Create workspace'}
             </Button>
           </DialogFooter>
         </form>

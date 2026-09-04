@@ -15,7 +15,7 @@ export default defineConfig({
     },
     build: {
       rollupOptions: {
-        external: ['node:sqlite', 'node-pty']
+        external: ['node:sqlite', 'node-pty', '@cerebro/core']
       }
     }
   },

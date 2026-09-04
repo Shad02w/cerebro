@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { expect, test } from './fixtures'
+import { expect, test, type ElectronApplication, type Page } from './fixtures'
 
 const execFileAsync = promisify(execFile)
 
@@ -17,41 +17,45 @@ async function initGitRepo(dir: string, branch: string, marker: string): Promise
   await execFileAsync('git', ['commit', '-m', `init ${marker}`], { cwd: dir })
 }
 
-test('shows the more action only on the hovered sidebar tree row', async ({ page }) => {
+async function addDirectoryViaUi(
+  page: Page,
+  electronApp: ElectronApplication,
+  directory: string
+): Promise<void> {
+  await electronApp.evaluate(async ({ dialog }, dir: string) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [dir] })
+  }, directory)
+  await page.getByRole('button', { name: 'Add project' }).first().click()
+  await page.getByTestId('add-project-choose-folder').click()
+}
+
+test('shows the more action only on the hovered sidebar tree row', async ({ page, electronApp }) => {
   const sourcesRoot = await mkdtemp(join(tmpdir(), 'cerebro-sidebar-tree-e2e-'))
   const source = join(sourcesRoot, 'tree-alpha')
 
   try {
     await initGitRepo(source, 'main', 'tree-alpha')
+    await addDirectoryViaUi(page, electronApp, source)
 
-    await page.getByRole('button', { name: 'Add workspace' }).first().click()
-    await page.getByLabel('Git URL').fill(`file://${source}`)
-    await page.getByRole('button', { name: 'Clone repository' }).click()
-    await expect(page.getByRole('button', { name: 'tree-alpha', exact: true })).toBeVisible({
-      timeout: 60_000
-    })
+    const projectRow = page.getByTestId(/project-row-/).filter({ hasText: 'tree-alpha' })
+    await expect(projectRow).toBeVisible({ timeout: 30_000 })
 
-    const ids = await page.evaluate(async () => {
-      const listed = await window.cerebro.listWorkspaces()
-      const workspace = listed.workspaces[0]
-      return {
-        workspaceId: workspace?.id ?? null,
-        repositoryId: workspace?.repositories[0]?.id ?? null
-      }
-    })
-    expect(ids.workspaceId).not.toBeNull()
-    expect(ids.repositoryId).not.toBeNull()
+    const listed = await page.evaluate(async () => window.cerebro.listProjects())
+    const project = listed.projects.find((item) => item.name === 'tree-alpha')
+    const workspace = project?.workspaces[0]
+    expect(project?.id).toBeTruthy()
+    expect(workspace?.id).toBeTruthy()
 
     const sidebar = page.locator('[data-slot="sidebar"]')
-    const parentRow = sidebar.getByRole('button', { name: 'tree-alpha', exact: true })
-    const childRow = sidebar.getByTestId(`repository-branch-${ids.repositoryId}`)
-    const parentMore = sidebar.getByTestId(`workspace-more-${ids.workspaceId}`)
-    const childMore = sidebar.getByTestId(`repository-more-${ids.repositoryId}`)
+    const childRow = sidebar.getByTestId(`workspace-row-${workspace!.id}`)
+    const parentMore = sidebar.getByTestId(`project-menu-${project!.id}`)
+    const childMore = sidebar.getByTestId(`workspace-menu-${workspace!.id}`)
 
+    await expect(childRow).toBeVisible()
     await expect(parentMore).toHaveCSS('opacity', '0')
     await expect(childMore).toHaveCSS('opacity', '0')
 
-    await parentRow.hover()
+    await projectRow.hover()
     await expect(parentMore).toHaveCSS('opacity', '1')
     await expect(childMore).toHaveCSS('opacity', '0')
 

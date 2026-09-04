@@ -1,32 +1,34 @@
-import { FolderGit2, Plus } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import type { Workspace } from '@shared/types'
+import { BrainMark } from '@/components/brain-mark'
 import { Button } from '@/components/ui/button'
 import { TerminalStack } from '@/components/terminal-stack'
 
 type WorkspaceViewProps = {
   workspace: Workspace | null
   activeWorkspaceId: number | null
+  hasProjects: boolean
   loading: boolean
   error: string | null
-  defaultCloneDir: string | null
   terminalFontSize: number | null
   terminalFontFamily: string | null
-  onAddWorkspace: () => void
+  onAddProject: () => void
 }
 
 export function WorkspaceView({
   workspace,
   activeWorkspaceId,
+  hasProjects,
   loading,
   error,
   terminalFontSize,
   terminalFontFamily,
-  onAddWorkspace
+  onAddProject
 }: WorkspaceViewProps): React.JSX.Element {
   if (loading) {
     return (
-      <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-        Loading workspaces…
+      <div className="flex flex-1 items-center justify-center bg-background">
+        <BrainMark pulse />
       </div>
     )
   }
@@ -35,18 +37,23 @@ export function WorkspaceView({
     <div className="relative flex min-h-0 flex-1 flex-col">
       {!workspace ? (
         <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-background px-8 text-center">
-          <FolderGit2 className="size-10 text-muted-foreground" />
-          <div className="space-y-1">
-            <h2 className="text-lg font-semibold">Create your first workspace</h2>
-            <p className="max-w-md text-sm text-muted-foreground">
-              Link a Git repository to a workspace.
-            </p>
-          </div>
+          <BrainMark />
+          {hasProjects ? null : (
+            <div className="space-y-1">
+              <h2 className="text-lg font-semibold">Create your first project</h2>
+              <p className="max-w-md text-sm text-muted-foreground">
+                Clone a Git repository or open a folder to create a project and open a workspace
+                terminal.
+              </p>
+            </div>
+          )}
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
-          <Button onClick={onAddWorkspace}>
-            <Plus />
-            Add workspace
-          </Button>
+          {hasProjects ? null : (
+            <Button onClick={onAddProject}>
+              <Plus />
+              Add project
+            </Button>
+          )}
         </div>
       ) : null}
       {workspace && error ? (

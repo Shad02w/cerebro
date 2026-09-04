@@ -3,9 +3,20 @@ import { IPC } from '../shared/ipc'
 import type { CerebroApi, GitHubStatus, PtyDataEvent, PtyExitEvent } from '../shared/types'
 
 const api: CerebroApi = {
-  listWorkspaces: () => ipcRenderer.invoke(IPC.workspaces.list),
-  createWorkspace: (gitUrl) => ipcRenderer.invoke(IPC.workspaces.create, gitUrl),
+  listProjects: () => ipcRenderer.invoke(IPC.projects.list),
+  createProject: (gitUrl) => ipcRenderer.invoke(IPC.projects.create, gitUrl),
+  createProjectFromDirectory: (directory) =>
+    ipcRenderer.invoke(IPC.projects.createFromDirectory, directory),
+  pickProjectDirectory: () => ipcRenderer.invoke(IPC.projects.pickDirectory),
+  removeProject: (projectId, deleteFiles) =>
+    ipcRenderer.invoke(IPC.projects.remove, projectId, deleteFiles),
   setActiveWorkspace: (workspaceId) => ipcRenderer.invoke(IPC.workspaces.setActive, workspaceId),
+  createWorkspace: (projectId, branch) =>
+    ipcRenderer.invoke(IPC.workspaces.create, projectId, branch),
+  removeWorkspace: (workspaceId, deleteFiles) =>
+    ipcRenderer.invoke(IPC.workspaces.remove, workspaceId, deleteFiles),
+  listProjectBranches: (projectId) => ipcRenderer.invoke(IPC.projects.listBranches, projectId),
+  openExternal: (url) => ipcRenderer.invoke(IPC.shell.openExternal, url),
   getSettings: () => ipcRenderer.invoke(IPC.settings.get),
   setSettings: (patch) => ipcRenderer.invoke(IPC.settings.set, patch),
   pickDirectory: () => ipcRenderer.invoke(IPC.settings.pickDirectory),
@@ -20,6 +31,13 @@ const api: CerebroApi = {
     ipcRenderer.on(IPC.github.status, handler)
     return () => {
       ipcRenderer.removeListener(IPC.github.status, handler)
+    }
+  },
+  onProjectsInvalidate: (listener) => {
+    const handler = (): void => listener()
+    ipcRenderer.on(IPC.projects.invalidate, handler)
+    return () => {
+      ipcRenderer.removeListener(IPC.projects.invalidate, handler)
     }
   },
   openPty: (workspaceId, cols, rows) => ipcRenderer.invoke(IPC.pty.open, workspaceId, cols, rows),

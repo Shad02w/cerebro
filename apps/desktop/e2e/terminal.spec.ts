@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { expect, test, type Page } from './fixtures'
+import { expect, test, type ElectronApplication, type Page } from './fixtures'
 
 const execFileAsync = promisify(execFile)
 
@@ -17,16 +17,49 @@ async function initGitRepo(dir: string, branch: string, marker: string): Promise
   await execFileAsync('git', ['commit', '-m', `init ${marker}`], { cwd: dir })
 }
 
-async function addWorkspaceViaUi(page: Page, gitUrl: string, workspaceName: string): Promise<void> {
-  await page.getByRole('button', { name: 'Add workspace' }).first().click()
+async function addProjectViaUi(page: Page, gitUrl: string, projectName: string): Promise<void> {
+  await page.getByRole('button', { name: 'Add project' }).first().click()
   await page.getByLabel('Git URL').fill(gitUrl)
   await page.getByRole('button', { name: 'Clone repository' }).click()
-  await expect(page.getByRole('button', { name: workspaceName, exact: true })).toBeVisible({
+  await expect(page.getByTestId(/project-row-/).filter({ hasText: projectName })).toBeVisible({
     timeout: 60_000
   })
 }
 
-test('opens keep-alive terminals per workspace without respawning', async ({ page }) => {
+async function mockChooseFolder(electronApp: ElectronApplication, directory: string): Promise<void> {
+  await electronApp.evaluate(async ({ dialog }, dir: string) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [dir] })
+  }, directory)
+}
+
+async function selectWorkspaceRow(page: Page, name: string): Promise<void> {
+  const sidebar = page.locator('[data-slot="sidebar"]')
+  await sidebar.getByTestId(/workspace-row-/).filter({ hasText: name }).click()
+}
+
+async function openNewTerminal(page: Page): Promise<void> {
+  await page.getByTestId('new-terminal-tab').click()
+  await waitForActiveTerminal(page)
+}
+
+async function waitForActiveTerminal(page: Page): Promise<void> {
+  const host = page.locator('[data-terminal-active="true"] .xterm')
+  await expect(host).toBeVisible({ timeout: 30_000 })
+  const box = await host.boundingBox()
+  expect(box?.height ?? 0).toBeGreaterThan(40)
+  await host.click()
+}
+
+async function exitActiveTerminal(page: Page): Promise<void> {
+  await waitForActiveTerminal(page)
+  await page.keyboard.press('Control+C')
+  await page.keyboard.type('exit')
+  await page.keyboard.press('Enter')
+}
+
+test('does not spawn a terminal until New terminal is clicked; project row only expands', async ({
+  page
+}) => {
   const sourcesRoot = await mkdtemp(join(tmpdir(), 'cerebro-terminal-e2e-'))
   const sourceA = join(sourcesRoot, 'term-alpha')
   const sourceB = join(sourcesRoot, 'term-beta')
@@ -35,21 +68,46 @@ test('opens keep-alive terminals per workspace without respawning', async ({ pag
     await initGitRepo(sourceA, 'main', 'alpha-terminal')
     await initGitRepo(sourceB, 'develop', 'beta-terminal')
 
-    await addWorkspaceViaUi(page, `file://${sourceA}`, 'term-alpha')
+    await addProjectViaUi(page, `file://${sourceA}`, 'term-alpha')
 
     const sidebar = page.locator('[data-slot="sidebar"]')
-    await expect(sidebar.getByRole('button', { name: 'term-alpha', exact: true })).toBeVisible()
-    await expect(sidebar.getByTestId(/repository-branch-/)).toHaveText('main')
+    await expect(sidebar.getByTestId(/project-row-/).filter({ hasText: 'term-alpha' })).toBeVisible()
+    await expect(sidebar.getByTestId(/workspace-row-/).filter({ hasText: 'main' })).toBeVisible()
+    await expect(sidebar.locator('[data-sidebar="menu-sub"]')).toHaveCSS('border-left-width', '0px')
+    await expect(sidebar.locator('[data-sidebar="menu-sub"]')).toHaveCSS('margin-right', '0px')
+    await expect(sidebar.locator('[data-sidebar="menu-sub"]')).toHaveCSS('padding-right', '0px')
+
+    // file:// projects are not GitHub-linked, so per-project + is hidden.
+    await expect(page.getByTestId(/project-add-workspace-/)).toHaveCount(0)
+
+    const listedAfterCreate = await page.evaluate(async () => window.cerebro.listProjects())
+    expect(listedAfterCreate.activeWorkspaceId).toBeNull()
+    await expect(page.getByTestId('terminal-tab-bar')).toHaveCount(0)
+    await expect(page.getByTestId('brain-mark')).toBeVisible()
+    await expect(page.locator('[data-terminal-workspace-id]')).toHaveCount(0)
+
+    // Collapsing the project hides workspaces and still does not open a terminal.
+    await page.getByTestId(/project-row-/).filter({ hasText: 'term-alpha' }).click()
+    await expect(sidebar.getByTestId(/workspace-row-/).filter({ hasText: 'main' })).toBeHidden()
+    await expect(page.getByTestId('terminal-tab-bar')).toHaveCount(0)
+
+    await page.getByTestId(/project-row-/).filter({ hasText: 'term-alpha' }).click()
+    await expect(sidebar.getByTestId(/workspace-row-/).filter({ hasText: 'main' })).toBeVisible()
+    await selectWorkspaceRow(page, 'main')
 
     const workspaceAId = await page.evaluate(async () => {
-      const listed = await window.cerebro.listWorkspaces()
+      const listed = await window.cerebro.listProjects()
       return listed.activeWorkspaceId
     })
     expect(workspaceAId).not.toBeNull()
 
-    await expect(page.locator(`[data-terminal-workspace-id="${workspaceAId}"]`)).toBeVisible({
-      timeout: 30_000
-    })
+    await expect(page.getByTestId('terminal-tab-bar')).toBeVisible()
+    await expect(page.getByTestId('new-terminal-tab')).toBeVisible()
+    await expect(page.getByTestId('terminal-tab')).toHaveCount(0)
+    await expect(page.locator('[data-terminal-workspace-id]')).toHaveCount(0)
+
+    await openNewTerminal(page)
+    await expect(page.getByTestId('terminal-tab')).toHaveCount(1)
     await expect(
       page.locator(`[data-terminal-workspace-id="${workspaceAId}"] .xterm`)
     ).toBeVisible()
@@ -57,20 +115,45 @@ test('opens keep-alive terminals per workspace without respawning', async ({ pag
       page.locator(`[data-terminal-workspace-id="${workspaceAId}"][data-terminal-active="true"]`)
     ).toHaveCount(1)
 
-    await addWorkspaceViaUi(page, `file://${sourceB}`, 'term-beta')
-    await expect(sidebar.getByRole('button', { name: 'term-beta', exact: true })).toBeVisible()
-    await expect(sidebar.getByTestId(/repository-branch-/)).toHaveText(['develop', 'main'])
+    // Collapsing the project hides workspaces but does not change the active terminal.
+    await page.getByTestId(/project-row-/).filter({ hasText: 'term-alpha' }).click()
+    await expect(sidebar.getByTestId(/workspace-row-/).filter({ hasText: 'main' })).toBeHidden()
+    await expect(
+      page.locator(`[data-terminal-workspace-id="${workspaceAId}"][data-terminal-active="true"]`)
+    ).toHaveCount(1)
+
+    await page.getByTestId(/project-row-/).filter({ hasText: 'term-alpha' }).click()
+    await expect(sidebar.getByTestId(/workspace-row-/).filter({ hasText: 'main' })).toBeVisible()
+
+    await addProjectViaUi(page, `file://${sourceB}`, 'term-beta')
+    await expect(sidebar.getByTestId(/project-row-/).filter({ hasText: 'term-beta' })).toBeVisible()
+    await page.getByTestId(/project-row-/).filter({ hasText: 'term-beta' }).click()
+    await expect(sidebar.getByTestId(/workspace-row-/).filter({ hasText: 'develop' })).toBeVisible()
+
+    // Adding another project must not steal focus or spawn a second tab strip.
+    const listedAfterSecond = await page.evaluate(async () => window.cerebro.listProjects())
+    expect(listedAfterSecond.activeWorkspaceId).toBe(workspaceAId)
+    await expect(page.getByTestId('terminal-tab-bar')).toHaveCount(1)
+    await expect(
+      page.locator(`[data-terminal-workspace-id="${workspaceAId}"][data-terminal-active="true"]`)
+    ).toHaveCount(1)
+
+    await selectWorkspaceRow(page, 'develop')
 
     const workspaceBId = await page.evaluate(async () => {
-      const listed = await window.cerebro.listWorkspaces()
+      const listed = await window.cerebro.listProjects()
       return listed.activeWorkspaceId
     })
     expect(workspaceBId).not.toBeNull()
     expect(workspaceBId).not.toBe(workspaceAId)
 
-    await expect(page.locator(`[data-terminal-workspace-id="${workspaceBId}"]`)).toBeVisible({
-      timeout: 30_000
-    })
+    await expect(page.getByTestId('terminal-tab')).toHaveCount(0)
+    await expect(page.locator(`[data-terminal-workspace-id="${workspaceBId}"]`)).toHaveCount(0)
+    await expect(
+      page.locator(`[data-terminal-workspace-id="${workspaceAId}"][data-terminal-active="false"]`)
+    ).toHaveCount(1)
+
+    await openNewTerminal(page)
     await expect(page.locator('.xterm')).toHaveCount(2)
     await expect(
       page.locator(`[data-terminal-workspace-id="${workspaceBId}"][data-terminal-active="true"]`)
@@ -82,7 +165,13 @@ test('opens keep-alive terminals per workspace without respawning', async ({ pag
     // Hidden host stays in the DOM with real layout (visibility:hidden, not display:none).
     await expect(page.locator(`[data-terminal-workspace-id="${workspaceAId}"]`)).toBeHidden()
 
-    await page.getByRole('button', { name: 'term-alpha', exact: true }).click()
+    // Expand term-alpha if collapsed and select its workspace.
+    const alphaProject = sidebar.getByTestId(/project-row-/).filter({ hasText: 'term-alpha' })
+    const alphaWorkspace = sidebar.getByTestId(/workspace-row-/).filter({ hasText: 'main' })
+    if (!(await alphaWorkspace.isVisible())) {
+      await alphaProject.click()
+    }
+    await alphaWorkspace.click()
 
     await expect(
       page.locator(`[data-terminal-workspace-id="${workspaceAId}"][data-terminal-active="true"]`)
@@ -93,19 +182,26 @@ test('opens keep-alive terminals per workspace without respawning', async ({ pag
     await expect(page.locator('.xterm')).toHaveCount(2)
 
     const chrome = await page.evaluate(() => {
-      const header = document.querySelector('[data-testid="content-drag-header"]')
+      const overlay = document.querySelector('[data-testid="window-drag-overlay"]')
       const stack = document.querySelector('[data-testid="terminal-stack"]')
+      const tabBar = document.querySelector('[data-testid="terminal-tab-bar"]')
+      const sessions = document.querySelector('[data-testid="terminal-sessions"]')
+      const sidebarEl = document.querySelector('[data-slot="sidebar"]')
       const host = document.querySelector(
         '[data-terminal-active="true"] .terminal-host'
       ) as HTMLElement | null
       const xterm = host?.querySelector('.xterm')
       const viewport = host?.querySelector('.xterm-viewport') as HTMLElement | null
-      if (!header || !stack || !host || !xterm || !viewport) {
+      if (!overlay || !stack || !tabBar || !sessions || !sidebarEl || !host || !xterm || !viewport) {
         throw new Error('Terminal chrome elements were not found.')
       }
 
       const stackBox = stack.getBoundingClientRect()
+      const tabBarBox = tabBar.getBoundingClientRect()
+      const sessionsBox = sessions.getBoundingClientRect()
       const xtermBox = xterm.getBoundingClientRect()
+      const overlayBox = overlay.getBoundingClientRect()
+      const sidebarBox = sidebarEl.getBoundingClientRect()
       const sample = '\uE0A0\uE0B0'
       const canvas = document.createElement('canvas')
       const ctx = canvas.getContext('2d')
@@ -117,8 +213,20 @@ test('opens keep-alive terminals per workspace without respawning', async ({ pag
       const menloWidth = ctx.measureText(sample).width
 
       return {
-        headerHeight: header.getBoundingClientRect().height,
-        topGap: xtermBox.top - stackBox.top,
+        overlayPosition: getComputedStyle(overlay).position,
+        overlayTop: overlayBox.top,
+        overlayHeight: overlayBox.height,
+        overlayWidth: overlayBox.width,
+        windowWidth: window.innerWidth,
+        stackTop: stackBox.top,
+        tabBarTop: tabBarBox.top,
+        tabBarHeight: tabBarBox.height,
+        tabBarLeft: tabBarBox.left,
+        tabBarPaddingLeft: getComputedStyle(tabBar).paddingLeft,
+        sidebarRight: sidebarBox.right,
+        sessionsTop: sessionsBox.top,
+        xtermTop: xtermBox.top,
+        xtermHeight: xtermBox.height,
         font: family,
         overflowY: getComputedStyle(viewport).overflowY,
         scrollbarGutter: viewport.offsetWidth - viewport.clientWidth,
@@ -127,8 +235,18 @@ test('opens keep-alive terminals per workspace without respawning', async ({ pag
       }
     })
 
-    expect(chrome.headerHeight).toBeLessThanOrEqual(16)
-    expect(chrome.topGap).toBeLessThanOrEqual(8)
+    expect(chrome.overlayPosition).toBe('fixed')
+    expect(chrome.overlayTop).toBe(0)
+    expect(chrome.overlayWidth).toBe(chrome.windowWidth)
+    expect(chrome.overlayHeight).toBe(40)
+    expect(chrome.stackTop).toBe(0)
+    expect(chrome.tabBarTop).toBe(0)
+    expect(chrome.tabBarHeight).toBe(40)
+    expect(chrome.tabBarLeft).toBeGreaterThanOrEqual(chrome.sidebarRight - 1)
+    expect(chrome.tabBarPaddingLeft).toBe('0px')
+    expect(chrome.sessionsTop).toBe(chrome.tabBarTop + chrome.tabBarHeight)
+    expect(chrome.xtermTop).toBeGreaterThanOrEqual(chrome.sessionsTop)
+    expect(chrome.xtermHeight).toBeGreaterThan(40)
     expect(chrome.font).toMatch(/Nerd Font|MesloLGS|Cerebro Mono/)
     expect(chrome.overflowY).toBe('auto')
     expect(chrome.scrollbarGutter).toBe(0)
@@ -136,5 +254,174 @@ test('opens keep-alive terminals per workspace without respawning', async ({ pag
     expect(chrome.nerdWidth).not.toBe(chrome.menloWidth)
   } finally {
     await rm(sourcesRoot, { recursive: true, force: true })
+  }
+})
+
+test('supports multiple terminal tabs; close and shell exit remove the tab', async ({ page }) => {
+  const sourcesRoot = await mkdtemp(join(tmpdir(), 'cerebro-terminal-tabs-e2e-'))
+  const source = join(sourcesRoot, 'term-tabs')
+
+  try {
+    await initGitRepo(source, 'main', 'tabs-terminal')
+    await addProjectViaUi(page, `file://${source}`, 'term-tabs')
+    await expect(page.getByTestId('terminal-tab-bar')).toHaveCount(0)
+
+    await selectWorkspaceRow(page, 'main')
+
+    const workspaceId = await page.evaluate(async () => {
+      const listed = await window.cerebro.listProjects()
+      return listed.activeWorkspaceId
+    })
+    expect(workspaceId).not.toBeNull()
+
+    await expect(page.getByTestId('terminal-tab-bar')).toBeVisible()
+    await expect(page.getByTestId('terminal-tab')).toHaveCount(0)
+    await expect(page.locator('[data-terminal-workspace-id]')).toHaveCount(0)
+
+    await openNewTerminal(page)
+    await expect(page.getByTestId('terminal-tab')).toHaveCount(1)
+    await expect(page.getByTestId('terminal-tab').filter({ hasText: 'Terminal 1' })).toHaveAttribute(
+      'data-active',
+      'true'
+    )
+    await expect(page.locator(`[data-terminal-workspace-id="${workspaceId}"] .xterm`)).toHaveCount(1)
+
+    await page.getByTestId('new-terminal-tab').click()
+    await expect(page.getByTestId('terminal-tab')).toHaveCount(2)
+    await expect(page.getByTestId('terminal-tab').filter({ hasText: 'Terminal 2' })).toHaveAttribute(
+      'data-active',
+      'true'
+    )
+    await waitForActiveTerminal(page)
+    await expect(page.locator(`[data-terminal-workspace-id="${workspaceId}"] .xterm`)).toHaveCount(2)
+    await expect(
+      page.locator(`[data-terminal-workspace-id="${workspaceId}"][data-terminal-active="true"]`)
+    ).toHaveCount(1)
+    await expect(
+      page.locator(
+        `[data-terminal-workspace-id="${workspaceId}"][data-terminal-active="true"] .xterm`
+      )
+    ).toBeVisible()
+
+    await page.getByTestId('terminal-tab').filter({ hasText: 'Terminal 1' }).click()
+    await expect(page.getByTestId('terminal-tab').filter({ hasText: 'Terminal 1' })).toHaveAttribute(
+      'data-active',
+      'true'
+    )
+    await expect(page.getByTestId('terminal-tab').filter({ hasText: 'Terminal 2' })).toHaveAttribute(
+      'data-active',
+      'false'
+    )
+    await waitForActiveTerminal(page)
+    await expect(
+      page.locator(
+        `[data-terminal-workspace-id="${workspaceId}"][data-terminal-tab-id][data-terminal-active="true"] .xterm`
+      )
+    ).toBeVisible()
+
+    await page
+      .getByTestId('terminal-tab')
+      .filter({ hasText: 'Terminal 2' })
+      .getByTestId('terminal-tab-close')
+      .click()
+    await expect(page.getByTestId('terminal-tab')).toHaveCount(1)
+    await expect(page.getByTestId('terminal-tab').filter({ hasText: 'Terminal 1' })).toBeVisible()
+    await expect(page.getByTestId('terminal-tab').filter({ hasText: 'Terminal 2' })).toHaveCount(0)
+    await expect(page.locator(`[data-terminal-workspace-id="${workspaceId}"] .xterm`)).toHaveCount(1)
+    await waitForActiveTerminal(page)
+
+    await page.getByTestId('new-terminal-tab').click()
+    await expect(page.getByTestId('terminal-tab')).toHaveCount(2)
+    await waitForActiveTerminal(page)
+
+    await exitActiveTerminal(page)
+    await expect(page.getByTestId('terminal-tab')).toHaveCount(1, { timeout: 15_000 })
+    await expect(page.locator(`[data-terminal-workspace-id="${workspaceId}"] .xterm`)).toHaveCount(1)
+    await waitForActiveTerminal(page)
+
+    await exitActiveTerminal(page)
+    await expect(page.getByTestId('terminal-tab')).toHaveCount(0, { timeout: 15_000 })
+    await expect(page.locator(`[data-terminal-workspace-id="${workspaceId}"] .xterm`)).toHaveCount(0)
+    await expect(page.getByTestId('terminal-tab-bar')).toBeVisible()
+    await expect(page.getByTestId('new-terminal-tab')).toBeVisible()
+
+    await page.getByTestId('new-terminal-tab').click()
+    await expect(page.getByTestId('terminal-tab')).toHaveCount(1)
+    await waitForActiveTerminal(page)
+    await expect(page.locator(`[data-terminal-workspace-id="${workspaceId}"] .xterm`)).toHaveCount(1)
+  } finally {
+    await rm(sourcesRoot, { recursive: true, force: true })
+  }
+})
+
+test('does not spawn a terminal for a multi-root project until New terminal is clicked', async ({
+  page,
+  electronApp
+}) => {
+  const root = await mkdtemp(join(tmpdir(), 'cerebro-multiroot-tabs-e2e-'))
+  const parent = join(root, 'apps-folder')
+  const frontend = join(parent, 'frontend')
+  const backend = join(parent, 'backend')
+
+  try {
+    await initGitRepo(frontend, 'main', 'frontend-app')
+    await initGitRepo(backend, 'main', 'backend-app')
+
+    await mockChooseFolder(electronApp, parent)
+    await page.getByRole('button', { name: 'Add project' }).first().click()
+    await page.getByTestId('add-project-choose-folder').click()
+
+    const projectRow = page.getByTestId(/project-row-/).filter({ hasText: 'apps-folder' })
+    await expect(projectRow).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByTestId(/workspace-row-/).filter({ hasText: 'frontend' })).toBeVisible()
+    await expect(page.getByTestId(/workspace-row-/).filter({ hasText: 'backend' })).toBeVisible()
+
+    const listed = await page.evaluate(async () => window.cerebro.listProjects())
+    expect(listed.activeWorkspaceId).toBeNull()
+    await expect(page.getByTestId('terminal-tab-bar')).toHaveCount(0)
+    await expect(page.getByTestId('brain-mark')).toBeVisible()
+    await expect(page.locator('[data-terminal-workspace-id]')).toHaveCount(0)
+
+    await projectRow.click()
+    await expect(page.getByTestId(/workspace-row-/).filter({ hasText: 'frontend' })).toBeHidden()
+    await expect(page.getByTestId('terminal-tab-bar')).toHaveCount(0)
+
+    await projectRow.click()
+    await selectWorkspaceRow(page, 'frontend')
+
+    const frontendId = await page.evaluate(async () => {
+      const current = await window.cerebro.listProjects()
+      return current.activeWorkspaceId
+    })
+    expect(frontendId).not.toBeNull()
+    await expect(page.getByTestId('terminal-tab-bar')).toBeVisible()
+    await expect(page.getByTestId('terminal-tab')).toHaveCount(0)
+    await expect(page.locator('[data-terminal-workspace-id]')).toHaveCount(0)
+
+    await openNewTerminal(page)
+    await expect(
+      page.locator(`[data-terminal-workspace-id="${frontendId}"][data-terminal-active="true"] .xterm`)
+    ).toBeVisible()
+
+    await page.getByTestId('new-terminal-tab').click()
+    await expect(page.getByTestId('terminal-tab')).toHaveCount(2)
+    await waitForActiveTerminal(page)
+
+    await selectWorkspaceRow(page, 'backend')
+    const backendId = await page.evaluate(async () => {
+      const current = await window.cerebro.listProjects()
+      return current.activeWorkspaceId
+    })
+    expect(backendId).not.toBe(frontendId)
+    await expect(page.getByTestId('terminal-tab')).toHaveCount(0)
+    await expect(page.locator(`[data-terminal-workspace-id="${backendId}"]`)).toHaveCount(0)
+
+    await openNewTerminal(page)
+    await expect(
+      page.locator(`[data-terminal-workspace-id="${backendId}"][data-terminal-active="true"] .xterm`)
+    ).toBeVisible()
+    await expect(page.getByTestId('terminal-tab')).toHaveCount(1)
+  } finally {
+    await rm(root, { recursive: true, force: true })
   }
 })
