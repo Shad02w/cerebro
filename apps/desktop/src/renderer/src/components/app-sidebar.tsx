@@ -40,6 +40,7 @@ import {
   SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuRow,
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
@@ -360,44 +361,46 @@ function MultiRootRepoRow({
   const title = branch ? `${name} · ${branch}` : name
 
   return (
-    <li className="group/menu-item relative">
-      <button
-        type="button"
-        className={cn(
-          'app-no-drag peer/menu-button flex w-full min-w-0 flex-col items-stretch rounded-md px-2 py-1.5 pr-8 text-left',
-          'bg-sidebar-accent/40 text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
-          active && 'bg-sidebar-accent text-sidebar-accent-foreground'
-        )}
-        data-testid={`workspace-row-${workspace.id}`}
-        data-workspace-role="repository"
-        data-workspace-icon="directory-name"
-        title={title}
-        onClick={(): void => onSelect(workspace.id)}
-      >
-        <span
-          className="min-w-0 truncate text-xs font-medium leading-4"
-          data-testid={`workspace-repo-${workspace.id}`}
+    <li className="relative">
+      <SidebarMenuRow>
+        <button
+          type="button"
+          className={cn(
+            'app-no-drag peer/menu-button flex w-full min-w-0 flex-col items-stretch rounded-md px-2 py-1.5 pr-8 text-left',
+            'bg-sidebar-accent/40 text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+            active && 'bg-sidebar-accent text-sidebar-accent-foreground'
+          )}
+          data-testid={`workspace-row-${workspace.id}`}
+          data-workspace-role="repository"
+          data-workspace-icon="directory-name"
+          title={title}
+          onClick={(): void => onSelect(workspace.id)}
         >
-          {name}
-        </span>
-        {branch ? (
           <span
-            className="mt-0.5 flex min-w-0 items-center gap-1 text-[10px] leading-3 text-sidebar-foreground/55"
-            data-testid={`workspace-branch-${workspace.id}`}
+            className="min-w-0 truncate text-xs font-medium leading-4"
+            data-testid={`workspace-repo-${workspace.id}`}
           >
-            <span
-              aria-hidden
-              className="mb-px ml-0.5 h-2.5 w-2 shrink-0 rounded-bl-[3px] border-b border-l border-current opacity-40"
-            />
-            <GitBranch className="size-2.5 shrink-0 opacity-70" />
-            <span className="min-w-0 flex-1 truncate">{branch}</span>
-            <WorkspacePrPopover workspace={workspace} />
+            {name}
           </span>
-        ) : (
-          <WorkspacePrPopover workspace={workspace} />
-        )}
-      </button>
-      <WorkspaceOverflowMenu workspace={workspace} allowRemove={false} />
+          {branch ? (
+            <span
+              className="mt-0.5 flex min-w-0 items-center gap-1 text-[10px] leading-3 text-sidebar-foreground/55"
+              data-testid={`workspace-branch-${workspace.id}`}
+            >
+              <span
+                aria-hidden
+                className="mb-px ml-0.5 h-2.5 w-2 shrink-0 rounded-bl-[3px] border-b border-l border-current opacity-40"
+              />
+              <GitBranch className="size-2.5 shrink-0 opacity-70" />
+              <span className="min-w-0 flex-1 truncate">{branch}</span>
+              <WorkspacePrPopover workspace={workspace} />
+            </span>
+          ) : (
+            <WorkspacePrPopover workspace={workspace} />
+          )}
+        </button>
+        <WorkspaceOverflowMenu workspace={workspace} allowRemove={false} />
+      </SidebarMenuRow>
     </li>
   )
 }
@@ -417,7 +420,7 @@ function MultiRootWorkspaceTree({
     <SidebarMenuSub>
       <SidebarMenuSubItem>
         <Collapsible open={rootOpen} onOpenChange={setRootOpen}>
-          <div className="group/menu-item relative">
+          <SidebarMenuRow>
             <CollapsibleTrigger asChild>
               <button
                 type="button"
@@ -431,7 +434,7 @@ function MultiRootWorkspaceTree({
               </button>
             </CollapsibleTrigger>
             <RootOverflowMenu project={project} />
-          </div>
+          </SidebarMenuRow>
           <CollapsibleContent>
             {project.workspaces.length > 0 ? (
               <ul
@@ -480,47 +483,49 @@ function ProjectItem({
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="group/collapsible">
       <SidebarMenuItem>
-        <CollapsibleTrigger asChild>
-          <SidebarMenuButton
-            className={cn('app-no-drag', githubLinked && 'pr-14')}
-            data-testid={`project-row-${project.id}`}
-            data-project-kind={project.kind}
-            data-project-icon={multiRoot ? 'folders' : 'folder'}
-            title={multiRoot ? `${project.name} (multi-root)` : project.name}
-          >
-            {multiRoot ? <Folders /> : <Folder />}
-            <span className="min-w-0 flex-1 truncate">{project.name}</span>
-            {multiRoot ? (
-              <span
-                className="shrink-0 rounded-md bg-teal-500/15 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-teal-700 uppercase dark:text-teal-300"
-                data-testid={`project-multi-root-${project.id}`}
-              >
-                multi-root
-              </span>
-            ) : null}
-          </SidebarMenuButton>
-        </CollapsibleTrigger>
-        <ProjectOverflowMenu
-          project={project}
-          offsetForAdd={githubLinked}
-          onRemoveProject={onRemoveProject}
-        />
-        {githubLinked ? (
-          <PlusActionTooltip label="Add workspace">
-            <SidebarMenuAction
-              className="app-no-drag"
-              showOnHover
-              data-testid={`project-add-workspace-${project.id}`}
-              onClick={(event): void => {
-                event.stopPropagation()
-                onAddWorkspace(project)
-              }}
+        <SidebarMenuRow>
+          <CollapsibleTrigger asChild>
+            <SidebarMenuButton
+              className={cn('app-no-drag', githubLinked && 'pr-14')}
+              data-testid={`project-row-${project.id}`}
+              data-project-kind={project.kind}
+              data-project-icon={multiRoot ? 'folders' : 'folder'}
+              title={multiRoot ? `${project.name} (multi-root)` : project.name}
             >
-              <Plus />
-              <span className="sr-only">Add workspace</span>
-            </SidebarMenuAction>
-          </PlusActionTooltip>
-        ) : null}
+              {multiRoot ? <Folders /> : <Folder />}
+              <span className="min-w-0 flex-1 truncate">{project.name}</span>
+              {multiRoot ? (
+                <span
+                  className="shrink-0 rounded-md bg-teal-500/15 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-teal-700 uppercase dark:text-teal-300"
+                  data-testid={`project-multi-root-${project.id}`}
+                >
+                  multi-root
+                </span>
+              ) : null}
+            </SidebarMenuButton>
+          </CollapsibleTrigger>
+          <ProjectOverflowMenu
+            project={project}
+            offsetForAdd={githubLinked}
+            onRemoveProject={onRemoveProject}
+          />
+          {githubLinked ? (
+            <PlusActionTooltip label="Add workspace">
+              <SidebarMenuAction
+                className="app-no-drag"
+                showOnHover
+                data-testid={`project-add-workspace-${project.id}`}
+                onClick={(event): void => {
+                  event.stopPropagation()
+                  onAddWorkspace(project)
+                }}
+              >
+                <Plus />
+                <span className="sr-only">Add workspace</span>
+              </SidebarMenuAction>
+            </PlusActionTooltip>
+          ) : null}
+        </SidebarMenuRow>
         <CollapsibleContent>
           {multiRoot ? (
             <MultiRootWorkspaceTree
@@ -531,32 +536,34 @@ function ProjectItem({
           ) : project.workspaces.length > 0 ? (
             <SidebarMenuSub>
               {project.workspaces.map((workspace: Workspace) => (
-                <SidebarMenuSubItem key={workspace.id} className="group/menu-item">
-                  <SidebarMenuSubButton
-                    size="sm"
-                    asChild
-                    isActive={workspace.id === activeWorkspaceId}
-                  >
-                    <button
-                      type="button"
-                      className="app-no-drag flex w-full min-w-0 items-center gap-2 pr-8"
-                      data-testid={`workspace-row-${workspace.id}`}
-                      data-workspace-role="branch"
-                      data-workspace-icon="branch"
-                      title={workspaceLabel(project, workspace)}
-                      onClick={(): void => onSelectWorkspace(workspace.id)}
+                <SidebarMenuSubItem key={workspace.id}>
+                  <SidebarMenuRow>
+                    <SidebarMenuSubButton
+                      size="sm"
+                      asChild
+                      isActive={workspace.id === activeWorkspaceId}
                     >
-                      <GitBranch />
-                      <span className="min-w-0 flex-1 truncate text-left">
-                        {workspaceLabel(project, workspace)}
-                      </span>
-                      <WorkspacePrPopover workspace={workspace} />
-                    </button>
-                  </SidebarMenuSubButton>
-                  <WorkspaceOverflowMenu
-                    workspace={workspace}
-                    onRemoveWorkspace={onRemoveWorkspace}
-                  />
+                      <button
+                        type="button"
+                        className="app-no-drag flex w-full min-w-0 items-center gap-2 pr-8"
+                        data-testid={`workspace-row-${workspace.id}`}
+                        data-workspace-role="branch"
+                        data-workspace-icon="branch"
+                        title={workspaceLabel(project, workspace)}
+                        onClick={(): void => onSelectWorkspace(workspace.id)}
+                      >
+                        <GitBranch />
+                        <span className="min-w-0 flex-1 truncate text-left">
+                          {workspaceLabel(project, workspace)}
+                        </span>
+                        <WorkspacePrPopover workspace={workspace} />
+                      </button>
+                    </SidebarMenuSubButton>
+                    <WorkspaceOverflowMenu
+                      workspace={workspace}
+                      onRemoveWorkspace={onRemoveWorkspace}
+                    />
+                  </SidebarMenuRow>
                 </SidebarMenuSubItem>
               ))}
             </SidebarMenuSub>
