@@ -121,3 +121,17 @@
 .app-no-drag {
   -webkit-app-region: no-drag;
 }
+
+/* More-actions are per-row. Do not use group-hover on the menu-item: nested
+   children live inside the parent item, so that would reveal every descendant. */
+@media (min-width: 48rem) {
+  [data-sidebar='menu-action'][data-show-on-hover] {
+    opacity: 0;
+  }
+
+  [data-sidebar='menu-row']:is(:hover, :focus-within) > [data-sidebar='menu-action'][data-show-on-hover],
+  [data-sidebar='menu-action'][data-show-on-hover]:focus-visible,
+  [data-sidebar='menu-action'][data-show-on-hover][data-state='open'] {
+    opacity: 1;
+  }
+}
