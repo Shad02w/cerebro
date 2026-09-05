@@ -162,7 +162,11 @@ test('adds a folder of git repos as a multi-root workspace', async ({ page, elec
     expect(project?.kind).toBe('multi-root')
     expect(project?.github).toBeNull()
     expect(project?.repositories.map((repo) => repo.name).sort()).toEqual(['backend', 'frontend'])
-    expect(project?.workspaces).toHaveLength(2)
+    const repoWorkspaces = project?.workspaces.filter((workspace) => workspace.kind === 'default') ?? []
+    const rootWorkspace = project?.workspaces.find((workspace) => workspace.kind === 'root')
+    expect(repoWorkspaces).toHaveLength(2)
+    expect(rootWorkspace).toBeTruthy()
+    expect(rootWorkspace?.localPath).toBe(await realpath(parent))
 
     const backendPath = await realpath(backend)
     const frontendPath = await realpath(frontend)
@@ -239,8 +243,19 @@ test('multi-root repos copy path and branch; only the project can be removed', a
     await expect.poll(() => readClipboard(electronApp)).toBe(frontendPath)
 
     const rootRow = sidebar.getByTestId(`project-root-${project!.id}`)
+    const rootToggle = page.getByTestId(`root-toggle-${project!.id}`)
+    const rootMenu = page.getByTestId(`root-menu-${project!.id}`)
+    await expect(rootToggle).toHaveCSS('opacity', '0')
+    await expect(rootMenu).toHaveCSS('opacity', '0')
     await rootRow.hover()
-    await page.getByTestId(`root-menu-${project!.id}`).click()
+    await expect(rootToggle).toHaveCSS('opacity', '1')
+    await expect(rootMenu).toHaveCSS('opacity', '1')
+    const toggleBox = await rootToggle.boundingBox()
+    const menuBox = await rootMenu.boundingBox()
+    expect(toggleBox).toBeTruthy()
+    expect(menuBox).toBeTruthy()
+    expect(toggleBox!.x + toggleBox!.width).toBeLessThanOrEqual(menuBox!.x + 1)
+    await rootMenu.click()
     await expect(page.getByTestId(`root-${project!.id}-copy-branch`)).toBeDisabled()
     await expect(page.getByTestId(`root-${project!.id}-copy-path`)).toBeVisible()
     await expect(page.getByTestId(`project-delete-${project!.id}`)).toHaveCount(0)
@@ -248,12 +263,26 @@ test('multi-root repos copy path and branch; only the project can be removed', a
     await expect.poll(() => readClipboard(electronApp)).toBe(parentPath)
 
     await expect(sidebar.getByTestId(`project-repo-tree-${project!.id}`)).toBeVisible()
-    await rootRow.click()
+    await rootRow.hover()
+    await rootToggle.click()
     await expect(sidebar.getByTestId(`project-repo-tree-${project!.id}`)).toBeHidden()
     await expect(repoRow).toBeHidden()
-    await rootRow.click()
+    await rootRow.hover()
+    await rootToggle.click()
     await expect(sidebar.getByTestId(`project-repo-tree-${project!.id}`)).toBeVisible()
     await expect(repoRow).toBeVisible()
+
+    await rootRow.click()
+    const afterRootSelect = await page.evaluate(async () => window.cerebro.listProjects())
+    const selectedRoot = afterRootSelect.projects
+      .find((item) => item.id === project!.id)
+      ?.workspaces.find((workspace) => workspace.kind === 'root')
+    expect(selectedRoot).toBeTruthy()
+    expect(afterRootSelect.activeWorkspaceId).toBe(selectedRoot!.id)
+    expect(selectedRoot!.localPath).toBe(parentPath)
+    await expect(page.getByTestId('terminal-tab-bar')).toBeVisible()
+    await expect(page.locator('[data-terminal-workspace-id]')).toHaveCount(0)
+    await expect(sidebar.getByTestId(`project-repo-tree-${project!.id}`)).toBeVisible()
 
     await projectRow.hover()
     await page.getByTestId(`project-menu-${project!.id}`).click()
@@ -333,6 +362,9 @@ test('upgrades an opened git folder after sibling git repos appear', async ({
     const project = listed.projects.find((item) => item.name === 'abc')
     expect(project?.kind).toBe('multi-root')
     expect(project?.repositories.map((repo) => repo.name).sort()).toEqual(['ark-ui', 'other-app'])
+    expect(project?.workspaces.find((workspace) => workspace.kind === 'root')?.localPath).toBe(
+      await realpath(parent)
+    )
   } finally {
     await rm(tmp, { recursive: true, force: true })
   }

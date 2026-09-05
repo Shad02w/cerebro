@@ -114,13 +114,20 @@ export async function verifyWorkspaces(): Promise<void> {
     assert(multiRoot.kind === 'multi-root', 'Folder with sibling git repos should be multi-root.')
     assert(multiRoot.github === null, 'Multi-root projects are not GitHub-linked at the project level.')
     assert(multiRoot.repositories.length === 2, 'Multi-root should register each child git repo.')
-    assert(multiRoot.workspaces.length === 2, 'Multi-root should create a default workspace per repo.')
+    const multiRootDefaults = multiRoot.workspaces.filter((workspace) => workspace.kind === 'default')
+    const multiRootRoot = multiRoot.workspaces.find((workspace) => workspace.kind === 'root')
+    assert(multiRootDefaults.length === 2, 'Multi-root should create a default workspace per repo.')
+    assert(multiRootRoot != null, 'Multi-root should create a root workspace for the parent folder.')
     assert(
-      multiRoot.workspaces.every((workspace) => workspace.kind === 'default'),
+      multiRootRoot.localPath === (await realpath(multiRootDir)),
+      'Root workspace should point at the multi-root directory.'
+    )
+    assert(
+      multiRootDefaults.every((workspace) => workspace.kind === 'default'),
       'Multi-root default workspaces should be kind default.'
     )
     assert(
-      new Set(multiRoot.workspaces.map((workspace) => workspace.branch)).size === 2,
+      new Set(multiRootDefaults.map((workspace) => workspace.branch)).size === 2,
       'Sibling repos may share a project while using different default branches.'
     )
 

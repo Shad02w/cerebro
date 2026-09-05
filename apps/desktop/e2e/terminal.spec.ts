@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execFile } from 'node:child_process'
@@ -55,6 +55,27 @@ async function exitActiveTerminal(page: Page): Promise<void> {
   await page.keyboard.press('Control+C')
   await page.keyboard.type('exit')
   await page.keyboard.press('Enter')
+}
+
+async function readActiveWorkspace(page: Page): Promise<{
+  id: number | null
+  localPath: string | null
+  kind: string | null
+}> {
+  return page.evaluate(async () => {
+    const current = await window.cerebro.listProjects()
+    if (current.activeWorkspaceId == null) {
+      return { id: null, localPath: null, kind: null }
+    }
+    const workspace = current.projects
+      .flatMap((project) => project.workspaces)
+      .find((item) => item.id === current.activeWorkspaceId)
+    return {
+      id: current.activeWorkspaceId,
+      localPath: workspace?.localPath ?? null,
+      kind: workspace?.kind ?? null
+    }
+  })
 }
 
 test('does not spawn a terminal until New terminal is clicked; project row only expands', async ({
@@ -387,6 +408,50 @@ test('does not spawn a terminal for a multi-root project until New terminal is c
     await expect(page.getByTestId('terminal-tab-bar')).toHaveCount(0)
 
     await projectRow.click()
+    const rootRow = page.getByTestId(/project-root-/)
+    await expect(rootRow).toHaveAttribute('data-active', 'false')
+    await rootRow.click()
+
+    const parentPath = await realpath(parent)
+    const frontendPath = await realpath(frontend)
+    const backendPath = await realpath(backend)
+
+    const rootId = await page.evaluate(async () => {
+      const current = await window.cerebro.listProjects()
+      const project = current.projects.find((item) => item.name === 'apps-folder')
+      const root = project?.workspaces.find((workspace) => workspace.kind === 'root')
+      return { activeId: current.activeWorkspaceId, rootId: root?.id ?? null, rootPath: root?.localPath ?? null }
+    })
+    expect(rootId.rootId).not.toBeNull()
+    expect(rootId.activeId).toBe(rootId.rootId)
+    expect(rootId.rootPath).toBe(parentPath)
+    await expect(rootRow).toHaveAttribute('data-active', 'true')
+    await expect(page.getByTestId(/workspace-row-/).filter({ hasText: 'frontend' })).toHaveAttribute(
+      'data-active',
+      'false'
+    )
+    await expect(page.getByTestId('terminal-tab-bar')).toBeVisible()
+    await expect(page.getByTestId('terminal-tab')).toHaveCount(0)
+    await expect(page.locator('[data-terminal-workspace-id]')).toHaveCount(0)
+
+    await openNewTerminal(page)
+    await expect(
+      page.locator(`[data-terminal-workspace-id="${rootId.rootId}"][data-terminal-active="true"] .xterm`)
+    ).toBeVisible()
+    const rootActive = await readActiveWorkspace(page)
+    expect(rootActive.kind).toBe('root')
+    expect(rootActive.localPath).toBe(parentPath)
+
+    const toggle = page.getByTestId(/root-toggle-/)
+    await page.getByTestId(/project-root-/).hover()
+    await toggle.click()
+    await expect(page.getByTestId(/workspace-row-/).filter({ hasText: 'frontend' })).toBeHidden()
+    await expect(
+      page.locator(`[data-terminal-workspace-id="${rootId.rootId}"][data-terminal-active="true"] .xterm`)
+    ).toBeVisible()
+    await page.getByTestId(/project-root-/).hover()
+    await toggle.click()
+
     await selectWorkspaceRow(page, 'frontend')
 
     const frontendId = await page.evaluate(async () => {
@@ -394,9 +459,21 @@ test('does not spawn a terminal for a multi-root project until New terminal is c
       return current.activeWorkspaceId
     })
     expect(frontendId).not.toBeNull()
+    expect(frontendId).not.toBe(rootId.rootId)
+    const frontendActive = await readActiveWorkspace(page)
+    expect(frontendActive.kind).toBe('default')
+    expect(frontendActive.localPath).toBe(frontendPath)
+    await expect(rootRow).toHaveAttribute('data-active', 'false')
+    await expect(page.getByTestId(/workspace-row-/).filter({ hasText: 'frontend' })).toHaveAttribute(
+      'data-active',
+      'true'
+    )
     await expect(page.getByTestId('terminal-tab-bar')).toBeVisible()
     await expect(page.getByTestId('terminal-tab')).toHaveCount(0)
-    await expect(page.locator('[data-terminal-workspace-id]')).toHaveCount(0)
+    await expect(page.locator(`[data-terminal-workspace-id="${frontendId}"]`)).toHaveCount(0)
+    await expect(
+      page.locator(`[data-terminal-workspace-id="${rootId.rootId}"][data-terminal-active="false"]`)
+    ).toHaveCount(1)
 
     await openNewTerminal(page)
     await expect(
@@ -413,6 +490,9 @@ test('does not spawn a terminal for a multi-root project until New terminal is c
       return current.activeWorkspaceId
     })
     expect(backendId).not.toBe(frontendId)
+    const backendActive = await readActiveWorkspace(page)
+    expect(backendActive.kind).toBe('default')
+    expect(backendActive.localPath).toBe(backendPath)
     await expect(page.getByTestId('terminal-tab')).toHaveCount(0)
     await expect(page.locator(`[data-terminal-workspace-id="${backendId}"]`)).toHaveCount(0)
 

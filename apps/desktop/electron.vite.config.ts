@@ -5,17 +5,19 @@ import tailwindcss from '@tailwindcss/vite'
 
 const shared = resolve('src/shared')
 const rendererSrc = resolve('src/renderer/src')
+const coreSrc = resolve('../../packages/core/src/index.ts')
 
 export default defineConfig({
   main: {
     resolve: {
       alias: {
-        '@shared': shared
+        '@shared': shared,
+        '@cerebro/core': coreSrc
       }
     },
     build: {
       rollupOptions: {
-        external: ['node:sqlite', 'node-pty', '@cerebro/core']
+        external: ['node:sqlite', 'node-pty']
       }
     }
   },

@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, readdirSync, realpathSync, rmSync, statSync } from 'node:fs'
-import { basename, isAbsolute, join, resolve } from 'node:path'
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type {
   LinkedRepository,
@@ -258,17 +258,30 @@ async function discoverDirectoryProject(root: string): Promise<{
   }
 }
 
-function replaceProjectRepositories(
+/** Sentinel branch for a multi-root parent folder. Not a git branch. */
+const ROOT_WORKSPACE_BRANCH = '.'
+
+function insertRootWorkspace(
+  db: ReturnType<typeof getDb>,
+  projectId: number,
+  repositoryId: number,
+  rootPath: string
+): void {
+  db.prepare(
+    `
+INSERT INTO workspaces (project_id, repository_id, kind, branch, local_path)
+VALUES (?, ?, 'root', ?, ?)
+    `
+  ).run(projectId, repositoryId, ROOT_WORKSPACE_BRANCH, rootPath)
+}
+
+function insertRepositoriesAndDefaultWorkspaces(
+  db: ReturnType<typeof getDb>,
   projectId: number,
   kind: ProjectKind,
-  repositories: DiscoveredRepository[]
+  repositories: DiscoveredRepository[],
+  directoryRoot?: string
 ): number {
-  const db = getDb()
-  db.prepare('DELETE FROM repositories WHERE project_id = ?').run(projectId)
-  db.prepare(
-    `UPDATE projects SET kind = ?, updated_at = datetime('now') WHERE id = ?`
-  ).run(kind, projectId)
-
   const insertRepo = db.prepare(
     `
 INSERT INTO repositories (project_id, git_url, name, local_path, default_branch)
@@ -283,16 +296,40 @@ VALUES (?, ?, 'default', ?, ?)
   )
 
   let firstWorkspaceId: number | null = null
+  let firstRepositoryId: number | null = null
   for (const repo of repositories) {
     const repoInsert = insertRepo.run(projectId, repo.gitUrl, repo.name, repo.localPath, repo.defaultBranch)
     const repositoryId = toId(repoInsert.lastInsertRowid)
+    if (firstRepositoryId == null) firstRepositoryId = repositoryId
     const workspaceInsert = insertWorkspace.run(projectId, repositoryId, repo.defaultBranch, repo.localPath)
     const workspaceId = toId(workspaceInsert.lastInsertRowid)
     if (firstWorkspaceId == null) firstWorkspaceId = workspaceId
   }
 
+  if (kind === 'multi-root') {
+    if (firstRepositoryId == null) throw new Error('Project was created without a workspace.')
+    const rootPath = directoryRoot ?? dirname(repositories[0]?.localPath ?? '')
+    if (!rootPath) throw new Error('Multi-root project is missing a parent directory.')
+    insertRootWorkspace(db, projectId, firstRepositoryId, rootPath)
+  }
+
   if (firstWorkspaceId == null) throw new Error('Project was created without a workspace.')
   return firstWorkspaceId
+}
+
+function replaceProjectRepositories(
+  projectId: number,
+  kind: ProjectKind,
+  repositories: DiscoveredRepository[],
+  directoryRoot?: string
+): number {
+  const db = getDb()
+  db.prepare('DELETE FROM repositories WHERE project_id = ?').run(projectId)
+  db.prepare(
+    `UPDATE projects SET kind = ?, updated_at = datetime('now') WHERE id = ?`
+  ).run(kind, projectId)
+
+  return insertRepositoriesAndDefaultWorkspaces(db, projectId, kind, repositories, directoryRoot)
 }
 
 async function upgradeDirectoryProjectsWithNestedRepos(): Promise<void> {
@@ -331,7 +368,7 @@ HAVING COUNT(r.id) = 1
 
     try {
       db.exec('BEGIN IMMEDIATE')
-      replaceProjectRepositories(row.project_id, 'multi-root', repositories)
+      replaceProjectRepositories(row.project_id, 'multi-root', repositories, row.local_path)
       const activeStillValid =
         previousActive != null &&
         db.prepare('SELECT id FROM workspaces WHERE id = ?').get(previousActive) != null
@@ -361,7 +398,8 @@ function assertPathsAvailable(localPaths: string[]): void {
 function insertProjectWithRepositories(
   name: string,
   kind: ProjectKind,
-  repositories: DiscoveredRepository[]
+  repositories: DiscoveredRepository[],
+  directoryRoot?: string
 ): number {
   if (repositories.length === 0) {
     throw new Error('A project needs at least one git repository.')
@@ -371,29 +409,8 @@ function insertProjectWithRepositories(
   const projectInsert = db.prepare('INSERT INTO projects (name, kind) VALUES (?, ?)').run(name, kind)
   const projectId = toId(projectInsert.lastInsertRowid)
 
-  const insertRepo = db.prepare(
-    `
-INSERT INTO repositories (project_id, git_url, name, local_path, default_branch)
-VALUES (?, ?, ?, ?, ?)
-    `
-  )
-  const insertWorkspace = db.prepare(
-    `
-INSERT INTO workspaces (project_id, repository_id, kind, branch, local_path)
-VALUES (?, ?, 'default', ?, ?)
-    `
-  )
+  insertRepositoriesAndDefaultWorkspaces(db, projectId, kind, repositories, directoryRoot)
 
-  let firstWorkspaceId: number | null = null
-  for (const repo of repositories) {
-    const repoInsert = insertRepo.run(projectId, repo.gitUrl, repo.name, repo.localPath, repo.defaultBranch)
-    const repositoryId = toId(repoInsert.lastInsertRowid)
-    const workspaceInsert = insertWorkspace.run(projectId, repositoryId, repo.defaultBranch, repo.localPath)
-    const workspaceId = toId(workspaceInsert.lastInsertRowid)
-    if (firstWorkspaceId == null) firstWorkspaceId = workspaceId
-  }
-
-  if (firstWorkspaceId == null) throw new Error('Project was created without a workspace.')
   return projectId
 }
 
@@ -516,7 +533,7 @@ ORDER BY created_at ASC, id ASC
 SELECT id, project_id, repository_id, kind, branch, local_path, created_at
 FROM workspaces
 ORDER BY
-  CASE kind WHEN 'default' THEN 0 ELSE 1 END ASC,
+  CASE kind WHEN 'root' THEN 0 WHEN 'default' THEN 1 ELSE 2 END ASC,
   created_at ASC,
   id ASC
       `
@@ -650,7 +667,12 @@ export async function createProjectFromDirectory(directory: string): Promise<Pro
     const db = getDb()
     try {
       db.exec('BEGIN IMMEDIATE')
-      const projectId = insertProjectWithRepositories(basename(root), discovered.kind, discovered.repositories)
+      const projectId = insertProjectWithRepositories(
+        basename(root),
+        discovered.kind,
+        discovered.repositories,
+        discovered.kind === 'multi-root' ? root : undefined
+      )
       db.exec('COMMIT')
       return await loadCreatedProject(projectId)
     } catch (error) {
@@ -811,8 +833,12 @@ WHERE id = ?
     .get(workspaceId) as WorkspaceRow | undefined
 
   if (!workspace) throw new Error('Workspace not found.')
-  if (workspace.kind === 'default') {
-    throw new Error("Default workspace can't be deleted. Remove the project instead.")
+  if (workspace.kind === 'default' || workspace.kind === 'root') {
+    throw new Error(
+      workspace.kind === 'root'
+        ? "Root workspace can't be deleted. Remove the project instead."
+        : "Default workspace can't be deleted. Remove the project instead."
+    )
   }
 
   if (options.deleteFiles) {

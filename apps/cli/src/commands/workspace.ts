@@ -56,7 +56,7 @@ function parseWorkspaceId(raw: string | undefined, command: string): number {
 
 function removeErrorCode(message: string): string {
   if (/not found/i.test(message)) return 'not_found'
-  if (/default workspace/i.test(message)) return 'conflict'
+  if (/default workspace/i.test(message) || /root workspace/i.test(message)) return 'conflict'
   return 'internal'
 }
 

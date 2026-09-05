@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS workspaces (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   repository_id INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
-  kind TEXT NOT NULL CHECK (kind IN ('default', 'worktree')),
+  kind TEXT NOT NULL CHECK (kind IN ('default', 'worktree', 'root')),
   branch TEXT NOT NULL,
   local_path TEXT NOT NULL UNIQUE,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -83,7 +83,7 @@ CREATE TABLE workspaces_new (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   repository_id INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
-  kind TEXT NOT NULL CHECK (kind IN ('default', 'worktree')),
+  kind TEXT NOT NULL CHECK (kind IN ('default', 'worktree', 'root')),
   branch TEXT NOT NULL,
   local_path TEXT NOT NULL UNIQUE,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -107,6 +107,94 @@ FROM workspaces;
     throw error
   } finally {
     database.exec('PRAGMA foreign_keys = ON')
+  }
+}
+
+function migrateWorkspaceRootKind(database: DatabaseSync): void {
+  if (!tableExists(database, 'workspaces')) return
+  const sql = tableSql(database, 'workspaces')
+  if (/CHECK\s*\(\s*kind\s+IN\s*\([^)]*'root'/i.test(sql)) return
+
+  database.exec('PRAGMA foreign_keys = OFF')
+  database.exec('BEGIN IMMEDIATE')
+  try {
+    database.exec(`
+CREATE TABLE workspaces_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  repository_id INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('default', 'worktree', 'root')),
+  branch TEXT NOT NULL,
+  local_path TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (repository_id, branch)
+);
+    `)
+    database.exec(`
+INSERT INTO workspaces_new (id, project_id, repository_id, kind, branch, local_path, created_at)
+SELECT id, project_id, repository_id, kind, branch, local_path, created_at
+FROM workspaces;
+    `)
+    database.exec('DROP TABLE workspaces')
+    database.exec('ALTER TABLE workspaces_new RENAME TO workspaces')
+    database.exec('COMMIT')
+  } catch (error) {
+    try {
+      database.exec('ROLLBACK')
+    } catch {
+      // Ignore rollback failures when the transaction never started.
+    }
+    throw error
+  } finally {
+    database.exec('PRAGMA foreign_keys = ON')
+  }
+}
+
+function ensureMultiRootRootWorkspaces(database: DatabaseSync): void {
+  if (!tableExists(database, 'projects') || !tableExists(database, 'workspaces')) return
+  if (!tableExists(database, 'repositories')) return
+
+  const projects = database
+    .prepare(
+      `
+SELECT p.id AS project_id
+FROM projects p
+WHERE p.kind = 'multi-root'
+  AND NOT EXISTS (
+    SELECT 1 FROM workspaces w WHERE w.project_id = p.id AND w.kind = 'root'
+  )
+      `
+    )
+    .all() as Array<{ project_id: number }>
+
+  if (projects.length === 0) return
+
+  const firstRepo = database.prepare(
+    `
+SELECT id, local_path
+FROM repositories
+WHERE project_id = ?
+ORDER BY id ASC
+LIMIT 1
+    `
+  )
+  const insert = database.prepare(
+    `
+INSERT INTO workspaces (project_id, repository_id, kind, branch, local_path)
+VALUES (?, ?, 'root', '.', ?)
+    `
+  )
+
+  for (const project of projects) {
+    const repo = firstRepo.get(project.project_id) as { id: number; local_path: string } | undefined
+    if (!repo) continue
+    try {
+      insert.run(project.project_id, repo.id, dirname(repo.local_path))
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      if (/UNIQUE constraint failed/i.test(message)) continue
+      throw error
+    }
   }
 }
 
@@ -155,7 +243,7 @@ CREATE TABLE workspaces (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   repository_id INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
-  kind TEXT NOT NULL CHECK (kind IN ('default', 'worktree')),
+  kind TEXT NOT NULL CHECK (kind IN ('default', 'worktree', 'root')),
   branch TEXT NOT NULL,
   local_path TEXT NOT NULL UNIQUE,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -259,6 +347,7 @@ export function getDb(): DatabaseSync {
   db.exec(SCHEMA)
   migrateProjectKind(db)
   migrateWorkspaceBranchUniqueness(db)
+  migrateWorkspaceRootKind(db)
 
   // Fresh DBs never hit the rename path; ensure workspaces exist for any pre-migration repos.
   if (tableExists(db, 'repositories') && tableExists(db, 'workspaces')) {
@@ -289,6 +378,8 @@ VALUES (?, ?, 'default', ?, ?)
       insert.run(repo.project_id, repo.id, repo.default_branch, repo.local_path)
     }
   }
+
+  ensureMultiRootRootWorkspaces(db)
 
   return db
 }

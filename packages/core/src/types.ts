@@ -27,7 +27,7 @@ export type WorkspacePullRequest = {
   repoFullName: string
 }
 
-export type WorkspaceKind = 'default' | 'worktree'
+export type WorkspaceKind = 'default' | 'worktree' | 'root'
 
 export type Workspace = {
   id: number

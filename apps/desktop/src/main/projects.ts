@@ -220,7 +220,8 @@ async function attachPullRequests(projects: Project[]): Promise<Project[]> {
         ...project,
         workspaces: project.workspaces.map((workspace) => ({
           ...workspace,
-          pullRequest: byBranch.get(workspace.branch) ?? null
+          pullRequest:
+            workspace.kind === 'root' ? null : (byBranch.get(workspace.branch) ?? null)
         }))
       }
     })
