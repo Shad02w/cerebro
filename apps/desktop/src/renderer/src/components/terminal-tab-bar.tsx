@@ -47,6 +47,7 @@ export function TerminalTabBar({
 }: TerminalTabBarProps): React.JSX.Element {
   const closeHotkey = useKeybindBinding('closeTab')
   const newHotkey = useKeybindBinding('newTerminal')
+  const changesHotkey = useKeybindBinding('openChanges')
   const { state } = useSidebar()
   const insetLeft = state === 'collapsed' ? TITLEBAR_COLLAPSED_INSET_LEFT : 0
   const [addOpen, setAddOpen] = useState(false)
@@ -136,7 +137,7 @@ export function TerminalTabBar({
           <DropdownMenuContent
             align="start"
             side="bottom"
-            className="w-44"
+            className="w-48"
             data-testid="add-tab-menu"
             onCloseAutoFocus={(event): void => event.preventDefault()}
           >
@@ -164,6 +165,9 @@ export function TerminalTabBar({
             >
               <FileDiff />
               Changes
+              <DropdownMenuShortcut className="flex items-center">
+                <ShortcutKbd hotkey={changesHotkey} />
+              </DropdownMenuShortcut>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

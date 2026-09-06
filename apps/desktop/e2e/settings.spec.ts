@@ -102,12 +102,17 @@ test('settings reuses the app sidebar and navigates by hash route', async ({ pag
   await expect(page.getByTestId('settings-keyboard')).toBeVisible()
   await expect(page.getByTestId('keybind-row-closeTab')).toBeVisible()
   await expect(page.getByTestId('keybind-row-newTerminal')).toBeVisible()
+  await expect(page.getByTestId('keybind-row-openChanges')).toBeVisible()
   await expect(page.getByTestId('keybind-row-toggleSidebar')).toBeVisible()
   await expect(page.getByTestId('keybind-row-toggleDevTools')).toBeVisible()
   await expect(page.getByTestId('keybind-edit-closeTab').getByTestId('shortcut-kbd')).toBeVisible()
   await expect(page.getByTestId('keybind-edit-newTerminal').getByTestId('shortcut-kbd')).toHaveAttribute(
     'data-hotkey',
     'Mod+T'
+  )
+  await expect(page.getByTestId('keybind-edit-openChanges').getByTestId('shortcut-kbd')).toHaveAttribute(
+    'data-hotkey',
+    'Mod+Shift+G'
   )
 
   await page.screenshot({

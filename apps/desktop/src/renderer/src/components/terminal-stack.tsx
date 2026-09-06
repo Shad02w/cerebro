@@ -429,6 +429,16 @@ export function TerminalStack({
     })
   }
 
+  useKeybindHandler('openChanges', () => {
+    const targetId = focusedWorkspaceId() ?? activeWorkspaceId
+    if (targetId == null) return false
+    if (targetId !== activeWorkspaceId) {
+      onSelectWorkspace(targetId)
+    }
+    openChanges(targetId)
+    return true
+  })
+
   const sessions = Object.entries(byWorkspace).flatMap(([workspaceIdValue, workspace]) => {
     const workspaceId = Number(workspaceIdValue)
     return workspace.tabs

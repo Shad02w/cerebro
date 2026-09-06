@@ -623,7 +623,10 @@ test('opens a terminal with Mod+T when a default-branch workspace row is focused
     const terminalItem = page.getByTestId('open-terminal-tab')
     await expect(terminalItem).toBeVisible()
     await expect(terminalItem.getByTestId('shortcut-kbd')).toHaveAttribute('data-hotkey', 'Mod+T')
-    await expect(page.getByTestId('open-changes-tab')).toBeVisible()
+    await expect(page.getByTestId('open-changes-tab').getByTestId('shortcut-kbd')).toHaveAttribute(
+      'data-hotkey',
+      'Mod+Shift+G'
+    )
     await page.keyboard.press('Escape')
     await expect(page.getByTestId('add-tab-menu')).toHaveCount(0)
 

@@ -76,6 +76,10 @@ function closeChord(): string {
   return process.platform === 'darwin' ? 'Meta+w' : 'Control+w'
 }
 
+function openChangesChord(): string {
+  return process.platform === 'darwin' ? 'Meta+Shift+g' : 'Control+Shift+g'
+}
+
 test('shows working-tree diffs in a Changes tab with a right-hand file list', async ({
   page,
   electronApp
@@ -228,6 +232,10 @@ test('keeps terminals when opening and closing a Changes tab', async ({ page, el
     await expect(page.getByTestId('add-tab-menu')).toBeVisible()
     await expect(page.getByTestId('open-terminal-tab')).toBeVisible()
     await expect(page.getByTestId('open-changes-tab')).toBeVisible()
+    await expect(page.getByTestId('open-changes-tab').getByTestId('shortcut-kbd')).toHaveAttribute(
+      'data-hotkey',
+      'Mod+Shift+G'
+    )
     await page.getByTestId('open-terminal-tab').click()
     await expect(page.getByTestId('add-tab-menu')).toHaveCount(0)
     await expect(page.getByTestId('terminal-tab')).toHaveCount(1)
@@ -263,6 +271,48 @@ test('shows an empty state when the working tree is clean', async ({ page, elect
     await expect(page.getByTestId('changes-empty')).toBeVisible({ timeout: 15_000 })
     await expect(page.getByTestId('changes-sidebar-empty')).toBeVisible()
     await expect(page.getByTestId('changes-file-row')).toHaveCount(0)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('opens Changes with Mod+Shift+G and focuses the existing tab on repeat', async ({
+  page,
+  electronApp
+}) => {
+  const root = await mkdtemp(join(tmpdir(), 'cerebro-changes-keybind-e2e-'))
+  const repo = join(root, 'changed-keybind')
+
+  try {
+    await initGitRepo(repo, 'main', 'changed-keybind')
+    await writeFile(join(repo, 'README.md'), 'changed-keybind\nhello from keybind\n')
+    await addDirectoryViaUi(page, electronApp, repo)
+
+    const sidebar = page.locator('[data-slot="sidebar"]')
+    const project = await listedProject(page, 'changed-keybind')
+    const workspaceId = project?.workspaces[0]?.id
+    expect(workspaceId).toBeTruthy()
+    const workspaceRow = page.getByTestId(`workspace-row-${workspaceId}`)
+
+    await page.keyboard.press(openChangesChord())
+    await expect(page.getByTestId('changes-tab')).toHaveCount(0)
+
+    await sidebar.getByTestId(/project-row-/).filter({ hasText: 'changed-keybind' }).focus()
+    await page.keyboard.press(openChangesChord())
+    await expect(page.getByTestId('changes-tab')).toHaveCount(0)
+
+    await workspaceRow.focus()
+    await page.keyboard.press(openChangesChord())
+    await expect(page.getByTestId('changes-tab')).toBeVisible()
+    await expect(activeChanges(page)).toBeVisible()
+    await expect(activeChanges(page).getByTestId('changes-file-row')).toBeVisible({
+      timeout: 15_000
+    })
+    await expect(page.getByTestId('changes-tab')).toHaveCount(1)
+
+    await page.keyboard.press(openChangesChord())
+    await expect(page.getByTestId('changes-tab')).toHaveCount(1)
+    await expect(activeChanges(page)).toHaveCSS('visibility', 'visible')
   } finally {
     await rm(root, { recursive: true, force: true })
   }
