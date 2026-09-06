@@ -1,4 +1,4 @@
-import { Plus, X } from 'lucide-react'
+import { FileDiff, Plus, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { SidebarTrigger, useSidebar } from '@/components/ui/sidebar'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -10,17 +10,23 @@ import {
 } from '@/lib/titlebar'
 import { cn } from '@/lib/utils'
 
-export type TerminalTab = {
+export type ContentTabKind = 'terminal' | 'changes'
+
+export type ContentTab = {
   id: number
+  kind: ContentTabKind
   label: string
 }
 
+export type TerminalTab = ContentTab
+
 type TerminalTabBarProps = {
-  tabs: TerminalTab[]
+  tabs: ContentTab[]
   activeTabId: number | null
   onSelect: (tabId: number) => void
   onClose: (tabId: number) => void
   onNewTab: () => void
+  onOpenChanges: () => void
 }
 
 export function TerminalTabBar({
@@ -28,12 +34,14 @@ export function TerminalTabBar({
   activeTabId,
   onSelect,
   onClose,
-  onNewTab
+  onNewTab,
+  onOpenChanges
 }: TerminalTabBarProps): React.JSX.Element {
   const closeHotkey = useKeybindBinding('closeTab')
   const newHotkey = useKeybindBinding('newTerminal')
   const { state } = useSidebar()
   const insetLeft = state === 'collapsed' ? TITLEBAR_COLLAPSED_INSET_LEFT : 0
+  const changesActive = tabs.some((tab) => tab.kind === 'changes' && tab.id === activeTabId)
 
   return (
     <div
@@ -41,7 +49,7 @@ export function TerminalTabBar({
       className="app-drag-region relative z-50 flex shrink-0 items-stretch bg-background pr-2 shadow-[inset_0_-1px_0_0_var(--border)]"
       style={{ height: TITLEBAR_HEIGHT }}
       role="tablist"
-      aria-label="Terminal tabs"
+      aria-label="Workspace tabs"
     >
       {insetLeft > 0 ? (
         <div
@@ -55,13 +63,15 @@ export function TerminalTabBar({
       <div className="flex h-full min-w-0 items-stretch gap-0.5 overflow-x-auto">
         {tabs.map((tab) => {
           const selected = tab.id === activeTabId
+          const isChanges = tab.kind === 'changes'
           return (
             <div
               key={tab.id}
               role="tab"
               tabIndex={0}
               aria-selected={selected}
-              data-testid="terminal-tab"
+              data-testid={isChanges ? 'changes-tab' : 'terminal-tab'}
+              data-tab-kind={tab.kind}
               data-terminal-tab-id={tab.id}
               data-active={selected ? 'true' : 'false'}
               className={cn(
@@ -119,6 +129,25 @@ export function TerminalTabBar({
           <TooltipContent side="bottom" sideOffset={4} className="flex items-center gap-2">
             <span>New terminal</span>
             <ShortcutKbd hotkey={newHotkey} inverted />
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              className={cn('app-no-drag my-auto shrink-0 size-6', changesActive && 'bg-muted')}
+              aria-label="Open changes"
+              aria-pressed={changesActive}
+              data-testid="open-changes-tab"
+              onClick={onOpenChanges}
+            >
+              <FileDiff className="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" sideOffset={4}>
+            Changes
           </TooltipContent>
         </Tooltip>
       </div>

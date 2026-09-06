@@ -26,6 +26,7 @@
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
     "@octokit/rest": "^22.0.1",
+    "@pierre/diffs": "^1.4.1",
     "@tailwindcss/vite": "^4.3.3",
     "@tanstack/react-hotkeys": "^0.10.0",
     "@xterm/addon-canvas": "^0.7.0",

@@ -7,7 +7,8 @@ import '@/assets/terminal.css'
 import { DEFAULT_TERMINAL_FONT_SIZE, TERMINAL_FONT_FAMILY_AUTO } from '@shared/types'
 import { resolveTerminalFontFamily } from '@/lib/terminal-font'
 import { useKeybindHandler } from '@/keybinds'
-import { TerminalTabBar, type TerminalTab } from '@/components/terminal-tab-bar'
+import { ChangesView } from '@/components/changes-view'
+import { TerminalTabBar, type ContentTab } from '@/components/terminal-tab-bar'
 
 const TERMINAL_THEME = {
   background: '#0a0a0a',
@@ -270,21 +271,29 @@ function TerminalSession({
 }
 
 type WorkspaceTabsState = {
-  tabs: TerminalTab[]
+  tabs: ContentTab[]
   activeTabId: number | null
   nextLabel: number
 }
 
 let nextTabId = 1
 
-function createTab(labelNumber: number): TerminalTab {
+function nextId(): number {
   const id = nextTabId
   nextTabId += 1
-  return { id, label: `Terminal ${labelNumber}` }
+  return id
+}
+
+function createTerminalTab(labelNumber: number): ContentTab {
+  return { id: nextId(), kind: 'terminal', label: `Terminal ${labelNumber}` }
+}
+
+function createChangesTab(): ContentTab {
+  return { id: nextId(), kind: 'changes', label: 'Changes' }
 }
 
 function createWorkspaceTabs(): WorkspaceTabsState {
-  const tab = createTab(1)
+  const tab = createTerminalTab(1)
   return { tabs: [tab], activeTabId: tab.id, nextLabel: 2 }
 }
 
@@ -369,7 +378,7 @@ export function TerminalStack({
       if (!workspace) {
         return { ...current, [workspaceId]: createWorkspaceTabs() }
       }
-      const tab = createTab(workspace.nextLabel)
+      const tab = createTerminalTab(workspace.nextLabel)
       return {
         ...current,
         [workspaceId]: {
@@ -391,13 +400,55 @@ export function TerminalStack({
     return true
   })
 
+  const openChanges = (workspaceId: number): void => {
+    setByWorkspace((current) => {
+      const workspace = current[workspaceId]
+      if (!workspace) {
+        const tab = createChangesTab()
+        return {
+          ...current,
+          [workspaceId]: { tabs: [tab], activeTabId: tab.id, nextLabel: 1 }
+        }
+      }
+      const existing = workspace.tabs.find((tab) => tab.kind === 'changes')
+      if (existing) {
+        return {
+          ...current,
+          [workspaceId]: { ...workspace, activeTabId: existing.id }
+        }
+      }
+      const tab = createChangesTab()
+      return {
+        ...current,
+        [workspaceId]: {
+          ...workspace,
+          tabs: [...workspace.tabs, tab],
+          activeTabId: tab.id
+        }
+      }
+    })
+  }
+
   const sessions = Object.entries(byWorkspace).flatMap(([workspaceIdValue, workspace]) => {
     const workspaceId = Number(workspaceIdValue)
-    return workspace.tabs.map((tab) => ({
-      workspaceId,
-      tab,
-      active: workspaceId === activeWorkspaceId && tab.id === workspace.activeTabId
-    }))
+    return workspace.tabs
+      .filter((tab) => tab.kind === 'terminal')
+      .map((tab) => ({
+        workspaceId,
+        tab,
+        active: workspaceId === activeWorkspaceId && tab.id === workspace.activeTabId
+      }))
+  })
+
+  const changePanes = Object.entries(byWorkspace).flatMap(([workspaceIdValue, workspace]) => {
+    const workspaceId = Number(workspaceIdValue)
+    return workspace.tabs
+      .filter((tab) => tab.kind === 'changes')
+      .map((tab) => ({
+        workspaceId,
+        tab,
+        active: workspaceId === activeWorkspaceId && tab.id === workspace.activeTabId
+      }))
   })
 
   return (
@@ -410,6 +461,9 @@ export function TerminalStack({
           onClose={(tabId): void => closeTab(activeWorkspaceId, tabId)}
           onNewTab={(): void => {
             if (activeWorkspaceId != null) addTab(activeWorkspaceId)
+          }}
+          onOpenChanges={(): void => {
+            if (activeWorkspaceId != null) openChanges(activeWorkspaceId)
           }}
         />
       ) : null}
@@ -427,6 +481,9 @@ export function TerminalStack({
             fontFamilyPreference={resolvedFontFamily}
             onProcessExit={(exitedTabId): void => closeTab(workspaceId, exitedTabId)}
           />
+        ))}
+        {changePanes.map(({ workspaceId, tab, active }) => (
+          <ChangesView key={tab.id} workspaceId={workspaceId} active={active} />
         ))}
       </div>
     </div>
