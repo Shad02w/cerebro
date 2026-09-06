@@ -1,4 +1,10 @@
-export const KEYBIND_ACTION_IDS = ['closeTab', 'newTerminal', 'toggleSidebar', 'toggleDevTools'] as const
+export const KEYBIND_ACTION_IDS = [
+  'closeTab',
+  'newTerminal',
+  'openChanges',
+  'toggleSidebar',
+  'toggleDevTools'
+] as const
 
 export type KeybindActionId = (typeof KEYBIND_ACTION_IDS)[number]
 
@@ -32,6 +38,14 @@ export const KEYBIND_CATALOG: readonly KeybindAction[] = [
     description:
       'Open a terminal for the focused workspace row. Opens a new tab when a workspace is already selected.',
     defaultHotkey: 'Mod+T',
+    target: 'app'
+  },
+  {
+    id: 'openChanges',
+    label: 'Open Changes',
+    description:
+      'Open Changes for the focused workspace row. Focuses the existing Changes tab when one is already open.',
+    defaultHotkey: 'Mod+Shift+G',
     target: 'app'
   },
   {

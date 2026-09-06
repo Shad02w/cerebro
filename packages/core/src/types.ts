@@ -86,3 +86,35 @@ export const DEFAULT_TERMINAL_FONT_SIZE = 13
 export const MIN_TERMINAL_FONT_SIZE = 10
 export const MAX_TERMINAL_FONT_SIZE = 24
 
+export type ChangedFileStatus = 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked'
+
+export type ChangedFileKind = 'text' | 'binary'
+
+export type ChangedFile = {
+  path: string
+  oldPath: string | null
+  status: ChangedFileStatus
+}
+
+export type RepoChangeGroup = {
+  repositoryId: number
+  repositoryName: string
+  workspaceId: number
+  files: ChangedFile[]
+}
+
+export type WorkspaceChanges = {
+  workspaceId: number
+  groups: RepoChangeGroup[]
+}
+
+export type FileDiffContents = {
+  repositoryId: number
+  path: string
+  oldPath: string | null
+  status: ChangedFileStatus
+  kind: ChangedFileKind
+  oldContents: string | null
+  newContents: string | null
+}
+

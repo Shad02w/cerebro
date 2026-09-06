@@ -1,6 +1,12 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import { IPC } from '../shared/ipc'
-import type { CerebroApi, GitHubStatus, NativeCommandId, PtyDataEvent, PtyExitEvent } from '../shared/types'
+import type {
+  CerebroApi,
+  GitHubStatus,
+  NativeCommandId,
+  PtyDataEvent,
+  PtyExitEvent
+} from '../shared/types'
 
 const api: CerebroApi = {
   listProjects: () => ipcRenderer.invoke(IPC.projects.list),
@@ -16,11 +22,16 @@ const api: CerebroApi = {
   removeWorkspace: (workspaceId, deleteFiles) =>
     ipcRenderer.invoke(IPC.workspaces.remove, workspaceId, deleteFiles),
   listProjectBranches: (projectId) => ipcRenderer.invoke(IPC.projects.listBranches, projectId),
+  listWorkspaceChanges: (workspaceId) =>
+    ipcRenderer.invoke(IPC.workspaces.listChanges, workspaceId),
+  getWorkspaceFileDiff: (workspaceId, repositoryId, file) =>
+    ipcRenderer.invoke(IPC.workspaces.getFileDiff, workspaceId, repositoryId, file),
   openExternal: (url) => ipcRenderer.invoke(IPC.shell.openExternal, url),
   getSettings: () => ipcRenderer.invoke(IPC.settings.get),
   setSettings: (patch) => ipcRenderer.invoke(IPC.settings.set, patch),
   pickDirectory: () => ipcRenderer.invoke(IPC.settings.pickDirectory),
-  runNativeCommand: (command: NativeCommandId) => ipcRenderer.invoke(IPC.native.runCommand, command),
+  runNativeCommand: (command: NativeCommandId) =>
+    ipcRenderer.invoke(IPC.native.runCommand, command),
   getGitHubStatus: () => ipcRenderer.invoke(IPC.github.getStatus),
   beginGitHubDeviceFlow: () => ipcRenderer.invoke(IPC.github.beginDeviceFlow),
   cancelGitHubDeviceFlow: () => ipcRenderer.invoke(IPC.github.cancelDeviceFlow),

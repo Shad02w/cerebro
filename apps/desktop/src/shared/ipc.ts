@@ -12,7 +12,9 @@ export const IPC = {
   workspaces: {
     setActive: 'cerebro:workspaces:set-active',
     create: 'cerebro:workspaces:create',
-    remove: 'cerebro:workspaces:remove'
+    remove: 'cerebro:workspaces:remove',
+    listChanges: 'cerebro:workspaces:list-changes',
+    getFileDiff: 'cerebro:workspaces:get-file-diff'
   },
   settings: {
     get: 'cerebro:settings:get',

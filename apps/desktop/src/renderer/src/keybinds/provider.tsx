@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode
 } from 'react'
-import { HotkeysProvider, useHotkeys, type RegisterableHotkey } from '@tanstack/react-hotkeys'
+import { HotkeysProvider, matchesKeyboardEvent } from '@tanstack/react-hotkeys'
 import {
   KEYBIND_CATALOG,
   getKeybindAction,
@@ -79,21 +79,25 @@ function KeybindRegistrar({
     [handlersRef]
   )
 
-  useHotkeys(
-    KEYBIND_CATALOG.map((action) => ({
-      hotkey: bindings[action.id] as RegisterableHotkey,
-      callback: (): void => {
+  // Capture phase so chords still fire when xterm's textarea (or another widget)
+  // stops bubbling. Bubble-phase listeners never see those events.
+  useEffect(() => {
+    if (recording) return
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.repeat) return
+      for (const action of KEYBIND_CATALOG) {
+        if (!matchesKeyboardEvent(event, bindings[action.id])) continue
+        event.preventDefault()
+        event.stopPropagation()
         invoke(action.id)
-      },
-      options: {
-        enabled: !recording,
-        preventDefault: true,
-        ignoreInputs: false,
-        requireReset: true
+        return
       }
-    })),
-    { preventDefault: true, ignoreInputs: false, enabled: !recording, requireReset: true }
-  )
+    }
+    document.addEventListener('keydown', onKeyDown, true)
+    return (): void => {
+      document.removeEventListener('keydown', onKeyDown, true)
+    }
+  }, [bindings, invoke, recording])
 
   return null
 }
