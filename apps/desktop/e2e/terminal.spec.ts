@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execFile } from 'node:child_process'
@@ -763,6 +763,65 @@ test('keeps the sidebar trigger visible above the tab bar when collapsed', async
     await trigger.click()
     await expect(page.locator('[data-slot="sidebar"]')).toHaveAttribute('data-state', 'expanded')
     await expect(page.getByTestId('sidebar-brain-mark')).toBeVisible()
+  } finally {
+    await rm(sourcesRoot, { recursive: true, force: true })
+  }
+})
+
+test('sends CSI u for Ctrl+; so Neovim can bind it', async ({ page }) => {
+  const sourcesRoot = await mkdtemp(join(tmpdir(), 'cerebro-terminal-csiu-e2e-'))
+  const source = join(sourcesRoot, 'term-csiu')
+
+  try {
+    await initGitRepo(source, 'main', 'csiu-terminal')
+    await addProjectViaUi(page, `file://${source}`, 'term-csiu')
+    await selectWorkspaceRow(page, 'main')
+
+    const workspace = await readActiveWorkspace(page)
+    expect(workspace.localPath).toBeTruthy()
+    await writeFile(
+      join(workspace.localPath!, 'dump-key.sh'),
+      [
+        '#!/bin/sh',
+        'stty raw -echo',
+        'printf ready > ready.txt',
+        'dd bs=1 count=8 of=key.bin 2>/dev/null',
+        ''
+      ].join('\n')
+    )
+
+    await openNewTerminal(page)
+
+    const term = page.getByRole('textbox', { name: 'Terminal input' })
+    await expect(term).toBeFocused()
+    await term.press('Control+c')
+    await term.pressSequentially('sh dump-key.sh')
+    await term.press('Enter')
+
+    const readyPath = join(workspace.localPath!, 'ready.txt')
+    const keyPath = join(workspace.localPath!, 'key.bin')
+    await expect
+      .poll(async () => {
+        try {
+          return await readFile(readyPath, 'utf8')
+        } catch {
+          return ''
+        }
+      })
+      .toContain('ready')
+
+    await expect(term).toBeFocused()
+    await term.press('Control+Semicolon')
+
+    await expect
+      .poll(async () => {
+        try {
+          return (await readFile(keyPath)).toString('hex')
+        } catch {
+          return ''
+        }
+      })
+      .toBe('1b5b35393b3575')
   } finally {
     await rm(sourcesRoot, { recursive: true, force: true })
   }

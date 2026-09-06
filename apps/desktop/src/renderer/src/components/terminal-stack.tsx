@@ -6,6 +6,7 @@ import '@xterm/xterm/css/xterm.css'
 import '@/assets/terminal.css'
 import { DEFAULT_TERMINAL_FONT_SIZE, TERMINAL_FONT_FAMILY_AUTO } from '@shared/types'
 import { resolveTerminalFontFamily } from '@/lib/terminal-font'
+import { encodeExtendedKey } from '@/lib/terminal-keys'
 import { useKeybindHandler } from '@/keybinds'
 import { TerminalTabBar, type TerminalTab } from '@/components/terminal-tab-bar'
 
@@ -128,10 +129,19 @@ function TerminalSession({
         hostRef.current.dataset.terminalFont = fontFamily.replaceAll('"', '')
         hostRef.current.dataset.terminalFontSize = String(fontSize)
 
-        terminal.onData((data) => {
+        const xterm = terminal
+        xterm.onData((data) => {
           const sessionId = sessionIdRef.current
           if (exitedRef.current || sessionId == null) return
           void window.cerebro.writePty(sessionId, data)
+        })
+
+        xterm.attachCustomKeyEventHandler((event) => {
+          const sequence = encodeExtendedKey(event)
+          if (sequence == null) return true
+          event.preventDefault()
+          xterm.input(sequence)
+          return false
         })
 
         terminalRef.current = terminal
