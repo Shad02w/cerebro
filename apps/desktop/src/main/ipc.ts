@@ -1,6 +1,7 @@
 import { ipcMain, shell } from 'electron'
+import { getWorkspaceFileDiff, isChangedFileStatus, listWorkspaceChanges } from '@cerebro/core'
 import { IPC } from '../shared/ipc'
-import type { AppSettingsPatch } from '../shared/types'
+import type { AppSettingsPatch, ChangedFile } from '../shared/types'
 import { registerGitHubIpc } from './github'
 import { killPtyForWorkspace, registerPtyIpc } from './pty'
 import {
@@ -14,6 +15,32 @@ import {
   setActiveWorkspace
 } from './projects'
 import { getSettings, pickDirectory, pickProjectDirectory, setSettings } from './settings'
+
+function parseChangedFile(file: unknown): ChangedFile {
+  if (!file || typeof file !== 'object') {
+    throw new Error('Changed file is required.')
+  }
+  const record = file as {
+    path?: unknown
+    oldPath?: unknown
+    status?: unknown
+  }
+  if (typeof record.path !== 'string' || !record.path.trim()) {
+    throw new Error('Changed file path is required.')
+  }
+  const status = record.status
+  if (!isChangedFileStatus(status)) {
+    throw new Error('Changed file status is required.')
+  }
+  if (record.oldPath != null && typeof record.oldPath !== 'string') {
+    throw new Error('Changed file old path is invalid.')
+  }
+  return {
+    path: record.path,
+    oldPath: typeof record.oldPath === 'string' ? record.oldPath : null,
+    status
+  }
+}
 
 function errorMessage(error: unknown): string {
   const message = error instanceof Error && error.message ? error.message : 'Something went wrong.'
@@ -137,6 +164,35 @@ export function registerWorkspaceIpc(): void {
       try {
         killPtyForWorkspace(workspaceId)
         return await removeWorkspace(workspaceId, deleteFiles)
+      } catch (error) {
+        throw new Error(errorMessage(error))
+      }
+    }
+  )
+
+  ipcMain.handle(IPC.workspaces.listChanges, async (_event, workspaceId: unknown) => {
+    if (typeof workspaceId !== 'number' || !Number.isInteger(workspaceId)) {
+      throw new Error('Workspace id is required.')
+    }
+    try {
+      return await listWorkspaceChanges(workspaceId)
+    } catch (error) {
+      throw new Error(errorMessage(error))
+    }
+  })
+
+  ipcMain.handle(
+    IPC.workspaces.getFileDiff,
+    async (_event, workspaceId: unknown, repositoryId: unknown, file: unknown) => {
+      if (typeof workspaceId !== 'number' || !Number.isInteger(workspaceId)) {
+        throw new Error('Workspace id is required.')
+      }
+      if (typeof repositoryId !== 'number' || !Number.isInteger(repositoryId)) {
+        throw new Error('Repository id is required.')
+      }
+      const changed = parseChangedFile(file)
+      try {
+        return await getWorkspaceFileDiff(workspaceId, repositoryId, changed)
       } catch (error) {
         throw new Error(errorMessage(error))
       }

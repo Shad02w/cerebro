@@ -85,6 +85,38 @@ export const DEFAULT_TERMINAL_FONT_SIZE = 13
 export const MIN_TERMINAL_FONT_SIZE = 10
 export const MAX_TERMINAL_FONT_SIZE = 24
 
+export type ChangedFileStatus = 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked'
+
+export type ChangedFileKind = 'text' | 'binary'
+
+export type ChangedFile = {
+  path: string
+  oldPath: string | null
+  status: ChangedFileStatus
+}
+
+export type RepoChangeGroup = {
+  repositoryId: number
+  repositoryName: string
+  workspaceId: number
+  files: ChangedFile[]
+}
+
+export type WorkspaceChanges = {
+  workspaceId: number
+  groups: RepoChangeGroup[]
+}
+
+export type FileDiffContents = {
+  repositoryId: number
+  path: string
+  oldPath: string | null
+  status: ChangedFileStatus
+  kind: ChangedFileKind
+  oldContents: string | null
+  newContents: string | null
+}
+
 /** Stored keyboard shortcut overrides keyed by action id (e.g. `closeTab`). */
 export type KeybindOverrides = Partial<Record<string, string>>
 
@@ -126,13 +158,15 @@ export type CerebroApi = {
   pickProjectDirectory: () => Promise<string | null>
   removeProject: (projectId: number, deleteFiles: boolean) => Promise<ProjectListResult>
   setActiveWorkspace: (workspaceId: number) => Promise<ProjectListResult>
-  createWorkspace: (
-    projectId: number,
-    branch: string,
-    from?: string | null
-  ) => Promise<Workspace>
+  createWorkspace: (projectId: number, branch: string, from?: string | null) => Promise<Workspace>
   removeWorkspace: (workspaceId: number, deleteFiles: boolean) => Promise<ProjectListResult>
   listProjectBranches: (projectId: number) => Promise<ProjectBranch[]>
+  listWorkspaceChanges: (workspaceId: number) => Promise<WorkspaceChanges>
+  getWorkspaceFileDiff: (
+    workspaceId: number,
+    repositoryId: number,
+    file: ChangedFile
+  ) => Promise<FileDiffContents>
   openExternal: (url: string) => Promise<void>
   getSettings: () => Promise<AppSettings>
   setSettings: (patch: AppSettingsPatch) => Promise<AppSettings>
