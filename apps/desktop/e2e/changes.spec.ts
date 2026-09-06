@@ -212,13 +212,6 @@ test('keeps terminals when opening and closing a Changes tab', async ({ page, el
     await expect(page.getByTestId('add-tab-menu')).toBeVisible()
     await expect(page.getByTestId('open-terminal-tab')).toBeVisible()
     await expect(page.getByTestId('open-changes-tab')).toBeVisible()
-    const artifactsDir = process.env.CEREBRO_E2E_ARTIFACTS
-    if (artifactsDir) {
-      await page.screenshot({
-        path: join(artifactsDir, 'add-tab-dropdown.png'),
-        fullPage: true
-      })
-    }
     await page.getByTestId('open-terminal-tab').click()
     await expect(page.getByTestId('add-tab-menu')).toHaveCount(0)
     await expect(page.getByTestId('terminal-tab')).toHaveCount(1)
