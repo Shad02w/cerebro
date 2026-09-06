@@ -101,6 +101,22 @@ test('shows working-tree diffs in a Changes tab with a right-hand file list', as
     await expect(diff).toContainText('hello from changes', {
       timeout: 15_000
     })
+    const diffsHost = diff.locator('diffs-container').first()
+    await expect(diffsHost).toBeVisible()
+    await expect
+      .poll(async () => diffsHost.evaluate((el) => getComputedStyle(el).colorScheme))
+      .toMatch(/dark/)
+    const backgroundRgb = await diffsHost.evaluate((el) => {
+      const raw = getComputedStyle(el).backgroundColor
+      const match = raw.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/)
+      if (!match) return raw
+      return [Number(match[1]), Number(match[2]), Number(match[3])]
+    })
+    expect(Array.isArray(backgroundRgb)).toBe(true)
+    const [r, g, b] = backgroundRgb as [number, number, number]
+    expect(r).toBeLessThan(40)
+    expect(g).toBeLessThan(40)
+    expect(b).toBeLessThan(40)
     const [diffBox, sidebarBox] = await Promise.all([diff.boundingBox(), sidebar.boundingBox()])
     expect(diffBox).toBeTruthy()
     expect(sidebarBox).toBeTruthy()

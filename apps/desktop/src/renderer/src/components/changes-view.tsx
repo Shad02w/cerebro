@@ -32,7 +32,8 @@ type ChangesViewProps = {
 }
 
 const CODE_VIEW_OPTIONS: CodeViewReactOptions<undefined, undefined> = {
-  theme: { dark: 'pierre-dark', light: 'pierre-light' },
+  theme: 'pierre-dark',
+  themeType: 'dark',
   stickyHeaders: true,
   layout: { paddingTop: 8, paddingBottom: 16, gap: 12 }
 }
