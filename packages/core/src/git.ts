@@ -1,5 +1,8 @@
 import { execFile } from 'node:child_process'
+import { readFile, stat } from 'node:fs/promises'
+import { join, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
+import type { ChangedFile, ChangedFileKind, ChangedFileStatus, FileDiffContents } from './types'
 
 const execFileAsync = promisify(execFile)
 
@@ -20,13 +23,33 @@ async function runGit(args: string[], cwd?: string): Promise<string> {
     })
     return stdout.trim()
   } catch (error) {
-    const err = error as { stderr?: string; message?: string; code?: string }
-    if (err.code === 'ENOENT') {
-      throw new Error('Git is not installed or not available on PATH.')
-    }
-    const detail = (err.stderr || err.message || 'Unknown git error').trim()
-    throw new Error(detail)
+    throw gitError(error)
   }
+}
+
+async function runGitBuffer(args: string[], cwd?: string): Promise<Buffer> {
+  try {
+    const { stdout } = await execFileAsync('git', args, {
+      cwd,
+      timeout: GIT_TIMEOUT_MS,
+      maxBuffer: 10 * 1024 * 1024,
+      env: gitEnv,
+      encoding: 'buffer'
+    })
+    return stdout
+  } catch (error) {
+    throw gitError(error)
+  }
+}
+
+function gitError(error: unknown): Error {
+  const err = error as { stderr?: Buffer | string; message?: string; code?: string }
+  if (err.code === 'ENOENT') {
+    return new Error('Git is not installed or not available on PATH.')
+  }
+  const stderr = Buffer.isBuffer(err.stderr) ? err.stderr.toString('utf8') : err.stderr
+  const detail = (stderr || err.message || 'Unknown git error').trim()
+  return new Error(detail)
 }
 
 export type ParsedGitUrl = {
@@ -313,5 +336,156 @@ export async function removeWorktree(repoPath: string, worktreePath: string): Pr
 
 export function sanitizeBranchForPath(branch: string): string {
   return branch.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'branch'
+}
+
+const MAX_TEXT_BYTES = 1024 * 1024
+
+function splitNul(raw: string): string[] {
+  if (!raw) return []
+  return raw.split('\0').filter((part) => part.length > 0)
+}
+
+function parseNameStatusZ(raw: string): ChangedFile[] {
+  const tokens = splitNul(raw)
+  const files: ChangedFile[] = []
+  let index = 0
+  while (index < tokens.length) {
+    const code = tokens[index]
+    if (!code) {
+      index += 1
+      continue
+    }
+    const kind = code[0]
+    if (kind === 'R' || kind === 'C') {
+      const oldPath = tokens[index + 1]
+      const path = tokens[index + 2]
+      if (!oldPath || !path) break
+      files.push({
+        path,
+        oldPath,
+        status: kind === 'R' ? 'renamed' : 'added'
+      })
+      index += 3
+      continue
+    }
+    const path = tokens[index + 1]
+    if (!path) break
+    const status: ChangedFileStatus =
+      kind === 'A' ? 'added' : kind === 'D' ? 'deleted' : 'modified'
+    files.push({ path, oldPath: null, status })
+    index += 2
+  }
+  return files
+}
+
+async function hasHeadCommit(repoPath: string): Promise<boolean> {
+  try {
+    await runGit(['rev-parse', '--verify', 'HEAD'], repoPath)
+    return true
+  } catch (error) {
+    const message = error instanceof Error ? error.message : ''
+    if (/not a git repository/i.test(message)) throw error
+    return false
+  }
+}
+
+/** Working-tree changes versus HEAD, including untracked files. */
+export async function listChangedFiles(repoPath: string): Promise<ChangedFile[]> {
+  const files: ChangedFile[] = []
+  if (await hasHeadCommit(repoPath)) {
+    const nameStatus = await runGit(['diff', '--name-status', '-z', 'HEAD'], repoPath)
+    files.push(...parseNameStatusZ(nameStatus))
+  }
+
+  const others = await runGit(['ls-files', '--others', '--exclude-standard', '-z'], repoPath)
+  for (const path of splitNul(others)) {
+    files.push({ path, oldPath: null, status: 'untracked' })
+  }
+
+  files.sort((left, right) => left.path.localeCompare(right.path))
+  return files
+}
+
+function repoFilePath(repoPath: string, gitPath: string): string {
+  if (!gitPath || gitPath.startsWith('/') || gitPath.split(/[/\\]/).includes('..')) {
+    throw new Error('Path is outside the repository.')
+  }
+  const full = resolve(join(repoPath, ...gitPath.split('/')))
+  const root = resolve(repoPath)
+  if (full !== root && !full.startsWith(root + sep)) {
+    throw new Error('Path is outside the repository.')
+  }
+  return full
+}
+
+function classifyBuffer(buf: Buffer): { kind: ChangedFileKind; text: string | null } {
+  if (buf.byteLength > MAX_TEXT_BYTES || buf.includes(0)) {
+    return { kind: 'binary', text: null }
+  }
+  return { kind: 'text', text: buf.toString('utf8') }
+}
+
+async function gitShowBytes(repoPath: string, spec: string): Promise<Buffer | null> {
+  try {
+    return await runGitBuffer(['show', spec], repoPath)
+  } catch {
+    return null
+  }
+}
+
+export async function readChangedFileDiff(
+  repoPath: string,
+  file: ChangedFile
+): Promise<Omit<FileDiffContents, 'repositoryId'>> {
+  const fsPath = repoFilePath(repoPath, file.path)
+
+  let oldBuf: Buffer | null = null
+  let newBuf: Buffer | null = null
+
+  if (file.status !== 'added' && file.status !== 'untracked') {
+    oldBuf = await gitShowBytes(repoPath, `HEAD:${file.oldPath ?? file.path}`)
+  }
+
+  if (file.status !== 'deleted') {
+    try {
+      const info = await stat(fsPath)
+      if (info.isDirectory()) {
+        return {
+          path: file.path,
+          oldPath: file.oldPath,
+          status: file.status,
+          kind: 'binary',
+          oldContents: null,
+          newContents: null
+        }
+      }
+      newBuf = await readFile(fsPath)
+    } catch (error) {
+      const err = error as { code?: string }
+      if (err.code !== 'ENOENT') throw error
+    }
+  }
+
+  const oldSide = oldBuf ? classifyBuffer(oldBuf) : null
+  const newSide = newBuf ? classifyBuffer(newBuf) : null
+  if (oldSide?.kind === 'binary' || newSide?.kind === 'binary') {
+    return {
+      path: file.path,
+      oldPath: file.oldPath,
+      status: file.status,
+      kind: 'binary',
+      oldContents: null,
+      newContents: null
+    }
+  }
+
+  return {
+    path: file.path,
+    oldPath: file.oldPath,
+    status: file.status,
+    kind: 'text',
+    oldContents: oldSide?.text ?? null,
+    newContents: newSide?.text ?? null
+  }
 }
 
