@@ -625,6 +625,7 @@ test('opens a terminal with Mod+T when a default-branch workspace row is focused
     await expect(terminalItem.getByTestId('shortcut-kbd')).toHaveAttribute('data-hotkey', 'Mod+T')
     await expect(page.getByTestId('open-changes-tab')).toBeVisible()
     await page.keyboard.press('Escape')
+    await expect(page.getByTestId('add-tab-menu')).toHaveCount(0)
 
     await page.keyboard.press(newTerminalChord())
     await expect(page.getByTestId('terminal-tab')).toHaveCount(2)
