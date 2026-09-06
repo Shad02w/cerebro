@@ -43,11 +43,6 @@ function statusClass(status: ChangedFile['status']): string {
   }
 }
 
-function fileName(path: string): string {
-  const parts = path.split('/')
-  return parts[parts.length - 1] || path
-}
-
 function buildTree(repositoryId: number, files: ChangedFile[]): TreeNode[] {
   type MutableDir = {
     name: string
@@ -108,12 +103,14 @@ function FileRow({
   file,
   selected,
   indent,
+  label,
   onSelect
 }: {
   repositoryId: number
   file: ChangedFile
   selected: boolean
   indent: number
+  label: string
   onSelect: (itemId: string) => void
 }): React.JSX.Element {
   const itemId = changeItemId(repositoryId, file.path)
@@ -136,7 +133,7 @@ function FileRow({
         {statusLetter(file.status)}
       </span>
       <span className="min-w-0 truncate" title={file.path}>
-        {fileName(file.path)}
+        {label}
       </span>
     </button>
   )
@@ -179,6 +176,7 @@ function TreeRows({
             file={node.file}
             selected={selectedId === changeItemId(node.repositoryId, node.path)}
             indent={20 + depth * 12}
+            label={node.name}
             onSelect={onSelect}
           />
         )
@@ -225,6 +223,7 @@ export function ChangesFileList({
                 file={file}
                 selected={selectedId === changeItemId(group.repositoryId, file.path)}
                 indent={8}
+                label={file.path}
                 onSelect={onSelect}
               />
             ))

@@ -39,7 +39,11 @@ async function addDirectoryViaUi(
 async function openChanges(page: Page): Promise<void> {
   await page.getByTestId('open-changes-tab').click()
   await expect(page.getByTestId('changes-tab')).toBeVisible()
-  await expect(page.getByTestId('changes-view')).toBeVisible()
+  await expect(activeChanges(page)).toBeVisible()
+}
+
+function activeChanges(page: Page) {
+  return page.locator('[data-testid="changes-view"][data-active="true"]')
 }
 
 function closeChord(): string {
@@ -65,13 +69,20 @@ test('shows working-tree diffs in a Changes tab with a right-hand file list', as
     await expect(page.getByTestId('terminal-tab-bar')).toBeVisible()
 
     await openChanges(page)
-    await expect(page.getByTestId('changes-sidebar')).toBeVisible()
-    const fileRow = page.getByTestId('changes-file-row').filter({ hasText: 'README.md' })
+    const pane = activeChanges(page)
+    const sidebar = pane.getByTestId('changes-sidebar')
+    const diff = pane.getByTestId('changes-diff')
+    await expect(sidebar).toBeVisible()
+    const fileRow = pane.getByTestId('changes-file-row').filter({ hasText: 'README.md' })
     await expect(fileRow).toBeVisible({ timeout: 15_000 })
     await expect(fileRow).toHaveAttribute('data-path', 'README.md')
-    await expect(page.getByTestId('changes-diff')).toContainText('hello from changes', {
+    await expect(diff).toContainText('hello from changes', {
       timeout: 15_000
     })
+    const [diffBox, sidebarBox] = await Promise.all([diff.boundingBox(), sidebar.boundingBox()])
+    expect(diffBox).toBeTruthy()
+    expect(sidebarBox).toBeTruthy()
+    expect(sidebarBox!.x).toBeGreaterThan(diffBox!.x + (diffBox!.width ?? 0) / 2)
   } finally {
     await rm(root, { recursive: true, force: true })
   }
@@ -95,25 +106,24 @@ test('toggles the Changes sidebar between flat and tree for nested paths', async
     await page.getByTestId(`workspace-row-${project?.workspaces[0]?.id}`).click()
 
     await openChanges(page)
-    await expect(page.getByTestId('changes-file-list')).toHaveAttribute('data-mode', 'flat')
-    await expect(page.getByTestId('changes-file-row')).toHaveAttribute(
-      'data-path',
-      'src/util/hello.ts'
-    )
-    await expect(page.getByTestId('changes-tree-dir')).toHaveCount(0)
+    const pane = activeChanges(page)
+    await expect(pane.getByTestId('changes-file-list')).toHaveAttribute('data-mode', 'flat')
+    const fileRow = pane.getByTestId('changes-file-row')
+    await expect(fileRow).toHaveAttribute('data-path', 'src/util/hello.ts')
+    await expect(fileRow).toHaveText(/src\/util\/hello\.ts/)
+    await expect(pane.getByTestId('changes-tree-dir')).toHaveCount(0)
 
-    await page.getByTestId('changes-mode-tree').click()
-    await expect(page.getByTestId('changes-file-list')).toHaveAttribute('data-mode', 'tree')
-    await expect(page.getByTestId('changes-tree-dir').filter({ hasText: 'src' })).toBeVisible()
-    await expect(page.getByTestId('changes-tree-dir').filter({ hasText: 'util' })).toBeVisible()
-    await expect(page.getByTestId('changes-file-row')).toHaveAttribute(
-      'data-path',
-      'src/util/hello.ts'
-    )
+    await pane.getByTestId('changes-mode-tree').click()
+    await expect(pane.getByTestId('changes-file-list')).toHaveAttribute('data-mode', 'tree')
+    await expect(pane.locator('[data-testid="changes-tree-dir"][data-path="src"]')).toBeVisible()
+    await expect(pane.locator('[data-testid="changes-tree-dir"][data-path="src/util"]')).toBeVisible()
+    await expect(fileRow).toHaveAttribute('data-path', 'src/util/hello.ts')
+    await expect(fileRow).not.toHaveText(/src\/util/)
 
-    await page.getByTestId('changes-mode-flat').click()
-    await expect(page.getByTestId('changes-file-list')).toHaveAttribute('data-mode', 'flat')
-    await expect(page.getByTestId('changes-tree-dir')).toHaveCount(0)
+    await pane.getByTestId('changes-mode-flat').click()
+    await expect(pane.getByTestId('changes-file-list')).toHaveAttribute('data-mode', 'flat')
+    await expect(pane.getByTestId('changes-tree-dir')).toHaveCount(0)
+    await expect(fileRow).toHaveText(/src\/util\/hello\.ts/)
   } finally {
     await rm(root, { recursive: true, force: true })
   }
@@ -135,35 +145,39 @@ test('groups multi-root changes by repo on the root workspace and scopes nested 
     await writeFile(join(backend, 'README.md'), 'backend-app\nback-change\n')
     await addDirectoryViaUi(page, electronApp, parent)
 
+    const projectRow = page.getByTestId(/project-row-/).filter({ hasText: 'apps-folder' })
+    await expect(projectRow).toBeVisible({ timeout: 30_000 })
+
     const listed = await page.evaluate(async () => window.cerebro.listProjects())
     const project = listed.projects.find((item) => item.name === 'apps-folder')
-    const rootWorkspace = project?.workspaces.find((workspace) => workspace.kind === 'root')
     const frontendWorkspace = project?.workspaces.find(
       (workspace) => workspace.kind !== 'root' && workspace.localPath.endsWith('frontend')
     )
-    expect(rootWorkspace?.id).toBeTruthy()
+    expect(project?.id).toBeTruthy()
     expect(frontendWorkspace?.id).toBeTruthy()
 
-    await page.getByTestId(`workspace-row-${rootWorkspace?.id}`).click()
+    await page.getByTestId(`project-root-${project?.id}`).click()
     await openChanges(page)
+    const rootChanges = activeChanges(page)
     await expect(
-      page.getByTestId('changes-repo-header').filter({ hasText: 'backend' })
+      rootChanges.getByTestId('changes-repo-header').filter({ hasText: 'backend' })
     ).toBeVisible({
       timeout: 15_000
     })
     await expect(
-      page.getByTestId('changes-repo-header').filter({ hasText: 'frontend' })
+      rootChanges.getByTestId('changes-repo-header').filter({ hasText: 'frontend' })
     ).toBeVisible()
-    await expect(page.getByTestId('changes-file-row')).toHaveCount(2)
-    await expect(page.getByTestId('changes-diff')).toContainText('front-change')
-    await expect(page.getByTestId('changes-diff')).toContainText('back-change')
+    await expect(rootChanges.getByTestId('changes-file-row')).toHaveCount(2)
+    await expect(rootChanges.getByTestId('changes-diff')).toContainText('front-change')
+    await expect(rootChanges.getByTestId('changes-diff')).toContainText('back-change')
 
     await page.getByTestId(`workspace-row-${frontendWorkspace?.id}`).click()
     await openChanges(page)
-    await expect(page.getByTestId('changes-file-row')).toHaveCount(1, { timeout: 15_000 })
-    await expect(page.getByTestId('changes-repo-header')).toHaveCount(0)
-    await expect(page.getByTestId('changes-diff')).toContainText('front-change')
-    await expect(page.getByTestId('changes-diff')).not.toContainText('back-change')
+    const repoChanges = activeChanges(page)
+    await expect(repoChanges.getByTestId('changes-file-row')).toHaveCount(1, { timeout: 15_000 })
+    await expect(repoChanges.getByTestId('changes-repo-header')).toHaveCount(0)
+    await expect(repoChanges.getByTestId('changes-diff')).toContainText('front-change')
+    await expect(repoChanges.getByTestId('changes-diff')).not.toContainText('back-change')
   } finally {
     await rm(root, { recursive: true, force: true })
   }
@@ -191,7 +205,7 @@ test('keeps terminals when opening and closing a Changes tab', async ({ page, el
     await openChanges(page)
     await expect(page.getByTestId('changes-tab')).toBeVisible()
     await expect(page.getByTestId('terminal-tab')).toHaveCount(1)
-    await expect(page.getByTestId('changes-view')).toHaveCSS('visibility', 'visible')
+    await expect(activeChanges(page)).toHaveCSS('visibility', 'visible')
 
     await page.keyboard.press(closeChord())
     await expect(page.getByTestId('changes-tab')).toHaveCount(0)

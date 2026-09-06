@@ -185,6 +185,7 @@ export function ChangesView({
     <div
       data-testid="changes-view"
       data-workspace-id={workspaceId}
+      data-active={active ? 'true' : 'false'}
       className="absolute inset-0 flex min-h-0 bg-background"
       style={{
         visibility: active ? 'visible' : 'hidden',
