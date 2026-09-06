@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { FileDiff, Plus, SquareTerminal, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -48,6 +49,7 @@ export function TerminalTabBar({
   const newHotkey = useKeybindBinding('newTerminal')
   const { state } = useSidebar()
   const insetLeft = state === 'collapsed' ? TITLEBAR_COLLAPSED_INSET_LEFT : 0
+  const [addOpen, setAddOpen] = useState(false)
 
   return (
     <div
@@ -118,7 +120,7 @@ export function TerminalTabBar({
             </div>
           )
         })}
-        <DropdownMenu modal={false}>
+        <DropdownMenu modal={false} open={addOpen} onOpenChange={setAddOpen}>
           <DropdownMenuTrigger asChild>
             <Button
               type="button"
@@ -131,11 +133,20 @@ export function TerminalTabBar({
               <Plus className="size-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" side="bottom" className="w-44" data-testid="add-tab-menu">
+          <DropdownMenuContent
+            align="start"
+            side="bottom"
+            className="w-44"
+            data-testid="add-tab-menu"
+            onCloseAutoFocus={(event): void => event.preventDefault()}
+          >
             <DropdownMenuItem
               className="text-xs"
               data-testid="open-terminal-tab"
-              onSelect={onNewTab}
+              onSelect={(): void => {
+                setAddOpen(false)
+                onNewTab()
+              }}
             >
               <SquareTerminal />
               Terminal
@@ -146,7 +157,10 @@ export function TerminalTabBar({
             <DropdownMenuItem
               className="text-xs"
               data-testid="open-changes-tab"
-              onSelect={onOpenChanges}
+              onSelect={(): void => {
+                setAddOpen(false)
+                onOpenChanges()
+              }}
             >
               <FileDiff />
               Changes

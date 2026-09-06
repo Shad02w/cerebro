@@ -37,9 +37,17 @@ async function selectWorkspaceRow(page: Page, name: string): Promise<void> {
   await sidebar.getByTestId(/workspace-row-/).filter({ hasText: name }).click()
 }
 
-async function clickNewTerminalMenu(page: Page): Promise<void> {
+async function openAddTabMenu(page: Page): Promise<void> {
+  const menu = page.getByTestId('add-tab-menu')
+  if (await menu.isVisible()) return
   await page.getByTestId('new-terminal-tab').click()
+  await expect(menu).toBeVisible()
+}
+
+async function clickNewTerminalMenu(page: Page): Promise<void> {
+  await openAddTabMenu(page)
   await page.getByTestId('open-terminal-tab').click()
+  await expect(page.getByTestId('add-tab-menu')).toHaveCount(0)
 }
 
 async function openNewTerminal(page: Page): Promise<void> {

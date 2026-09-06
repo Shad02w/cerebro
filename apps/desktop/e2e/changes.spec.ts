@@ -53,9 +53,17 @@ async function selectDefaultWorkspace(page: Page, projectName: string): Promise<
   await page.getByTestId(`workspace-row-${workspaceId}`).click()
 }
 
-async function openChanges(page: Page): Promise<void> {
+async function openAddTabMenu(page: Page): Promise<void> {
+  const menu = page.getByTestId('add-tab-menu')
+  if (await menu.isVisible()) return
   await page.getByTestId('new-terminal-tab').click()
+  await expect(menu).toBeVisible()
+}
+
+async function openChanges(page: Page): Promise<void> {
+  await openAddTabMenu(page)
   await page.getByTestId('open-changes-tab').click()
+  await expect(page.getByTestId('add-tab-menu')).toHaveCount(0)
   await expect(page.getByTestId('changes-tab')).toBeVisible()
   await expect(activeChanges(page)).toBeVisible()
 }
@@ -212,6 +220,7 @@ test('keeps terminals when opening and closing a Changes tab', async ({ page, el
       })
     }
     await page.getByTestId('open-terminal-tab').click()
+    await expect(page.getByTestId('add-tab-menu')).toHaveCount(0)
     await expect(page.getByTestId('terminal-tab')).toHaveCount(1)
     await expect(page.locator('[data-terminal-active="true"] .xterm')).toBeVisible({
       timeout: 30_000
