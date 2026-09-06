@@ -690,9 +690,26 @@ test('keeps the sidebar trigger visible above the tab bar when collapsed', async
     await openNewTerminal(page)
     await expect(page.getByTestId('terminal-tab').filter({ hasText: 'Terminal 1' })).toBeVisible()
 
+    const beforeCollapse = await page.evaluate(() => {
+      const xterm = document.querySelector('[data-terminal-active="true"] .xterm')
+      const sessions = document.querySelector('[data-testid="terminal-sessions"]')
+      if (!(xterm instanceof HTMLElement) || !(sessions instanceof HTMLElement)) {
+        throw new Error('Active terminal was not found.')
+      }
+      xterm.dataset.terminalInstance = 'stable'
+      return { sessionsWidth: sessions.getBoundingClientRect().width }
+    })
+
     const trigger = page.getByRole('button', { name: 'Toggle Sidebar' })
     await trigger.click()
     await expect(page.locator('[data-slot="sidebar"]')).toHaveAttribute('data-state', 'collapsed')
+    await expect(page.locator('.xterm[data-terminal-instance="stable"]')).toBeVisible()
+    await expect
+      .poll(async () => {
+        const box = await page.getByTestId('terminal-sessions').boundingBox()
+        return box?.width ?? 0
+      })
+      .toBeGreaterThan(beforeCollapse.sessionsWidth + 50)
     await expect(trigger).toBeVisible()
     await expect
       .poll(async () => {

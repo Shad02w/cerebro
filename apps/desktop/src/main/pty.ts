@@ -160,8 +160,11 @@ export function writePty(sessionId: number, data: string): void {
 export function resizePty(sessionId: number, cols: number, rows: number): void {
   const session = sessionsById.get(sessionId)
   if (!session) return
+  const nextCols = Math.max(2, cols)
+  const nextRows = Math.max(1, rows)
+  if (session.process.cols === nextCols && session.process.rows === nextRows) return
   try {
-    session.process.resize(Math.max(2, cols), Math.max(1, rows))
+    session.process.resize(nextCols, nextRows)
   } catch {
     // Ignore resize failures on a dying process.
   }

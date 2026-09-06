@@ -31,6 +31,9 @@ type TerminalSessionProps = {
   onProcessExit: (tabId: number) => void
 }
 
+/** Trailing wait after the last layout change (window resize, sidebar rail drag). */
+const RESIZE_SETTLE_MS = 80
+
 function waitForUsableSize(host: HTMLElement, isCancelled: () => boolean): Promise<void> {
   if (host.clientWidth >= 2 && host.clientHeight >= 2) return Promise.resolve()
 
@@ -48,19 +51,31 @@ function waitForUsableSize(host: HTMLElement, isCancelled: () => boolean): Promi
   })
 }
 
+function proposedGrid(fitAddon: FitAddon): { cols: number; rows: number } | null {
+  const proposed = fitAddon.proposeDimensions()
+  if (!proposed || Number.isNaN(proposed.cols) || Number.isNaN(proposed.rows)) return null
+  return {
+    cols: Math.max(2, proposed.cols),
+    rows: Math.max(1, proposed.rows)
+  }
+}
+
 function fitSession(
   terminal: Terminal,
   fitAddon: FitAddon,
   sessionId: number | null,
   exited: boolean
 ): void {
-  fitAddon.fit()
+  const grid = proposedGrid(fitAddon)
+  if (!grid) return
+  if (terminal.cols === grid.cols && terminal.rows === grid.rows) return
+
+  // FitAddon.fit() calls renderService.clear() before resize, which blanks the
+  // canvas for a frame. Resize without that wipe; skip PTY SIGWINCH when the
+  // cell grid did not change.
+  terminal.resize(grid.cols, grid.rows)
   if (sessionId != null && !exited) {
-    void window.cerebro.resizePty(
-      sessionId,
-      Math.max(2, terminal.cols),
-      Math.max(1, terminal.rows)
-    )
+    void window.cerebro.resizePty(sessionId, grid.cols, grid.rows)
   }
 }
 
@@ -125,7 +140,8 @@ function TerminalSession({
         } catch {
           // Canvas renderer is optional; xterm's default renderer still works.
         }
-        fitAddon.fit()
+        const initialGrid = proposedGrid(fitAddon)
+        if (initialGrid) terminal.resize(initialGrid.cols, initialGrid.rows)
         hostRef.current.dataset.terminalFont = fontFamily.replaceAll('"', '')
         hostRef.current.dataset.terminalFontSize = String(fontSize)
 
@@ -210,16 +226,11 @@ function TerminalSession({
 
       terminalRef.current.options.fontSize = fontSize
       terminalRef.current.options.fontFamily = resolvedFamily
-      fitAddon.fit()
       if (host) {
         host.dataset.terminalFont = resolvedFamily.replaceAll('"', '')
         host.dataset.terminalFontSize = String(fontSize)
       }
-
-      const sessionId = sessionIdRef.current
-      if (sessionId != null && !exitedRef.current) {
-        void window.cerebro.resizePty(sessionId, terminalRef.current.cols, terminalRef.current.rows)
-      }
+      fitSession(terminalRef.current, fitAddon, sessionIdRef.current, exitedRef.current)
     })()
 
     return () => {
@@ -246,15 +257,31 @@ function TerminalSession({
     const host = hostRef.current
     if (!host) return
 
-    const observer = new ResizeObserver(() => {
+    let frame = 0
+    let settle = 0
+
+    const runFit = (): void => {
       const terminal = terminalRef.current
       const fitAddon = fitAddonRef.current
       if (!terminal || !fitAddon) return
       fitSession(terminal, fitAddon, sessionIdRef.current, exitedRef.current)
+    }
+
+    const observer = new ResizeObserver(() => {
+      if (frame) return
+      frame = window.requestAnimationFrame(() => {
+        frame = 0
+        window.clearTimeout(settle)
+        settle = window.setTimeout(runFit, RESIZE_SETTLE_MS)
+      })
     })
 
     observer.observe(host)
-    return () => observer.disconnect()
+    return () => {
+      observer.disconnect()
+      window.cancelAnimationFrame(frame)
+      window.clearTimeout(settle)
+    }
   }, [])
 
   return (
