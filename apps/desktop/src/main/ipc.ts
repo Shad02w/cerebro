@@ -1,6 +1,6 @@
 import { ipcMain, shell } from 'electron'
-import { getWorkspaceFileDiff, isChangedFileStatus, listWorkspaceChanges } from '@cerebro/core'
 import { IPC } from '../shared/ipc'
+import { getWorkspaceFileDiff, isChangedFileStatus, listWorkspaceChanges } from './changes'
 import type { AppSettingsPatch, ChangedFile } from '../shared/types'
 import { registerGitHubIpc } from './github'
 import { killPtyForWorkspace, registerPtyIpc } from './pty'
