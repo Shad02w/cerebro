@@ -1,5 +1,9 @@
 import { Plus, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useSidebar } from '@/components/ui/sidebar'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { ShortcutKbd, useKeybindBinding } from '@/keybinds'
+import { TITLEBAR_COLLAPSED_INSET_LEFT, TITLEBAR_HEIGHT } from '@/lib/titlebar'
 import { cn } from '@/lib/utils'
 
 export type TerminalTab = {
@@ -22,14 +26,23 @@ export function TerminalTabBar({
   onClose,
   onNewTab
 }: TerminalTabBarProps): React.JSX.Element {
+  const closeHotkey = useKeybindBinding('closeTab')
+  const newHotkey = useKeybindBinding('newTerminal')
+  const { state } = useSidebar()
+  const insetLeft = state === 'collapsed' ? TITLEBAR_COLLAPSED_INSET_LEFT : 0
+
   return (
     <div
       data-testid="terminal-tab-bar"
-      className="app-drag-region relative z-50 flex h-10 shrink-0 items-stretch border-b bg-background pr-2"
+      className="app-drag-region relative z-50 flex shrink-0 items-center bg-background pr-2 shadow-[inset_0_-1px_0_0_var(--border)]"
+      style={{
+        height: TITLEBAR_HEIGHT,
+        ...(insetLeft > 0 ? { paddingLeft: insetLeft } : {})
+      }}
       role="tablist"
       aria-label="Terminal tabs"
     >
-      <div className="flex min-w-0 items-stretch gap-0.5 overflow-x-auto">
+      <div className="flex min-w-0 items-center gap-0.5 overflow-x-auto">
         {tabs.map((tab) => {
           const selected = tab.id === activeTabId
           return (
@@ -56,32 +69,48 @@ export function TerminalTabBar({
               }}
             >
               <span className="truncate">{tab.label}</span>
-              <button
-                type="button"
-                className="inline-flex size-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-background hover:text-foreground"
-                aria-label={`Close ${tab.label}`}
-                data-testid="terminal-tab-close"
-                onClick={(event): void => {
-                  event.stopPropagation()
-                  onClose(tab.id)
-                }}
-              >
-                <X className="size-3" />
-              </button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex size-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-background hover:text-foreground"
+                    aria-label={`Close ${tab.label} (${closeHotkey})`}
+                    data-testid="terminal-tab-close"
+                    onClick={(event): void => {
+                      event.stopPropagation()
+                      onClose(tab.id)
+                    }}
+                  >
+                    <X className="size-3" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" sideOffset={4} className="flex items-center gap-2">
+                  <span>Close</span>
+                  <ShortcutKbd hotkey={closeHotkey} inverted />
+                </TooltipContent>
+              </Tooltip>
             </div>
           )
         })}
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          className="app-no-drag my-auto shrink-0"
-          aria-label="New terminal"
-          data-testid="new-terminal-tab"
-          onClick={onNewTab}
-        >
-          <Plus />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              className="app-no-drag my-auto shrink-0 size-6"
+              aria-label={`New terminal (${newHotkey})`}
+              data-testid="new-terminal-tab"
+              onClick={onNewTab}
+            >
+              <Plus className="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" sideOffset={4} className="flex items-center gap-2">
+            <span>New terminal</span>
+            <ShortcutKbd hotkey={newHotkey} inverted />
+          </TooltipContent>
+        </Tooltip>
       </div>
       <div className="app-drag-region min-w-8 flex-1" />
     </div>

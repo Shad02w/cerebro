@@ -88,7 +88,7 @@ test('window drag overlay spans the top without taking layout space', async ({ p
   expect(metrics.overlayTop).toBe(0)
   expect(metrics.overlayLeft).toBe(0)
   expect(metrics.overlayWidth).toBe(metrics.windowWidth)
-  expect(metrics.overlayHeight).toBe(40)
+  expect(metrics.overlayHeight).toBe(44)
   expect(metrics.overlayAppRegion).toBe('drag')
   expect(metrics.triggerAppRegion).toBe('no-drag')
   expect(metrics.triggerHeight).toBe(24)
@@ -97,6 +97,45 @@ test('window drag overlay spans the top without taking layout space', async ({ p
   expect(metrics.insetTop).toBe(0)
   expect(metrics.sidebarTop).toBe(0)
   expect(metrics.sidebarLeft).toBe(0)
+})
+
+test('keeps the fixed sidebar trigger visible after collapsing', async ({ page }) => {
+  const trigger = page.getByRole('button', { name: 'Toggle Sidebar' })
+  await expect(trigger).toBeVisible()
+  await expect(page.getByTestId('titlebar-sidebar-trigger')).toBeVisible()
+  await expect(page.getByTestId('sidebar-brain-mark')).toBeVisible()
+
+  await trigger.click()
+  await expect(page.locator('[data-slot="sidebar"]')).toHaveAttribute('data-state', 'collapsed')
+  await expect(trigger).toBeVisible()
+
+  const collapsed = await page.evaluate(() => {
+    const host = document.querySelector('[data-testid="titlebar-sidebar-trigger"]')
+    const button = document.querySelector('[data-slot="sidebar-trigger"]')
+    if (!host || !button) throw new Error('Sidebar trigger was not found.')
+    const hostBox = host.getBoundingClientRect()
+    const buttonBox = button.getBoundingClientRect()
+    const hostStyle = getComputedStyle(host)
+    return {
+      hostPosition: hostStyle.position,
+      hostZ: hostStyle.zIndex,
+      hostLeft: hostBox.left,
+      buttonWidth: buttonBox.width,
+      buttonHeight: buttonBox.height,
+      buttonTop: buttonBox.top
+    }
+  })
+
+  expect(collapsed.hostPosition).toBe('fixed')
+  expect(Number(collapsed.hostZ)).toBeGreaterThanOrEqual(60)
+  expect(Math.round(collapsed.hostLeft)).toBe(78)
+  expect(collapsed.buttonWidth).toBe(24)
+  expect(collapsed.buttonHeight).toBe(24)
+  expect(Math.round(collapsed.buttonTop)).toBe(10)
+
+  await trigger.click()
+  await expect(page.locator('[data-slot="sidebar"]')).toHaveAttribute('data-state', 'expanded')
+  await expect(page.getByTestId('sidebar-brain-mark')).toBeVisible()
 })
 
 test('macOS application menu omits Developer Tools in production builds', async ({

@@ -42,6 +42,15 @@ async function openNewTerminal(page: Page): Promise<void> {
   await waitForActiveTerminal(page)
 }
 
+function newTerminalChord(): string {
+  return process.platform === 'darwin' ? 'Meta+t' : 'Control+t'
+}
+
+async function openTerminalWithKeybind(page: Page): Promise<void> {
+  await page.keyboard.press(newTerminalChord())
+  await waitForActiveTerminal(page)
+}
+
 async function waitForActiveTerminal(page: Page): Promise<void> {
   const host = page.locator('[data-terminal-active="true"] .xterm')
   await expect(host).toBeVisible({ timeout: 30_000 })
@@ -259,10 +268,10 @@ test('does not spawn a terminal until New terminal is clicked; project row only 
     expect(chrome.overlayPosition).toBe('fixed')
     expect(chrome.overlayTop).toBe(0)
     expect(chrome.overlayWidth).toBe(chrome.windowWidth)
-    expect(chrome.overlayHeight).toBe(40)
+    expect(chrome.overlayHeight).toBe(44)
     expect(chrome.stackTop).toBe(0)
     expect(chrome.tabBarTop).toBe(0)
-    expect(chrome.tabBarHeight).toBe(40)
+    expect(chrome.tabBarHeight).toBe(44)
     expect(chrome.tabBarLeft).toBeGreaterThanOrEqual(chrome.sidebarRight - 1)
     expect(chrome.tabBarPaddingLeft).toBe('0px')
     expect(chrome.sessionsTop).toBe(chrome.tabBarTop + chrome.tabBarHeight)
@@ -503,5 +512,227 @@ test('does not spawn a terminal for a multi-root project until New terminal is c
     await expect(page.getByTestId('terminal-tab')).toHaveCount(1)
   } finally {
     await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('closes the active terminal tab with Mod+W and shows the shortcut on the close button', async ({
+  page,
+  electronApp
+}) => {
+  const sourcesRoot = await mkdtemp(join(tmpdir(), 'cerebro-terminal-keybind-e2e-'))
+  const source = join(sourcesRoot, 'term-keybind')
+
+  try {
+    await initGitRepo(source, 'main', 'keybind-terminal')
+    await addProjectViaUi(page, `file://${source}`, 'term-keybind')
+    await selectWorkspaceRow(page, 'main')
+
+    await openNewTerminal(page)
+    await page.getByTestId('new-terminal-tab').click()
+    await expect(page.getByTestId('terminal-tab')).toHaveCount(2)
+    await waitForActiveTerminal(page)
+
+    const closeButton = page
+      .getByTestId('terminal-tab')
+      .filter({ hasText: 'Terminal 2' })
+      .getByTestId('terminal-tab-close')
+    await closeButton.hover()
+    const tooltip = page.getByRole('tooltip')
+    await expect(tooltip).toBeVisible()
+    await expect(tooltip.getByText('Close')).toBeVisible()
+    await expect(tooltip.getByTestId('shortcut-kbd')).toHaveAttribute('data-hotkey', 'Mod+W')
+
+    const closeChord = process.platform === 'darwin' ? 'Meta+w' : 'Control+w'
+    await page.keyboard.press(closeChord)
+    await expect(page.getByTestId('terminal-tab')).toHaveCount(1)
+    await expect(page.getByTestId('terminal-tab').filter({ hasText: 'Terminal 1' })).toBeVisible()
+    await expect(page.getByTestId('terminal-tab').filter({ hasText: 'Terminal 2' })).toHaveCount(0)
+
+    // Window should still be open after closing a tab.
+    expect(electronApp.windows().length).toBe(1)
+
+    await page.keyboard.press(closeChord)
+    await expect(page.getByTestId('terminal-tab')).toHaveCount(0)
+    await expect(page.getByTestId('terminal-tab-bar')).toBeVisible()
+    expect(electronApp.windows().length).toBe(1)
+
+    // Allow the post-tab-close native-close guard to expire.
+    await new Promise((resolve) => setTimeout(resolve, 600))
+    expect(electronApp.windows().length).toBe(1)
+
+    // With no tabs left, Mod+W closes the window. The page may close mid-press.
+    await Promise.all([
+      page.keyboard.press(closeChord).catch(() => undefined),
+      expect.poll(() => electronApp.windows().length, { timeout: 10_000 }).toBe(0)
+    ])
+  } finally {
+    await rm(sourcesRoot, { recursive: true, force: true })
+  }
+})
+
+test('opens a terminal with Mod+T when a default-branch workspace row is focused', async ({
+  page
+}) => {
+  const sourcesRoot = await mkdtemp(join(tmpdir(), 'cerebro-terminal-modt-e2e-'))
+  const source = join(sourcesRoot, 'term-modt')
+
+  try {
+    await initGitRepo(source, 'main', 'modt-terminal')
+    await addProjectViaUi(page, `file://${source}`, 'term-modt')
+
+    const sidebar = page.locator('[data-slot="sidebar"]')
+    const workspaceRow = sidebar.getByTestId(/workspace-row-/).filter({ hasText: 'main' })
+    await expect(workspaceRow).toBeVisible()
+    await expect(workspaceRow).toHaveAttribute('data-workspace-role', 'branch')
+
+    await page.keyboard.press(newTerminalChord())
+    await expect(page.getByTestId('terminal-tab-bar')).toHaveCount(0)
+    await expect(page.locator('[data-terminal-workspace-id]')).toHaveCount(0)
+
+    await sidebar.getByTestId(/project-row-/).filter({ hasText: 'term-modt' }).focus()
+    await page.keyboard.press(newTerminalChord())
+    await expect(page.getByTestId('terminal-tab-bar')).toHaveCount(0)
+
+    await workspaceRow.focus()
+    await openTerminalWithKeybind(page)
+
+    const workspaceId = await page.evaluate(async () => {
+      const listed = await window.cerebro.listProjects()
+      return listed.activeWorkspaceId
+    })
+    expect(workspaceId).not.toBeNull()
+    await expect(
+      page.locator(`[data-terminal-workspace-id="${workspaceId}"][data-terminal-active="true"] .xterm`)
+    ).toBeVisible()
+    await expect(page.getByTestId('terminal-tab')).toHaveCount(1)
+
+    await page.getByTestId('new-terminal-tab').hover()
+    const tooltip = page.getByRole('tooltip')
+    await expect(tooltip).toBeVisible()
+    await expect(tooltip.getByText('New terminal')).toBeVisible()
+    await expect(tooltip.getByTestId('shortcut-kbd')).toHaveAttribute('data-hotkey', 'Mod+T')
+
+    await page.keyboard.press(newTerminalChord())
+    await expect(page.getByTestId('terminal-tab')).toHaveCount(2)
+    await waitForActiveTerminal(page)
+  } finally {
+    await rm(sourcesRoot, { recursive: true, force: true })
+  }
+})
+
+test('opens a terminal with Mod+T from multi-root workspace rows', async ({ page, electronApp }) => {
+  const root = await mkdtemp(join(tmpdir(), 'cerebro-multiroot-modt-e2e-'))
+  const parent = join(root, 'apps-folder')
+  const frontend = join(parent, 'frontend')
+  const backend = join(parent, 'backend')
+
+  try {
+    await initGitRepo(frontend, 'main', 'frontend-app')
+    await initGitRepo(backend, 'main', 'backend-app')
+
+    await mockChooseFolder(electronApp, parent)
+    await page.getByRole('button', { name: 'Add project' }).first().click()
+    await page.getByTestId('add-project-choose-folder').click()
+
+    const projectRow = page.getByTestId(/project-row-/).filter({ hasText: 'apps-folder' })
+    await expect(projectRow).toBeVisible({ timeout: 30_000 })
+
+    const listed = await page.evaluate(async () => window.cerebro.listProjects())
+    const project = listed.projects.find((item) => item.name === 'apps-folder')
+    const frontendPath = await realpath(frontend)
+    const rootWorkspace = project?.workspaces.find((workspace) => workspace.kind === 'root')
+    const frontendWorkspace = project?.workspaces.find(
+      (workspace) => workspace.localPath === frontendPath
+    )
+    expect(rootWorkspace).toBeTruthy()
+    expect(frontendWorkspace).toBeTruthy()
+
+    const rootRow = page.getByTestId(/project-root-/)
+    await expect(rootRow).toHaveAttribute('data-workspace-role', 'root')
+    await rootRow.focus()
+    await page.keyboard.press(newTerminalChord())
+    await expect(
+      page.locator(`[data-terminal-workspace-id="${rootWorkspace!.id}"][data-terminal-active="true"] .xterm`)
+    ).toBeVisible({ timeout: 30_000 })
+    const rootState = await readActiveWorkspace(page)
+    expect(rootState.kind).toBe('root')
+    expect(rootState.id).toBe(rootWorkspace!.id)
+
+    const frontendRow = page.getByTestId(/workspace-row-/).filter({ hasText: 'frontend' })
+    await expect(frontendRow).toHaveAttribute('data-workspace-role', 'repository')
+    await frontendRow.focus()
+    await page.keyboard.press(newTerminalChord())
+    await expect(
+      page.locator(
+        `[data-terminal-workspace-id="${frontendWorkspace!.id}"][data-terminal-active="true"] .xterm`
+      )
+    ).toBeVisible({ timeout: 30_000 })
+    const frontendState = await readActiveWorkspace(page)
+    expect(frontendState.kind).toBe('default')
+    expect(frontendState.id).toBe(frontendWorkspace!.id)
+    await expect(
+      page.locator(`[data-terminal-workspace-id="${rootWorkspace!.id}"][data-terminal-active="false"]`)
+    ).toHaveCount(1)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('keeps the sidebar trigger visible above the tab bar when collapsed', async ({ page }) => {
+  const sourcesRoot = await mkdtemp(join(tmpdir(), 'cerebro-collapsed-trigger-e2e-'))
+  const source = join(sourcesRoot, 'term-collapse')
+
+  try {
+    await initGitRepo(source, 'main', 'collapse-terminal')
+    await addProjectViaUi(page, `file://${source}`, 'term-collapse')
+    await selectWorkspaceRow(page, 'main')
+    await expect(page.getByTestId('terminal-tab-bar')).toBeVisible()
+
+    const trigger = page.getByRole('button', { name: 'Toggle Sidebar' })
+    await trigger.click()
+    await expect(page.locator('[data-slot="sidebar"]')).toHaveAttribute('data-state', 'collapsed')
+    await expect(trigger).toBeVisible()
+    await expect
+      .poll(async () => {
+        const box = await page.getByTestId('terminal-tab-bar').boundingBox()
+        return box?.x ?? -1
+      })
+      .toBeLessThanOrEqual(1)
+
+    const layout = await page.evaluate(() => {
+      const triggerEl = document.querySelector('[data-slot="sidebar-trigger"]')
+      const tabBar = document.querySelector('[data-testid="terminal-tab-bar"]')
+      const plus = document.querySelector('[data-testid="new-terminal-tab"]')
+      if (!triggerEl || !tabBar || !plus) throw new Error('Collapsed chrome elements were not found.')
+      const triggerBox = triggerEl.getBoundingClientRect()
+      const tabBox = tabBar.getBoundingClientRect()
+      const plusBox = plus.getBoundingClientRect()
+      return {
+        triggerTop: triggerBox.top,
+        triggerRight: triggerBox.right,
+        triggerHeight: triggerBox.height,
+        tabLeft: tabBox.left,
+        tabRight: tabBox.right,
+        tabPaddingLeft: getComputedStyle(tabBar).paddingLeft,
+        plusTop: plusBox.top,
+        plusLeft: plusBox.left,
+        plusHeight: plusBox.height,
+        plusMid: plusBox.top + plusBox.height / 2,
+        triggerMid: triggerBox.top + triggerBox.height / 2,
+        windowWidth: window.innerWidth
+      }
+    })
+
+    expect(layout.tabLeft).toBeLessThanOrEqual(1)
+    expect(layout.tabRight).toBeGreaterThanOrEqual(layout.windowWidth - 1)
+    expect(layout.tabPaddingLeft).toBe('110px')
+    expect(layout.plusLeft).toBeGreaterThanOrEqual(layout.triggerRight)
+    expect(layout.triggerHeight).toBe(24)
+    expect(layout.plusHeight).toBe(24)
+    expect(Math.round(layout.triggerTop)).toBe(Math.round(layout.plusTop))
+    expect(Math.round(layout.triggerMid)).toBe(22)
+    expect(Math.round(layout.plusMid)).toBe(22)
+  } finally {
+    await rm(sourcesRoot, { recursive: true, force: true })
   }
 })

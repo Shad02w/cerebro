@@ -34,11 +34,19 @@ test('settings reuses the app sidebar and navigates by hash route', async ({ pag
   const sidebar = page.locator('[data-slot="sidebar"]')
   const generalNav = sidebar.getByRole('button', { name: 'General' })
   const terminalNav = sidebar.getByRole('button', { name: 'Terminal' })
+  const keyboardNav = sidebar.getByRole('button', { name: 'Keyboard' })
   const integrationsNav = sidebar.getByRole('button', { name: 'Integrations' })
 
   await expect(generalNav).toBeVisible()
   await expect(terminalNav).toBeVisible()
+  await expect(keyboardNav).toBeVisible()
   await expect(integrationsNav).toBeVisible()
+  await expect(generalNav).toHaveAttribute('data-active', 'true')
+  await expect(terminalNav).toHaveAttribute('data-active', 'false')
+  const selectedShadow = await generalNav.evaluate((el) => getComputedStyle(el).boxShadow)
+  const idleShadow = await terminalNav.evaluate((el) => getComputedStyle(el).boxShadow)
+  expect(selectedShadow).not.toBe('none')
+  expect(idleShadow).toBe('none')
 
   const navRadius = await generalNav.evaluate((el) => getComputedStyle(el).borderRadius)
   const backRadius = await page.getByRole('button', { name: 'Back' }).evaluate((el) => getComputedStyle(el).borderRadius)
@@ -47,6 +55,7 @@ test('settings reuses the app sidebar and navigates by hash route', async ({ pag
 
   await expect(generalNav.locator('svg')).toHaveCount(1)
   await expect(terminalNav.locator('svg')).toHaveCount(1)
+  await expect(keyboardNav.locator('svg')).toHaveCount(1)
   await expect(integrationsNav.locator('svg')).toHaveCount(1)
 
   const content = page.locator('[data-slot="sidebar-inset"]')
@@ -72,6 +81,10 @@ test('settings reuses the app sidebar and navigates by hash route', async ({ pag
 
   await terminalNav.click()
   await expect.poll(() => page.evaluate(() => window.location.hash)).toBe('#/settings/terminal')
+  await expect(terminalNav).toHaveAttribute('data-active', 'true')
+  await expect(generalNav).toHaveAttribute('data-active', 'false')
+  expect(await terminalNav.evaluate((el) => getComputedStyle(el).boxShadow)).not.toBe('none')
+  expect(await generalNav.evaluate((el) => getComputedStyle(el).boxShadow)).toBe('none')
   await expect(content.getByRole('heading', { name: 'Terminal' })).toBeVisible()
   await expect(page.getByTestId('settings-terminal')).toBeVisible()
   await expect(page.getByTestId('settings-font-size')).toBeVisible()
@@ -79,6 +92,26 @@ test('settings reuses the app sidebar and navigates by hash route', async ({ pag
 
   await page.screenshot({
     path: path.join(artifactsDir, 'settings-terminal.png'),
+    fullPage: true
+  })
+
+  await keyboardNav.click()
+  await expect.poll(() => page.evaluate(() => window.location.hash)).toBe('#/settings/keyboard')
+  await expect(keyboardNav).toHaveAttribute('data-active', 'true')
+  await expect(content.getByRole('heading', { name: 'Keyboard' })).toBeVisible()
+  await expect(page.getByTestId('settings-keyboard')).toBeVisible()
+  await expect(page.getByTestId('keybind-row-closeTab')).toBeVisible()
+  await expect(page.getByTestId('keybind-row-newTerminal')).toBeVisible()
+  await expect(page.getByTestId('keybind-row-toggleSidebar')).toBeVisible()
+  await expect(page.getByTestId('keybind-row-toggleDevTools')).toBeVisible()
+  await expect(page.getByTestId('keybind-edit-closeTab').getByTestId('shortcut-kbd')).toBeVisible()
+  await expect(page.getByTestId('keybind-edit-newTerminal').getByTestId('shortcut-kbd')).toHaveAttribute(
+    'data-hotkey',
+    'Mod+T'
+  )
+
+  await page.screenshot({
+    path: path.join(artifactsDir, 'settings-keyboard.png'),
     fullPage: true
   })
 
@@ -120,4 +153,34 @@ test('persists the default clone location from settings', async ({ page }) => {
 
   const settings = await page.evaluate(async () => window.cerebro.getSettings())
   expect(settings.defaultCloneDir).toBe(custom)
+})
+
+test('persists remapped keyboard shortcuts from settings', async ({ page }) => {
+  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.getByTestId('settings-nav-keyboard').click()
+  await expect.poll(() => page.evaluate(() => window.location.hash)).toBe('#/settings/keyboard')
+
+  const closeEdit = page.getByTestId('keybind-edit-closeTab')
+  await expect(closeEdit.getByTestId('shortcut-kbd')).toHaveAttribute('data-hotkey', 'Mod+W')
+
+  await page.evaluate(async () => {
+    await window.cerebro.setSettings({ keybinds: { closeTab: 'Mod+Shift+W' } })
+  })
+  await expect
+    .poll(async () => {
+      const settings = await page.evaluate(async () => window.cerebro.getSettings())
+      return settings.keybinds?.closeTab
+    })
+    .toBe('Mod+Shift+W')
+
+  // Leave and re-enter settings so useSettings refreshes from disk.
+  await page.getByRole('button', { name: 'Back' }).click()
+  await expect.poll(() => page.evaluate(() => window.location.hash)).toBe('#/')
+  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.getByTestId('settings-nav-keyboard').click()
+  await expect(page.getByTestId('keybind-edit-closeTab').getByTestId('shortcut-kbd')).toHaveAttribute(
+    'data-hotkey',
+    'Mod+Shift+W'
+  )
+  await expect(page.getByTestId('keybind-reset-closeTab')).toBeVisible()
 })

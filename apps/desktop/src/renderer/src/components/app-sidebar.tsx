@@ -373,15 +373,15 @@ function MultiRootRepoRow({
 
   return (
     <li className="relative">
-      <SidebarMenuRow>
+      <SidebarMenuRow data-workspace-id={workspace.id}>
         <button
           type="button"
           className={cn(
             'app-no-drag peer/menu-button flex w-full min-w-0 flex-col items-stretch rounded-md px-2 py-1.5 pr-8 text-left',
-            'bg-sidebar-accent/40 text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
-            active && 'bg-sidebar-accent text-sidebar-accent-foreground'
+            'bg-sidebar-accent/40 text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
           )}
           data-testid={`workspace-row-${workspace.id}`}
+          data-workspace-id={workspace.id}
           data-workspace-role="repository"
           data-workspace-icon="directory-name"
           data-active={active ? 'true' : 'false'}
@@ -435,12 +435,11 @@ function MultiRootWorkspaceTree({
     <SidebarMenuSub>
       <SidebarMenuSubItem>
         <Collapsible open={rootOpen} onOpenChange={setRootOpen}>
-          <SidebarMenuRow>
+          <SidebarMenuRow data-workspace-id={rootWorkspace?.id}>
             <button
               type="button"
               className={cn(
-                'app-no-drag peer/menu-button flex h-7 w-full min-w-0 items-center gap-2 overflow-hidden rounded-md px-2 pr-14 text-left text-xs hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
-                rootActive && 'bg-sidebar-accent text-sidebar-accent-foreground'
+                'app-no-drag peer/menu-button flex h-7 w-full min-w-0 items-center gap-2 overflow-hidden rounded-md px-2 pr-14 text-left text-xs hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
               )}
               data-testid={`project-root-${project.id}`}
               data-workspace-role="root"
@@ -535,7 +534,7 @@ function ProjectItem({
               title={multiRoot ? `${project.name} (multi-root)` : project.name}
             >
               {multiRoot ? <Folders /> : <Folder />}
-              <span className="min-w-0 flex-1 truncate">{project.name}</span>
+              <span className="min-w-0 truncate">{project.name}</span>
               {multiRoot ? (
                 <span
                   className="shrink-0 rounded-md bg-teal-500/15 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-teal-700 uppercase dark:text-teal-300"
@@ -579,7 +578,7 @@ function ProjectItem({
             <SidebarMenuSub>
               {project.workspaces.map((workspace: Workspace) => (
                 <SidebarMenuSubItem key={workspace.id}>
-                  <SidebarMenuRow>
+                  <SidebarMenuRow data-workspace-id={workspace.id}>
                     <SidebarMenuSubButton
                       size="sm"
                       asChild
@@ -589,6 +588,7 @@ function ProjectItem({
                         type="button"
                         className="app-no-drag flex w-full min-w-0 items-center gap-2 pr-8"
                         data-testid={`workspace-row-${workspace.id}`}
+                        data-workspace-id={workspace.id}
                         data-workspace-role="branch"
                         data-workspace-icon="branch"
                         title={workspaceLabel(project, workspace)}
@@ -637,7 +637,7 @@ export function AppSidebar({
       collapsible={isSettings ? 'none' : 'offcanvas'}
       className={isSettings ? 'border-r border-sidebar-border' : undefined}
     >
-      <SidebarHeader className="pt-10">
+      <SidebarHeader className="pt-11">
         <div className="app-drag-region flex items-center gap-2 px-2 py-1.5">
           <div className="flex size-8 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground">
             <BrainMark size="sm" testId="sidebar-brain-mark" className="text-sidebar-primary-foreground" />

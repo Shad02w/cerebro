@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import { IPC } from '../shared/ipc'
-import type { CerebroApi, GitHubStatus, PtyDataEvent, PtyExitEvent } from '../shared/types'
+import type { CerebroApi, GitHubStatus, NativeCommandId, PtyDataEvent, PtyExitEvent } from '../shared/types'
 
 const api: CerebroApi = {
   listProjects: () => ipcRenderer.invoke(IPC.projects.list),
@@ -20,6 +20,7 @@ const api: CerebroApi = {
   getSettings: () => ipcRenderer.invoke(IPC.settings.get),
   setSettings: (patch) => ipcRenderer.invoke(IPC.settings.set, patch),
   pickDirectory: () => ipcRenderer.invoke(IPC.settings.pickDirectory),
+  runNativeCommand: (command: NativeCommandId) => ipcRenderer.invoke(IPC.native.runCommand, command),
   getGitHubStatus: () => ipcRenderer.invoke(IPC.github.getStatus),
   beginGitHubDeviceFlow: () => ipcRenderer.invoke(IPC.github.beginDeviceFlow),
   cancelGitHubDeviceFlow: () => ipcRenderer.invoke(IPC.github.cancelDeviceFlow),
@@ -38,6 +39,13 @@ const api: CerebroApi = {
     ipcRenderer.on(IPC.projects.invalidate, handler)
     return () => {
       ipcRenderer.removeListener(IPC.projects.invalidate, handler)
+    }
+  },
+  onMenuClose: (listener) => {
+    const handler = (): void => listener()
+    ipcRenderer.on(IPC.keybinds.menuClose, handler)
+    return () => {
+      ipcRenderer.removeListener(IPC.keybinds.menuClose, handler)
     }
   },
   openPty: (workspaceId, cols, rows) => ipcRenderer.invoke(IPC.pty.open, workspaceId, cols, rows),

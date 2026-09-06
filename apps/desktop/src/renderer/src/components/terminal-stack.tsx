@@ -6,6 +6,7 @@ import '@xterm/xterm/css/xterm.css'
 import '@/assets/terminal.css'
 import { DEFAULT_TERMINAL_FONT_SIZE, TERMINAL_FONT_FAMILY_AUTO } from '@shared/types'
 import { resolveTerminalFontFamily } from '@/lib/terminal-font'
+import { useKeybindHandler } from '@/keybinds'
 import { TerminalTabBar, type TerminalTab } from '@/components/terminal-tab-bar'
 
 const TERMINAL_THEME = {
@@ -300,16 +301,29 @@ function closeTabInWorkspace(workspace: WorkspaceTabsState, tabId: number): Work
   return { ...workspace, tabs, activeTabId: next?.id ?? null }
 }
 
+function focusedWorkspaceId(): number | null {
+  const el = document.activeElement
+  if (!(el instanceof Element)) return null
+  const row = el.closest('[data-workspace-id]')
+  if (!row) return null
+  const raw = row.getAttribute('data-workspace-id')
+  if (!raw) return null
+  const id = Number(raw)
+  return Number.isInteger(id) && id > 0 ? id : null
+}
+
 type TerminalStackProps = {
   activeWorkspaceId: number | null
   fontSize: number | null
   fontFamily: string | null
+  onSelectWorkspace: (workspaceId: number) => void
 }
 
 export function TerminalStack({
   activeWorkspaceId,
   fontSize,
-  fontFamily
+  fontFamily,
+  onSelectWorkspace
 }: TerminalStackProps): React.JSX.Element {
   const [byWorkspace, setByWorkspace] = useState<Record<number, WorkspaceTabsState>>({})
   const resolvedFontSize = fontSize ?? DEFAULT_TERMINAL_FONT_SIZE
@@ -343,17 +357,22 @@ export function TerminalStack({
     })
   }
 
-  const addTab = (): void => {
-    if (activeWorkspaceId == null) return
+  useKeybindHandler('closeTab', () => {
+    if (activeWorkspaceId == null || activeTabId == null) return false
+    closeTab(activeWorkspaceId, activeTabId)
+    return true
+  })
+
+  const addTab = (workspaceId: number): void => {
     setByWorkspace((current) => {
-      const workspace = current[activeWorkspaceId]
+      const workspace = current[workspaceId]
       if (!workspace) {
-        return { ...current, [activeWorkspaceId]: createWorkspaceTabs() }
+        return { ...current, [workspaceId]: createWorkspaceTabs() }
       }
       const tab = createTab(workspace.nextLabel)
       return {
         ...current,
-        [activeWorkspaceId]: {
+        [workspaceId]: {
           tabs: [...workspace.tabs, tab],
           activeTabId: tab.id,
           nextLabel: workspace.nextLabel + 1
@@ -361,6 +380,16 @@ export function TerminalStack({
       }
     })
   }
+
+  useKeybindHandler('newTerminal', () => {
+    const targetId = focusedWorkspaceId() ?? activeWorkspaceId
+    if (targetId == null) return false
+    if (targetId !== activeWorkspaceId) {
+      onSelectWorkspace(targetId)
+    }
+    addTab(targetId)
+    return true
+  })
 
   const sessions = Object.entries(byWorkspace).flatMap(([workspaceIdValue, workspace]) => {
     const workspaceId = Number(workspaceIdValue)
@@ -379,7 +408,9 @@ export function TerminalStack({
           activeTabId={activeTabId}
           onSelect={selectTab}
           onClose={(tabId): void => closeTab(activeWorkspaceId, tabId)}
-          onNewTab={addTab}
+          onNewTab={(): void => {
+            if (activeWorkspaceId != null) addTab(activeWorkspaceId)
+          }}
         />
       ) : null}
       <div

@@ -85,14 +85,21 @@ export const DEFAULT_TERMINAL_FONT_SIZE = 13
 export const MIN_TERMINAL_FONT_SIZE = 10
 export const MAX_TERMINAL_FONT_SIZE = 24
 
+/** Stored keyboard shortcut overrides keyed by action id (e.g. `closeTab`). */
+export type KeybindOverrides = Partial<Record<string, string>>
+
 export type AppSettings = {
   defaultCloneDir: string
   terminalFontSize: number
   /** `'auto'` or a CSS font-family name such as `Cerebro Mono`. */
   terminalFontFamily: string
+  /** Partial overrides; missing keys use app defaults. */
+  keybinds: KeybindOverrides
 }
 
 export type AppSettingsPatch = Partial<AppSettings>
+
+export type NativeCommandId = 'closeWindow' | 'toggleDevTools'
 
 export type GitHubAccount = {
   login: string
@@ -126,6 +133,7 @@ export type CerebroApi = {
   getSettings: () => Promise<AppSettings>
   setSettings: (patch: AppSettingsPatch) => Promise<AppSettings>
   pickDirectory: () => Promise<string | null>
+  runNativeCommand: (command: NativeCommandId) => Promise<void>
   getGitHubStatus: () => Promise<GitHubStatus>
   beginGitHubDeviceFlow: () => Promise<GitHubStatus>
   cancelGitHubDeviceFlow: () => Promise<GitHubStatus>
@@ -133,6 +141,8 @@ export type CerebroApi = {
   onGitHubStatus: (listener: (status: GitHubStatus) => void) => () => void
   /** Subscribe to project-list invalidation events (emitted after CLI mutations). */
   onProjectsInvalidate: (listener: () => void) => () => void
+  /** File › Close menu (no accelerator); runs the same path as the closeTab keybind. */
+  onMenuClose: (listener: () => void) => () => void
   openPty: (workspaceId: number, cols: number, rows: number) => Promise<PtyOpenResult>
   writePty: (sessionId: number, data: string) => Promise<void>
   resizePty: (sessionId: number, cols: number, rows: number) => Promise<void>

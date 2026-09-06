@@ -68,10 +68,15 @@ export type ProjectBranch = {
   hasWorkspace: boolean
 }
 
+/** Stored keyboard shortcut overrides keyed by action id (e.g. `closeTab`). */
+export type KeybindOverrides = Partial<Record<string, string>>
+
 export type AppSettings = {
   defaultCloneDir: string
   terminalFontSize: number
   terminalFontFamily: string
+  /** Partial overrides; missing keys use app defaults. */
+  keybinds: KeybindOverrides
 }
 
 export type AppSettingsPatch = Partial<AppSettings>

@@ -6,6 +6,7 @@ import { closeDb } from './db'
 import { registerSettingsIpc, registerWorkspaceIpc } from './ipc'
 import { startSocketServer, stopSocketServer } from './ipc-socket'
 import { setAppMenu } from './menu'
+import { registerNativeCommandIpc } from './native-commands'
 import { ensureCerebroHome } from './paths'
 import { clearActiveWorkspace } from './projects'
 import { killAllPtys } from './pty'
@@ -21,14 +22,14 @@ function createWindow(): void {
     title: 'Cerebro',
     backgroundColor: '#0a0a0a',
     titleBarStyle: 'hiddenInset',
-    // Keep in sync with TRAFFIC_LIGHT_Y / WindowDragOverlay in the renderer.
+    // Keep in sync with TRAFFIC_LIGHT_Y / TITLEBAR_HEIGHT in renderer src/lib/titlebar.ts.
     trafficLightPosition: { x: 16, y: 16 },
     ...(process.platform !== 'darwin'
       ? {
           titleBarOverlay: {
             color: '#0a0a0a',
             symbolColor: '#fafafa',
-            height: 40
+            height: 44
           }
         }
       : {}),
@@ -65,6 +66,7 @@ app.whenReady().then(() => {
   clearActiveWorkspace()
   registerWorkspaceIpc()
   registerSettingsIpc()
+  registerNativeCommandIpc()
   startSocketServer()
 
   app.on('browser-window-created', (_, window) => {

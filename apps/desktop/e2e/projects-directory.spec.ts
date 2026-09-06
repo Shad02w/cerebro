@@ -142,11 +142,15 @@ test('adds a folder of git repos as a multi-root workspace', async ({ page, elec
 
     await projectRow.hover()
     const badge = page.getByTestId(/project-multi-root-/)
+    const projectName = projectRow.getByText('apps-folder', { exact: true })
     const projectMenu = page.getByTestId(/project-menu-/)
     const badgeBox = await badge.boundingBox()
+    const nameBox = await projectName.boundingBox()
     const menuBox = await projectMenu.boundingBox()
     expect(badgeBox).toBeTruthy()
+    expect(nameBox).toBeTruthy()
     expect(menuBox).toBeTruthy()
+    expect(nameBox!.x + nameBox!.width).toBeLessThanOrEqual(badgeBox!.x + 1)
     expect(badgeBox!.x + badgeBox!.width).toBeLessThanOrEqual(menuBox!.x + 1)
 
     const workspaceRow = multiRootRepoRow(page, 'frontend')

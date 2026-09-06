@@ -22,13 +22,20 @@ The window is two regions: **sidebar** | **content area**. Use these names, not 
 └─────────────────────────────────────────────────────────┘
 ```
 
-- **sidebar** — left column (`AppSidebar`). Project list (expand/collapse), add project, and nested workspaces (default branch + worktrees). Can collapse (offcanvas).
+- **sidebar** — left column (`AppSidebar`). Project list (expand/collapse), add project, and nested workspace rows. Can collapse (offcanvas).
 - **content area** — everything to the right of the sidebar (`SidebarInset`). Header plus the selected workspace (`WorkspaceView`), or the empty state when nothing is selected.
 
 ### Domain terminology
 
 - **project** — a cloned Git repository, an opened folder, or a **multi-root workspace** (a folder with multiple git repositories as immediate children). Clicking the project row expands or collapses its workspaces; it does **not** open a terminal. GitHub-linked single-root projects can add worktrees via a per-project `+`.
-- **workspace** — a checkout under a project: the default-branch clone or opened repo, plus each extra git worktree. In a multi-root project, each nested git repo is a default workspace. Clicking a workspace selects it. A terminal opens only when the user adds one from the tab bar.
+- **workspace** — a checkout under a project: the default-branch clone or opened repo, plus each extra git worktree. In a multi-root project, the parent folder is a root workspace and each nested git repo is a default workspace.
+- **workspace row** — a focusable sidebar row that selects a workspace. Not the project row. Workspace rows include:
+  - **default branch workspace** — the default-branch checkout of a single-root project
+  - **worktree workspace** — an extra git worktree under a project
+  - **multi-root workspace** — the `root` row of a multi-root project (the parent folder)
+  - **nested repo** — a child git repository under a multi-root project
+
+  Clicking a workspace row selects it. A terminal opens when the user adds one from the tab bar, or when they press Mod+T while a workspace row is focused.
 
 ### Verify UI with Playwright against Electron
 
@@ -66,6 +73,8 @@ If a change spans several flows, list those specs together (`settings.spec.ts sm
 - Do **not** launch Playwright's Chromium/Firefox/WebKit against `localhost`. `window.cerebro` and IPC only exist in Electron.
 
 A screenshot or visit of the Vite page is not verification. If Playwright cannot run in this environment, say so — do not fall back to the Vite URL.
+
+If the task included screenshots, mockups, or other images of the required UI (bug, expected layout, or design), attach those same images in the final response so a human can verify the change against the original requirement. Embed them with markdown (`![description](path)`); do not only describe them.
 
 ## CLI (`apps/cli`)
 

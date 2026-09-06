@@ -8,6 +8,7 @@ import {
 import type { SettingsSectionId } from '@/lib/app-route'
 import { SETTINGS_SECTIONS } from '@/lib/settings-sections'
 import { listAvailableTerminalFonts, type TerminalFontOption } from '@/lib/terminal-font'
+import { KeyboardSettings } from '@/keybinds'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -71,6 +72,12 @@ export function SettingsView({
               <p className="text-sm text-muted-foreground">Loading settings…</p>
             ) : (
               <TerminalSettings settings={settings} error={error} onUpdate={onUpdate} />
+            )
+          ) : section === 'keyboard' ? (
+            loading || !settings ? (
+              <p className="text-sm text-muted-foreground">Loading settings…</p>
+            ) : (
+              <KeyboardSettings settings={settings} error={error} onUpdate={onUpdate} />
             )
           ) : (
             <IntegrationsSettings

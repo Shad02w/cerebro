@@ -19,6 +19,13 @@ export const IPC = {
     set: 'cerebro:settings:set',
     pickDirectory: 'cerebro:settings:pick-directory'
   },
+  native: {
+    runCommand: 'cerebro:native:run-command'
+  },
+  keybinds: {
+    /** Main → renderer: File › Close menu item (no accelerator). */
+    menuClose: 'cerebro:keybinds:menu-close'
+  },
   github: {
     getStatus: 'cerebro:github:get-status',
     beginDeviceFlow: 'cerebro:github:begin-device-flow',

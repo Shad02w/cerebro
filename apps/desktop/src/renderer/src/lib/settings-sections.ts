@@ -1,4 +1,4 @@
-import { Blocks, Settings, SquareTerminal, type LucideIcon } from 'lucide-react'
+import { Blocks, Keyboard, Settings, SquareTerminal, type LucideIcon } from 'lucide-react'
 import type { SettingsSectionId } from '@/lib/app-route'
 
 export type SettingsSection = {
@@ -20,6 +20,12 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     label: 'Terminal',
     description: 'Configure the integrated terminal.',
     icon: SquareTerminal
+  },
+  {
+    id: 'keyboard',
+    label: 'Keyboard',
+    description: 'Configure keyboard shortcuts.',
+    icon: Keyboard
   },
   {
     id: 'integrations',

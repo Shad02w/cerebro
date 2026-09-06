@@ -27,6 +27,7 @@
     "@electron-toolkit/utils": "^4.0.0",
     "@octokit/rest": "^22.0.1",
     "@tailwindcss/vite": "^4.3.3",
+    "@tanstack/react-hotkeys": "^0.10.0",
     "@xterm/addon-canvas": "^0.7.0",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/addon-webgl": "^0.18.0",

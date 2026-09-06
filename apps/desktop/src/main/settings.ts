@@ -18,13 +18,15 @@ type StoredSettings = {
   defaultCloneDir?: string
   terminalFontSize?: number
   terminalFontFamily?: string
+  keybinds?: Record<string, string>
 }
 
 function defaultSettings(): AppSettings {
   return {
     defaultCloneDir: getCerebroHome(),
     terminalFontSize: DEFAULT_TERMINAL_FONT_SIZE,
-    terminalFontFamily: TERMINAL_FONT_FAMILY_AUTO
+    terminalFontFamily: TERMINAL_FONT_FAMILY_AUTO,
+    keybinds: {}
   }
 }
 
@@ -109,6 +111,7 @@ function mergeSettings(stored: StoredSettings): AppSettings {
   let defaultCloneDir = defaults.defaultCloneDir
   let terminalFontSize = defaults.terminalFontSize
   let terminalFontFamily = defaults.terminalFontFamily
+  let keybinds = defaults.keybinds
 
   if (typeof stored.defaultCloneDir === 'string' && stored.defaultCloneDir.trim()) {
     try {
@@ -134,7 +137,11 @@ function mergeSettings(stored: StoredSettings): AppSettings {
     }
   }
 
-  return { defaultCloneDir, terminalFontSize, terminalFontFamily }
+  if (stored.keybinds && typeof stored.keybinds === 'object') {
+    keybinds = stored.keybinds
+  }
+
+  return { defaultCloneDir, terminalFontSize, terminalFontFamily, keybinds }
 }
 
 function getSettings(): AppSettings {

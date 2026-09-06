@@ -17,13 +17,15 @@ type StoredSettings = {
   defaultCloneDir?: string
   terminalFontSize?: number
   terminalFontFamily?: string
+  keybinds?: Record<string, string>
 }
 
 function defaultSettings(): AppSettings {
   return {
     defaultCloneDir: getCerebroHome(),
     terminalFontSize: DEFAULT_TERMINAL_FONT_SIZE,
-    terminalFontFamily: TERMINAL_FONT_FAMILY_AUTO
+    terminalFontFamily: TERMINAL_FONT_FAMILY_AUTO,
+    keybinds: {}
   }
 }
 
@@ -92,11 +94,29 @@ function normalizeFontFamily(value: string): string {
   return trimmed
 }
 
+function normalizeKeybinds(value: unknown): Record<string, string> {
+  if (value == null) return {}
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Keybinds must be an object.')
+  }
+  const next: Record<string, string> = {}
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof key !== 'string' || !key.trim()) continue
+    if (raw === null || raw === undefined) continue
+    if (typeof raw !== 'string') throw new Error(`Keybind for ${key} must be a string.`)
+    const trimmed = raw.trim()
+    if (!trimmed) continue
+    next[key.trim()] = trimmed
+  }
+  return next
+}
+
 function mergeSettings(stored: StoredSettings): AppSettings {
   const defaults = defaultSettings()
   let defaultCloneDir = defaults.defaultCloneDir
   let terminalFontSize = defaults.terminalFontSize
   let terminalFontFamily = defaults.terminalFontFamily
+  let keybinds = defaults.keybinds
 
   if (typeof stored.defaultCloneDir === 'string' && stored.defaultCloneDir.trim()) {
     try {
@@ -122,7 +142,15 @@ function mergeSettings(stored: StoredSettings): AppSettings {
     }
   }
 
-  return { defaultCloneDir, terminalFontSize, terminalFontFamily }
+  if (stored.keybinds !== undefined) {
+    try {
+      keybinds = normalizeKeybinds(stored.keybinds)
+    } catch {
+      // Keep default when stored value is invalid.
+    }
+  }
+
+  return { defaultCloneDir, terminalFontSize, terminalFontFamily, keybinds }
 }
 
 export function getSettings(): AppSettings {
@@ -148,6 +176,10 @@ export function setSettings(patch: AppSettingsPatch): AppSettings {
   if (patch.terminalFontFamily !== undefined) {
     if (typeof patch.terminalFontFamily !== 'string') throw new Error('Font family must be a string.')
     next.terminalFontFamily = normalizeFontFamily(patch.terminalFontFamily)
+  }
+
+  if (patch.keybinds !== undefined) {
+    next.keybinds = normalizeKeybinds(patch.keybinds)
   }
 
   writeStored(next)
