@@ -163,6 +163,14 @@ export const test = base.extend<ProjectGitHubFixtures>({
 
 export { expect }
 
+async function chooseBranch(page: Page, testId: string, branch: string): Promise<void> {
+  await page.getByTestId(testId).click()
+  const search = page.getByTestId(`${testId}-search`)
+  await expect(search).toBeVisible()
+  await search.fill(branch)
+  await page.getByRole('option', { name: branch, exact: true }).click()
+}
+
 async function connectGitHub(page: Page, githubMock: MockGitHubServer): Promise<void> {
   await page.getByTestId('settings-button').click()
   await page.getByTestId('settings-nav-integrations').click()
@@ -247,13 +255,14 @@ test('GitHub-linked project shows PR state and can create worktree workspaces', 
   await page.getByTestId(`project-add-workspace-${projectMeta.projectId}`).click()
   const dialog = page.getByRole('dialog')
   await expect(dialog.getByRole('heading', { name: 'Add workspace' })).toBeVisible()
+  await expect(page.getByTestId('workspace-mode-existing')).toBeVisible()
+  await expect(page.getByTestId('workspace-mode-new')).toBeVisible()
   await expect(
     page.getByTestId('workspace-branch-skeleton').or(page.getByTestId('workspace-branch-select'))
   ).toBeVisible()
   await expect(page.getByTestId('workspace-branch-select')).toBeVisible({ timeout: 30_000 })
 
-  await page.getByTestId('workspace-branch-select').click()
-  await page.getByRole('option', { name: 'feature/review' }).click()
+  await chooseBranch(page, 'workspace-branch-select', 'feature/review')
   await dialog.getByRole('button', { name: 'Create workspace' }).click()
 
   await expect(page.getByTestId(/workspace-row-/).filter({ hasText: 'feature/review' })).toBeVisible({
@@ -289,6 +298,32 @@ test('GitHub-linked project shows PR state and can create worktree workspaces', 
   await expect(page.getByTestId(`workspace-pr-popover-${afterCreate.review!.id}`)).toContainText(
     'Changes requested'
   )
+  await page.keyboard.press('Escape')
+
+  await page.getByTestId(`project-row-${projectMeta.projectId}`).hover()
+  await page.getByTestId(`project-add-workspace-${projectMeta.projectId}`).click()
+  await expect(page.getByTestId('workspace-mode-new')).toBeVisible({ timeout: 30_000 })
+  await page.getByTestId('workspace-mode-new').click()
+  await expect(page.getByTestId('workspace-new-branch-input')).toBeVisible()
+  const createFromBase = page.getByRole('dialog').getByRole('button', { name: 'Create workspace' })
+  await expect(createFromBase).toBeEnabled()
+  await createFromBase.click()
+  await expect(page.getByRole('dialog').getByText('Enter a new branch name.')).toBeVisible()
+  await expect(createFromBase).toBeEnabled()
+  await page.getByTestId('workspace-new-branch-input').fill('feature/from-main')
+  await expect(page.getByTestId('workspace-from-select')).toContainText('main')
+  await createFromBase.click()
+  await expect(page.getByTestId(/workspace-row-/).filter({ hasText: 'feature/from-main' })).toBeVisible({
+    timeout: 60_000
+  })
+
+  const fromMain = await page.evaluate(async () => {
+    const listed = await window.cerebro.listProjects()
+    const project = listed.projects.find((item) => item.name === 'hello-world')
+    return project?.workspaces.find((workspace) => workspace.branch === 'feature/from-main') ?? null
+  })
+  expect(fromMain?.kind).toBe('worktree')
+  expect(fromMain?.id).toBeTruthy()
 })
 
 test('can delete worktrees and remove projects from the app', async ({ page, githubMock }) => {
@@ -335,8 +370,7 @@ test('can delete worktrees and remove projects from the app', async ({ page, git
   await page.getByTestId(`project-add-workspace-${projectMeta.projectId}`).click()
   const dialog = page.getByRole('dialog')
   await expect(page.getByTestId('workspace-branch-select')).toBeVisible({ timeout: 30_000 })
-  await page.getByTestId('workspace-branch-select').click()
-  await page.getByRole('option', { name: 'feature/review' }).click()
+  await chooseBranch(page, 'workspace-branch-select', 'feature/review')
   await dialog.getByRole('button', { name: 'Create workspace' }).click()
   await expect(page.getByTestId(/workspace-row-/).filter({ hasText: 'feature/review' })).toBeVisible({
     timeout: 60_000
@@ -362,8 +396,7 @@ test('can delete worktrees and remove projects from the app', async ({ page, git
   // Create another worktree and remove from app only.
   await page.getByTestId(`project-add-workspace-${projectMeta.projectId}`).click()
   await expect(page.getByTestId('workspace-branch-select')).toBeVisible({ timeout: 30_000 })
-  await page.getByTestId('workspace-branch-select').click()
-  await page.getByRole('option', { name: 'feature/conflict' }).click()
+  await chooseBranch(page, 'workspace-branch-select', 'feature/conflict')
   await page.getByRole('dialog').getByRole('button', { name: 'Create workspace' }).click()
   await expect(
     page.getByTestId(/workspace-row-/).filter({ hasText: 'feature/conflict' })

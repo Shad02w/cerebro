@@ -293,10 +293,14 @@ export async function listProjectBranches(projectId: number): Promise<ProjectBra
 
 export async function createWorkspaceFromBranch(
   projectId: number,
-  branch: string
+  branch: string,
+  from?: string
 ): Promise<Workspace> {
   const token = readGitHubToken()
-  const created = await coreCreateWorkspaceFromBranch(projectId, branch, { githubToken: token })
+  const created = await coreCreateWorkspaceFromBranch(projectId, branch, {
+    githubToken: token,
+    from
+  })
 
   const listed = await listProjects()
   const workspace = listed.projects

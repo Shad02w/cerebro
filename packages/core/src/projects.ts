@@ -743,10 +743,15 @@ export async function listProjectBranches(
 export async function createWorkspaceFromBranch(
   projectId: number,
   branch: string,
-  options?: { githubToken?: string | null }
+  options?: { githubToken?: string | null; from?: string | null }
 ): Promise<Workspace> {
   const trimmed = branch.trim()
   if (!trimmed) throw new Error('Branch name is required.')
+
+  const from = options?.from?.trim() || null
+  if (options?.from != null && options.from.trim() === '') {
+    throw new Error('Base branch is required when creating a new branch.')
+  }
 
   const db = getDb()
   const project = db.prepare('SELECT id, name, kind FROM projects WHERE id = ?').get(projectId) as
@@ -773,7 +778,7 @@ export async function createWorkspaceFromBranch(
   const token = options?.githubToken
 
   try {
-    await addWorktree(repository.local_path, dest, trimmed, token)
+    await addWorktree(repository.local_path, dest, trimmed, token, from)
   } catch (error) {
     if (existsSync(dest)) rmSync(dest, { recursive: true, force: true })
     throw error

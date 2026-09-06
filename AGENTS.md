@@ -37,6 +37,17 @@ The window is two regions: **sidebar** | **content area**. Use these names, not 
 
   Clicking a workspace row selects it. A terminal opens when the user adds one from the tab bar, or when they press Mod+T while a workspace row is focused.
 
+### UI conventions
+
+#### Forms
+
+Never disable a form submit button — not for empty or invalid fields, and not while loading or mutating.
+
+- Invalid input: keep the button available and show an error message.
+- Loading or mutating: keep the button available (it may show a spinner and an in-progress label). Guard the submit handler with the in-flight state so a second submit is ignored until the work finishes. Do not use `disabled` to block double-submit.
+
+This applies to form submit controls, not to actions that are structurally unavailable (for example a default workspace Delete menu item).
+
 ### Verify UI with Playwright against Electron
 
 When changing desktop UI, layout, styling, routing, client state, or rendered data:
@@ -91,6 +102,7 @@ cerebro project remove <project-id>
 
 cerebro workspace list [--project <id>]
 cerebro workspace create --project <id> --branch <name>
+cerebro workspace create --project <id> --branch <name> --from <base>
 cerebro workspace path <workspace-id>
 cerebro workspace delete <workspace-id>
 cerebro workspace remove <workspace-id>
@@ -106,7 +118,8 @@ cerebro workspace --help
 
 ```bash
 # Correct: capture and use in one call
-RESULT=$(cerebro workspace create --project 1 --branch my-feature)
+# Existing branch: omit --from. New branch from a base: pass --from.
+RESULT=$(cerebro workspace create --project 1 --branch my-feature --from main)
 WS_ID=$(echo "$RESULT" | jq '.id')
 WS_PATH=$(echo "$RESULT" | jq -r '.localPath')
 ```
@@ -131,7 +144,9 @@ cerebro workspace list --project 3
 
 **Stable error codes** in the `code` field: `not_found`, `conflict`, `create_failed`, `list_failed`, `usage`, `internal`.
 
-**`workspace create` on an existing branch exits 1 with `code: "conflict"`.** Check for this before retrying.
+**`workspace create` is for GitHub-linked single-root projects only.** Multi-root projects cannot add worktrees.
+
+**`workspace create` when a workspace for that branch already exists exits 1 with `code: "conflict"`.** Check for this before retrying. Creating a new branch with `--from` also exits `conflict` if that branch already exists locally or on origin.
 
 **`workspace delete` / `workspace remove` on a default workspace exits 1 with `code: "conflict"`.** Remove the project instead (`project delete` / `project remove`).
 

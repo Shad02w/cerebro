@@ -126,7 +126,11 @@ export type CerebroApi = {
   pickProjectDirectory: () => Promise<string | null>
   removeProject: (projectId: number, deleteFiles: boolean) => Promise<ProjectListResult>
   setActiveWorkspace: (workspaceId: number) => Promise<ProjectListResult>
-  createWorkspace: (projectId: number, branch: string) => Promise<Workspace>
+  createWorkspace: (
+    projectId: number,
+    branch: string,
+    from?: string | null
+  ) => Promise<Workspace>
   removeWorkspace: (workspaceId: number, deleteFiles: boolean) => Promise<ProjectListResult>
   listProjectBranches: (projectId: number) => Promise<ProjectBranch[]>
   openExternal: (url: string) => Promise<void>

@@ -687,6 +687,8 @@ test('keeps the sidebar trigger visible above the tab bar when collapsed', async
     await addProjectViaUi(page, `file://${source}`, 'term-collapse')
     await selectWorkspaceRow(page, 'main')
     await expect(page.getByTestId('terminal-tab-bar')).toBeVisible()
+    await openNewTerminal(page)
+    await expect(page.getByTestId('terminal-tab').filter({ hasText: 'Terminal 1' })).toBeVisible()
 
     const trigger = page.getByRole('button', { name: 'Toggle Sidebar' })
     await trigger.click()
@@ -700,38 +702,67 @@ test('keeps the sidebar trigger visible above the tab bar when collapsed', async
       .toBeLessThanOrEqual(1)
 
     const layout = await page.evaluate(() => {
+      const appRegion = (el: Element): string => {
+        const style = getComputedStyle(el) as CSSStyleDeclaration & { webkitAppRegion?: string }
+        return style.getPropertyValue('-webkit-app-region') || style.webkitAppRegion || ''
+      }
       const triggerEl = document.querySelector('[data-slot="sidebar-trigger"]')
+      const triggerHost = document.querySelector('[data-testid="titlebar-sidebar-trigger"]')
       const tabBar = document.querySelector('[data-testid="terminal-tab-bar"]')
+      const tab = document.querySelector('[data-testid="terminal-tab"]')
       const plus = document.querySelector('[data-testid="new-terminal-tab"]')
-      if (!triggerEl || !tabBar || !plus) throw new Error('Collapsed chrome elements were not found.')
+      if (!triggerEl || !triggerHost || !tabBar || !tab || !plus) {
+        throw new Error('Collapsed chrome elements were not found.')
+      }
       const triggerBox = triggerEl.getBoundingClientRect()
       const tabBox = tabBar.getBoundingClientRect()
+      const tabButtonBox = tab.getBoundingClientRect()
       const plusBox = plus.getBoundingClientRect()
+      const hit = document.elementFromPoint(
+        triggerBox.left + triggerBox.width / 2,
+        triggerBox.top + triggerBox.height / 2
+      )
       return {
         triggerTop: triggerBox.top,
+        triggerLeft: triggerBox.left,
         triggerRight: triggerBox.right,
         triggerHeight: triggerBox.height,
+        triggerHostContainsButton: triggerHost.contains(triggerEl),
+        triggerHostRegion: appRegion(triggerHost),
         tabLeft: tabBox.left,
         tabRight: tabBox.right,
-        tabPaddingLeft: getComputedStyle(tabBar).paddingLeft,
+        tabHeight: tabBox.height,
+        tabButtonHeight: tabButtonBox.height,
+        tabButtonTop: tabButtonBox.top,
         plusTop: plusBox.top,
         plusLeft: plusBox.left,
         plusHeight: plusBox.height,
         plusMid: plusBox.top + plusBox.height / 2,
         triggerMid: triggerBox.top + triggerBox.height / 2,
+        hitIsTrigger: Boolean(hit && triggerEl.contains(hit)),
         windowWidth: window.innerWidth
       }
     })
 
     expect(layout.tabLeft).toBeLessThanOrEqual(1)
     expect(layout.tabRight).toBeGreaterThanOrEqual(layout.windowWidth - 1)
-    expect(layout.tabPaddingLeft).toBe('110px')
+    expect(layout.tabHeight).toBe(44)
+    expect(layout.tabButtonHeight).toBe(44)
+    expect(layout.tabButtonTop).toBe(0)
+    expect(layout.triggerHostContainsButton).toBe(true)
+    expect(layout.triggerHostRegion).toBe('no-drag')
+    expect(Math.round(layout.triggerLeft)).toBe(78)
     expect(layout.plusLeft).toBeGreaterThanOrEqual(layout.triggerRight)
     expect(layout.triggerHeight).toBe(24)
     expect(layout.plusHeight).toBe(24)
     expect(Math.round(layout.triggerTop)).toBe(Math.round(layout.plusTop))
     expect(Math.round(layout.triggerMid)).toBe(22)
     expect(Math.round(layout.plusMid)).toBe(22)
+    expect(layout.hitIsTrigger).toBe(true)
+
+    await trigger.click()
+    await expect(page.locator('[data-slot="sidebar"]')).toHaveAttribute('data-state', 'expanded')
+    await expect(page.getByTestId('sidebar-brain-mark')).toBeVisible()
   } finally {
     await rm(sourcesRoot, { recursive: true, force: true })
   }

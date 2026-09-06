@@ -65,6 +65,7 @@ export function AddProjectDialog({
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault()
+    if (busy) return
     const url = gitUrl.trim()
     if (!url) {
       setError('Enter a Git URL, or choose a folder.')
@@ -84,6 +85,7 @@ export function AddProjectDialog({
   }
 
   const handleChooseFolder = async (): Promise<void> => {
+    if (busy) return
     setError(null)
     setSubmitting('directory')
     try {
@@ -136,7 +138,7 @@ export function AddProjectDialog({
             <Button
               type="button"
               variant="outline"
-              disabled={busy}
+              aria-busy={submitting === 'directory'}
               data-testid="add-project-choose-folder"
               onClick={(): void => {
                 void handleChooseFolder()
@@ -156,7 +158,7 @@ export function AddProjectDialog({
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={busy}>
+            <Button type="submit" aria-busy={submitting === 'clone'}>
               {submitting === 'clone' ? <Loader2 className="animate-spin" /> : null}
               {submitting === 'clone' ? 'Cloning…' : 'Clone repository'}
             </Button>

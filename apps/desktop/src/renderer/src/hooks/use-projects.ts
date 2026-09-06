@@ -12,7 +12,7 @@ type ProjectsState = {
   createProject: (gitUrl: string) => Promise<Project>
   createProjectFromDirectory: (directory: string) => Promise<Project>
   selectWorkspace: (workspaceId: number) => Promise<void>
-  createWorkspace: (projectId: number, branch: string) => Promise<Workspace>
+  createWorkspace: (projectId: number, branch: string, from?: string | null) => Promise<Workspace>
   removeWorkspace: (workspaceId: number, deleteFiles: boolean) => Promise<void>
   removeProject: (projectId: number, deleteFiles: boolean) => Promise<void>
   listProjectBranches: (projectId: number) => Promise<ProjectBranch[]>
@@ -90,9 +90,9 @@ export function useProjects(): ProjectsState {
   }, [])
 
   const createWorkspace = useCallback(
-    async (projectId: number, branch: string): Promise<Workspace> => {
+    async (projectId: number, branch: string, from?: string | null): Promise<Workspace> => {
       setError(null)
-      const workspace = await window.cerebro.createWorkspace(projectId, branch)
+      const workspace = await window.cerebro.createWorkspace(projectId, branch, from)
       await refresh()
       return workspace
     },

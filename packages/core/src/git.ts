@@ -247,24 +247,58 @@ export async function listRemoteBranches(repoPath: string, token?: string | null
   return [...branches].sort((a, b) => a.localeCompare(b))
 }
 
+async function gitRefExists(repoPath: string, ref: string): Promise<boolean> {
+  try {
+    await runGit(['show-ref', '--verify', '--quiet', ref], repoPath)
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function resolveStartPoint(repoPath: string, branch: string): Promise<string | null> {
+  if (await gitRefExists(repoPath, `refs/remotes/origin/${branch}`)) {
+    return `origin/${branch}`
+  }
+  if (await gitRefExists(repoPath, `refs/heads/${branch}`)) {
+    return branch
+  }
+  return null
+}
+
 export async function addWorktree(
   repoPath: string,
   destination: string,
   branch: string,
-  token?: string | null
+  token?: string | null,
+  from?: string | null
 ): Promise<void> {
   await fetchRemote(repoPath, token)
 
-  // Prefer attaching an existing local branch; otherwise create from origin/<branch>.
-  let localExists = false
-  try {
-    await runGit(['show-ref', '--verify', '--quiet', `refs/heads/${branch}`], repoPath)
-    localExists = true
-  } catch {
-    localExists = false
+  const base = from?.trim() || null
+  if (base) {
+    if (base === branch) {
+      throw new Error('New branch name must be different from the base branch.')
+    }
+
+    if (await gitRefExists(repoPath, `refs/heads/${branch}`)) {
+      throw new Error(`A local branch "${branch}" already exists.`)
+    }
+    if (await gitRefExists(repoPath, `refs/remotes/origin/${branch}`)) {
+      throw new Error(`A branch "${branch}" already exists.`)
+    }
+
+    const startPoint = await resolveStartPoint(repoPath, base)
+    if (!startPoint) {
+      throw new Error(`Base branch "${base}" was not found.`)
+    }
+
+    await runGit(['worktree', 'add', '-b', branch, destination, startPoint], repoPath)
+    return
   }
 
-  if (localExists) {
+  // Prefer attaching an existing local branch; otherwise create from origin/<branch>.
+  if (await gitRefExists(repoPath, `refs/heads/${branch}`)) {
     await runGit(['worktree', 'add', destination, branch], repoPath)
     return
   }

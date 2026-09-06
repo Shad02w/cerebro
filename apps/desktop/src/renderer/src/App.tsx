@@ -15,10 +15,19 @@ import { TITLEBAR_HEIGHT, TITLEBAR_TRIGGER_LEFT } from '@/lib/titlebar'
 import type { Project } from '@shared/types'
 
 function WindowDragOverlay({
-  showSidebarTrigger
+  showSidebarTrigger,
+  deferTriggerToTabBar
 }: {
   showSidebarTrigger: boolean
+  deferTriggerToTabBar: boolean
 }): React.JSX.Element {
+  const { state } = useSidebar()
+  // When the sidebar is collapsed, a workspace tab bar covers this strip. Electron
+  // ignores z-index for -webkit-app-region: a sibling trigger over that drag
+  // region is not clickable. TerminalTabBar hosts the trigger in that case.
+  const showTrigger =
+    showSidebarTrigger && !(deferTriggerToTabBar && state === 'collapsed')
+
   return (
     <>
       <div
@@ -26,9 +35,7 @@ function WindowDragOverlay({
         className="app-drag-region fixed inset-x-0 top-0 z-40"
         style={{ height: TITLEBAR_HEIGHT }}
       />
-      {showSidebarTrigger ? (
-        // Sibling of the overlay: a nested trigger is trapped in the overlay's z-40
-        // stacking context and the z-50 tab bar covers it when the sidebar collapses.
+      {showTrigger ? (
         <div
           data-testid="titlebar-sidebar-trigger"
           className="app-no-drag fixed top-0 z-[60] flex items-center"
@@ -110,7 +117,10 @@ function App(): React.JSX.Element {
       <KeybindProvider overrides={settings?.keybinds}>
         <SidebarKeybindBridge />
         <ExpandSidebarOnSettings enabled={isSettings} />
-        <WindowDragOverlay showSidebarTrigger={!isSettings} />
+        <WindowDragOverlay
+          showSidebarTrigger={!isSettings}
+          deferTriggerToTabBar={activeWorkspace != null}
+        />
         <AppSidebar
           mode={isSettings ? 'settings' : 'projects'}
           projects={projects}
@@ -181,12 +191,13 @@ function App(): React.JSX.Element {
           open={workspaceDialogProject != null}
           projectId={workspaceDialogProject?.id ?? null}
           projectName={workspaceDialogProject?.name ?? null}
+          defaultBranch={workspaceDialogProject?.repositories[0]?.defaultBranch ?? null}
           onOpenChange={(open): void => {
             if (!open) setWorkspaceDialogProject(null)
           }}
           onListBranches={listProjectBranches}
-          onCreate={async (projectId, branch): Promise<void> => {
-            await createWorkspace(projectId, branch)
+          onCreate={async (projectId, branch, from): Promise<void> => {
+            await createWorkspace(projectId, branch, from)
           }}
         />
       </KeybindProvider>

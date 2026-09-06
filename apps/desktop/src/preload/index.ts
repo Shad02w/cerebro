@@ -11,8 +11,8 @@ const api: CerebroApi = {
   removeProject: (projectId, deleteFiles) =>
     ipcRenderer.invoke(IPC.projects.remove, projectId, deleteFiles),
   setActiveWorkspace: (workspaceId) => ipcRenderer.invoke(IPC.workspaces.setActive, workspaceId),
-  createWorkspace: (projectId, branch) =>
-    ipcRenderer.invoke(IPC.workspaces.create, projectId, branch),
+  createWorkspace: (projectId, branch, from) =>
+    ipcRenderer.invoke(IPC.workspaces.create, projectId, branch, from ?? null),
   removeWorkspace: (workspaceId, deleteFiles) =>
     ipcRenderer.invoke(IPC.workspaces.remove, workspaceId, deleteFiles),
   listProjectBranches: (projectId) => ipcRenderer.invoke(IPC.projects.listBranches, projectId),

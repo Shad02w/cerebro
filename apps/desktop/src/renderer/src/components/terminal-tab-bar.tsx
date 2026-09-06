@@ -1,9 +1,13 @@
 import { Plus, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { useSidebar } from '@/components/ui/sidebar'
+import { SidebarTrigger, useSidebar } from '@/components/ui/sidebar'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ShortcutKbd, useKeybindBinding } from '@/keybinds'
-import { TITLEBAR_COLLAPSED_INSET_LEFT, TITLEBAR_HEIGHT } from '@/lib/titlebar'
+import {
+  TITLEBAR_COLLAPSED_INSET_LEFT,
+  TITLEBAR_HEIGHT,
+  TITLEBAR_TRIGGER_LEFT
+} from '@/lib/titlebar'
 import { cn } from '@/lib/utils'
 
 export type TerminalTab = {
@@ -34,15 +38,21 @@ export function TerminalTabBar({
   return (
     <div
       data-testid="terminal-tab-bar"
-      className="app-drag-region relative z-50 flex shrink-0 items-center bg-background pr-2 shadow-[inset_0_-1px_0_0_var(--border)]"
-      style={{
-        height: TITLEBAR_HEIGHT,
-        ...(insetLeft > 0 ? { paddingLeft: insetLeft } : {})
-      }}
+      className="app-drag-region relative z-50 flex shrink-0 items-stretch bg-background pr-2 shadow-[inset_0_-1px_0_0_var(--border)]"
+      style={{ height: TITLEBAR_HEIGHT }}
       role="tablist"
       aria-label="Terminal tabs"
     >
-      <div className="flex min-w-0 items-center gap-0.5 overflow-x-auto">
+      {insetLeft > 0 ? (
+        <div
+          data-testid="titlebar-sidebar-trigger"
+          className="app-no-drag flex h-full shrink-0 items-center"
+          style={{ width: insetLeft, paddingLeft: TITLEBAR_TRIGGER_LEFT }}
+        >
+          <SidebarTrigger size="icon-xs" className="app-no-drag size-6" />
+        </div>
+      ) : null}
+      <div className="flex h-full min-w-0 items-stretch gap-0.5 overflow-x-auto">
         {tabs.map((tab) => {
           const selected = tab.id === activeTabId
           return (

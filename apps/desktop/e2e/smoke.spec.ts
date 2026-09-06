@@ -36,6 +36,12 @@ test('launches the real Electron window with preload and empty state', async ({
   await expect(dialog).toContainText('clone the default branch into')
   await expect(dialog.locator('code')).toBeVisible()
   await expect(dialog.getByRole('button', { name: 'Choose folder' })).toBeVisible()
+  const clone = dialog.getByRole('button', { name: 'Clone repository' })
+  await dialog.getByLabel('Git URL').fill('')
+  await expect(clone).toBeEnabled()
+  await clone.click()
+  await expect(dialog.getByText('Enter a Git URL, or choose a folder.')).toBeVisible()
+  await expect(clone).toBeEnabled()
 })
 
 test('window drag overlay spans the top without taking layout space', async ({ page }) => {

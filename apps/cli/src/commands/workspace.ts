@@ -13,7 +13,9 @@ Usage: cerebro workspace <command>
 
 Commands:
   list [--project <id>]                  List workspaces, optionally filtered by project id
-  create --project <id> --branch <name>  Create a new git worktree workspace
+  create --project <id> --branch <name> [--from <base>]
+                                         Create a worktree for an existing branch, or a new
+                                         branch based on --from
   path <workspace-id>                    Print the local filesystem path for a workspace
   delete <workspace-id>                  Delete a worktree workspace from disk and unregister it
   remove <workspace-id>                  Unregister a worktree workspace; leave the directory
@@ -95,6 +97,11 @@ export async function workspaceCommand(args: string[]): Promise<void> {
     const flags = parseFlags(rest)
     const projectId = typeof flags['project'] === 'string' ? Number(flags['project']) : null
     const branch = typeof flags['branch'] === 'string' ? flags['branch'] : null
+    const fromFlag = flags['from']
+    if (fromFlag === true) {
+      die('--from <base> requires a branch name', 'usage', 2)
+    }
+    const from = typeof fromFlag === 'string' ? fromFlag : null
 
     if (!projectId || !Number.isInteger(projectId) || projectId <= 0) {
       die('--project <id> is required and must be a positive integer', 'usage', 2)
@@ -104,7 +111,7 @@ export async function workspaceCommand(args: string[]): Promise<void> {
     }
 
     try {
-      const workspace = await createWorkspaceFromBranch(projectId, branch)
+      const workspace = await createWorkspaceFromBranch(projectId, branch, from ? { from } : undefined)
       printJson(workspace)
       notifyInvalidate()
     } catch (err) {

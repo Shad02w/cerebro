@@ -107,19 +107,23 @@ export function registerWorkspaceIpc(): void {
     }
   })
 
-  ipcMain.handle(IPC.workspaces.create, async (_event, projectId: unknown, branch: unknown) => {
-    if (typeof projectId !== 'number' || !Number.isInteger(projectId)) {
-      throw new Error('Project id is required.')
+  ipcMain.handle(
+    IPC.workspaces.create,
+    async (_event, projectId: unknown, branch: unknown, from: unknown) => {
+      if (typeof projectId !== 'number' || !Number.isInteger(projectId)) {
+        throw new Error('Project id is required.')
+      }
+      if (typeof branch !== 'string') {
+        throw new Error('Branch name is required.')
+      }
+      const fromBranch = typeof from === 'string' && from.trim() ? from.trim() : undefined
+      try {
+        return await createWorkspaceFromBranch(projectId, branch, fromBranch)
+      } catch (error) {
+        throw new Error(errorMessage(error))
+      }
     }
-    if (typeof branch !== 'string') {
-      throw new Error('Branch name is required.')
-    }
-    try {
-      return await createWorkspaceFromBranch(projectId, branch)
-    } catch (error) {
-      throw new Error(errorMessage(error))
-    }
-  })
+  )
 
   ipcMain.handle(
     IPC.workspaces.remove,
