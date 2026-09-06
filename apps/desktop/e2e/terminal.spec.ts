@@ -37,8 +37,13 @@ async function selectWorkspaceRow(page: Page, name: string): Promise<void> {
   await sidebar.getByTestId(/workspace-row-/).filter({ hasText: name }).click()
 }
 
-async function openNewTerminal(page: Page): Promise<void> {
+async function clickNewTerminalMenu(page: Page): Promise<void> {
   await page.getByTestId('new-terminal-tab').click()
+  await page.getByTestId('open-terminal-tab').click()
+}
+
+async function openNewTerminal(page: Page): Promise<void> {
+  await clickNewTerminalMenu(page)
   await waitForActiveTerminal(page)
 }
 
@@ -316,7 +321,7 @@ test('supports multiple terminal tabs; close and shell exit remove the tab', asy
     )
     await expect(page.locator(`[data-terminal-workspace-id="${workspaceId}"] .xterm`)).toHaveCount(1)
 
-    await page.getByTestId('new-terminal-tab').click()
+    await clickNewTerminalMenu(page)
     await expect(page.getByTestId('terminal-tab')).toHaveCount(2)
     await expect(page.getByTestId('terminal-tab').filter({ hasText: 'Terminal 2' })).toHaveAttribute(
       'data-active',
@@ -360,7 +365,7 @@ test('supports multiple terminal tabs; close and shell exit remove the tab', asy
     await expect(page.locator(`[data-terminal-workspace-id="${workspaceId}"] .xterm`)).toHaveCount(1)
     await waitForActiveTerminal(page)
 
-    await page.getByTestId('new-terminal-tab').click()
+    await clickNewTerminalMenu(page)
     await expect(page.getByTestId('terminal-tab')).toHaveCount(2)
     await waitForActiveTerminal(page)
 
@@ -375,7 +380,7 @@ test('supports multiple terminal tabs; close and shell exit remove the tab', asy
     await expect(page.getByTestId('terminal-tab-bar')).toBeVisible()
     await expect(page.getByTestId('new-terminal-tab')).toBeVisible()
 
-    await page.getByTestId('new-terminal-tab').click()
+    await clickNewTerminalMenu(page)
     await expect(page.getByTestId('terminal-tab')).toHaveCount(1)
     await waitForActiveTerminal(page)
     await expect(page.locator(`[data-terminal-workspace-id="${workspaceId}"] .xterm`)).toHaveCount(1)
@@ -489,7 +494,7 @@ test('does not spawn a terminal for a multi-root project until New terminal is c
       page.locator(`[data-terminal-workspace-id="${frontendId}"][data-terminal-active="true"] .xterm`)
     ).toBeVisible()
 
-    await page.getByTestId('new-terminal-tab').click()
+    await clickNewTerminalMenu(page)
     await expect(page.getByTestId('terminal-tab')).toHaveCount(2)
     await waitForActiveTerminal(page)
 
@@ -528,7 +533,7 @@ test('closes the active terminal tab with Mod+W and shows the shortcut on the cl
     await selectWorkspaceRow(page, 'main')
 
     await openNewTerminal(page)
-    await page.getByTestId('new-terminal-tab').click()
+    await clickNewTerminalMenu(page)
     await expect(page.getByTestId('terminal-tab')).toHaveCount(2)
     await waitForActiveTerminal(page)
 
@@ -606,11 +611,12 @@ test('opens a terminal with Mod+T when a default-branch workspace row is focused
     ).toBeVisible()
     await expect(page.getByTestId('terminal-tab')).toHaveCount(1)
 
-    await page.getByTestId('new-terminal-tab').hover()
-    const tooltip = page.getByRole('tooltip')
-    await expect(tooltip).toBeVisible()
-    await expect(tooltip.getByText('New terminal')).toBeVisible()
-    await expect(tooltip.getByTestId('shortcut-kbd')).toHaveAttribute('data-hotkey', 'Mod+T')
+    await page.getByTestId('new-terminal-tab').click()
+    const terminalItem = page.getByTestId('open-terminal-tab')
+    await expect(terminalItem).toBeVisible()
+    await expect(terminalItem.getByTestId('shortcut-kbd')).toHaveAttribute('data-hotkey', 'Mod+T')
+    await expect(page.getByTestId('open-changes-tab')).toBeVisible()
+    await page.keyboard.press('Escape')
 
     await page.keyboard.press(newTerminalChord())
     await expect(page.getByTestId('terminal-tab')).toHaveCount(2)

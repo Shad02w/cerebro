@@ -1,5 +1,12 @@
-import { FileDiff, Plus, X } from 'lucide-react'
+import { FileDiff, Plus, SquareTerminal, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuShortcut,
+  DropdownMenuTrigger
+} from '@/components/ui/dropdown-menu'
 import { SidebarTrigger, useSidebar } from '@/components/ui/sidebar'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ShortcutKbd, useKeybindBinding } from '@/keybinds'
@@ -41,7 +48,6 @@ export function TerminalTabBar({
   const newHotkey = useKeybindBinding('newTerminal')
   const { state } = useSidebar()
   const insetLeft = state === 'collapsed' ? TITLEBAR_COLLAPSED_INSET_LEFT : 0
-  const changesActive = tabs.some((tab) => tab.kind === 'changes' && tab.id === activeTabId)
 
   return (
     <div
@@ -112,44 +118,41 @@ export function TerminalTabBar({
             </div>
           )
         })}
-        <Tooltip>
-          <TooltipTrigger asChild>
+        <DropdownMenu modal={false}>
+          <DropdownMenuTrigger asChild>
             <Button
               type="button"
               variant="ghost"
               size="icon-xs"
               className="app-no-drag my-auto shrink-0 size-6"
-              aria-label={`New terminal (${newHotkey})`}
+              aria-label="Add tab"
               data-testid="new-terminal-tab"
-              onClick={onNewTab}
             >
               <Plus className="size-4" />
             </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom" sideOffset={4} className="flex items-center gap-2">
-            <span>New terminal</span>
-            <ShortcutKbd hotkey={newHotkey} inverted />
-          </TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xs"
-              className={cn('app-no-drag my-auto shrink-0 size-6', changesActive && 'bg-muted')}
-              aria-label="Open changes"
-              aria-pressed={changesActive}
-              data-testid="open-changes-tab"
-              onClick={onOpenChanges}
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" side="bottom" className="w-44" data-testid="add-tab-menu">
+            <DropdownMenuItem
+              className="text-xs"
+              data-testid="open-terminal-tab"
+              onSelect={onNewTab}
             >
-              <FileDiff className="size-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom" sideOffset={4}>
-            Changes
-          </TooltipContent>
-        </Tooltip>
+              <SquareTerminal />
+              Terminal
+              <DropdownMenuShortcut className="flex items-center">
+                <ShortcutKbd hotkey={newHotkey} />
+              </DropdownMenuShortcut>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="text-xs"
+              data-testid="open-changes-tab"
+              onSelect={onOpenChanges}
+            >
+              <FileDiff />
+              Changes
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
       <div className="app-drag-region min-w-8 flex-1" />
     </div>
