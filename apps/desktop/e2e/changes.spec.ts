@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { expect, test, type ElectronApplication, type Page } from './fixtures'
@@ -34,6 +34,23 @@ async function addDirectoryViaUi(
   await mockChooseFolder(electronApp, directory)
   await page.getByRole('button', { name: 'Add project' }).first().click()
   await page.getByTestId('add-project-choose-folder').click()
+  await expect(page.getByTestId(/project-row-/).filter({ hasText: basename(directory) })).toBeVisible(
+    {
+      timeout: 30_000
+    }
+  )
+}
+
+async function listedProject(page: Page, name: string) {
+  const listed = await page.evaluate(async () => window.cerebro.listProjects())
+  return listed.projects.find((item) => item.name === name)
+}
+
+async function selectDefaultWorkspace(page: Page, projectName: string): Promise<void> {
+  const project = await listedProject(page, projectName)
+  const workspaceId = project?.workspaces[0]?.id
+  expect(workspaceId).toBeTruthy()
+  await page.getByTestId(`workspace-row-${workspaceId}`).click()
 }
 
 async function openChanges(page: Page): Promise<void> {
@@ -61,11 +78,7 @@ test('shows working-tree diffs in a Changes tab with a right-hand file list', as
     await initGitRepo(repo, 'main', 'changed-alpha')
     await writeFile(join(repo, 'README.md'), 'changed-alpha\nhello from changes\n')
     await addDirectoryViaUi(page, electronApp, repo)
-
-    const listed = await page.evaluate(async () => window.cerebro.listProjects())
-    const project = listed.projects.find((item) => item.name === 'changed-alpha')
-    expect(project?.workspaces[0]?.id).toBeTruthy()
-    await page.getByTestId(`workspace-row-${project?.workspaces[0]?.id}`).click()
+    await selectDefaultWorkspace(page, 'changed-alpha')
     await expect(page.getByTestId('terminal-tab-bar')).toBeVisible()
 
     await openChanges(page)
@@ -100,10 +113,7 @@ test('toggles the Changes sidebar between flat and tree for nested paths', async
     await mkdir(join(repo, 'src', 'util'), { recursive: true })
     await writeFile(join(repo, 'src', 'util', 'hello.ts'), 'export const hello = "world"\n')
     await addDirectoryViaUi(page, electronApp, repo)
-
-    const listed = await page.evaluate(async () => window.cerebro.listProjects())
-    const project = listed.projects.find((item) => item.name === 'changed-tree')
-    await page.getByTestId(`workspace-row-${project?.workspaces[0]?.id}`).click()
+    await selectDefaultWorkspace(page, 'changed-tree')
 
     await openChanges(page)
     const pane = activeChanges(page)
@@ -145,11 +155,7 @@ test('groups multi-root changes by repo on the root workspace and scopes nested 
     await writeFile(join(backend, 'README.md'), 'backend-app\nback-change\n')
     await addDirectoryViaUi(page, electronApp, parent)
 
-    const projectRow = page.getByTestId(/project-row-/).filter({ hasText: 'apps-folder' })
-    await expect(projectRow).toBeVisible({ timeout: 30_000 })
-
-    const listed = await page.evaluate(async () => window.cerebro.listProjects())
-    const project = listed.projects.find((item) => item.name === 'apps-folder')
+    const project = await listedProject(page, 'apps-folder')
     const frontendWorkspace = project?.workspaces.find(
       (workspace) => workspace.kind !== 'root' && workspace.localPath.endsWith('frontend')
     )
@@ -191,10 +197,7 @@ test('keeps terminals when opening and closing a Changes tab', async ({ page, el
     await initGitRepo(repo, 'main', 'changed-tabs')
     await writeFile(join(repo, 'README.md'), 'changed-tabs\nnote\n')
     await addDirectoryViaUi(page, electronApp, repo)
-
-    const listed = await page.evaluate(async () => window.cerebro.listProjects())
-    const project = listed.projects.find((item) => item.name === 'changed-tabs')
-    await page.getByTestId(`workspace-row-${project?.workspaces[0]?.id}`).click()
+    await selectDefaultWorkspace(page, 'changed-tabs')
 
     await page.getByTestId('new-terminal-tab').click()
     await expect(page.getByTestId('terminal-tab')).toHaveCount(1)
@@ -224,10 +227,7 @@ test('shows an empty state when the working tree is clean', async ({ page, elect
   try {
     await initGitRepo(repo, 'main', 'changed-empty')
     await addDirectoryViaUi(page, electronApp, repo)
-
-    const listed = await page.evaluate(async () => window.cerebro.listProjects())
-    const project = listed.projects.find((item) => item.name === 'changed-empty')
-    await page.getByTestId(`workspace-row-${project?.workspaces[0]?.id}`).click()
+    await selectDefaultWorkspace(page, 'changed-empty')
 
     await openChanges(page)
     await expect(page.getByTestId('changes-empty')).toBeVisible({ timeout: 15_000 })
