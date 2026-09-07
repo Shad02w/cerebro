@@ -79,11 +79,60 @@ async function dragTabTo(
   const to = await target.boundingBox()
   expect(from).toBeTruthy()
   expect(to).toBeTruthy()
+
+  const swapProbe = page.evaluate(() => {
+    const bar = document.querySelector('[data-testid="terminal-tab-bar"]')
+    if (!bar) {
+      return Promise.resolve({
+        seenClass: false,
+        seenTransform: false,
+        reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      })
+    }
+    return new Promise<{
+      seenClass: boolean
+      seenTransform: boolean
+      reducedMotion: boolean
+    }>((resolve) => {
+      const seen = {
+        seenClass: false,
+        seenTransform: false,
+        reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      }
+      const observe = (): void => {
+        for (const el of bar.querySelectorAll('[role="tab"]')) {
+          if (el.classList.contains('tab-swap-animate')) seen.seenClass = true
+          try {
+            if (Math.abs(new DOMMatrix(getComputedStyle(el).transform).m41) > 0.5) {
+              seen.seenTransform = true
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+      const observer = new MutationObserver(observe)
+      observer.observe(bar, {
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['class', 'style']
+      })
+      window.setTimeout(() => {
+        observer.disconnect()
+        resolve(seen)
+      }, 600)
+    })
+  })
+
   await page.mouse.move(from!.x + from!.width / 2, from!.y + from!.height / 2)
   await page.mouse.down()
   const endX = edge === 'start' ? to!.x + 8 : to!.x + to!.width - 8
   await page.mouse.move(endX, to!.y + to!.height / 2, { steps: 20 })
   await page.mouse.up()
+  const probe = await swapProbe
+  if (!probe.reducedMotion) {
+    expect(probe.seenClass || probe.seenTransform).toBe(true)
+  }
   await expect
     .poll(async () =>
       contentTabs(page).evaluateAll((tabs) =>
@@ -91,7 +140,9 @@ async function dragTabTo(
           const transform = getComputedStyle(tab).transform
           return (
             !tab.classList.contains('tab-swap-animate') &&
-            (transform === 'none' || transform === 'matrix(1, 0, 0, 1, 0, 0)')
+            (transform === 'none' ||
+              transform === 'matrix(1, 0, 0, 1, 0, 0)' ||
+              transform === 'matrix3d(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)')
           )
         })
       )
