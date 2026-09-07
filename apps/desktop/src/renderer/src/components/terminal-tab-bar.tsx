@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { FileDiff, Plus, SquareTerminal, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -28,13 +28,39 @@ export type ContentTab = {
 
 export type TerminalTab = ContentTab
 
+const TAB_DRAG_THRESHOLD_PX = 6
+
+type TabDragState = {
+  pointerId: number
+  tabId: number
+  startX: number
+  didDrag: boolean
+}
+
 type TerminalTabBarProps = {
   tabs: ContentTab[]
   activeTabId: number | null
   onSelect: (tabId: number) => void
   onClose: (tabId: number) => void
+  onReorder: (tabId: number, toIndex: number) => void
   onNewTab: () => void
   onOpenChanges: () => void
+}
+
+function dropIndexFromPoint(
+  container: HTMLElement,
+  draggedTabId: number,
+  x: number
+): number | null {
+  const tabEls = Array.from(container.querySelectorAll<HTMLElement>('[data-terminal-tab-id]'))
+  if (tabEls.length === 0) return null
+
+  const remaining = tabEls.filter((el) => Number(el.dataset.terminalTabId) !== draggedTabId)
+  for (let i = 0; i < remaining.length; i++) {
+    const rect = remaining[i].getBoundingClientRect()
+    if (x < rect.left + rect.width / 2) return i
+  }
+  return remaining.length
 }
 
 export function TerminalTabBar({
@@ -43,7 +69,8 @@ export function TerminalTabBar({
   onSelect,
   onClose,
   onNewTab,
-  onOpenChanges
+  onOpenChanges,
+  onReorder
 }: TerminalTabBarProps): React.JSX.Element {
   const closeHotkey = useKeybindBinding('closeTab')
   const newHotkey = useKeybindBinding('newTerminal')
@@ -51,10 +78,72 @@ export function TerminalTabBar({
   const { state } = useSidebar()
   const insetLeft = state === 'collapsed' ? TITLEBAR_COLLAPSED_INSET_LEFT : 0
   const [addOpen, setAddOpen] = useState(false)
+  const [draggingTabId, setDraggingTabId] = useState<number | null>(null)
+  const tabsRef = useRef<HTMLDivElement>(null)
+  const dragRef = useRef<TabDragState | null>(null)
+  const suppressClickRef = useRef(false)
+
+  const finishDrag = (event: React.PointerEvent<HTMLElement>): void => {
+    const drag = dragRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+    if (drag.didDrag) suppressClickRef.current = true
+    dragRef.current = null
+    setDraggingTabId(null)
+    document.body.style.removeProperty('cursor')
+    document.body.style.removeProperty('user-select')
+  }
+
+  const onTabPointerDown = (event: React.PointerEvent<HTMLElement>, tabId: number): void => {
+    if (event.button !== 0) return
+    if (event.target instanceof Element && event.target.closest('button')) return
+
+    dragRef.current = {
+      pointerId: event.pointerId,
+      tabId,
+      startX: event.clientX,
+      didDrag: false
+    }
+    event.currentTarget.setPointerCapture(event.pointerId)
+    onSelect(tabId)
+  }
+
+  const onTabPointerMove = (event: React.PointerEvent<HTMLElement>): void => {
+    const drag = dragRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+
+    if (!drag.didDrag) {
+      if (Math.abs(event.clientX - drag.startX) < TAB_DRAG_THRESHOLD_PX) return
+      if (tabs.length < 2) return
+      drag.didDrag = true
+      setDraggingTabId(drag.tabId)
+      document.body.style.cursor = 'grabbing'
+      document.body.style.userSelect = 'none'
+    }
+
+    const container = tabsRef.current
+    if (!container) return
+    const toIndex = dropIndexFromPoint(container, drag.tabId, event.clientX)
+    if (toIndex == null) return
+    onReorder(drag.tabId, toIndex)
+  }
+
+  const onTabClick = (event: React.MouseEvent<HTMLElement>, tabId: number): void => {
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false
+      event.preventDefault()
+      return
+    }
+    onSelect(tabId)
+  }
 
   return (
     <div
       data-testid="terminal-tab-bar"
+      data-dragging={draggingTabId != null ? 'true' : undefined}
       className="app-drag-region relative z-50 flex shrink-0 items-stretch bg-background pr-2 shadow-[inset_0_-1px_0_0_var(--border)]"
       style={{ height: TITLEBAR_HEIGHT }}
       role="tablist"
@@ -69,27 +158,35 @@ export function TerminalTabBar({
           <SidebarTrigger size="icon-xs" className="app-no-drag size-6" />
         </div>
       ) : null}
-      <div className="flex h-full min-w-0 items-stretch gap-0.5 overflow-x-auto">
+      <div ref={tabsRef} className="flex h-full min-w-0 items-stretch gap-0.5 overflow-x-auto">
         {tabs.map((tab) => {
           const selected = tab.id === activeTabId
           const isChanges = tab.kind === 'changes'
+          const dragging = tab.id === draggingTabId
           return (
             <div
               key={tab.id}
               role="tab"
               tabIndex={0}
               aria-selected={selected}
+              aria-grabbed={dragging}
               data-testid={isChanges ? 'changes-tab' : 'terminal-tab'}
               data-tab-kind={tab.kind}
               data-terminal-tab-id={tab.id}
               data-active={selected ? 'true' : 'false'}
+              data-dragging={dragging ? 'true' : undefined}
               className={cn(
-                'app-no-drag flex h-full max-w-48 min-w-0 shrink-0 cursor-pointer items-center gap-1 px-2.5 text-xs',
+                'app-no-drag flex h-full max-w-48 min-w-0 shrink-0 cursor-grab touch-none items-center gap-1 px-2.5 text-xs select-none',
                 selected
                   ? 'border-b-2 border-b-foreground bg-muted text-foreground'
-                  : 'border-b-2 border-b-transparent text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+                  : 'border-b-2 border-b-transparent text-muted-foreground hover:bg-muted/60 hover:text-foreground',
+                dragging && 'cursor-grabbing opacity-60'
               )}
-              onClick={(): void => onSelect(tab.id)}
+              onPointerDown={(event): void => onTabPointerDown(event, tab.id)}
+              onPointerMove={onTabPointerMove}
+              onPointerUp={finishDrag}
+              onPointerCancel={finishDrag}
+              onClick={(event): void => onTabClick(event, tab.id)}
               onKeyDown={(event): void => {
                 if (event.key === 'Enter' || event.key === ' ') {
                   event.preventDefault()
@@ -105,6 +202,7 @@ export function TerminalTabBar({
                     className="inline-flex size-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-background hover:text-foreground"
                     aria-label={`Close ${tab.label} (${closeHotkey})`}
                     data-testid="terminal-tab-close"
+                    onPointerDown={(event): void => event.stopPropagation()}
                     onClick={(event): void => {
                       event.stopPropagation()
                       onClose(tab.id)

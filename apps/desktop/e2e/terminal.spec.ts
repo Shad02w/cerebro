@@ -50,6 +50,42 @@ async function clickNewTerminalMenu(page: Page): Promise<void> {
   await expect(page.getByTestId('add-tab-menu')).toHaveCount(0)
 }
 
+async function clickOpenChanges(page: Page): Promise<void> {
+  await openAddTabMenu(page)
+  await page.getByTestId('open-changes-tab').click()
+  await expect(page.getByTestId('add-tab-menu')).toHaveCount(0)
+  await expect(page.getByTestId('changes-tab')).toBeVisible()
+}
+
+function contentTabs(page: Page) {
+  return page.locator('[data-testid="terminal-tab-bar"] [role="tab"]')
+}
+
+async function contentTabLabels(page: Page): Promise<string[]> {
+  return contentTabs(page).evaluateAll((tabs) =>
+    tabs.map((tab) => tab.querySelector('span')?.textContent?.trim() ?? '')
+  )
+}
+
+async function dragTabTo(
+  page: Page,
+  sourceLabel: string,
+  targetLabel: string,
+  edge: 'start' | 'end'
+): Promise<void> {
+  const source = contentTabs(page).filter({ hasText: sourceLabel })
+  const target = contentTabs(page).filter({ hasText: targetLabel })
+  const from = await source.boundingBox()
+  const to = await target.boundingBox()
+  expect(from).toBeTruthy()
+  expect(to).toBeTruthy()
+  await page.mouse.move(from!.x + from!.width / 2, from!.y + from!.height / 2)
+  await page.mouse.down()
+  const endX = edge === 'start' ? to!.x + 8 : to!.x + to!.width - 8
+  await page.mouse.move(endX, to!.y + to!.height / 2, { steps: 20 })
+  await page.mouse.up()
+}
+
 async function openNewTerminal(page: Page): Promise<void> {
   await clickNewTerminalMenu(page)
   await waitForActiveTerminal(page)
@@ -888,6 +924,63 @@ test('sends CSI u for Ctrl+; so Neovim can bind it', async ({ page }) => {
         }
       })
       .toBe('1b5b35393b3575')
+  } finally {
+    await rm(sourcesRoot, { recursive: true, force: true })
+  }
+})
+
+test('reorders content tabs by dragging', async ({ page }) => {
+  const sourcesRoot = await mkdtemp(join(tmpdir(), 'cerebro-tab-reorder-e2e-'))
+  const source = join(sourcesRoot, 'tab-reorder')
+
+  try {
+    await initGitRepo(source, 'main', 'tab-reorder')
+    await addProjectViaUi(page, `file://${source}`, 'tab-reorder')
+    await selectWorkspaceRow(page, 'main')
+    await expect(page.getByTestId('terminal-tab-bar')).toBeVisible()
+
+    await openNewTerminal(page)
+    await clickNewTerminalMenu(page)
+    await waitForActiveTerminal(page)
+    await clickOpenChanges(page)
+    await expect.poll(() => contentTabLabels(page)).toEqual([
+      'Terminal 1',
+      'Terminal 2',
+      'Changes'
+    ])
+
+    await dragTabTo(page, 'Changes', 'Terminal 1', 'start')
+    await expect.poll(() => contentTabLabels(page)).toEqual([
+      'Changes',
+      'Terminal 1',
+      'Terminal 2'
+    ])
+    await expect(page.getByTestId('changes-tab')).toHaveAttribute('data-active', 'true')
+
+    await dragTabTo(page, 'Terminal 2', 'Changes', 'start')
+    await expect.poll(() => contentTabLabels(page)).toEqual([
+      'Terminal 2',
+      'Changes',
+      'Terminal 1'
+    ])
+    await expect(page.getByTestId('terminal-tab').filter({ hasText: 'Terminal 2' })).toHaveAttribute(
+      'data-active',
+      'true'
+    )
+
+    await page.getByTestId('changes-tab').click()
+    await expect(page.getByTestId('changes-tab')).toHaveAttribute('data-active', 'true')
+    await expect(page.getByTestId('terminal-tab').filter({ hasText: 'Terminal 2' })).toHaveAttribute(
+      'data-active',
+      'false'
+    )
+
+    await page
+      .getByTestId('terminal-tab')
+      .filter({ hasText: 'Terminal 1' })
+      .getByTestId('terminal-tab-close')
+      .click()
+    await expect.poll(() => contentTabLabels(page)).toEqual(['Terminal 2', 'Changes'])
   } finally {
     await rm(sourcesRoot, { recursive: true, force: true })
   }
