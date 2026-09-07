@@ -368,6 +368,23 @@ function closeTabInWorkspace(workspace: WorkspaceTabsState, tabId: number): Work
   return { ...workspace, tabs, activeTabId: next?.id ?? null }
 }
 
+function reorderTabInWorkspace(
+  workspace: WorkspaceTabsState,
+  tabId: number,
+  toIndex: number
+): WorkspaceTabsState {
+  const fromIndex = workspace.tabs.findIndex((tab) => tab.id === tabId)
+  if (fromIndex < 0) return workspace
+
+  const clamped = Math.max(0, Math.min(toIndex, workspace.tabs.length - 1))
+  if (fromIndex === clamped) return workspace
+
+  const tabs = [...workspace.tabs]
+  const [moved] = tabs.splice(fromIndex, 1)
+  tabs.splice(clamped, 0, moved)
+  return { ...workspace, tabs }
+}
+
 function focusedWorkspaceId(): number | null {
   const el = document.activeElement
   if (!(el instanceof Element)) return null
@@ -420,6 +437,20 @@ export function TerminalStack({
       return {
         ...current,
         [workspaceId]: closeTabInWorkspace(workspace, tabId)
+      }
+    })
+  }
+
+  const reorderTab = (tabId: number, toIndex: number): void => {
+    if (activeWorkspaceId == null) return
+    setByWorkspace((current) => {
+      const workspace = current[activeWorkspaceId]
+      if (!workspace) return current
+      const next = reorderTabInWorkspace(workspace, tabId, toIndex)
+      if (next === workspace) return current
+      return {
+        ...current,
+        [activeWorkspaceId]: next
       }
     })
   }
@@ -527,6 +558,7 @@ export function TerminalStack({
           activeTabId={activeTabId}
           onSelect={selectTab}
           onClose={(tabId): void => closeTab(activeWorkspaceId, tabId)}
+          onReorder={reorderTab}
           onNewTab={(): void => {
             if (activeWorkspaceId != null) addTab(activeWorkspaceId)
           }}
