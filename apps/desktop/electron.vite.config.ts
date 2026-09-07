@@ -16,6 +16,8 @@ export default defineConfig({
       }
     },
     build: {
+      // Bundle workspace core into main. It is not a runtime Node dependency.
+      externalizeDeps: { exclude: ['@cerebro/core'] },
       rollupOptions: {
         external: ['node:sqlite', 'node-pty']
       }
