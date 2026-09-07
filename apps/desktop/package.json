@@ -11,17 +11,15 @@
     "typecheck": "pnpm run typecheck:node && pnpm run typecheck:web",
     "verify:workspaces": "tsx src/main/verify-workspaces.ts",
     "start": "electron-vite preview",
-    "predev": "pnpm --filter @cerebro/core build",
-    "prebuild": "pnpm --filter @cerebro/core build",
     "dev": "electron-vite dev",
     "build": "electron-vite build",
-    "test:e2e": "pnpm run build && node ./scripts/playwright-e2e.mjs",
+    "test:e2e": "electron-vite build && node ./scripts/playwright-e2e.mjs",
     "test:e2e:repeat": "node ./scripts/playwright-e2e.mjs",
     "postinstall": "electron-builder install-app-deps",
     "build:unpack": "pnpm run build && electron-builder --dir",
     "build:win": "pnpm run build && electron-builder --win",
-    "build:mac": "pnpm run build && electron-builder --mac",
-    "build:linux": "pnpm run build && electron-builder --linux"
+    "build:mac": "electron-vite build && electron-builder --mac",
+    "build:linux": "electron-vite build && electron-builder --linux"
   },
   "dependencies": {
     "@cerebro/core": "workspace:*",

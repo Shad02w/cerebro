@@ -16,6 +16,8 @@ export default defineConfig({
       }
     },
     build: {
+      // Don't externalize the workspace package; the alias points at source.
+      externalizeDeps: { exclude: ['@cerebro/core'] },
       rollupOptions: {
         external: ['node:sqlite', 'node-pty']
       }
