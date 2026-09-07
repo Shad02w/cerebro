@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { CanvasAddon } from '@xterm/addon-canvas'
+import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
 import '@/assets/terminal.css'
 import { DEFAULT_TERMINAL_FONT_SIZE, TERMINAL_FONT_FAMILY_AUTO } from '@shared/types'
@@ -50,6 +51,30 @@ function waitForUsableSize(host: HTMLElement, isCancelled: () => boolean): Promi
     observer.observe(host)
     const timeout = window.setTimeout(finish, 1000)
   })
+}
+
+function attachRenderer(terminal: Terminal, host: HTMLElement): void {
+  const useCanvas = (): void => {
+    try {
+      terminal.loadAddon(new CanvasAddon())
+      host.dataset.terminalRenderer = 'canvas'
+    } catch {
+      // Canvas is optional; xterm's default DOM renderer still works.
+      host.dataset.terminalRenderer = 'dom'
+    }
+  }
+
+  try {
+    const webgl = new WebglAddon()
+    webgl.onContextLoss(() => {
+      webgl.dispose()
+      useCanvas()
+    })
+    terminal.loadAddon(webgl)
+    host.dataset.terminalRenderer = 'webgl'
+  } catch {
+    useCanvas()
+  }
 }
 
 function proposedGrid(fitAddon: FitAddon): { cols: number; rows: number } | null {
@@ -136,11 +161,7 @@ function TerminalSession({
         })
         terminal.loadAddon(fitAddon)
         terminal.open(hostRef.current)
-        try {
-          terminal.loadAddon(new CanvasAddon())
-        } catch {
-          // Canvas renderer is optional; xterm's default renderer still works.
-        }
+        attachRenderer(terminal, hostRef.current)
         const initialGrid = proposedGrid(fitAddon)
         if (initialGrid) terminal.resize(initialGrid.cols, initialGrid.rows)
         hostRef.current.dataset.terminalFont = fontFamily.replaceAll('"', '')

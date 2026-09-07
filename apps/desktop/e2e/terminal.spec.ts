@@ -72,6 +72,24 @@ async function waitForActiveTerminal(page: Page): Promise<void> {
   await host.click()
 }
 
+async function expectActiveGpuRenderer(page: Page): Promise<void> {
+  const info = await page.evaluate(() => {
+    const host = document.querySelector(
+      '[data-terminal-active="true"] .terminal-host'
+    ) as HTMLElement | null
+    const probe = document.createElement('canvas')
+    return {
+      renderer: host?.dataset.terminalRenderer ?? '',
+      webglAvailable: Boolean(probe.getContext('webgl2') ?? probe.getContext('webgl'))
+    }
+  })
+  if (info.webglAvailable) {
+    expect(info.renderer).toBe('webgl')
+  } else {
+    expect(['canvas', 'dom']).toContain(info.renderer)
+  }
+}
+
 async function exitActiveTerminal(page: Page): Promise<void> {
   await waitForActiveTerminal(page)
   await page.keyboard.press('Control+C')
@@ -255,6 +273,11 @@ test('does not spawn a terminal until New terminal is clicked; project row only 
       ctx.font = '16px Menlo, Monaco, monospace'
       const menloWidth = ctx.measureText(sample).width
 
+      const probe = document.createElement('canvas')
+      const webglAvailable = Boolean(
+        probe.getContext('webgl2') ?? probe.getContext('webgl')
+      )
+
       return {
         overlayPosition: getComputedStyle(overlay).position,
         overlayTop: overlayBox.top,
@@ -271,6 +294,8 @@ test('does not spawn a terminal until New terminal is clicked; project row only 
         xtermTop: xtermBox.top,
         xtermHeight: xtermBox.height,
         font: family,
+        renderer: host.dataset.terminalRenderer ?? '',
+        webglAvailable,
         overflowY: getComputedStyle(viewport).overflowY,
         scrollbarGutter: viewport.offsetWidth - viewport.clientWidth,
         nerdWidth,
@@ -291,6 +316,11 @@ test('does not spawn a terminal until New terminal is clicked; project row only 
     expect(chrome.xtermTop).toBeGreaterThanOrEqual(chrome.sessionsTop)
     expect(chrome.xtermHeight).toBeGreaterThan(40)
     expect(chrome.font).toMatch(/Nerd Font|MesloLGS|Cerebro Mono/)
+    if (chrome.webglAvailable) {
+      expect(chrome.renderer).toBe('webgl')
+    } else {
+      expect(['canvas', 'dom']).toContain(chrome.renderer)
+    }
     expect(chrome.overflowY).toBe('auto')
     expect(chrome.scrollbarGutter).toBe(0)
     expect(chrome.nerdWidth).toBeGreaterThan(0)
@@ -361,6 +391,7 @@ test('supports multiple terminal tabs; close and shell exit remove the tab', asy
         `[data-terminal-workspace-id="${workspaceId}"][data-terminal-tab-id][data-terminal-active="true"] .xterm`
       )
     ).toBeVisible()
+    await expectActiveGpuRenderer(page)
 
     await page
       .getByTestId('terminal-tab')
