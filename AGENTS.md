@@ -6,7 +6,7 @@
 
 ### Layout terminology
 
-The window is two regions: **sidebar** | **content area**. Use these names, not "nav", "main", "panel", or "page".
+The window is two regions: **sidebar** | **content area**. Use these names, not "nav", "main", or "page". **Panel** is a split region inside a tab, not a synonym for the content area.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -23,7 +23,9 @@ The window is two regions: **sidebar** | **content area**. Use these names, not 
 ```
 
 - **sidebar** — left column (`AppSidebar`). Project list (expand/collapse), add project, and nested workspace rows. Can collapse (offcanvas).
-- **content area** — everything to the right of the sidebar (`SidebarInset`). Header plus the selected workspace (`WorkspaceView`), or the empty state when nothing is selected.
+- **content area** — everything to the right of the sidebar (`SidebarInset`). Header plus the selected workspace (`WorkspaceView`), or the empty state when nothing is selected. Workspace content opens in **tabs**.
+- **tab** — a content surface in the content area. Tabs can hold different kinds of content (currently **terminal** and **diffview**; more kinds will be added). The tab bar lists open tabs for the selected workspace.
+- **panel** — a split region inside a tab. A tab can contain one or many panels, split vertically or horizontally (like a tiling window manager), and is not limited to two. Exactly one panel is **active** at a time; the active panel is highlighted.
 
 ### Domain terminology
 

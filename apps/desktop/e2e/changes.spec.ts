@@ -317,3 +317,60 @@ test('opens Changes with Mod+Shift+G and focuses the existing tab on repeat', as
     await rm(root, { recursive: true, force: true })
   }
 })
+
+test('resizes and collapses the Changes files panel', async ({ page, electronApp }) => {
+  const root = await mkdtemp(join(tmpdir(), 'cerebro-changes-panel-e2e-'))
+  const repo = join(root, 'changed-panel')
+
+  try {
+    await initGitRepo(repo, 'main', 'changed-panel')
+    await writeFile(join(repo, 'README.md'), 'changed-panel\nhello from panel\n')
+    await addDirectoryViaUi(page, electronApp, repo)
+    await selectDefaultWorkspace(page, 'changed-panel')
+
+    await openChanges(page)
+    const pane = activeChanges(page)
+    const sidebar = pane.getByTestId('changes-sidebar')
+    const diff = pane.getByTestId('changes-diff')
+    const fileRow = pane.getByTestId('changes-file-row').filter({ hasText: 'README.md' })
+    await expect(fileRow).toBeVisible({ timeout: 15_000 })
+    await expect(sidebar).toHaveAttribute('data-state', 'expanded')
+
+    const before = await sidebar.boundingBox()
+    expect(before).toBeTruthy()
+    const rail = pane.getByTestId('changes-sidebar-rail')
+    const railBox = await rail.boundingBox()
+    expect(railBox).toBeTruthy()
+    const startX = railBox!.x + railBox!.width / 2
+    const startY = railBox!.y + Math.min(40, railBox!.height / 2)
+    await page.mouse.move(startX, startY)
+    await page.mouse.down()
+    await page.mouse.move(startX - 80, startY, { steps: 8 })
+    await page.mouse.up()
+
+    await expect
+      .poll(async () => (await sidebar.boundingBox())?.width ?? 0)
+      .toBeGreaterThan((before!.width ?? 0) + 40)
+
+    const expandedDiff = await diff.boundingBox()
+    await pane.getByTestId('changes-sidebar-toggle').click()
+    await expect(sidebar).toHaveAttribute('data-state', 'collapsed')
+    await expect(fileRow).toBeHidden()
+    await expect(pane.getByRole('button', { name: 'Expand files' })).toBeVisible()
+    await expect
+      .poll(async () => (await sidebar.boundingBox())?.width ?? 999)
+      .toBeLessThan(48)
+    await expect
+      .poll(async () => (await diff.boundingBox())?.width ?? 0)
+      .toBeGreaterThan(expandedDiff!.width)
+
+    await pane.getByTestId('changes-sidebar-toggle').click()
+    await expect(sidebar).toHaveAttribute('data-state', 'expanded')
+    await expect(fileRow).toBeVisible()
+    await expect
+      .poll(async () => (await sidebar.boundingBox())?.width ?? 0)
+      .toBeGreaterThan((before!.width ?? 0) + 40)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
