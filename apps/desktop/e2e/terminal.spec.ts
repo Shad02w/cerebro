@@ -84,24 +84,20 @@ async function dragTabTo(
     const bar = document.querySelector('[data-testid="terminal-tab-bar"]')
     if (!bar) {
       return Promise.resolve({
-        seenClass: false,
         seenTransform: false,
         reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches
       })
     }
     return new Promise<{
-      seenClass: boolean
       seenTransform: boolean
       reducedMotion: boolean
     }>((resolve) => {
       const seen = {
-        seenClass: false,
         seenTransform: false,
         reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches
       }
       const observe = (): void => {
         for (const el of bar.querySelectorAll('[role="tab"]')) {
-          if (el.classList.contains('tab-swap-animate')) seen.seenClass = true
           try {
             if (Math.abs(new DOMMatrix(getComputedStyle(el).transform).m41) > 0.5) {
               seen.seenTransform = true
@@ -115,7 +111,7 @@ async function dragTabTo(
       observer.observe(bar, {
         subtree: true,
         attributes: true,
-        attributeFilter: ['class', 'style']
+        attributeFilter: ['style']
       })
       window.setTimeout(() => {
         observer.disconnect()
@@ -131,7 +127,7 @@ async function dragTabTo(
   await page.mouse.up()
   const probe = await swapProbe
   if (!probe.reducedMotion) {
-    expect(probe.seenClass || probe.seenTransform).toBe(true)
+    expect(probe.seenTransform).toBe(true)
   }
   await expect
     .poll(async () =>
@@ -139,10 +135,9 @@ async function dragTabTo(
         tabs.every((tab) => {
           const transform = getComputedStyle(tab).transform
           return (
-            !tab.classList.contains('tab-swap-animate') &&
-            (transform === 'none' ||
-              transform === 'matrix(1, 0, 0, 1, 0, 0)' ||
-              transform === 'matrix3d(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)')
+            transform === 'none' ||
+            transform === 'matrix(1, 0, 0, 1, 0, 0)' ||
+            transform === 'matrix3d(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)'
           )
         })
       )

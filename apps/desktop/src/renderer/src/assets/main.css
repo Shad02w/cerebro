@@ -125,19 +125,6 @@
   -webkit-app-region: no-drag;
 }
 
-/* Tab reorder: compositor-only swap (FLIP invert → identity). */
-[data-testid='terminal-tab-bar'] [role='tab'].tab-swap-animate {
-  transition: transform 200ms cubic-bezier(0.2, 0, 0, 1);
-  will-change: transform;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  [data-testid='terminal-tab-bar'] [role='tab'].tab-swap-animate {
-    transition: none;
-    will-change: auto;
-  }
-}
-
 /* Selected sidebar rows: teal wash + full ring/glow (same family as the multi-root badge). */
 [data-sidebar='menu-button'][data-active='true'],
 [data-sidebar='menu-sub-button'][data-active='true'],

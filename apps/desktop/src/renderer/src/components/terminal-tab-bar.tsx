@@ -1,4 +1,22 @@
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent
+} from '@dnd-kit/core'
+import { restrictToHorizontalAxis } from '@dnd-kit/modifiers'
+import {
+  SortableContext,
+  horizontalListSortingStrategy,
+  sortableKeyboardCoordinates,
+  useSortable
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { FileDiff, Plus, SquareTerminal, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -29,49 +47,7 @@ export type ContentTab = {
 export type TerminalTab = ContentTab
 
 const TAB_DRAG_THRESHOLD_PX = 6
-const TAB_SWAP_EPSILON_PX = 0.5
-
-function prefersReducedMotion(): boolean {
-  return window.matchMedia('(prefers-reduced-motion: reduce)').matches
-}
-
-function currentTranslateX(el: HTMLElement): number {
-  const value = getComputedStyle(el).transform
-  if (!value || value === 'none') return 0
-  try {
-    return new DOMMatrix(value).m41
-  } catch {
-    return 0
-  }
-}
-
-/** Layout left, ignoring an in-flight swap transform so hit-testing stays stable. */
-function layoutLeft(el: HTMLElement): number {
-  return el.getBoundingClientRect().left - currentTranslateX(el)
-}
-
-function snapshotVisualLefts(container: HTMLElement): Map<number, number> {
-  const lefts = new Map<number, number>()
-  for (const el of container.querySelectorAll<HTMLElement>('[data-terminal-tab-id]')) {
-    const id = Number(el.dataset.terminalTabId)
-    if (!Number.isInteger(id)) continue
-    lefts.set(id, el.getBoundingClientRect().left)
-  }
-  return lefts
-}
-
-function clearTabSwap(el: HTMLElement): void {
-  el.classList.remove('tab-swap-animate')
-  el.style.transition = ''
-  el.style.transform = ''
-}
-
-type TabDragState = {
-  pointerId: number
-  tabId: number
-  startX: number
-  didDrag: boolean
-}
+const TAB_SWAP_TRANSITION = { duration: 200, easing: 'cubic-bezier(0.2, 0, 0, 1)' } as const
 
 type TerminalTabBarProps = {
   tabs: ContentTab[]
@@ -83,20 +59,100 @@ type TerminalTabBarProps = {
   onOpenChanges: () => void
 }
 
-function dropIndexFromPoint(
-  container: HTMLElement,
-  draggedTabId: number,
-  x: number
-): number | null {
-  const tabEls = Array.from(container.querySelectorAll<HTMLElement>('[data-terminal-tab-id]'))
-  if (tabEls.length === 0) return null
+function prefersReducedMotion(): boolean {
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
 
-  const remaining = tabEls.filter((el) => Number(el.dataset.terminalTabId) !== draggedTabId)
-  for (let i = 0; i < remaining.length; i++) {
-    const el = remaining[i]
-    if (x < layoutLeft(el) + el.offsetWidth / 2) return i
-  }
-  return remaining.length
+type SortableTabProps = {
+  tab: ContentTab
+  selected: boolean
+  sortable: boolean
+  closeHotkey: string
+  onSelect: (tabId: number) => void
+  onClose: (tabId: number) => void
+  onClick: (event: React.MouseEvent<HTMLElement>, tabId: number) => void
+}
+
+function SortableTab({
+  tab,
+  selected,
+  sortable,
+  closeHotkey,
+  onSelect,
+  onClose,
+  onClick
+}: SortableTabProps): React.JSX.Element {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: tab.id,
+    disabled: !sortable,
+    transition: prefersReducedMotion() ? null : TAB_SWAP_TRANSITION
+  })
+  const isChanges = tab.kind === 'changes'
+
+  return (
+    <div
+      ref={setNodeRef}
+      role="tab"
+      tabIndex={0}
+      aria-selected={selected}
+      aria-roledescription={attributes['aria-roledescription']}
+      aria-describedby={attributes['aria-describedby']}
+      aria-disabled={attributes['aria-disabled']}
+      data-testid={isChanges ? 'changes-tab' : 'terminal-tab'}
+      data-tab-kind={tab.kind}
+      data-terminal-tab-id={tab.id}
+      data-active={selected ? 'true' : 'false'}
+      data-dragging={isDragging ? 'true' : undefined}
+      className={cn(
+        'app-no-drag flex h-full max-w-48 min-w-0 shrink-0 cursor-grab touch-none items-center gap-1 px-2.5 text-xs select-none',
+        selected
+          ? 'border-b-2 border-b-foreground bg-muted text-foreground'
+          : 'border-b-2 border-b-transparent text-muted-foreground hover:bg-muted/60 hover:text-foreground',
+        isDragging && 'relative z-10 cursor-grabbing opacity-60'
+      )}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition
+      }}
+      onPointerDown={(event): void => {
+        listeners?.onPointerDown?.(event)
+        if (event.button !== 0) return
+        if (event.target instanceof Element && event.target.closest('button')) return
+        onSelect(tab.id)
+      }}
+      onKeyDown={(event): void => {
+        listeners?.onKeyDown?.(event)
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onSelect(tab.id)
+        }
+      }}
+      onClick={(event): void => onClick(event, tab.id)}
+    >
+      <span className="truncate">{tab.label}</span>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className="inline-flex size-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-background hover:text-foreground"
+            aria-label={`Close ${tab.label} (${closeHotkey})`}
+            data-testid="terminal-tab-close"
+            onPointerDown={(event): void => event.stopPropagation()}
+            onClick={(event): void => {
+              event.stopPropagation()
+              onClose(tab.id)
+            }}
+          >
+            <X className="size-3" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" sideOffset={4} className="flex items-center gap-2">
+          <span>Close</span>
+          <ShortcutKbd hotkey={closeHotkey} inverted />
+        </TooltipContent>
+      </Tooltip>
+    </div>
+  )
 }
 
 export function TerminalTabBar({
@@ -115,123 +171,33 @@ export function TerminalTabBar({
   const insetLeft = state === 'collapsed' ? TITLEBAR_COLLAPSED_INSET_LEFT : 0
   const [addOpen, setAddOpen] = useState(false)
   const [draggingTabId, setDraggingTabId] = useState<number | null>(null)
-  const tabsRef = useRef<HTMLDivElement>(null)
-  const dragRef = useRef<TabDragState | null>(null)
   const suppressClickRef = useRef(false)
-  const flipFromRef = useRef<Map<number, number> | null>(null)
-
-  useLayoutEffect(() => {
-    const from = flipFromRef.current
-    if (!from) return
-    flipFromRef.current = null
-
-    const container = tabsRef.current
-    if (!container || prefersReducedMotion()) return
-
-    const moving: HTMLElement[] = []
-    for (const el of container.querySelectorAll<HTMLElement>('[data-terminal-tab-id]')) {
-      const id = Number(el.dataset.terminalTabId)
-      const first = from.get(id)
-      if (first == null) continue
-
-      el.classList.remove('tab-swap-animate')
-      el.style.transition = 'none'
-      el.style.transform = ''
-      const dx = first - el.getBoundingClientRect().left
-      if (Math.abs(dx) < TAB_SWAP_EPSILON_PX) {
-        el.style.transition = ''
-        continue
-      }
-      el.style.transform = `translate3d(${dx}px,0,0)`
-      moving.push(el)
-    }
-    if (moving.length === 0) return
-
-    // useLayoutEffect runs before paint; a single rAF can still fire in this
-    // frame and commit the identity transform before the invert is drawn.
-    let cancelled = false
-    let playFrame = 0
-    const invertFrame = window.requestAnimationFrame(() => {
-      playFrame = window.requestAnimationFrame(() => {
-        if (cancelled) return
-        for (const el of moving) {
-          el.style.transition = ''
-          el.classList.add('tab-swap-animate')
-          el.style.transform = 'translate3d(0,0,0)'
-        }
-      })
+  const tabIds = tabs.map((tab) => tab.id)
+  const sortable = tabs.length > 1
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: TAB_DRAG_THRESHOLD_PX }
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates
     })
-    return (): void => {
-      cancelled = true
-      window.cancelAnimationFrame(invertFrame)
-      window.cancelAnimationFrame(playFrame)
-    }
-  }, [tabs])
+  )
 
-  useLayoutEffect(() => {
-    const container = tabsRef.current
-    if (!container) return
-
-    const onTransitionEnd = (event: TransitionEvent): void => {
-      if (event.propertyName !== 'transform') return
-      const el = event.target
-      if (!(el instanceof HTMLElement) || !el.hasAttribute('data-terminal-tab-id')) return
-      clearTabSwap(el)
-    }
-
-    container.addEventListener('transitionend', onTransitionEnd)
-    return (): void => container.removeEventListener('transitionend', onTransitionEnd)
-  }, [])
-
-  const finishDrag = (event: React.PointerEvent<HTMLElement>): void => {
-    const drag = dragRef.current
-    if (!drag || drag.pointerId !== event.pointerId) return
-
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId)
-    }
-    if (drag.didDrag) suppressClickRef.current = true
-    dragRef.current = null
-    setDraggingTabId(null)
-    document.body.style.removeProperty('cursor')
-    document.body.style.removeProperty('user-select')
-  }
-
-  const onTabPointerDown = (event: React.PointerEvent<HTMLElement>, tabId: number): void => {
-    if (event.button !== 0) return
-    if (event.target instanceof Element && event.target.closest('button')) return
-
-    dragRef.current = {
-      pointerId: event.pointerId,
-      tabId,
-      startX: event.clientX,
-      didDrag: false
-    }
-    event.currentTarget.setPointerCapture(event.pointerId)
+  const onDragStart = (event: DragStartEvent): void => {
+    const tabId = Number(event.active.id)
+    if (!Number.isInteger(tabId)) return
+    suppressClickRef.current = true
+    setDraggingTabId(tabId)
     onSelect(tabId)
   }
 
-  const onTabPointerMove = (event: React.PointerEvent<HTMLElement>): void => {
-    const drag = dragRef.current
-    if (!drag || drag.pointerId !== event.pointerId) return
-
-    if (!drag.didDrag) {
-      if (Math.abs(event.clientX - drag.startX) < TAB_DRAG_THRESHOLD_PX) return
-      if (tabs.length < 2) return
-      drag.didDrag = true
-      setDraggingTabId(drag.tabId)
-      document.body.style.cursor = 'grabbing'
-      document.body.style.userSelect = 'none'
-    }
-
-    const container = tabsRef.current
-    if (!container) return
-    const toIndex = dropIndexFromPoint(container, drag.tabId, event.clientX)
-    if (toIndex == null) return
-    const fromIndex = tabs.findIndex((tab) => tab.id === drag.tabId)
-    if (fromIndex < 0 || fromIndex === toIndex) return
-    flipFromRef.current = snapshotVisualLefts(container)
-    onReorder(drag.tabId, toIndex)
+  const onDragEnd = (event: DragEndEvent): void => {
+    const { active, over } = event
+    setDraggingTabId(null)
+    if (!over || active.id === over.id) return
+    const toIndex = tabs.findIndex((tab) => tab.id === over.id)
+    if (toIndex < 0) return
+    onReorder(Number(active.id), toIndex)
   }
 
   const onTabClick = (event: React.MouseEvent<HTMLElement>, tabId: number): void => {
@@ -261,118 +227,81 @@ export function TerminalTabBar({
           <SidebarTrigger size="icon-xs" className="app-no-drag size-6" />
         </div>
       ) : null}
-      <div ref={tabsRef} className="flex h-full min-w-0 items-stretch gap-0.5 overflow-x-auto">
-        {tabs.map((tab) => {
-          const selected = tab.id === activeTabId
-          const isChanges = tab.kind === 'changes'
-          const dragging = tab.id === draggingTabId
-          return (
-            <div
-              key={tab.id}
-              role="tab"
-              tabIndex={0}
-              aria-selected={selected}
-              aria-grabbed={dragging}
-              data-testid={isChanges ? 'changes-tab' : 'terminal-tab'}
-              data-tab-kind={tab.kind}
-              data-terminal-tab-id={tab.id}
-              data-active={selected ? 'true' : 'false'}
-              data-dragging={dragging ? 'true' : undefined}
-              className={cn(
-                'app-no-drag flex h-full max-w-48 min-w-0 shrink-0 cursor-grab touch-none items-center gap-1 px-2.5 text-xs select-none',
-                selected
-                  ? 'border-b-2 border-b-foreground bg-muted text-foreground'
-                  : 'border-b-2 border-b-transparent text-muted-foreground hover:bg-muted/60 hover:text-foreground',
-                dragging && 'relative z-10 cursor-grabbing opacity-60'
-              )}
-              onPointerDown={(event): void => onTabPointerDown(event, tab.id)}
-              onPointerMove={onTabPointerMove}
-              onPointerUp={finishDrag}
-              onPointerCancel={finishDrag}
-              onClick={(event): void => onTabClick(event, tab.id)}
-              onKeyDown={(event): void => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault()
-                  onSelect(tab.id)
-                }
-              }}
-            >
-              <span className="truncate">{tab.label}</span>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    className="inline-flex size-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-background hover:text-foreground"
-                    aria-label={`Close ${tab.label} (${closeHotkey})`}
-                    data-testid="terminal-tab-close"
-                    onPointerDown={(event): void => event.stopPropagation()}
-                    onClick={(event): void => {
-                      event.stopPropagation()
-                      onClose(tab.id)
-                    }}
-                  >
-                    <X className="size-3" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom" sideOffset={4} className="flex items-center gap-2">
-                  <span>Close</span>
-                  <ShortcutKbd hotkey={closeHotkey} inverted />
-                </TooltipContent>
-              </Tooltip>
-            </div>
-          )
-        })}
-        <DropdownMenu modal={false} open={addOpen} onOpenChange={setAddOpen}>
-          <DropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xs"
-              className="app-no-drag my-auto shrink-0 size-6"
-              aria-label="Add tab"
-              data-testid="new-terminal-tab"
-            >
-              <Plus className="size-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align="start"
-            side="bottom"
-            className="w-48"
-            data-testid="add-tab-menu"
-            onCloseAutoFocus={(event): void => event.preventDefault()}
-          >
-            <DropdownMenuItem
-              className="text-xs"
-              data-testid="open-terminal-tab"
-              onSelect={(): void => {
-                setAddOpen(false)
-                onNewTab()
-              }}
-            >
-              <SquareTerminal />
-              Terminal
-              <DropdownMenuShortcut className="flex items-center">
-                <ShortcutKbd hotkey={newHotkey} />
-              </DropdownMenuShortcut>
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className="text-xs"
-              data-testid="open-changes-tab"
-              onSelect={(): void => {
-                setAddOpen(false)
-                onOpenChanges()
-              }}
-            >
-              <FileDiff />
-              Changes
-              <DropdownMenuShortcut className="flex items-center">
-                <ShortcutKbd hotkey={changesHotkey} />
-              </DropdownMenuShortcut>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        modifiers={[restrictToHorizontalAxis]}
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
+        onDragCancel={(): void => setDraggingTabId(null)}
+      >
+        <SortableContext items={tabIds} strategy={horizontalListSortingStrategy}>
+          <div className="flex h-full min-w-0 items-stretch gap-0.5 overflow-x-auto">
+            {tabs.map((tab) => (
+              <SortableTab
+                key={tab.id}
+                tab={tab}
+                selected={tab.id === activeTabId}
+                sortable={sortable}
+                closeHotkey={closeHotkey}
+                onSelect={onSelect}
+                onClose={onClose}
+                onClick={onTabClick}
+              />
+            ))}
+            <DropdownMenu modal={false} open={addOpen} onOpenChange={setAddOpen}>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  className="app-no-drag my-auto shrink-0 size-6"
+                  aria-label="Add tab"
+                  data-testid="new-terminal-tab"
+                >
+                  <Plus className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="start"
+                side="bottom"
+                className="w-48"
+                data-testid="add-tab-menu"
+                onCloseAutoFocus={(event): void => event.preventDefault()}
+              >
+                <DropdownMenuItem
+                  className="text-xs"
+                  data-testid="open-terminal-tab"
+                  onSelect={(): void => {
+                    setAddOpen(false)
+                    onNewTab()
+                  }}
+                >
+                  <SquareTerminal />
+                  Terminal
+                  <DropdownMenuShortcut className="flex items-center">
+                    <ShortcutKbd hotkey={newHotkey} />
+                  </DropdownMenuShortcut>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="text-xs"
+                  data-testid="open-changes-tab"
+                  onSelect={(): void => {
+                    setAddOpen(false)
+                    onOpenChanges()
+                  }}
+                >
+                  <FileDiff />
+                  Changes
+                  <DropdownMenuShortcut className="flex items-center">
+                    <ShortcutKbd hotkey={changesHotkey} />
+                  </DropdownMenuShortcut>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </SortableContext>
+      </DndContext>
       <div className="app-drag-region min-w-8 flex-1" />
     </div>
   )
