@@ -147,14 +147,25 @@ export function TerminalTabBar({
     }
     if (moving.length === 0) return
 
-    const frame = window.requestAnimationFrame(() => {
-      for (const el of moving) {
-        el.style.transition = ''
-        el.classList.add('tab-swap-animate')
-        el.style.transform = ''
-      }
+    // useLayoutEffect runs before paint; a single rAF can still fire in this
+    // frame and commit the identity transform before the invert is drawn.
+    let cancelled = false
+    let playFrame = 0
+    const invertFrame = window.requestAnimationFrame(() => {
+      playFrame = window.requestAnimationFrame(() => {
+        if (cancelled) return
+        for (const el of moving) {
+          el.style.transition = ''
+          el.classList.add('tab-swap-animate')
+          el.style.transform = 'translate3d(0,0,0)'
+        }
+      })
     })
-    return (): void => window.cancelAnimationFrame(frame)
+    return (): void => {
+      cancelled = true
+      window.cancelAnimationFrame(invertFrame)
+      window.cancelAnimationFrame(playFrame)
+    }
   }, [tabs])
 
   useLayoutEffect(() => {

@@ -127,7 +127,7 @@
 
 /* Tab reorder: compositor-only swap (FLIP invert → identity). */
 [data-testid='terminal-tab-bar'] [role='tab'].tab-swap-animate {
-  transition: transform 180ms cubic-bezier(0.2, 0, 0, 1);
+  transition: transform 200ms cubic-bezier(0.2, 0, 0, 1);
   will-change: transform;
 }
 
