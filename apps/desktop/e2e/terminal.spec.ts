@@ -84,6 +84,19 @@ async function dragTabTo(
   const endX = edge === 'start' ? to!.x + 8 : to!.x + to!.width - 8
   await page.mouse.move(endX, to!.y + to!.height / 2, { steps: 20 })
   await page.mouse.up()
+  await expect
+    .poll(async () =>
+      contentTabs(page).evaluateAll((tabs) =>
+        tabs.every((tab) => {
+          const transform = getComputedStyle(tab).transform
+          return (
+            !tab.classList.contains('tab-swap-animate') &&
+            (transform === 'none' || transform === 'matrix(1, 0, 0, 1, 0, 0)')
+          )
+        })
+      )
+    )
+    .toBe(true)
 }
 
 async function openNewTerminal(page: Page): Promise<void> {

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { FileDiff, Plus, SquareTerminal, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -29,6 +29,42 @@ export type ContentTab = {
 export type TerminalTab = ContentTab
 
 const TAB_DRAG_THRESHOLD_PX = 6
+const TAB_SWAP_EPSILON_PX = 0.5
+
+function prefersReducedMotion(): boolean {
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
+function currentTranslateX(el: HTMLElement): number {
+  const value = getComputedStyle(el).transform
+  if (!value || value === 'none') return 0
+  try {
+    return new DOMMatrix(value).m41
+  } catch {
+    return 0
+  }
+}
+
+/** Layout left, ignoring an in-flight swap transform so hit-testing stays stable. */
+function layoutLeft(el: HTMLElement): number {
+  return el.getBoundingClientRect().left - currentTranslateX(el)
+}
+
+function snapshotVisualLefts(container: HTMLElement): Map<number, number> {
+  const lefts = new Map<number, number>()
+  for (const el of container.querySelectorAll<HTMLElement>('[data-terminal-tab-id]')) {
+    const id = Number(el.dataset.terminalTabId)
+    if (!Number.isInteger(id)) continue
+    lefts.set(id, el.getBoundingClientRect().left)
+  }
+  return lefts
+}
+
+function clearTabSwap(el: HTMLElement): void {
+  el.classList.remove('tab-swap-animate')
+  el.style.transition = ''
+  el.style.transform = ''
+}
 
 type TabDragState = {
   pointerId: number
@@ -57,8 +93,8 @@ function dropIndexFromPoint(
 
   const remaining = tabEls.filter((el) => Number(el.dataset.terminalTabId) !== draggedTabId)
   for (let i = 0; i < remaining.length; i++) {
-    const rect = remaining[i].getBoundingClientRect()
-    if (x < rect.left + rect.width / 2) return i
+    const el = remaining[i]
+    if (x < layoutLeft(el) + el.offsetWidth / 2) return i
   }
   return remaining.length
 }
@@ -82,6 +118,59 @@ export function TerminalTabBar({
   const tabsRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<TabDragState | null>(null)
   const suppressClickRef = useRef(false)
+  const flipFromRef = useRef<Map<number, number> | null>(null)
+
+  useLayoutEffect(() => {
+    const from = flipFromRef.current
+    if (!from) return
+    flipFromRef.current = null
+
+    const container = tabsRef.current
+    if (!container || prefersReducedMotion()) return
+
+    const moving: HTMLElement[] = []
+    for (const el of container.querySelectorAll<HTMLElement>('[data-terminal-tab-id]')) {
+      const id = Number(el.dataset.terminalTabId)
+      const first = from.get(id)
+      if (first == null) continue
+
+      el.classList.remove('tab-swap-animate')
+      el.style.transition = 'none'
+      el.style.transform = ''
+      const dx = first - el.getBoundingClientRect().left
+      if (Math.abs(dx) < TAB_SWAP_EPSILON_PX) {
+        el.style.transition = ''
+        continue
+      }
+      el.style.transform = `translate3d(${dx}px,0,0)`
+      moving.push(el)
+    }
+    if (moving.length === 0) return
+
+    const frame = window.requestAnimationFrame(() => {
+      for (const el of moving) {
+        el.style.transition = ''
+        el.classList.add('tab-swap-animate')
+        el.style.transform = ''
+      }
+    })
+    return (): void => window.cancelAnimationFrame(frame)
+  }, [tabs])
+
+  useLayoutEffect(() => {
+    const container = tabsRef.current
+    if (!container) return
+
+    const onTransitionEnd = (event: TransitionEvent): void => {
+      if (event.propertyName !== 'transform') return
+      const el = event.target
+      if (!(el instanceof HTMLElement) || !el.hasAttribute('data-terminal-tab-id')) return
+      clearTabSwap(el)
+    }
+
+    container.addEventListener('transitionend', onTransitionEnd)
+    return (): void => container.removeEventListener('transitionend', onTransitionEnd)
+  }, [])
 
   const finishDrag = (event: React.PointerEvent<HTMLElement>): void => {
     const drag = dragRef.current
@@ -128,6 +217,9 @@ export function TerminalTabBar({
     if (!container) return
     const toIndex = dropIndexFromPoint(container, drag.tabId, event.clientX)
     if (toIndex == null) return
+    const fromIndex = tabs.findIndex((tab) => tab.id === drag.tabId)
+    if (fromIndex < 0 || fromIndex === toIndex) return
+    flipFromRef.current = snapshotVisualLefts(container)
     onReorder(drag.tabId, toIndex)
   }
 
@@ -180,7 +272,7 @@ export function TerminalTabBar({
                 selected
                   ? 'border-b-2 border-b-foreground bg-muted text-foreground'
                   : 'border-b-2 border-b-transparent text-muted-foreground hover:bg-muted/60 hover:text-foreground',
-                dragging && 'cursor-grabbing opacity-60'
+                dragging && 'relative z-10 cursor-grabbing opacity-60'
               )}
               onPointerDown={(event): void => onTabPointerDown(event, tab.id)}
               onPointerMove={onTabPointerMove}
