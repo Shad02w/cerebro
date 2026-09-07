@@ -11,8 +11,7 @@
     "types": ["electron-vite/node"],
     "baseUrl": ".",
     "paths": {
-      "@shared/*": ["src/shared/*"],
-      "@cerebro/core": ["../../packages/core/src/index.ts"]
+      "@shared/*": ["src/shared/*"]
     }
   }
 }

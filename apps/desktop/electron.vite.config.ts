@@ -16,8 +16,6 @@ export default defineConfig({
       }
     },
     build: {
-      // Bundle workspace core from source so new exports are not lost to a stale dist.
-      externalizeDeps: { exclude: ['@cerebro/core'] },
       rollupOptions: {
         external: ['node:sqlite', 'node-pty']
       }
