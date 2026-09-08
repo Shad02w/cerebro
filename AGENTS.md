@@ -6,7 +6,7 @@
 
 ### Layout terminology
 
-The window is two regions: **sidebar** | **content area**. Use these names, not "nav", "main", or "page". **Panel** is a split region inside a tab, not a synonym for the content area.
+The window is two regions: **sidebar** | **content area**. Use these names, not "nav", "main", or "page". **Pane** is a split region inside a tab, not a synonym for the content area.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -24,8 +24,8 @@ The window is two regions: **sidebar** | **content area**. Use these names, not 
 
 - **sidebar** — left column (`AppSidebar`). Project list (expand/collapse), add project, and nested workspace rows. Can collapse (offcanvas).
 - **content area** — everything to the right of the sidebar (`SidebarInset`). Header plus the selected workspace (`WorkspaceView`), or the empty state when nothing is selected. Workspace content opens in **tabs**.
-- **tab** — a content surface in the content area. Tabs can hold different kinds of content (currently **terminal** and **diffview**; more kinds will be added). The tab bar lists open tabs for the selected workspace.
-- **panel** — a split region inside a tab. A tab can contain one or many panels, split vertically or horizontally (like a tiling window manager), and is not limited to two. Exactly one panel is **active** at a time; the active panel is highlighted.
+- **tab** — a content surface in the content area containing a BSP (Binary Space Partitioning) tree of panes. A tab can mix Terminal and Changes panes. The tab bar lists open tabs for the selected workspace.
+- **pane** — a typed leaf in a tab’s BSP tree. Adding a pane splits the active pane 50/50: right when wide, down when tall, or an explicit direction. Split directions remain fixed; dividers resize the ratio. Exactly one pane per tab is active, with a glowing border when the tab contains multiple panes. Pane IDs float at the top right; the close control is shown only for multiple panes. Pane glow, active workspace rows, and multi-root badges share `--sidebar-selected`. Closing a pane expands its sibling; closing the last pane closes the tab.
 
 ### Domain terminology
 
@@ -85,6 +85,8 @@ Pick specs by the flow you touched:
 | add local / multi-root folder | `projects-directory.spec.ts` |
 | clone from GitHub, worktrees, PRs | `projects-github.spec.ts` |
 | workspace terminal | `terminal.spec.ts` |
+| BSP panes and tab/pane CLI | `panes.spec.ts` |
+| Changes content | `changes.spec.ts` |
 
 If a change spans several flows, list those specs together (`settings.spec.ts smoke.spec.ts`). Do not add unrelated specs "just in case."
 
@@ -117,10 +119,33 @@ cerebro workspace path <workspace-id>
 cerebro workspace delete <workspace-id>
 cerebro workspace remove <workspace-id>
 
+cerebro tab list --workspace <id>
+cerebro tab create --workspace <id> --kind terminal
+cerebro tab focus --workspace <id> --tab <id>
+cerebro tab close --workspace <id> --tab <id>
+cerebro tab reorder --workspace <id> --tab <id> --index 0
+
+cerebro pane list --workspace <id> --tab <id>
+cerebro pane split --workspace <id> --pane <id> --kind changes --direction auto
+cerebro pane focus --workspace <id> --pane <id>
+cerebro pane close --workspace <id> --pane <id>
+cerebro pane resize --workspace <id> --tab <id> --split <id> --ratio 0.6
+
 cerebro --help
 cerebro project --help
 cerebro workspace --help
 ```
+
+### Live tabs and panes
+
+- Tab and pane commands require the running desktop app, using the same `$CEREBRO_HOME` as the app. They share the main process BSP state with the UI. Project/workspace commands still work without the desktop app.
+- IDs and layouts last for the app session; this is not daemon-backed terminal persistence or restart restoration.
+- `tab create` starts with one pane (`terminal` by default). `tab list` includes each tab’s BSP tree, split IDs/ratios, and active pane ID.
+- `pane split` targets `--pane`, or the active pane in `--tab` (the active tab when omitted). `--direction` accepts `auto`, `right`, or `down`. `--kind` accepts `terminal` or `changes`.
+- `pane list` lists the selected tab’s panes. Focus commands select the owning workspace in the UI. Creation/splitting selects the new content within its workspace without switching from another workspace.
+- `pane resize` changes the first child’s share of a split, from `0.1` to `0.9`. Get `--split` IDs from `tab list`.
+- The tab-bar Add menu offers New tab content plus Add pane, Split right, and Split down. Mod+W continues to close the whole tab; multi-pane tabs expose a close control on each pane.
+- `panes.spec.ts` builds the actual CLI and runs it against the isolated Electron fixture, covering both surfaces.
 
 ### Rules for agents
 
@@ -152,7 +177,7 @@ cerebro workspace list --project 3
 # Exit 2  = bad usage (missing required flag, unknown command)
 ```
 
-**Stable error codes** in the `code` field: `not_found`, `conflict`, `create_failed`, `list_failed`, `usage`, `internal`.
+**Stable error codes** in the `code` field: `not_found`, `conflict`, `create_failed`, `list_failed`, `usage`, `internal`. Live tab/pane commands also return `unavailable` when the desktop socket cannot be reached.
 
 **`workspace create` is for GitHub-linked single-root projects only.** Multi-root projects cannot add worktrees.
 

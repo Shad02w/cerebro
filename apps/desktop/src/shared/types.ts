@@ -1,3 +1,4 @@
+import type { LayoutCommand, LayoutState, LayoutReply } from '@cerebro/core'
 import type { TerminalThemeId } from './terminal-themes'
 export type LinkedRepository = {
   id: number
@@ -154,6 +155,11 @@ export type GitHubStatus =
   | { state: 'error'; message: string }
 
 export type CerebroApi = {
+  getLayout: () => Promise<LayoutState>
+  onLayoutFocusWorkspace: (listener: (workspaceId: number) => void) => () => void
+  layoutCommand: (command: LayoutCommand) => Promise<LayoutReply>
+  onLayoutChanged: (listener: (state: LayoutState) => void) => () => void
+  measurePane: (paneId: number, width: number, height: number) => void
   listProjects: () => Promise<ProjectListResult>
   createProject: (gitUrl: string) => Promise<Project>
   createProjectFromDirectory: (directory: string) => Promise<Project>

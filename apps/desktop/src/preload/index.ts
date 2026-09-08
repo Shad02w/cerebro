@@ -9,6 +9,25 @@ import type {
 } from '../shared/types'
 
 const api: CerebroApi = {
+  getLayout: () => ipcRenderer.invoke(IPC.layout.get),
+  onLayoutFocusWorkspace: (listener) => {
+    const handler = (_event: IpcRendererEvent, workspaceId: number): void => listener(workspaceId)
+    ipcRenderer.on(IPC.layout.focusWorkspace, handler)
+    return () => {
+      ipcRenderer.removeListener(IPC.layout.focusWorkspace, handler)
+    }
+  },
+  layoutCommand: (command) => ipcRenderer.invoke(IPC.layout.command, command),
+  measurePane: (paneId, width, height) =>
+    ipcRenderer.send(IPC.layout.measure, paneId, width, height),
+  onLayoutChanged: (listener) => {
+    const handler = (_event: IpcRendererEvent, state: Parameters<typeof listener>[0]): void =>
+      listener(state)
+    ipcRenderer.on(IPC.layout.changed, handler)
+    return () => {
+      ipcRenderer.removeListener(IPC.layout.changed, handler)
+    }
+  },
   listProjects: () => ipcRenderer.invoke(IPC.projects.list),
   createProject: (gitUrl) => ipcRenderer.invoke(IPC.projects.create, gitUrl),
   createProjectFromDirectory: (directory) =>

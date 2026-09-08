@@ -1,9 +1,12 @@
+import { layoutCommand, LayoutError, removeWorkspaceLayout, knownWorkspaceIds } from './panes'
+import { listProjects, type LayoutCommand } from '@cerebro/core'
 /**
  * Unix domain socket server that lets the CLI (or any other local process)
- * notify the running app to refresh its data.
+ * refresh the sidebar and manage live tabs and BSP panes.
  *
- * Protocol: newline-delimited JSON.  v1 supports one message type:
- *   { "type": "invalidate" }  — triggers a full project list refresh in the UI
+ * Protocol: newline-delimited JSON.
+ *   { "type": "invalidate" } — refreshes the project list (no reply).
+ *   { "type": "layout", "command": LayoutCommand } — returns { result } or a structured error.
  *
  * The socket lives at $CEREBRO_HOME/cerebro.sock (mode 0600).
  * It is created on app ready and removed on quit.
@@ -34,13 +37,48 @@ export function startSocketServer(): void {
 
     conn.on('data', (chunk: string) => {
       buf += chunk
+      if (buf.length > 65536) {
+        conn.destroy()
+        return
+      }
       const lines = buf.split('\n')
       buf = lines.pop() ?? ''
 
       for (const line of lines) {
         const trimmed = line.trim()
         if (!trimmed) continue
-        handleMessage(trimmed)
+        let message: unknown
+        try {
+          message = JSON.parse(trimmed)
+        } catch {
+          conn.end(JSON.stringify({ error: true, code: 'usage', message: 'Invalid JSON.' }) + '\n')
+          continue
+        }
+        if (
+          message &&
+          typeof message === 'object' &&
+          (message as { type?: unknown }).type === 'layout'
+        ) {
+          try {
+            const reply = layoutCommand((message as { command?: unknown }).command)
+            const command = (message as { command: LayoutCommand }).command
+            if (command.action === 'focus') {
+              for (const win of BrowserWindow.getAllWindows()) {
+                if (!win.isDestroyed())
+                  win.webContents.send(IPC.layout.focusWorkspace, command.workspaceId)
+              }
+            }
+            conn.end(JSON.stringify({ result: reply.result }) + '\n')
+          } catch (error) {
+            conn.end(
+              JSON.stringify({
+                error: true,
+                code: error instanceof LayoutError ? error.code : 'internal',
+                message: error instanceof Error ? error.message : String(error)
+              }) + '\n'
+            )
+          }
+        } else handleMessage(trimmed)
       }
     })
 
@@ -90,6 +128,16 @@ function handleMessage(raw: string): void {
   const type = (msg as Record<string, unknown>).type
 
   if (type === 'invalidate') {
+    void listProjects()
+      .then((listed) => {
+        const ids = new Set(
+          listed.projects.flatMap((project) => project.workspaces.map((workspace) => workspace.id))
+        )
+        // Layout cleanup for workspaces unregistered through the CLI.
+        for (const workspaceId of knownWorkspaceIds())
+          if (!ids.has(workspaceId)) removeWorkspaceLayout(workspaceId)
+      })
+      .catch((error) => console.error('[ipc-socket] Layout cleanup failed:', error))
     // Tell every renderer to re-fetch project list.
     for (const win of BrowserWindow.getAllWindows()) {
       if (!win.isDestroyed()) {

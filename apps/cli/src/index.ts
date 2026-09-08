@@ -17,6 +17,7 @@
  * Run any command with --help for details.
  */
 
+import { layoutCommand } from './commands/layout'
 import { projectCommand } from './commands/project'
 import { workspaceCommand } from './commands/workspace'
 
@@ -26,6 +27,8 @@ Usage: cerebro <command> [options]
 Commands:
   project    Manage projects (cloned git repositories or opened folders)
   workspace  Manage workspaces (default branch + git worktrees)
+  tab        Manage live workspace tabs (desktop app required)
+  pane       Manage BSP panes inside tabs (desktop app required)
 
 Options:
   --version  Print version
@@ -51,6 +54,11 @@ async function main(): Promise<void> {
     process.exit(0)
   }
 
+  if (command === 'tab' || command === 'pane') {
+    await layoutCommand(command, rest)
+    return
+  }
+
   if (command === 'project') {
     await projectCommand(rest)
     return
@@ -62,18 +70,26 @@ async function main(): Promise<void> {
   }
 
   process.stderr.write(
-    JSON.stringify({ error: true, code: 'usage', message: `Unknown command: "${command}". Run: cerebro --help` }, null, 2) + '\n'
+    JSON.stringify(
+      { error: true, code: 'usage', message: `Unknown command: "${command}". Run: cerebro --help` },
+      null,
+      2
+    ) + '\n'
   )
   process.exit(2)
 }
 
 main().catch((err: unknown) => {
   process.stderr.write(
-    JSON.stringify({
-      error: true,
-      code: 'internal',
-      message: err instanceof Error ? err.message : String(err)
-    }, null, 2) + '\n'
+    JSON.stringify(
+      {
+        error: true,
+        code: 'internal',
+        message: err instanceof Error ? err.message : String(err)
+      },
+      null,
+      2
+    ) + '\n'
   )
   process.exit(1)
 })

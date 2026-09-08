@@ -262,7 +262,10 @@ export function ChangesView({
         />
         {filesOpen ? (
           <>
-            <div className="flex items-center gap-1 border-b border-border px-1.5 py-1">
+            <div
+              className="flex items-center gap-1 border-b border-border px-1.5 py-1"
+              style={{ paddingRight: 'calc(var(--pane-controls-width, 0px) + 6px)' }}
+            >
               <span className="min-w-0 flex-1 truncate px-1 text-[11px] font-medium text-muted-foreground">
                 Files
               </span>
@@ -362,7 +365,10 @@ export function ChangesView({
             )}
           </>
         ) : (
-          <div className="flex flex-col items-center py-1">
+          <div
+            className="flex flex-col items-center py-1"
+            style={{ paddingTop: 'calc(var(--pane-controls-height, 0px) + 4px)' }}
+          >
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button

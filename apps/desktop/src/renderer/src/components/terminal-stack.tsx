@@ -1,3 +1,6 @@
+import type { LayoutState, LayoutCommand, PaneKind, SplitDirection } from '@cerebro/core'
+import { PaneFrame, SplitHandle } from './pane-layout'
+import { positionPanes } from '@/lib/pane-layout'
 import { DEFAULT_TERMINAL_THEME, type TerminalThemeId } from '@shared/terminal-themes'
 import { TERMINAL_PALETTES } from '@/lib/terminal-themes'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
@@ -12,11 +15,13 @@ import { resolveTerminalFontFamily } from '@/lib/terminal-font'
 import { encodeExtendedKey } from '@/lib/terminal-keys'
 import { useKeybindHandler } from '@/keybinds'
 import { ChangesView } from '@/components/changes-view'
-import { TerminalTabBar, type ContentTab } from '@/components/terminal-tab-bar'
+import { TerminalTabBar } from '@/components/terminal-tab-bar'
 
 type TerminalSessionProps = {
   workspaceId: number
   tabId: number
+  paneId: number
+  visible: boolean
   active: boolean
   fontSize: number
   themeId: TerminalThemeId
@@ -45,7 +50,7 @@ function waitForUsableSize(host: HTMLElement, isCancelled: () => boolean): Promi
 }
 
 function attachRenderer(terminal: Terminal, host: HTMLElement): void {
-  const useCanvas = (): void => {
+  const attachCanvas = (): void => {
     try {
       terminal.loadAddon(new CanvasAddon())
       host.dataset.terminalRenderer = 'canvas'
@@ -59,12 +64,12 @@ function attachRenderer(terminal: Terminal, host: HTMLElement): void {
     const webgl = new WebglAddon()
     webgl.onContextLoss(() => {
       webgl.dispose()
-      useCanvas()
+      attachCanvas()
     })
     terminal.loadAddon(webgl)
     host.dataset.terminalRenderer = 'webgl'
   } catch {
-    useCanvas()
+    attachCanvas()
   }
 }
 
@@ -100,6 +105,8 @@ function fitSession(
 function TerminalSession({
   workspaceId,
   tabId,
+  paneId,
+  visible,
   active,
   fontSize,
   fontFamilyPreference,
@@ -127,7 +134,9 @@ function TerminalSession({
     }
   }, [themeId, ready])
 
-  onProcessExitRef.current = onProcessExit
+  useLayoutEffect(() => {
+    onProcessExitRef.current = onProcessExit
+  }, [onProcessExit])
 
   useEffect(() => {
     const host = hostRef.current
@@ -212,7 +221,7 @@ function TerminalSession({
           if (event.sessionId !== sessionIdRef.current) return
           exitedRef.current = true
           sessionIdRef.current = null
-          onProcessExitRef.current(tabId)
+          onProcessExitRef.current(paneId)
         })
 
         setReady(true)
@@ -238,7 +247,7 @@ function TerminalSession({
     }
     // Recreate only when the tab changes; font updates apply live below.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: font props handled in separate effect
-  }, [workspaceId, tabId])
+  }, [workspaceId, paneId])
 
   useEffect(() => {
     const terminal = terminalRef.current
@@ -316,12 +325,13 @@ function TerminalSession({
     <div
       data-terminal-workspace-id={workspaceId}
       data-terminal-tab-id={tabId}
+      data-terminal-pane-id={paneId}
       data-terminal-active={active ? 'true' : 'false'}
       className="absolute inset-0"
       style={{
-        visibility: active ? 'visible' : 'hidden',
-        pointerEvents: active ? 'auto' : 'none',
-        zIndex: active ? 1 : 0
+        visibility: visible ? 'visible' : 'hidden',
+        pointerEvents: visible ? 'auto' : 'none',
+        zIndex: visible ? 1 : 0
       }}
     >
       <div
@@ -337,63 +347,6 @@ function TerminalSession({
       ) : null}
     </div>
   )
-}
-
-type WorkspaceTabsState = {
-  tabs: ContentTab[]
-  activeTabId: number | null
-  nextLabel: number
-}
-
-let nextTabId = 1
-
-function nextId(): number {
-  const id = nextTabId
-  nextTabId += 1
-  return id
-}
-
-function createTerminalTab(labelNumber: number): ContentTab {
-  return { id: nextId(), kind: 'terminal', label: `Terminal ${labelNumber}` }
-}
-
-function createChangesTab(): ContentTab {
-  return { id: nextId(), kind: 'changes', label: 'Changes' }
-}
-
-function createWorkspaceTabs(): WorkspaceTabsState {
-  const tab = createTerminalTab(1)
-  return { tabs: [tab], activeTabId: tab.id, nextLabel: 2 }
-}
-
-function closeTabInWorkspace(workspace: WorkspaceTabsState, tabId: number): WorkspaceTabsState {
-  const index = workspace.tabs.findIndex((tab) => tab.id === tabId)
-  if (index < 0) return workspace
-
-  const tabs = workspace.tabs.filter((tab) => tab.id !== tabId)
-  if (workspace.activeTabId !== tabId) {
-    return { ...workspace, tabs }
-  }
-
-  const next = tabs[index] ?? tabs[index - 1] ?? null
-  return { ...workspace, tabs, activeTabId: next?.id ?? null }
-}
-
-function reorderTabInWorkspace(
-  workspace: WorkspaceTabsState,
-  tabId: number,
-  toIndex: number
-): WorkspaceTabsState {
-  const fromIndex = workspace.tabs.findIndex((tab) => tab.id === tabId)
-  if (fromIndex < 0) return workspace
-
-  const clamped = Math.max(0, Math.min(toIndex, workspace.tabs.length - 1))
-  if (fromIndex === clamped) return workspace
-
-  const tabs = [...workspace.tabs]
-  const [moved] = tabs.splice(fromIndex, 1)
-  tabs.splice(clamped, 0, moved)
-  return { ...workspace, tabs }
 }
 
 function focusedWorkspaceId(): number | null {
@@ -424,166 +377,103 @@ export function TerminalStack({
   themeId,
   onSelectWorkspace
 }: TerminalStackProps): React.JSX.Element {
-  const [byWorkspace, setByWorkspace] = useState<Record<number, WorkspaceTabsState>>({})
-  const resolvedFontSize = fontSize ?? DEFAULT_TERMINAL_FONT_SIZE
-  const resolvedFontFamily = fontFamily ?? TERMINAL_FONT_FAMILY_AUTO
-
-  const activeWorkspace =
-    activeWorkspaceId != null ? (byWorkspace[activeWorkspaceId] ?? null) : null
-  const tabs = activeWorkspace?.tabs ?? []
-  const activeTabId = activeWorkspace?.activeTabId ?? null
-
-  const selectTab = (tabId: number): void => {
-    if (activeWorkspaceId == null) return
-    setByWorkspace((current) => {
-      const workspace = current[activeWorkspaceId]
-      if (!workspace) return current
-      return {
-        ...current,
-        [activeWorkspaceId]: { ...workspace, activeTabId: tabId }
-      }
-    })
+  const [layout, setLayout] = useState<LayoutState>({ revision: -1, workspaces: {} })
+  const [error, setError] = useState<string | null>(null)
+  useEffect(() => window.cerebro.onLayoutFocusWorkspace(onSelectWorkspace), [onSelectWorkspace])
+  const accept = (next: LayoutState): void =>
+    setLayout((current) => (next.revision >= current.revision ? next : current))
+  useEffect(() => {
+    let cancelled = false
+    const acceptInitial = (next: LayoutState): void => {
+      if (!cancelled) accept(next)
+    }
+    const unsubscribe = window.cerebro.onLayoutChanged(acceptInitial)
+    void window.cerebro
+      .getLayout()
+      .then(acceptInitial)
+      .catch((error) => {
+        if (!cancelled) setError(String(error))
+      })
+    return () => {
+      cancelled = true
+      unsubscribe()
+    }
+  }, [])
+  const command = (request: LayoutCommand): void => {
+    setError(null)
+    void window.cerebro
+      .layoutCommand(request)
+      .then((reply) => accept(reply.state))
+      .catch((error) => setError(String(error)))
   }
-
-  const closeTab = (workspaceId: number, tabId: number): void => {
-    setByWorkspace((current) => {
-      const workspace = current[workspaceId]
-      if (!workspace) return current
-      return {
-        ...current,
-        [workspaceId]: closeTabInWorkspace(workspace, tabId)
-      }
-    })
-  }
-
-  const reorderTab = (tabId: number, toIndex: number): void => {
-    if (activeWorkspaceId == null) return
-    setByWorkspace((current) => {
-      const workspace = current[activeWorkspaceId]
-      if (!workspace) return current
-      const next = reorderTabInWorkspace(workspace, tabId, toIndex)
-      if (next === workspace) return current
-      return {
-        ...current,
-        [activeWorkspaceId]: next
-      }
-    })
-  }
-
-  useKeybindHandler('closeTab', () => {
-    if (!visible) return false
-    if (activeWorkspaceId == null || activeTabId == null) return false
-    closeTab(activeWorkspaceId, activeTabId)
-    return true
-  })
-
-  const addTab = (workspaceId: number): void => {
-    setByWorkspace((current) => {
-      const workspace = current[workspaceId]
-      if (!workspace) {
-        return { ...current, [workspaceId]: createWorkspaceTabs() }
-      }
-      const tab = createTerminalTab(workspace.nextLabel)
-      return {
-        ...current,
-        [workspaceId]: {
-          tabs: [...workspace.tabs, tab],
-          activeTabId: tab.id,
-          nextLabel: workspace.nextLabel + 1
-        }
-      }
-    })
-  }
-
+  const workspace = activeWorkspaceId == null ? undefined : layout.workspaces[activeWorkspaceId]
+  const activeTabId = workspace?.activeTabId ?? null
+  const addTab = (workspaceId: number, kind: PaneKind = 'terminal'): void =>
+    command({ target: 'tab', action: 'create', workspaceId, kind })
+  const openChanges = (workspaceId: number): void =>
+    command({ target: 'tab', action: 'open-changes', workspaceId })
   useKeybindHandler('newTerminal', () => {
     if (!visible) return false
-    const targetId = focusedWorkspaceId() ?? activeWorkspaceId
-    if (targetId == null) return false
-    if (targetId !== activeWorkspaceId) {
-      onSelectWorkspace(targetId)
-    }
-    addTab(targetId)
+    const target = focusedWorkspaceId() ?? activeWorkspaceId
+    if (target == null) return false
+    if (target !== activeWorkspaceId) onSelectWorkspace(target)
+    addTab(target)
     return true
   })
-
-  const openChanges = (workspaceId: number): void => {
-    setByWorkspace((current) => {
-      const workspace = current[workspaceId]
-      if (!workspace) {
-        const tab = createChangesTab()
-        return {
-          ...current,
-          [workspaceId]: { tabs: [tab], activeTabId: tab.id, nextLabel: 1 }
-        }
-      }
-      const existing = workspace.tabs.find((tab) => tab.kind === 'changes')
-      if (existing) {
-        return {
-          ...current,
-          [workspaceId]: { ...workspace, activeTabId: existing.id }
-        }
-      }
-      const tab = createChangesTab()
-      return {
-        ...current,
-        [workspaceId]: {
-          ...workspace,
-          tabs: [...workspace.tabs, tab],
-          activeTabId: tab.id
-        }
-      }
-    })
-  }
-
   useKeybindHandler('openChanges', () => {
     if (!visible) return false
-    const targetId = focusedWorkspaceId() ?? activeWorkspaceId
-    if (targetId == null) return false
-    if (targetId !== activeWorkspaceId) {
-      onSelectWorkspace(targetId)
-    }
-    openChanges(targetId)
+    const target = focusedWorkspaceId() ?? activeWorkspaceId
+    if (target == null) return false
+    if (target !== activeWorkspaceId) onSelectWorkspace(target)
+    openChanges(target)
     return true
   })
-
-  const sessions = Object.entries(byWorkspace).flatMap(([workspaceIdValue, workspace]) => {
-    const workspaceId = Number(workspaceIdValue)
-    return workspace.tabs
-      .filter((tab) => tab.kind === 'terminal')
-      .map((tab) => ({
-        workspaceId,
-        tab,
-        active: workspaceId === activeWorkspaceId && tab.id === workspace.activeTabId
-      }))
+  useKeybindHandler('closeTab', () => {
+    if (!visible || activeWorkspaceId == null || activeTabId == null) return false
+    command({ target: 'tab', action: 'close', workspaceId: activeWorkspaceId, tabId: activeTabId })
+    return true
   })
-
-  const changePanes = Object.entries(byWorkspace).flatMap(([workspaceIdValue, workspace]) => {
-    const workspaceId = Number(workspaceIdValue)
-    return workspace.tabs
-      .filter((tab) => tab.kind === 'changes')
-      .map((tab) => ({
-        workspaceId,
-        tab,
-        active: workspaceId === activeWorkspaceId && tab.id === workspace.activeTabId
-      }))
-  })
-
+  const addPane = (kind: PaneKind, direction: SplitDirection): void => {
+    if (activeWorkspaceId == null || activeTabId == null) return
+    command({
+      target: 'pane',
+      action: 'split',
+      workspaceId: activeWorkspaceId,
+      tabId: activeTabId,
+      kind,
+      direction
+    })
+  }
   return (
     <div data-testid="terminal-stack" className="flex min-h-0 flex-1 flex-col">
       {activeWorkspaceId != null ? (
         <TerminalTabBar
-          tabs={tabs}
+          tabs={workspace?.tabs ?? []}
           activeTabId={activeTabId}
-          onSelect={selectTab}
-          onClose={(tabId): void => closeTab(activeWorkspaceId, tabId)}
-          onReorder={reorderTab}
-          onNewTab={(): void => {
-            if (activeWorkspaceId != null) addTab(activeWorkspaceId)
-          }}
-          onOpenChanges={(): void => {
-            if (activeWorkspaceId != null) openChanges(activeWorkspaceId)
-          }}
+          onSelect={(tabId) =>
+            command({ target: 'tab', action: 'focus', workspaceId: activeWorkspaceId, tabId })
+          }
+          onClose={(tabId) =>
+            command({ target: 'tab', action: 'close', workspaceId: activeWorkspaceId, tabId })
+          }
+          onReorder={(tabId, toIndex) =>
+            command({
+              target: 'tab',
+              action: 'reorder',
+              workspaceId: activeWorkspaceId,
+              tabId,
+              toIndex
+            })
+          }
+          onNewTab={() => addTab(activeWorkspaceId)}
+          onOpenChanges={() => openChanges(activeWorkspaceId)}
+          onAddPane={addPane}
         />
+      ) : null}
+      {error ? (
+        <div role="alert" className="bg-destructive/15 px-3 py-2 text-xs text-destructive">
+          {error}
+        </div>
       ) : null}
       <div
         data-testid="terminal-sessions"
@@ -593,21 +483,93 @@ export function TerminalStack({
             TERMINAL_PALETTES[themeId ?? DEFAULT_TERMINAL_THEME].background ?? '#000000'
         }}
       >
-        {sessions.map(({ workspaceId, tab, active }) => (
-          <TerminalSession
-            key={tab.id}
-            workspaceId={workspaceId}
-            tabId={tab.id}
-            active={visible && active}
-            fontSize={resolvedFontSize}
-            themeId={themeId ?? DEFAULT_TERMINAL_THEME}
-            fontFamilyPreference={resolvedFontFamily}
-            onProcessExit={(exitedTabId): void => closeTab(workspaceId, exitedTabId)}
-          />
-        ))}
-        {changePanes.map(({ workspaceId, tab, active }) => (
-          <ChangesView key={tab.id} workspaceId={workspaceId} active={visible && active} />
-        ))}
+        {Object.entries(layout.workspaces).flatMap(([workspaceKey, workspace]) =>
+          workspace.tabs.map((tab) => {
+            const workspaceId = Number(workspaceKey)
+            const shown =
+              visible && workspaceId === activeWorkspaceId && tab.id === workspace.activeTabId
+            const { panes, splits } = positionPanes(tab.root)
+            return (
+              <div
+                key={tab.id}
+                className="absolute inset-0"
+                data-testid="tab-panes"
+                data-tab-id={tab.id}
+                style={{
+                  visibility: shown ? 'visible' : 'hidden',
+                  pointerEvents: shown ? 'auto' : 'none'
+                }}
+                inert={!shown}
+              >
+                {panes.map(({ pane, rect }) => {
+                  const active = shown && tab.activePaneId === pane.id
+                  const close = (): void =>
+                    command({
+                      target: 'pane',
+                      action: 'close',
+                      workspaceId,
+                      tabId: tab.id,
+                      paneId: pane.id
+                    })
+                  return (
+                    <PaneFrame
+                      key={pane.id}
+                      pane={pane}
+                      rect={rect}
+                      visible={shown}
+                      active={active}
+                      multiple={panes.length > 1}
+                      onFocus={() =>
+                        command({
+                          target: 'pane',
+                          action: 'focus',
+                          workspaceId,
+                          tabId: tab.id,
+                          paneId: pane.id
+                        })
+                      }
+                      onClose={close}
+                    >
+                      {pane.kind === 'terminal' ? (
+                        <TerminalSession
+                          workspaceId={workspaceId}
+                          tabId={tab.id}
+                          paneId={pane.id}
+                          visible={shown}
+                          active={active}
+                          fontSize={fontSize ?? DEFAULT_TERMINAL_FONT_SIZE}
+                          themeId={themeId ?? DEFAULT_TERMINAL_THEME}
+                          fontFamilyPreference={fontFamily ?? TERMINAL_FONT_FAMILY_AUTO}
+                          onProcessExit={close}
+                        />
+                      ) : (
+                        <ChangesView workspaceId={workspaceId} active={shown} />
+                      )}
+                    </PaneFrame>
+                  )
+                })}
+                {splits.map(({ split, rect }, index) => (
+                  <SplitHandle
+                    key={split.id}
+                    split={split}
+                    priority={splits.length - index + 1}
+                    rect={rect}
+                    onResize={(ratio) =>
+                      command({
+                        target: 'pane',
+                        action: 'resize',
+                        workspaceId,
+                        tabId: tab.id,
+                        splitId: split.id,
+                        ratio
+                      })
+                    }
+                  />
+                ))}
+              </div>
+            )
+          })
+        )}
       </div>
     </div>
   )

@@ -346,11 +346,7 @@ function RootOverflowMenu({ project }: { project: Project }): React.JSX.Element 
         </SidebarMenuAction>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" side="right" className="w-52">
-        <CopyMenuItems
-          branch={null}
-          localPath={localPath}
-          testIdPrefix={`root-${project.id}`}
-        />
+        <CopyMenuItems branch={null} localPath={localPath} testIdPrefix={`root-${project.id}`} />
       </DropdownMenuContent>
     </DropdownMenu>
   )
@@ -537,7 +533,7 @@ function ProjectItem({
               <span className="min-w-0 truncate">{project.name}</span>
               {multiRoot ? (
                 <span
-                  className="shrink-0 rounded-md bg-teal-500/15 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-teal-700 uppercase dark:text-teal-300"
+                  className="shrink-0 rounded-md bg-[color-mix(in_oklch,var(--sidebar-selected)_15%,transparent)] px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-[var(--sidebar-selected)] uppercase"
                   data-testid={`project-multi-root-${project.id}`}
                 >
                   multi-root
@@ -640,7 +636,11 @@ export function AppSidebar({
       <SidebarHeader className="pt-11">
         <div className="app-drag-region flex items-center gap-2 px-2 py-1.5">
           <div className="flex size-8 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground">
-            <BrainMark size="sm" testId="sidebar-brain-mark" className="text-sidebar-primary-foreground" />
+            <BrainMark
+              size="sm"
+              testId="sidebar-brain-mark"
+              className="text-sidebar-primary-foreground"
+            />
           </div>
           <div className="flex min-w-0 flex-col">
             <span className="truncate text-sm font-semibold">Cerebro</span>

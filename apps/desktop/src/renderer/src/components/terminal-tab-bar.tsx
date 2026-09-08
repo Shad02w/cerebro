@@ -1,3 +1,4 @@
+import type { PaneKind, SplitDirection } from '@cerebro/core'
 import { useRef, useState } from 'react'
 import {
   DndContext,
@@ -24,6 +25,11 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuShortcut,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { SidebarTrigger, useSidebar } from '@/components/ui/sidebar'
@@ -57,6 +63,7 @@ type TerminalTabBarProps = {
   onReorder: (tabId: number, toIndex: number) => void
   onNewTab: () => void
   onOpenChanges: () => void
+  onAddPane: (kind: PaneKind, direction: SplitDirection) => void
 }
 
 function prefersReducedMotion(): boolean {
@@ -97,7 +104,6 @@ function SortableTab({
       aria-selected={selected}
       aria-roledescription={attributes['aria-roledescription']}
       aria-describedby={attributes['aria-describedby']}
-      aria-disabled={attributes['aria-disabled']}
       data-testid={isChanges ? 'changes-tab' : 'terminal-tab'}
       data-tab-kind={tab.kind}
       data-terminal-tab-id={tab.id}
@@ -162,6 +168,7 @@ export function TerminalTabBar({
   onClose,
   onNewTab,
   onOpenChanges,
+  onAddPane,
   onReorder
 }: TerminalTabBarProps): React.JSX.Element {
   const closeHotkey = useKeybindBinding('closeTab')
@@ -269,6 +276,7 @@ export function TerminalTabBar({
                 data-testid="add-tab-menu"
                 onCloseAutoFocus={(event): void => event.preventDefault()}
               >
+                <DropdownMenuLabel>New tab</DropdownMenuLabel>
                 <DropdownMenuItem
                   className="text-xs"
                   data-testid="open-terminal-tab"
@@ -297,6 +305,43 @@ export function TerminalTabBar({
                     <ShortcutKbd hotkey={changesHotkey} />
                   </DropdownMenuShortcut>
                 </DropdownMenuItem>
+                {activeTabId != null ? (
+                  <>
+                    <DropdownMenuSeparator />
+                    {(
+                      [
+                        ['auto', 'Add pane'],
+                        ['right', 'Split right'],
+                        ['down', 'Split down']
+                      ] as const
+                    ).map(([direction, label]) => (
+                      <DropdownMenuSub key={direction}>
+                        <DropdownMenuSubTrigger
+                          data-testid={`pane-menu-${direction}`}
+                          className="text-xs"
+                        >
+                          {label}
+                        </DropdownMenuSubTrigger>
+                        <DropdownMenuSubContent>
+                          {(['terminal', 'changes'] as const).map((kind) => (
+                            <DropdownMenuItem
+                              key={kind}
+                              className="text-xs"
+                              data-testid={`add-pane-${direction}-${kind}`}
+                              onSelect={() => {
+                                setAddOpen(false)
+                                onAddPane(kind, direction)
+                              }}
+                            >
+                              {kind === 'terminal' ? <SquareTerminal /> : <FileDiff />}
+                              {kind === 'terminal' ? 'Terminal' : 'Changes'}
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuSubContent>
+                      </DropdownMenuSub>
+                    ))}
+                  </>
+                ) : null}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>

@@ -1,4 +1,11 @@
 export const IPC = {
+  layout: {
+    get: 'cerebro:layout:get',
+    focusWorkspace: 'cerebro:layout:focus-workspace',
+    command: 'cerebro:layout:command',
+    changed: 'cerebro:layout:changed',
+    measure: 'cerebro:layout:measure'
+  },
   projects: {
     list: 'cerebro:projects:list',
     create: 'cerebro:projects:create',

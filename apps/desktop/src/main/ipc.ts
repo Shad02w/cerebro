@@ -1,3 +1,4 @@
+import { registerLayoutIpc, removeWorkspaceLayout } from './panes'
 import { ipcMain, shell } from 'electron'
 import { getWorkspaceFileDiff, isChangedFileStatus, listWorkspaceChanges } from '@cerebro/core'
 import { IPC } from '../shared/ipc'
@@ -163,7 +164,9 @@ export function registerWorkspaceIpc(): void {
       }
       try {
         killPtyForWorkspace(workspaceId)
-        return await removeWorkspace(workspaceId, deleteFiles)
+        const result = await removeWorkspace(workspaceId, deleteFiles)
+        removeWorkspaceLayout(workspaceId)
+        return result
       } catch (error) {
         throw new Error(errorMessage(error))
       }
@@ -214,7 +217,9 @@ export function registerWorkspaceIpc(): void {
           killPtyForWorkspace(workspace.id)
         }
       }
-      return await removeProject(projectId, deleteFiles)
+      const result = await removeProject(projectId, deleteFiles)
+      for (const workspace of project?.workspaces ?? []) removeWorkspaceLayout(workspace.id)
+      return result
     } catch (error) {
       throw new Error(errorMessage(error))
     }
@@ -233,4 +238,5 @@ export function registerWorkspaceIpc(): void {
 
   registerGitHubIpc(ipcMain)
   registerPtyIpc()
+  registerLayoutIpc()
 }
