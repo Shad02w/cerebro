@@ -1,3 +1,4 @@
+import type { TerminalThemeId } from '@shared/terminal-themes'
 import { Plus } from 'lucide-react'
 import type { Workspace } from '@shared/types'
 import { BrainMark } from '@/components/brain-mark'
@@ -5,11 +6,13 @@ import { Button } from '@/components/ui/button'
 import { TerminalStack } from '@/components/terminal-stack'
 
 type WorkspaceViewProps = {
+  visible: boolean
   workspace: Workspace | null
   activeWorkspaceId: number | null
   hasProjects: boolean
   loading: boolean
   error: string | null
+  terminalTheme: TerminalThemeId | null
   terminalFontSize: number | null
   terminalFontFamily: string | null
   onAddProject: () => void
@@ -17,11 +20,13 @@ type WorkspaceViewProps = {
 }
 
 export function WorkspaceView({
+  visible,
   workspace,
   activeWorkspaceId,
   hasProjects,
   loading,
   error,
+  terminalTheme,
   terminalFontSize,
   terminalFontFamily,
   onAddProject,
@@ -64,7 +69,9 @@ export function WorkspaceView({
         </div>
       ) : null}
       <TerminalStack
+        visible={visible}
         activeWorkspaceId={activeWorkspaceId}
+        themeId={terminalTheme}
         fontSize={terminalFontSize}
         fontFamily={terminalFontFamily}
         onSelectWorkspace={onSelectWorkspace}

@@ -1,3 +1,4 @@
+import { DEFAULT_TERMINAL_THEME, isTerminalThemeId } from './terminal-themes'
 import { existsSync, mkdirSync, statSync } from 'node:fs'
 import { isAbsolute, resolve } from 'node:path'
 import type { AppSettings, AppSettingsPatch } from './types'
@@ -15,6 +16,7 @@ const LEGACY_CLONE_LOCATION_KEY = 'clone_location'
 
 type StoredSettings = {
   defaultCloneDir?: string
+  terminalTheme?: string
   terminalFontSize?: number
   terminalFontFamily?: string
   keybinds?: Record<string, string>
@@ -23,6 +25,7 @@ type StoredSettings = {
 function defaultSettings(): AppSettings {
   return {
     defaultCloneDir: getCerebroHome(),
+    terminalTheme: DEFAULT_TERMINAL_THEME,
     terminalFontSize: DEFAULT_TERMINAL_FONT_SIZE,
     terminalFontFamily: TERMINAL_FONT_FAMILY_AUTO,
     keybinds: {}
@@ -40,8 +43,7 @@ function readLegacyCloneLocation(): string | undefined {
 
 function readStored(): StoredSettings {
   const row = getDb().prepare('SELECT value FROM app_state WHERE key = ?').get(SETTINGS_KEY) as
-    | { value: string }
-    | undefined
+    { value: string } | undefined
 
   if (row?.value) {
     try {
@@ -83,7 +85,9 @@ function normalizeFontSize(value: number): number {
   if (!Number.isFinite(value)) throw new Error('Font size must be a number.')
   const rounded = Math.round(value)
   if (rounded < MIN_TERMINAL_FONT_SIZE || rounded > MAX_TERMINAL_FONT_SIZE) {
-    throw new Error(`Font size must be between ${MIN_TERMINAL_FONT_SIZE} and ${MAX_TERMINAL_FONT_SIZE}.`)
+    throw new Error(
+      `Font size must be between ${MIN_TERMINAL_FONT_SIZE} and ${MAX_TERMINAL_FONT_SIZE}.`
+    )
   }
   return rounded
 }
@@ -150,7 +154,10 @@ function mergeSettings(stored: StoredSettings): AppSettings {
     }
   }
 
-  return { defaultCloneDir, terminalFontSize, terminalFontFamily, keybinds }
+  const terminalTheme = isTerminalThemeId(stored.terminalTheme)
+    ? stored.terminalTheme
+    : DEFAULT_TERMINAL_THEME
+  return { defaultCloneDir, terminalFontSize, terminalFontFamily, terminalTheme, keybinds }
 }
 
 export function getSettings(): AppSettings {
@@ -162,7 +169,8 @@ export function setSettings(patch: AppSettingsPatch): AppSettings {
   const next: StoredSettings = { ...stored }
 
   if (patch.defaultCloneDir !== undefined) {
-    if (typeof patch.defaultCloneDir !== 'string') throw new Error('Clone location must be a string.')
+    if (typeof patch.defaultCloneDir !== 'string')
+      throw new Error('Clone location must be a string.')
     const normalized = normalizeCloneDir(patch.defaultCloneDir)
     mkdirSync(normalized, { recursive: true })
     next.defaultCloneDir = normalized
@@ -174,12 +182,18 @@ export function setSettings(patch: AppSettingsPatch): AppSettings {
   }
 
   if (patch.terminalFontFamily !== undefined) {
-    if (typeof patch.terminalFontFamily !== 'string') throw new Error('Font family must be a string.')
+    if (typeof patch.terminalFontFamily !== 'string')
+      throw new Error('Font family must be a string.')
     next.terminalFontFamily = normalizeFontFamily(patch.terminalFontFamily)
   }
 
   if (patch.keybinds !== undefined) {
     next.keybinds = normalizeKeybinds(patch.keybinds)
+  }
+
+  if (patch.terminalTheme !== undefined) {
+    if (!isTerminalThemeId(patch.terminalTheme)) throw new Error('Unknown terminal theme.')
+    next.terminalTheme = patch.terminalTheme
   }
 
   writeStored(next)
@@ -192,4 +206,3 @@ export function ensureCloneRoot(): string {
   mkdirSync(root, { recursive: true })
   return root
 }
-

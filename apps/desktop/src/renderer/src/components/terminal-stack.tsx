@@ -1,3 +1,5 @@
+import { DEFAULT_TERMINAL_THEME, type TerminalThemeId } from '@shared/terminal-themes'
+import { TERMINAL_PALETTES } from '@/lib/terminal-themes'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
@@ -12,23 +14,12 @@ import { useKeybindHandler } from '@/keybinds'
 import { ChangesView } from '@/components/changes-view'
 import { TerminalTabBar, type ContentTab } from '@/components/terminal-tab-bar'
 
-const TERMINAL_THEME = {
-  background: '#0a0a0a',
-  foreground: '#fafafa',
-  cursor: '#fafafa',
-  cursorAccent: '#0a0a0a',
-  selectionBackground: '#ffffff40',
-  black: '#0a0a0a',
-  brightBlack: '#737373',
-  white: '#fafafa',
-  brightWhite: '#ffffff'
-} as const
-
 type TerminalSessionProps = {
   workspaceId: number
   tabId: number
   active: boolean
   fontSize: number
+  themeId: TerminalThemeId
   fontFamilyPreference: string
   onProcessExit: (tabId: number) => void
 }
@@ -92,6 +83,7 @@ function fitSession(
   sessionId: number | null,
   exited: boolean
 ): void {
+  if (!terminal.element?.clientWidth || !terminal.element.clientHeight) return
   const grid = proposedGrid(fitAddon)
   if (!grid) return
   if (terminal.cols === grid.cols && terminal.rows === grid.rows) return
@@ -111,8 +103,13 @@ function TerminalSession({
   active,
   fontSize,
   fontFamilyPreference,
+  themeId,
   onProcessExit
 }: TerminalSessionProps): React.JSX.Element {
+  const themeRef = useRef(themeId)
+  useLayoutEffect(() => {
+    themeRef.current = themeId
+  }, [themeId])
   const hostRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
@@ -123,6 +120,12 @@ function TerminalSession({
   const onProcessExitRef = useRef(onProcessExit)
   const [ready, setReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (terminalRef.current) {
+      terminalRef.current.options.theme = { ...TERMINAL_PALETTES[themeId] }
+    }
+  }, [themeId, ready])
 
   onProcessExitRef.current = onProcessExit
 
@@ -156,13 +159,16 @@ function TerminalSession({
           lineHeight: 1.1,
           allowTransparency: false,
           rescaleOverlappingGlyphs: true,
-          theme: TERMINAL_THEME,
+          theme: { ...TERMINAL_PALETTES[themeRef.current] },
           fontFamily
         })
         terminal.loadAddon(fitAddon)
         terminal.open(hostRef.current)
         attachRenderer(terminal, hostRef.current)
-        const initialGrid = proposedGrid(fitAddon)
+        const initialGrid =
+          hostRef.current.clientWidth && hostRef.current.clientHeight
+            ? proposedGrid(fitAddon)
+            : undefined
         if (initialGrid) terminal.resize(initialGrid.cols, initialGrid.rows)
         hostRef.current.dataset.terminalFont = fontFamily.replaceAll('"', '')
         hostRef.current.dataset.terminalFontSize = String(fontSize)
@@ -318,7 +324,12 @@ function TerminalSession({
         zIndex: active ? 1 : 0
       }}
     >
-      <div ref={hostRef} className="terminal-host" />
+      <div
+        ref={hostRef}
+        className="terminal-host"
+        data-terminal-theme={themeId}
+        style={{ backgroundColor: TERMINAL_PALETTES[themeId].background ?? '#000000' }}
+      />
       {error ? (
         <div className="absolute inset-x-0 bottom-0 bg-destructive/90 px-3 py-2 text-xs text-destructive-foreground">
           {error}
@@ -397,16 +408,20 @@ function focusedWorkspaceId(): number | null {
 }
 
 type TerminalStackProps = {
+  visible: boolean
   activeWorkspaceId: number | null
   fontSize: number | null
+  themeId: TerminalThemeId | null
   fontFamily: string | null
   onSelectWorkspace: (workspaceId: number) => void
 }
 
 export function TerminalStack({
+  visible,
   activeWorkspaceId,
   fontSize,
   fontFamily,
+  themeId,
   onSelectWorkspace
 }: TerminalStackProps): React.JSX.Element {
   const [byWorkspace, setByWorkspace] = useState<Record<number, WorkspaceTabsState>>({})
@@ -456,6 +471,7 @@ export function TerminalStack({
   }
 
   useKeybindHandler('closeTab', () => {
+    if (!visible) return false
     if (activeWorkspaceId == null || activeTabId == null) return false
     closeTab(activeWorkspaceId, activeTabId)
     return true
@@ -480,6 +496,7 @@ export function TerminalStack({
   }
 
   useKeybindHandler('newTerminal', () => {
+    if (!visible) return false
     const targetId = focusedWorkspaceId() ?? activeWorkspaceId
     if (targetId == null) return false
     if (targetId !== activeWorkspaceId) {
@@ -519,6 +536,7 @@ export function TerminalStack({
   }
 
   useKeybindHandler('openChanges', () => {
+    if (!visible) return false
     const targetId = focusedWorkspaceId() ?? activeWorkspaceId
     if (targetId == null) return false
     if (targetId !== activeWorkspaceId) {
@@ -569,21 +587,26 @@ export function TerminalStack({
       ) : null}
       <div
         data-testid="terminal-sessions"
-        className="relative min-h-0 flex-1 overflow-hidden bg-[#0a0a0a]"
+        className="relative min-h-0 flex-1 overflow-hidden"
+        style={{
+          backgroundColor:
+            TERMINAL_PALETTES[themeId ?? DEFAULT_TERMINAL_THEME].background ?? '#000000'
+        }}
       >
         {sessions.map(({ workspaceId, tab, active }) => (
           <TerminalSession
             key={tab.id}
             workspaceId={workspaceId}
             tabId={tab.id}
-            active={active}
+            active={visible && active}
             fontSize={resolvedFontSize}
+            themeId={themeId ?? DEFAULT_TERMINAL_THEME}
             fontFamilyPreference={resolvedFontFamily}
             onProcessExit={(exitedTabId): void => closeTab(workspaceId, exitedTabId)}
           />
         ))}
         {changePanes.map(({ workspaceId, tab, active }) => (
-          <ChangesView key={tab.id} workspaceId={workspaceId} active={active} />
+          <ChangesView key={tab.id} workspaceId={workspaceId} active={visible && active} />
         ))}
       </div>
     </div>

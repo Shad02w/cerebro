@@ -189,3 +189,85 @@ test('persists remapped keyboard shortcuts from settings', async ({ page }) => {
   )
   await expect(page.getByTestId('keybind-reset-closeTab')).toBeVisible()
 })
+
+test('terminal theme combobox searches, selects by keyboard, and persists', async ({ page }) => {
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await page.getByRole('button', { name: 'Terminal', exact: true }).click()
+  const picker = page.getByTestId('settings-terminal-theme')
+  await expect(picker).toHaveText('Cerebro Default')
+  await picker.click()
+  await expect(page.getByRole('option')).toHaveText([
+    'Cerebro Default', 'Xterm Default', 'Dracula', 'Nord', 'Catppuccin Mocha',
+    'Catppuccin Latte', 'Gruvbox Dark', 'Gruvbox Light', 'Solarized Dark',
+    'Solarized Light', 'Tokyo Night', 'One Dark', 'Kanagawa Wave', 'Kanagawa Dragon',
+    'Kanagawa Lotus', 'Kanagawabones', 'Vercel'
+  ])
+  const search = page.getByTestId('settings-terminal-theme-search')
+  await search.fill('no such theme')
+  await expect(page.getByText('No themes found.')).toBeVisible()
+  await search.fill('catppuccin')
+  await search.press('ArrowDown')
+  await search.press('Enter')
+  await expect(picker).toHaveText('Catppuccin Latte')
+  await page.reload()
+  await expect(picker).toHaveText('Catppuccin Latte')
+  expect((await page.evaluate(() => window.cerebro.getSettings())).terminalTheme).toBe('catppuccin-latte')
+  await picker.click()
+  await page.getByTestId('settings-terminal-theme-search').press('Escape')
+  await expect(picker).toBeFocused()
+  await expect(picker).toHaveText('Catppuccin Latte')
+})
+
+test('terminal themes reject invalid updates and recover from invalid stored values', async ({ page, electronApp }) => {
+  await expect(page.getByRole('button', { name: 'Settings', exact: true })).toBeVisible()
+  const error = await page.evaluate(async () => {
+    try { await window.cerebro.setSettings({ terminalTheme: 'unknown' as never }); return '' }
+    catch (err) { return String(err) }
+  })
+  expect(error).toContain('Unknown terminal theme')
+  await electronApp.evaluate(async () => {
+    const { DatabaseSync } = process.getBuiltinModule('node:sqlite')
+    const db = new DatabaseSync(`${process.env.CEREBRO_HOME}/cerebro.sqlite`)
+    db.prepare("INSERT INTO app_state (key, value) VALUES ('settings', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(JSON.stringify({ terminalTheme: 'unknown' }))
+    db.close()
+  })
+  expect((await page.evaluate(() => window.cerebro.getSettings())).terminalTheme).toBe('cerebro-default')
+})
+
+test('terminal theme save errors retain selection and guard concurrent saves', async ({ page, electronApp }) => {
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await page.getByRole('button', { name: 'Terminal', exact: true }).click()
+  await electronApp.evaluate(({ ipcMain }) => {
+    ipcMain.removeHandler('cerebro:settings:set')
+    ;(globalThis as any).themeSaveCalls = 0
+    ipcMain.handle('cerebro:settings:set', async () => {
+      ;(globalThis as any).themeSaveCalls++
+      await new Promise((resolve) => setTimeout(resolve, 1500))
+      throw new Error('Theme save failed for test')
+    })
+  })
+  const picker = page.getByTestId('settings-terminal-theme')
+  await picker.click()
+  await page.getByRole('option', { name: 'Dracula', exact: true }).click()
+  await picker.click()
+  await page.getByRole('option', { name: 'Nord', exact: true }).click()
+  await expect(page.getByText(/Theme save failed for test/)).toBeVisible()
+  await expect(picker).toHaveText('Cerebro Default')
+  expect(await electronApp.evaluate(() => (globalThis as any).themeSaveCalls)).toBe(1)
+})
+
+
+test('saves the Kanagawa variants and Vercel from the theme picker', async ({ page }) => {
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await page.getByRole('button', { name: 'Terminal', exact: true }).click()
+  const picker = page.getByTestId('settings-terminal-theme')
+  for (const name of ['Kanagawa Wave', 'Kanagawa Dragon', 'Kanagawa Lotus', 'Kanagawabones', 'Vercel']) {
+    await picker.click()
+    await page.getByTestId('settings-terminal-theme-search').fill(name)
+    await page.getByRole('option', { name, exact: true }).click()
+    await expect(picker).toHaveText(name)
+    expect((await page.evaluate(() => window.cerebro.getSettings())).terminalTheme).toBe(name.toLowerCase().replaceAll(' ', '-'))
+  }
+  await page.reload()
+  await expect(picker).toHaveText('Vercel')
+})

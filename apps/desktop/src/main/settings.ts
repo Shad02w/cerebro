@@ -1,3 +1,4 @@
+import { DEFAULT_TERMINAL_THEME, isTerminalThemeId } from '../shared/terminal-themes'
 import { existsSync, mkdirSync, statSync } from 'node:fs'
 import { isAbsolute, resolve } from 'node:path'
 import { BrowserWindow, dialog } from 'electron'
@@ -16,6 +17,7 @@ const LEGACY_CLONE_LOCATION_KEY = 'clone_location'
 
 type StoredSettings = {
   defaultCloneDir?: string
+  terminalTheme?: string
   terminalFontSize?: number
   terminalFontFamily?: string
   keybinds?: Record<string, string>
@@ -24,6 +26,7 @@ type StoredSettings = {
 function defaultSettings(): AppSettings {
   return {
     defaultCloneDir: getCerebroHome(),
+    terminalTheme: DEFAULT_TERMINAL_THEME,
     terminalFontSize: DEFAULT_TERMINAL_FONT_SIZE,
     terminalFontFamily: TERMINAL_FONT_FAMILY_AUTO,
     keybinds: {}
@@ -41,8 +44,7 @@ function readLegacyCloneLocation(): string | undefined {
 
 function readStored(): StoredSettings {
   const row = getDb().prepare('SELECT value FROM app_state WHERE key = ?').get(SETTINGS_KEY) as
-    | { value: string }
-    | undefined
+    { value: string } | undefined
   if (row?.value) {
     try {
       const parsed = JSON.parse(row.value) as unknown
@@ -141,7 +143,10 @@ function mergeSettings(stored: StoredSettings): AppSettings {
     keybinds = stored.keybinds
   }
 
-  return { defaultCloneDir, terminalFontSize, terminalFontFamily, keybinds }
+  const terminalTheme = isTerminalThemeId(stored.terminalTheme)
+    ? stored.terminalTheme
+    : DEFAULT_TERMINAL_THEME
+  return { defaultCloneDir, terminalFontSize, terminalFontFamily, terminalTheme, keybinds }
 }
 
 function getSettings(): AppSettings {
@@ -173,6 +178,11 @@ function setSettings(patch: AppSettingsPatch): AppSettings {
       throw new Error('Font family must be a string.')
     }
     next.terminalFontFamily = normalizeFontFamily(patch.terminalFontFamily)
+  }
+
+  if (patch.terminalTheme !== undefined) {
+    if (!isTerminalThemeId(patch.terminalTheme)) throw new Error('Unknown terminal theme.')
+    next.terminalTheme = patch.terminalTheme
   }
 
   writeStored(next)

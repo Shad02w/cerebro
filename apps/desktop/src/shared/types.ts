@@ -1,3 +1,4 @@
+import type { TerminalThemeId } from './terminal-themes'
 export type LinkedRepository = {
   id: number
   projectId: number
@@ -122,6 +123,7 @@ export type KeybindOverrides = Partial<Record<string, string>>
 
 export type AppSettings = {
   defaultCloneDir: string
+  terminalTheme: TerminalThemeId
   terminalFontSize: number
   /** `'auto'` or a CSS font-family name such as `Cerebro Mono`. */
   terminalFontFamily: string

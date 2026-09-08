@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react'
+import { TerminalThemeCombobox } from '@/components/terminal-theme-combobox'
+import type { TerminalThemeId } from '@shared/terminal-themes'
+import { useEffect, useRef, useState } from 'react'
 import type { AppSettings, AppSettingsPatch, GitHubStatus } from '@shared/types'
 import {
   MAX_TERMINAL_FONT_SIZE,
@@ -52,7 +54,10 @@ export function SettingsView({
   const meta = SETTINGS_SECTIONS.find((item) => item.id === section) ?? SETTINGS_SECTIONS[0]
 
   return (
-    <div className="app-drag-region relative flex min-h-0 flex-1 flex-col" data-testid="settings-view">
+    <div
+      className="app-drag-region relative flex min-h-0 flex-1 flex-col"
+      data-testid="settings-view"
+    >
       <div className="app-no-drag flex-1 overflow-auto px-8 py-6">
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-8">
           <h1 className="text-xl font-semibold tracking-tight">{meta.label}</h1>
@@ -198,11 +203,20 @@ type TerminalSettingsProps = {
   onUpdate: (patch: AppSettingsPatch) => Promise<AppSettings>
 }
 
-function TerminalSettings({
-  settings,
-  error,
-  onUpdate
-}: TerminalSettingsProps): React.JSX.Element {
+function TerminalSettings({ settings, error, onUpdate }: TerminalSettingsProps): React.JSX.Element {
+  const savingTheme = useRef(false)
+  const persistTheme = async (value: TerminalThemeId): Promise<void> => {
+    if (savingTheme.current || value === settings.terminalTheme) return
+    savingTheme.current = true
+    setLocalError(null)
+    try {
+      await onUpdate({ terminalTheme: value })
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : 'Failed to save terminal theme.')
+    } finally {
+      savingTheme.current = false
+    }
+  }
   const [fontSize, setFontSize] = useState(String(settings.terminalFontSize))
   const [fontOptions, setFontOptions] = useState<TerminalFontOption[]>([
     { value: TERMINAL_FONT_FAMILY_AUTO, label: 'Auto' }
@@ -273,6 +287,17 @@ function TerminalSettings({
 
   return (
     <section className="space-y-6" data-testid="settings-terminal">
+      <div className="space-y-3 max-w-sm">
+        <Label htmlFor="terminal-theme" className="text-[13px] font-medium">
+          Theme
+        </Label>
+        <TerminalThemeCombobox
+          value={settings.terminalTheme}
+          onChange={(value) => {
+            void persistTheme(value)
+          }}
+        />
+      </div>
       <div className="space-y-3">
         <Label htmlFor="terminal-font-size" className="text-[13px] font-medium">
           Font size
@@ -415,8 +440,7 @@ function IntegrationsSettings({
         ) : status.state === 'pending' ? (
           <div className="space-y-3" data-testid="github-pending">
             <p className="text-sm text-muted-foreground">
-              Enter this code at{' '}
-              <span className="font-mono text-xs">{status.verificationUri}</span>
+              Enter this code at <span className="font-mono text-xs">{status.verificationUri}</span>
             </p>
             <p className="font-mono text-3xl tracking-widest" data-testid="github-user-code">
               {status.userCode}

@@ -39,6 +39,14 @@ The window is two regions: **sidebar** | **content area**. Use these names, not 
 
   Clicking a workspace row selects it. A terminal opens when the user adds one from the tab bar, or when they press Mod+T while a workspace row is focused.
 
+### Terminal themes
+
+- Start with the [iTerm2-Color-Schemes Windows Terminal collection](https://github.com/mbadolato/iTerm2-Color-Schemes/tree/master/windowsterminal) for additional palettes, including Kanagawa and Vercel. These are community-sourced palettes, not built-in xterm.js themes.
+- Add stable IDs and labels in `packages/core/src/terminal-themes.ts`, and xterm.js palettes in `apps/desktop/src/renderer/src/lib/terminal-themes.ts`.
+- Translate `purple` → `magenta`, `brightPurple` → `brightMagenta`, and `cursorColor` → `cursor`; use the background for `cursorAccent`. Check selection contrast; some palettes also need an explicit `selectionForeground`.
+- Record source filenames and adaptations in `apps/desktop/src/renderer/src/lib/terminal-theme-sources.md`, which also contains attribution and license information.
+- Extend the theme coverage in `settings.spec.ts` and `terminal.spec.ts`, and verify rendering in Electron as described below.
+
 ### UI conventions
 
 #### Forms

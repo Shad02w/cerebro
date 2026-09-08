@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execFile } from 'node:child_process'
@@ -1040,6 +1040,86 @@ test('reorders content tabs by dragging', async ({ page }) => {
       .getByTestId('terminal-tab-close')
       .click()
     await expect.poll(() => contentTabLabels(page)).toEqual(['Terminal 2', 'Changes'])
+  } finally {
+    await rm(sourcesRoot, { recursive: true, force: true })
+  }
+})
+
+test('terminal themes update existing and new sessions without losing output', async ({ page, electronApp }) => {
+  const sourcesRoot = await mkdtemp(join(tmpdir(), 'cerebro-theme-e2e-'))
+  try {
+    await initGitRepo(sourcesRoot, 'main', 'themes')
+    const shell = join(sourcesRoot, 'theme-shell')
+    await writeFile(shell, '#!/bin/sh\nexec /bin/bash --noprofile --norc -i\n')
+    await chmod(shell, 0o755)
+    await electronApp.evaluate((_electron, shell) => { process.env.SHELL = shell; process.env.PS1 = 'theme> ' }, shell)
+    await page.evaluate(() => {
+      const probe = { sessionId: 0, output: '' }
+      ;(window as any).themeProbe = probe
+      window.cerebro.onPtyData((event) => {
+        if (!probe.sessionId) probe.sessionId = event.sessionId
+        if (event.sessionId === probe.sessionId) probe.output += event.data
+      })
+    })
+    await addProjectViaUi(page, `file://${sourcesRoot}`, sourcesRoot.split('/').pop()!)
+    await selectWorkspaceRow(page, 'main')
+    await clickNewTerminalMenu(page)
+    await expect(page.locator('.terminal-host .xterm')).toHaveCount(1)
+    await expect.poll(() => page.evaluate(() => (window as any).themeProbe.output)).toContain('$ ')
+    await page.evaluate(async () => {
+      await window.cerebro.writePty((window as any).themeProbe.sessionId, "stty -echo; THEME_TOKEN=preserved; printf 'THEME_SESSION_PRESERVED\\n\\033[31mRED \\033[32mGREEN \\033[34mBLUE\\033[0m\\n'\n")
+    })
+    await expect.poll(() => page.evaluate(() => (window as any).themeProbe.output)).toContain('\u001b[31mRED')
+    const originalSize = await page.locator('.xterm-screen').first().boundingBox()
+    await clickNewTerminalMenu(page)
+    await expect(page.locator('.terminal-host .xterm')).toHaveCount(2)
+    const firstTerminal = await page.locator('.terminal-host .xterm').first().elementHandle()
+    const tabIds = await page.getByTestId('terminal-tab').evaluateAll((els) => els.map((el) => el.getAttribute('data-terminal-tab-id')))
+    for (const [name, color] of [['Dracula', 'rgb(40, 42, 54)'], ['Catppuccin Latte', 'rgb(239, 241, 245)'], ['Xterm Default', 'rgb(0, 0, 0)'], ['Cerebro Default', 'rgb(10, 10, 10)'], ['Kanagawa Wave', 'rgb(31, 31, 40)'], ['Kanagawa Dragon', 'rgb(24, 22, 22)'], ['Kanagawa Lotus', 'rgb(242, 236, 188)'], ['Kanagawabones', 'rgb(31, 31, 40)'], ['Vercel', 'rgb(16, 16, 16)']]) {
+      await page.getByRole('button', { name: 'Settings', exact: true }).click()
+      await page.getByRole('button', { name: 'Terminal', exact: true }).click()
+      await page.getByTestId('settings-terminal-theme').click()
+      await page.getByRole('option', { name, exact: true }).click()
+      await expect(page.getByTestId('settings-terminal-theme')).toHaveText(name)
+      await page.getByRole('button', { name: 'Back', exact: true }).click()
+      await expect(page.locator('.terminal-host')).toHaveCount(2)
+      for (const host of await page.locator('.terminal-host').all()) {
+        await expect(host).toHaveCSS('background-color', color)
+        await expect(host.locator('.xterm-viewport')).toHaveCSS('background-color', color)
+      }
+      expect(await firstTerminal!.evaluate((el) => el.isConnected)).toBe(true)
+      expect(await page.getByTestId('terminal-tab').evaluateAll((els) => els.map((el) => el.getAttribute('data-terminal-tab-id')))).toEqual(tabIds)
+      await page.getByTestId('terminal-tab').first().click()
+      await expect.poll(async () => {
+        const size = await page.locator('.xterm-screen').first().boundingBox()
+        return [size?.width, size?.height]
+      }).toEqual([originalSize?.width, originalSize?.height])
+      await page.evaluate(async () => {
+        const probe = (window as any).themeProbe
+        probe.output = ''
+        await window.cerebro.writePty(probe.sessionId, 'printf "state:%s\\n" "$THEME_TOKEN"\n')
+      })
+      await expect.poll(() => page.evaluate(() => (window as any).themeProbe.output)).toContain('state:preserved')
+
+      await mkdir(join(tmpdir(), 'cerebro-e2e-artifacts'), { recursive: true })
+      const screen = await page.locator('.xterm-screen').first().boundingBox()
+      await page.mouse.move(screen!.x + 2, screen!.y + 30)
+      await page.mouse.down()
+      await page.mouse.move(screen!.x + 220, screen!.y + 30, { steps: 10 })
+      await page.mouse.up()
+      await page.screenshot({ path: join(tmpdir(), 'cerebro-e2e-artifacts', `theme-${name.replaceAll(' ', '-')}.png`) })
+      await page.locator('.xterm-helper-textarea').first().press('ArrowRight')
+    }
+    await page.getByRole('button', { name: 'Settings', exact: true }).click()
+    await page.getByRole('button', { name: 'Terminal', exact: true }).click()
+    await page.getByTestId('settings-terminal-theme').click()
+    await page.getByRole('option', { name: 'Nord', exact: true }).click()
+    await expect(page.getByTestId('settings-terminal-theme')).toHaveText('Nord')
+    await page.getByRole('button', { name: 'Back', exact: true }).click()
+    await clickNewTerminalMenu(page)
+    await expect(page.locator('.terminal-host .xterm')).toHaveCount(3)
+    await expect(page.locator('.terminal-host').last()).toHaveCSS('background-color', 'rgb(46, 52, 64)')
+    await expect(page.locator('.xterm-viewport').last()).toHaveCSS('background-color', 'rgb(46, 52, 64)')
   } finally {
     await rm(sourcesRoot, { recursive: true, force: true })
   }

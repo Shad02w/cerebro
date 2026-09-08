@@ -28,7 +28,7 @@
 }
 
 .terminal-host .xterm .xterm-viewport {
-  background-color: #0a0a0a;
+  background-color: inherit;
   overflow-y: auto;
   scrollbar-width: none;
   -ms-overflow-style: none;

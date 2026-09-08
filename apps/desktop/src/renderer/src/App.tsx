@@ -161,19 +161,25 @@ function App(): React.JSX.Element {
               onCancelGitHub={cancelDeviceFlow}
               onDisconnectGitHub={disconnectGitHub}
             />
-          ) : (
+          ) : null}
+          <div
+            className="min-h-0 flex-1 flex-col"
+            style={{ display: isSettings ? 'none' : 'flex' }}
+          >
             <WorkspaceView
+              visible={!isSettings}
               workspace={activeWorkspace}
               activeWorkspaceId={activeWorkspaceId}
               hasProjects={projects.length > 0}
               loading={loading}
               error={error}
+              terminalTheme={settings?.terminalTheme ?? null}
               terminalFontSize={settings?.terminalFontSize ?? null}
               terminalFontFamily={settings?.terminalFontFamily ?? null}
               onAddProject={(): void => setProjectDialogOpen(true)}
               onSelectWorkspace={handleSelectWorkspace}
             />
-          )}
+          </div>
         </SidebarInset>
         <AddProjectDialog
           open={projectDialogOpen}
