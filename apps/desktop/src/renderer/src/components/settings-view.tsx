@@ -22,6 +22,8 @@ import {
   SelectValue
 } from '@/components/ui/select'
 
+const GITHUB_INSTALLATIONS_URL = 'https://github.com/settings/installations'
+
 type SettingsViewProps = {
   section: SettingsSectionId
   settings: AppSettings | null
@@ -421,7 +423,7 @@ function IntegrationsSettings({
         <div className="space-y-1">
           <h3 className="text-sm font-medium">GitHub</h3>
           <p className="text-xs text-muted-foreground">
-            Authorize Cerebro with a device code. You can disconnect and reconnect anytime.
+            Authorize Cerebro with a device code, then configure which repositories it can access.
           </p>
         </div>
 
@@ -494,18 +496,30 @@ function IntegrationsSettings({
                 ) : null}
               </div>
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              className="app-no-drag"
-              disabled={busy}
-              data-testid="github-disconnect"
-              onClick={(): void => {
-                void run(onDisconnect)
-              }}
-            >
-              Disconnect
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button asChild variant="outline" className="app-no-drag">
+                <a
+                  href={GITHUB_INSTALLATIONS_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  data-testid="github-configure"
+                >
+                  Configure
+                </a>
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="app-no-drag"
+                disabled={busy}
+                data-testid="github-disconnect"
+                onClick={(): void => {
+                  void run(onDisconnect)
+                }}
+              >
+                Disconnect
+              </Button>
+            </div>
           </div>
         ) : (
           <div className="space-y-3" data-testid="github-disconnected">
