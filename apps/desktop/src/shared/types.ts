@@ -151,7 +151,7 @@ export type GitHubStatus =
       verificationUri: string
       expiresAt: string
     }
-  | { state: 'connected'; account: GitHubAccount }
+  | { state: 'connected'; account: GitHubAccount; configureUrl: string }
   | { state: 'error'; message: string }
 
 export type CerebroApi = {

@@ -15,6 +15,7 @@ export type MockPullRequest = {
 
 export type MockGitHubServer = {
   baseUrl: string
+  installationHtmlUrl: string
   authorize: (deviceCode?: string) => void
   lastUserCode: () => string | null
   setPullRequests: (owner: string, repo: string, pullRequests: MockPullRequest[]) => void
@@ -110,6 +111,35 @@ export async function startMockGitHubServer(): Promise<MockGitHubServer> {
           access_token: device.token,
           token_type: 'bearer',
           scope: 'repo,read:user'
+        })
+        return
+      }
+
+      if (method === 'GET' && url.pathname === '/user/installations') {
+        const auth = req.headers.authorization ?? ''
+        const token = auth.replace(/^(?:Bearer|token)\s+/i, '').trim()
+        if (!token || !tokens.has(token)) {
+          sendJson(res, 401, { message: 'Bad credentials' })
+          return
+        }
+        sendJson(res, 200, {
+          total_count: 1,
+          installations: [
+            {
+              id: 42,
+              account: {
+                login: 'octocat',
+                id: 1,
+                type: 'User'
+              },
+              html_url: `${baseUrl}/settings/installations/42`,
+              app_id: 1,
+              app_slug: 'cerebro',
+              target_id: 1,
+              target_type: 'User',
+              repository_selection: 'selected'
+            }
+          ]
         })
         return
       }
@@ -216,6 +246,7 @@ export async function startMockGitHubServer(): Promise<MockGitHubServer> {
 
   return {
     baseUrl,
+    installationHtmlUrl: `${baseUrl}/settings/installations/42`,
     authorize: (deviceCode?: string): void => {
       if (deviceCode) {
         const device = devices.get(deviceCode)
