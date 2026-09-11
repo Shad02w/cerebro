@@ -12,6 +12,11 @@ test('connects to GitHub via device flow', async ({ page, githubMock }) => {
 
   await expect(page.getByTestId('github-connected')).toBeVisible({ timeout: 15_000 })
   await expect(page.getByTestId('github-login')).toHaveText('octocat')
+  await expect(page.getByTestId('github-configure')).toHaveAttribute(
+    'href',
+    'https://github.com/settings/installations'
+  )
+  await expect(page.getByTestId('github-configure')).toHaveAttribute('target', '_blank')
   await expect(page.getByTestId('github-disconnect')).toBeVisible()
 })
 
