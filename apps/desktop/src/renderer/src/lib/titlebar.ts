@@ -10,4 +10,3 @@ export const TITLEBAR_TRIGGER_GAP = 8
 /** Content-area chrome starts after the traffic lights and sidebar trigger. */
 export const TITLEBAR_COLLAPSED_INSET_LEFT =
   TITLEBAR_TRIGGER_LEFT + TITLEBAR_TRIGGER_SIZE + TITLEBAR_TRIGGER_GAP
-

@@ -29,7 +29,10 @@ async function addDirectoryViaUi(
   await page.getByTestId('add-project-choose-folder').click()
 }
 
-test('shows the more action only on the hovered sidebar tree row', async ({ page, electronApp }) => {
+test('shows the more action only on the hovered sidebar tree row', async ({
+  page,
+  electronApp
+}) => {
   const sourcesRoot = await mkdtemp(join(tmpdir(), 'cerebro-sidebar-tree-e2e-'))
   const source = join(sourcesRoot, 'tree-alpha')
 

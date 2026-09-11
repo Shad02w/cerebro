@@ -154,7 +154,21 @@ export type GitHubStatus =
   | { state: 'connected'; account: GitHubAccount; configureUrl: string }
   | { state: 'error'; message: string }
 
+export type CliInstallStatus = {
+  onPath: boolean
+  command: string
+  path: string
+  profile: string
+  development: boolean
+  version: string
+  state: 'not-installed' | 'installed' | 'repair' | 'conflict' | 'unsupported'
+  message: string
+}
+
 export type CerebroApi = {
+  getCliStatus: () => Promise<CliInstallStatus>
+  installCli: () => Promise<CliInstallStatus>
+  removeCli: () => Promise<CliInstallStatus>
   getLayout: () => Promise<LayoutState>
   onLayoutFocusWorkspace: (listener: (workspaceId: number) => void) => () => void
   layoutCommand: (command: LayoutCommand) => Promise<LayoutReply>

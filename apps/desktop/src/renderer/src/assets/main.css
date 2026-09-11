@@ -150,7 +150,8 @@
     opacity: 0;
   }
 
-  [data-sidebar='menu-row']:is(:hover, :focus-within) [data-sidebar='menu-action'][data-show-on-hover],
+  [data-sidebar='menu-row']:is(:hover, :focus-within)
+    [data-sidebar='menu-action'][data-show-on-hover],
   [data-sidebar='menu-action'][data-show-on-hover]:focus-visible,
   [data-sidebar='menu-action'][data-show-on-hover][data-state='open'] {
     opacity: 1;

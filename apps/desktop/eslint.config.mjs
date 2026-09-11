@@ -45,5 +45,17 @@ export default defineConfig(
       'react-hooks/rules-of-hooks': 'off'
     }
   },
-  eslintConfigPrettier
+  eslintConfigPrettier,
+  {
+    files: ['**/*.{js,mjs,cjs}'],
+    rules: {
+      '@typescript-eslint/explicit-function-return-type': 'off'
+    }
+  },
+  {
+    files: ['**/*.cjs'],
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off'
+    }
+  }
 )

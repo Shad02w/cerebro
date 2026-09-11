@@ -9,6 +9,9 @@ import type {
 } from '../shared/types'
 
 const api: CerebroApi = {
+  getCliStatus: () => ipcRenderer.invoke(IPC.cli.status),
+  installCli: () => ipcRenderer.invoke(IPC.cli.install),
+  removeCli: () => ipcRenderer.invoke(IPC.cli.remove),
   getLayout: () => ipcRenderer.invoke(IPC.layout.get),
   onLayoutFocusWorkspace: (listener) => {
     const handler = (_event: IpcRendererEvent, workspaceId: number): void => listener(workspaceId)

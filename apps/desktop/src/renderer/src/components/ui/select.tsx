@@ -4,7 +4,9 @@ import { Select as SelectPrimitive } from 'radix-ui'
 
 import { cn } from '@/lib/utils'
 
-function Select({ ...props }: React.ComponentProps<typeof SelectPrimitive.Root>): React.JSX.Element {
+function Select({
+  ...props
+}: React.ComponentProps<typeof SelectPrimitive.Root>): React.JSX.Element {
   return <SelectPrimitive.Root data-slot="select" {...props} />
 }
 

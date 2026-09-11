@@ -22,8 +22,7 @@ function writeValue(key: string, value: string): void {
 
 function readValue(key: string): string | null {
   const row = getDb().prepare('SELECT value FROM app_state WHERE key = ?').get(key) as
-    | { value: string }
-    | undefined
+    { value: string } | undefined
   return row?.value ?? null
 }
 

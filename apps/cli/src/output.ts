@@ -5,8 +5,6 @@ export function printJson(value: unknown): void {
 
 /** Print a structured error to stderr and exit. */
 export function die(message: string, code: string, exitCode = 1): never {
-  process.stderr.write(
-    JSON.stringify({ error: true, code, message }, null, 2) + '\n'
-  )
+  process.stderr.write(JSON.stringify({ error: true, code, message }, null, 2) + '\n')
   process.exit(exitCode)
 }

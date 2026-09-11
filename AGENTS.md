@@ -77,16 +77,16 @@ A spec file is required locally. Omitting it (or passing only Playwright flags) 
 
 Pick specs by the flow you touched:
 
-| Changed area | Spec |
-|---|---|
-| app chrome, empty state, menu | `smoke.spec.ts` |
-| settings | `settings.spec.ts` |
-| GitHub login / integrations | `github.spec.ts` |
-| add local / multi-root folder | `projects-directory.spec.ts` |
-| clone from GitHub, worktrees, PRs | `projects-github.spec.ts` |
-| workspace terminal | `terminal.spec.ts` |
-| BSP panes and tab/pane CLI | `panes.spec.ts` |
-| Changes content | `changes.spec.ts` |
+| Changed area                      | Spec                         |
+| --------------------------------- | ---------------------------- |
+| app chrome, empty state, menu     | `smoke.spec.ts`              |
+| settings                          | `settings.spec.ts`           |
+| GitHub login / integrations       | `github.spec.ts`             |
+| add local / multi-root folder     | `projects-directory.spec.ts` |
+| clone from GitHub, worktrees, PRs | `projects-github.spec.ts`    |
+| workspace terminal                | `terminal.spec.ts`           |
+| BSP panes and tab/pane CLI        | `panes.spec.ts`              |
+| Changes content                   | `changes.spec.ts`            |
 
 If a change spans several flows, list those specs together (`settings.spec.ts smoke.spec.ts`). Do not add unrelated specs "just in case."
 
@@ -193,11 +193,11 @@ cerebro workspace list --project 3
 
 ### Context env vars (injected in Cerebro workspace terminals only)
 
-| Variable | Value |
-|---|---|
-| `CEREBRO_HOME` | Data directory (default `~/cerebro`) |
-| `CEREBRO_PROJECT_ID` | Integer project id for this workspace |
-| `CEREBRO_WORKSPACE_ID` | Integer workspace id |
+| Variable                 | Value                                                          |
+| ------------------------ | -------------------------------------------------------------- |
+| `CEREBRO_HOME`           | Data directory (default `~/cerebro`)                           |
+| `CEREBRO_PROJECT_ID`     | Integer project id for this workspace                          |
+| `CEREBRO_WORKSPACE_ID`   | Integer workspace id                                           |
 | `CEREBRO_WORKSPACE_PATH` | Absolute checkout path (same as `cerebro workspace path <id>`) |
 
 ### Architecture notes

@@ -179,7 +179,8 @@ export function AddWorkspaceDialog({
                 data-testid="workspace-mode-existing"
                 className={cn(
                   'h-8',
-                  mode === 'existing' && 'bg-background text-foreground shadow-sm hover:bg-background'
+                  mode === 'existing' &&
+                    'bg-background text-foreground shadow-sm hover:bg-background'
                 )}
                 disabled={submitting}
                 onClick={() => {
@@ -228,9 +229,7 @@ export function AddWorkspaceDialog({
                       existingBranches.length ? 'Select a branch' : 'No branches available'
                     }
                     emptyLabel={
-                      existingBranches.length
-                        ? 'No branches match.'
-                        : 'No branches available'
+                      existingBranches.length ? 'No branches match.' : 'No branches available'
                     }
                     testId="workspace-branch-select"
                     onChange={setBranch}

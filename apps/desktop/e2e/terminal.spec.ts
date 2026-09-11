@@ -1,3 +1,4 @@
+import type { Locator } from '@playwright/test'
 import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -26,7 +27,10 @@ async function addProjectViaUi(page: Page, gitUrl: string, projectName: string):
   })
 }
 
-async function mockChooseFolder(electronApp: ElectronApplication, directory: string): Promise<void> {
+async function mockChooseFolder(
+  electronApp: ElectronApplication,
+  directory: string
+): Promise<void> {
   await electronApp.evaluate(async ({ dialog }, dir: string) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [dir] })
   }, directory)
@@ -34,7 +38,10 @@ async function mockChooseFolder(electronApp: ElectronApplication, directory: str
 
 async function selectWorkspaceRow(page: Page, name: string): Promise<void> {
   const sidebar = page.locator('[data-slot="sidebar"]')
-  await sidebar.getByTestId(/workspace-row-/).filter({ hasText: name }).click()
+  await sidebar
+    .getByTestId(/workspace-row-/)
+    .filter({ hasText: name })
+    .click()
 }
 
 async function openAddTabMenu(page: Page): Promise<void> {
@@ -57,7 +64,7 @@ async function clickOpenChanges(page: Page): Promise<void> {
   await expect(page.getByTestId('changes-tab')).toBeVisible()
 }
 
-function contentTabs(page: Page) {
+function contentTabs(page: Page): Locator {
   return page.locator('[data-testid="terminal-tab-bar"] [role="tab"]')
 }
 
@@ -227,7 +234,9 @@ test('does not spawn a terminal until New terminal is clicked; project row only 
     await addProjectViaUi(page, `file://${sourceA}`, 'term-alpha')
 
     const sidebar = page.locator('[data-slot="sidebar"]')
-    await expect(sidebar.getByTestId(/project-row-/).filter({ hasText: 'term-alpha' })).toBeVisible()
+    await expect(
+      sidebar.getByTestId(/project-row-/).filter({ hasText: 'term-alpha' })
+    ).toBeVisible()
     await expect(sidebar.getByTestId(/workspace-row-/).filter({ hasText: 'main' })).toBeVisible()
     await expect(sidebar.locator('[data-sidebar="menu-sub"]')).toHaveCSS('border-left-width', '0px')
     await expect(sidebar.locator('[data-sidebar="menu-sub"]')).toHaveCSS('margin-right', '0px')
@@ -243,11 +252,17 @@ test('does not spawn a terminal until New terminal is clicked; project row only 
     await expect(page.locator('[data-terminal-workspace-id]')).toHaveCount(0)
 
     // Collapsing the project hides workspaces and still does not open a terminal.
-    await page.getByTestId(/project-row-/).filter({ hasText: 'term-alpha' }).click()
+    await page
+      .getByTestId(/project-row-/)
+      .filter({ hasText: 'term-alpha' })
+      .click()
     await expect(sidebar.getByTestId(/workspace-row-/).filter({ hasText: 'main' })).toBeHidden()
     await expect(page.getByTestId('terminal-tab-bar')).toHaveCount(0)
 
-    await page.getByTestId(/project-row-/).filter({ hasText: 'term-alpha' }).click()
+    await page
+      .getByTestId(/project-row-/)
+      .filter({ hasText: 'term-alpha' })
+      .click()
     await expect(sidebar.getByTestId(/workspace-row-/).filter({ hasText: 'main' })).toBeVisible()
     await selectWorkspaceRow(page, 'main')
 
@@ -272,18 +287,27 @@ test('does not spawn a terminal until New terminal is clicked; project row only 
     ).toHaveCount(1)
 
     // Collapsing the project hides workspaces but does not change the active terminal.
-    await page.getByTestId(/project-row-/).filter({ hasText: 'term-alpha' }).click()
+    await page
+      .getByTestId(/project-row-/)
+      .filter({ hasText: 'term-alpha' })
+      .click()
     await expect(sidebar.getByTestId(/workspace-row-/).filter({ hasText: 'main' })).toBeHidden()
     await expect(
       page.locator(`[data-terminal-workspace-id="${workspaceAId}"][data-terminal-active="true"]`)
     ).toHaveCount(1)
 
-    await page.getByTestId(/project-row-/).filter({ hasText: 'term-alpha' }).click()
+    await page
+      .getByTestId(/project-row-/)
+      .filter({ hasText: 'term-alpha' })
+      .click()
     await expect(sidebar.getByTestId(/workspace-row-/).filter({ hasText: 'main' })).toBeVisible()
 
     await addProjectViaUi(page, `file://${sourceB}`, 'term-beta')
     await expect(sidebar.getByTestId(/project-row-/).filter({ hasText: 'term-beta' })).toBeVisible()
-    await page.getByTestId(/project-row-/).filter({ hasText: 'term-beta' }).click()
+    await page
+      .getByTestId(/project-row-/)
+      .filter({ hasText: 'term-beta' })
+      .click()
     await expect(sidebar.getByTestId(/workspace-row-/).filter({ hasText: 'develop' })).toBeVisible()
 
     // Adding another project must not steal focus or spawn a second tab strip.
@@ -348,7 +372,16 @@ test('does not spawn a terminal until New terminal is clicked; project row only 
       ) as HTMLElement | null
       const xterm = host?.querySelector('.xterm')
       const viewport = host?.querySelector('.xterm-viewport') as HTMLElement | null
-      if (!overlay || !stack || !tabBar || !sessions || !sidebarEl || !host || !xterm || !viewport) {
+      if (
+        !overlay ||
+        !stack ||
+        !tabBar ||
+        !sessions ||
+        !sidebarEl ||
+        !host ||
+        !xterm ||
+        !viewport
+      ) {
         throw new Error('Terminal chrome elements were not found.')
       }
 
@@ -369,9 +402,7 @@ test('does not spawn a terminal until New terminal is clicked; project row only 
       const menloWidth = ctx.measureText(sample).width
 
       const probe = document.createElement('canvas')
-      const webglAvailable = Boolean(
-        probe.getContext('webgl2') ?? probe.getContext('webgl')
-      )
+      const webglAvailable = Boolean(probe.getContext('webgl2') ?? probe.getContext('webgl'))
 
       return {
         overlayPosition: getComputedStyle(overlay).position,
@@ -448,20 +479,22 @@ test('supports multiple terminal tabs; close and shell exit remove the tab', asy
 
     await openNewTerminal(page)
     await expect(page.getByTestId('terminal-tab')).toHaveCount(1)
-    await expect(page.getByTestId('terminal-tab').filter({ hasText: 'Terminal 1' })).toHaveAttribute(
-      'data-active',
-      'true'
+    await expect(
+      page.getByTestId('terminal-tab').filter({ hasText: 'Terminal 1' })
+    ).toHaveAttribute('data-active', 'true')
+    await expect(page.locator(`[data-terminal-workspace-id="${workspaceId}"] .xterm`)).toHaveCount(
+      1
     )
-    await expect(page.locator(`[data-terminal-workspace-id="${workspaceId}"] .xterm`)).toHaveCount(1)
 
     await clickNewTerminalMenu(page)
     await expect(page.getByTestId('terminal-tab')).toHaveCount(2)
-    await expect(page.getByTestId('terminal-tab').filter({ hasText: 'Terminal 2' })).toHaveAttribute(
-      'data-active',
-      'true'
-    )
+    await expect(
+      page.getByTestId('terminal-tab').filter({ hasText: 'Terminal 2' })
+    ).toHaveAttribute('data-active', 'true')
     await waitForActiveTerminal(page)
-    await expect(page.locator(`[data-terminal-workspace-id="${workspaceId}"] .xterm`)).toHaveCount(2)
+    await expect(page.locator(`[data-terminal-workspace-id="${workspaceId}"] .xterm`)).toHaveCount(
+      2
+    )
     await expect(
       page.locator(`[data-terminal-workspace-id="${workspaceId}"][data-terminal-active="true"]`)
     ).toHaveCount(1)
@@ -472,14 +505,12 @@ test('supports multiple terminal tabs; close and shell exit remove the tab', asy
     ).toBeVisible()
 
     await page.getByTestId('terminal-tab').filter({ hasText: 'Terminal 1' }).click()
-    await expect(page.getByTestId('terminal-tab').filter({ hasText: 'Terminal 1' })).toHaveAttribute(
-      'data-active',
-      'true'
-    )
-    await expect(page.getByTestId('terminal-tab').filter({ hasText: 'Terminal 2' })).toHaveAttribute(
-      'data-active',
-      'false'
-    )
+    await expect(
+      page.getByTestId('terminal-tab').filter({ hasText: 'Terminal 1' })
+    ).toHaveAttribute('data-active', 'true')
+    await expect(
+      page.getByTestId('terminal-tab').filter({ hasText: 'Terminal 2' })
+    ).toHaveAttribute('data-active', 'false')
     await waitForActiveTerminal(page)
     await expect(
       page.locator(
@@ -496,7 +527,9 @@ test('supports multiple terminal tabs; close and shell exit remove the tab', asy
     await expect(page.getByTestId('terminal-tab')).toHaveCount(1)
     await expect(page.getByTestId('terminal-tab').filter({ hasText: 'Terminal 1' })).toBeVisible()
     await expect(page.getByTestId('terminal-tab').filter({ hasText: 'Terminal 2' })).toHaveCount(0)
-    await expect(page.locator(`[data-terminal-workspace-id="${workspaceId}"] .xterm`)).toHaveCount(1)
+    await expect(page.locator(`[data-terminal-workspace-id="${workspaceId}"] .xterm`)).toHaveCount(
+      1
+    )
     await waitForActiveTerminal(page)
 
     await clickNewTerminalMenu(page)
@@ -505,19 +538,25 @@ test('supports multiple terminal tabs; close and shell exit remove the tab', asy
 
     await exitActiveTerminal(page)
     await expect(page.getByTestId('terminal-tab')).toHaveCount(1, { timeout: 15_000 })
-    await expect(page.locator(`[data-terminal-workspace-id="${workspaceId}"] .xterm`)).toHaveCount(1)
+    await expect(page.locator(`[data-terminal-workspace-id="${workspaceId}"] .xterm`)).toHaveCount(
+      1
+    )
     await waitForActiveTerminal(page)
 
     await exitActiveTerminal(page)
     await expect(page.getByTestId('terminal-tab')).toHaveCount(0, { timeout: 15_000 })
-    await expect(page.locator(`[data-terminal-workspace-id="${workspaceId}"] .xterm`)).toHaveCount(0)
+    await expect(page.locator(`[data-terminal-workspace-id="${workspaceId}"] .xterm`)).toHaveCount(
+      0
+    )
     await expect(page.getByTestId('terminal-tab-bar')).toBeVisible()
     await expect(page.getByTestId('new-terminal-tab')).toBeVisible()
 
     await clickNewTerminalMenu(page)
     await expect(page.getByTestId('terminal-tab')).toHaveCount(1)
     await waitForActiveTerminal(page)
-    await expect(page.locator(`[data-terminal-workspace-id="${workspaceId}"] .xterm`)).toHaveCount(1)
+    await expect(page.locator(`[data-terminal-workspace-id="${workspaceId}"] .xterm`)).toHaveCount(
+      1
+    )
   } finally {
     await rm(sourcesRoot, { recursive: true, force: true })
   }
@@ -568,23 +607,28 @@ test('does not spawn a terminal for a multi-root project until New terminal is c
       const current = await window.cerebro.listProjects()
       const project = current.projects.find((item) => item.name === 'apps-folder')
       const root = project?.workspaces.find((workspace) => workspace.kind === 'root')
-      return { activeId: current.activeWorkspaceId, rootId: root?.id ?? null, rootPath: root?.localPath ?? null }
+      return {
+        activeId: current.activeWorkspaceId,
+        rootId: root?.id ?? null,
+        rootPath: root?.localPath ?? null
+      }
     })
     expect(rootId.rootId).not.toBeNull()
     expect(rootId.activeId).toBe(rootId.rootId)
     expect(rootId.rootPath).toBe(parentPath)
     await expect(rootRow).toHaveAttribute('data-active', 'true')
-    await expect(page.getByTestId(/workspace-row-/).filter({ hasText: 'frontend' })).toHaveAttribute(
-      'data-active',
-      'false'
-    )
+    await expect(
+      page.getByTestId(/workspace-row-/).filter({ hasText: 'frontend' })
+    ).toHaveAttribute('data-active', 'false')
     await expect(page.getByTestId('terminal-tab-bar')).toBeVisible()
     await expect(page.getByTestId('terminal-tab')).toHaveCount(0)
     await expect(page.locator('[data-terminal-workspace-id]')).toHaveCount(0)
 
     await openNewTerminal(page)
     await expect(
-      page.locator(`[data-terminal-workspace-id="${rootId.rootId}"][data-terminal-active="true"] .xterm`)
+      page.locator(
+        `[data-terminal-workspace-id="${rootId.rootId}"][data-terminal-active="true"] .xterm`
+      )
     ).toBeVisible()
     const rootActive = await readActiveWorkspace(page)
     expect(rootActive.kind).toBe('root')
@@ -595,7 +639,9 @@ test('does not spawn a terminal for a multi-root project until New terminal is c
     await toggle.click()
     await expect(page.getByTestId(/workspace-row-/).filter({ hasText: 'frontend' })).toBeHidden()
     await expect(
-      page.locator(`[data-terminal-workspace-id="${rootId.rootId}"][data-terminal-active="true"] .xterm`)
+      page.locator(
+        `[data-terminal-workspace-id="${rootId.rootId}"][data-terminal-active="true"] .xterm`
+      )
     ).toBeVisible()
     await page.getByTestId(/project-root-/).hover()
     await toggle.click()
@@ -612,10 +658,9 @@ test('does not spawn a terminal for a multi-root project until New terminal is c
     expect(frontendActive.kind).toBe('default')
     expect(frontendActive.localPath).toBe(frontendPath)
     await expect(rootRow).toHaveAttribute('data-active', 'false')
-    await expect(page.getByTestId(/workspace-row-/).filter({ hasText: 'frontend' })).toHaveAttribute(
-      'data-active',
-      'true'
-    )
+    await expect(
+      page.getByTestId(/workspace-row-/).filter({ hasText: 'frontend' })
+    ).toHaveAttribute('data-active', 'true')
     await expect(page.getByTestId('terminal-tab-bar')).toBeVisible()
     await expect(page.getByTestId('terminal-tab')).toHaveCount(0)
     await expect(page.locator(`[data-terminal-workspace-id="${frontendId}"]`)).toHaveCount(0)
@@ -625,7 +670,9 @@ test('does not spawn a terminal for a multi-root project until New terminal is c
 
     await openNewTerminal(page)
     await expect(
-      page.locator(`[data-terminal-workspace-id="${frontendId}"][data-terminal-active="true"] .xterm`)
+      page.locator(
+        `[data-terminal-workspace-id="${frontendId}"][data-terminal-active="true"] .xterm`
+      )
     ).toBeVisible()
 
     await clickNewTerminalMenu(page)
@@ -646,7 +693,9 @@ test('does not spawn a terminal for a multi-root project until New terminal is c
 
     await openNewTerminal(page)
     await expect(
-      page.locator(`[data-terminal-workspace-id="${backendId}"][data-terminal-active="true"] .xterm`)
+      page.locator(
+        `[data-terminal-workspace-id="${backendId}"][data-terminal-active="true"] .xterm`
+      )
     ).toBeVisible()
     await expect(page.getByTestId('terminal-tab')).toHaveCount(1)
   } finally {
@@ -728,7 +777,10 @@ test('opens a terminal with Mod+T when a default-branch workspace row is focused
     await expect(page.getByTestId('terminal-tab-bar')).toHaveCount(0)
     await expect(page.locator('[data-terminal-workspace-id]')).toHaveCount(0)
 
-    await sidebar.getByTestId(/project-row-/).filter({ hasText: 'term-modt' }).focus()
+    await sidebar
+      .getByTestId(/project-row-/)
+      .filter({ hasText: 'term-modt' })
+      .focus()
     await page.keyboard.press(newTerminalChord())
     await expect(page.getByTestId('terminal-tab-bar')).toHaveCount(0)
 
@@ -741,7 +793,9 @@ test('opens a terminal with Mod+T when a default-branch workspace row is focused
     })
     expect(workspaceId).not.toBeNull()
     await expect(
-      page.locator(`[data-terminal-workspace-id="${workspaceId}"][data-terminal-active="true"] .xterm`)
+      page.locator(
+        `[data-terminal-workspace-id="${workspaceId}"][data-terminal-active="true"] .xterm`
+      )
     ).toBeVisible()
     await expect(page.getByTestId('terminal-tab')).toHaveCount(1)
 
@@ -764,7 +818,10 @@ test('opens a terminal with Mod+T when a default-branch workspace row is focused
   }
 })
 
-test('opens a terminal with Mod+T from multi-root workspace rows', async ({ page, electronApp }) => {
+test('opens a terminal with Mod+T from multi-root workspace rows', async ({
+  page,
+  electronApp
+}) => {
   const root = await mkdtemp(join(tmpdir(), 'cerebro-multiroot-modt-e2e-'))
   const parent = join(root, 'apps-folder')
   const frontend = join(parent, 'frontend')
@@ -796,7 +853,9 @@ test('opens a terminal with Mod+T from multi-root workspace rows', async ({ page
     await rootRow.focus()
     await page.keyboard.press(newTerminalChord())
     await expect(
-      page.locator(`[data-terminal-workspace-id="${rootWorkspace!.id}"][data-terminal-active="true"] .xterm`)
+      page.locator(
+        `[data-terminal-workspace-id="${rootWorkspace!.id}"][data-terminal-active="true"] .xterm`
+      )
     ).toBeVisible({ timeout: 30_000 })
     const rootState = await readActiveWorkspace(page)
     expect(rootState.kind).toBe('root')
@@ -815,7 +874,9 @@ test('opens a terminal with Mod+T from multi-root workspace rows', async ({ page
     expect(frontendState.kind).toBe('default')
     expect(frontendState.id).toBe(frontendWorkspace!.id)
     await expect(
-      page.locator(`[data-terminal-workspace-id="${rootWorkspace!.id}"][data-terminal-active="false"]`)
+      page.locator(
+        `[data-terminal-workspace-id="${rootWorkspace!.id}"][data-terminal-active="false"]`
+      )
     ).toHaveCount(1)
   } finally {
     await rm(root, { recursive: true, force: true })
@@ -1002,37 +1063,23 @@ test('reorders content tabs by dragging', async ({ page }) => {
     await clickNewTerminalMenu(page)
     await waitForActiveTerminal(page)
     await clickOpenChanges(page)
-    await expect.poll(() => contentTabLabels(page)).toEqual([
-      'Terminal 1',
-      'Terminal 2',
-      'Changes'
-    ])
+    await expect.poll(() => contentTabLabels(page)).toEqual(['Terminal 1', 'Terminal 2', 'Changes'])
 
     await dragTabTo(page, 'Changes', 'Terminal 1', 'start')
-    await expect.poll(() => contentTabLabels(page)).toEqual([
-      'Changes',
-      'Terminal 1',
-      'Terminal 2'
-    ])
+    await expect.poll(() => contentTabLabels(page)).toEqual(['Changes', 'Terminal 1', 'Terminal 2'])
     await expect(page.getByTestId('changes-tab')).toHaveAttribute('data-active', 'true')
 
     await dragTabTo(page, 'Terminal 2', 'Changes', 'start')
-    await expect.poll(() => contentTabLabels(page)).toEqual([
-      'Terminal 2',
-      'Changes',
-      'Terminal 1'
-    ])
-    await expect(page.getByTestId('terminal-tab').filter({ hasText: 'Terminal 2' })).toHaveAttribute(
-      'data-active',
-      'true'
-    )
+    await expect.poll(() => contentTabLabels(page)).toEqual(['Terminal 2', 'Changes', 'Terminal 1'])
+    await expect(
+      page.getByTestId('terminal-tab').filter({ hasText: 'Terminal 2' })
+    ).toHaveAttribute('data-active', 'true')
 
     await page.getByTestId('changes-tab').click()
     await expect(page.getByTestId('changes-tab')).toHaveAttribute('data-active', 'true')
-    await expect(page.getByTestId('terminal-tab').filter({ hasText: 'Terminal 2' })).toHaveAttribute(
-      'data-active',
-      'false'
-    )
+    await expect(
+      page.getByTestId('terminal-tab').filter({ hasText: 'Terminal 2' })
+    ).toHaveAttribute('data-active', 'false')
 
     await page
       .getByTestId('terminal-tab')
@@ -1045,17 +1092,23 @@ test('reorders content tabs by dragging', async ({ page }) => {
   }
 })
 
-test('terminal themes update existing and new sessions without losing output', async ({ page, electronApp }) => {
+test('terminal themes update existing and new sessions without losing output', async ({
+  page,
+  electronApp
+}) => {
   const sourcesRoot = await mkdtemp(join(tmpdir(), 'cerebro-theme-e2e-'))
   try {
     await initGitRepo(sourcesRoot, 'main', 'themes')
     const shell = join(sourcesRoot, 'theme-shell')
     await writeFile(shell, '#!/bin/sh\nexec /bin/bash --noprofile --norc -i\n')
     await chmod(shell, 0o755)
-    await electronApp.evaluate((_electron, shell) => { process.env.SHELL = shell; process.env.PS1 = 'theme> ' }, shell)
+    await electronApp.evaluate((_electron, shell) => {
+      process.env.SHELL = shell
+      process.env.PS1 = 'theme> '
+    }, shell)
     await page.evaluate(() => {
       const probe = { sessionId: 0, output: '' }
-      ;(window as any).themeProbe = probe
+      ;(window as Window & { themeProbe: { sessionId: number; output: string } }).themeProbe = probe
       window.cerebro.onPtyData((event) => {
         if (!probe.sessionId) probe.sessionId = event.sessionId
         if (event.sessionId === probe.sessionId) probe.output += event.data
@@ -1065,17 +1118,49 @@ test('terminal themes update existing and new sessions without losing output', a
     await selectWorkspaceRow(page, 'main')
     await clickNewTerminalMenu(page)
     await expect(page.locator('.terminal-host .xterm')).toHaveCount(1)
-    await expect.poll(() => page.evaluate(() => (window as any).themeProbe.output)).toContain('$ ')
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (window as Window & { themeProbe: { sessionId: number; output: string } }).themeProbe
+              .output
+        )
+      )
+      .toContain('$ ')
     await page.evaluate(async () => {
-      await window.cerebro.writePty((window as any).themeProbe.sessionId, "stty -echo; THEME_TOKEN=preserved; printf 'THEME_SESSION_PRESERVED\\n\\033[31mRED \\033[32mGREEN \\033[34mBLUE\\033[0m\\n'\n")
+      await window.cerebro.writePty(
+        (window as Window & { themeProbe: { sessionId: number; output: string } }).themeProbe
+          .sessionId,
+        "stty -echo; THEME_TOKEN=preserved; printf 'THEME_SESSION_PRESERVED\\n\\033[31mRED \\033[32mGREEN \\033[34mBLUE\\033[0m\\n'\n"
+      )
     })
-    await expect.poll(() => page.evaluate(() => (window as any).themeProbe.output)).toContain('\u001b[31mRED')
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (window as Window & { themeProbe: { sessionId: number; output: string } }).themeProbe
+              .output
+        )
+      )
+      .toContain('\u001b[31mRED')
     const originalSize = await page.locator('.xterm-screen').first().boundingBox()
     await clickNewTerminalMenu(page)
     await expect(page.locator('.terminal-host .xterm')).toHaveCount(2)
     const firstTerminal = await page.locator('.terminal-host .xterm').first().elementHandle()
-    const tabIds = await page.getByTestId('terminal-tab').evaluateAll((els) => els.map((el) => el.getAttribute('data-terminal-tab-id')))
-    for (const [name, color] of [['Dracula', 'rgb(40, 42, 54)'], ['Catppuccin Latte', 'rgb(239, 241, 245)'], ['Xterm Default', 'rgb(0, 0, 0)'], ['Cerebro Default', 'rgb(10, 10, 10)'], ['Kanagawa Wave', 'rgb(31, 31, 40)'], ['Kanagawa Dragon', 'rgb(24, 22, 22)'], ['Kanagawa Lotus', 'rgb(242, 236, 188)'], ['Kanagawabones', 'rgb(31, 31, 40)'], ['Vercel', 'rgb(16, 16, 16)']]) {
+    const tabIds = await page
+      .getByTestId('terminal-tab')
+      .evaluateAll((els) => els.map((el) => el.getAttribute('data-terminal-tab-id')))
+    for (const [name, color] of [
+      ['Dracula', 'rgb(40, 42, 54)'],
+      ['Catppuccin Latte', 'rgb(239, 241, 245)'],
+      ['Xterm Default', 'rgb(0, 0, 0)'],
+      ['Cerebro Default', 'rgb(10, 10, 10)'],
+      ['Kanagawa Wave', 'rgb(31, 31, 40)'],
+      ['Kanagawa Dragon', 'rgb(24, 22, 22)'],
+      ['Kanagawa Lotus', 'rgb(242, 236, 188)'],
+      ['Kanagawabones', 'rgb(31, 31, 40)'],
+      ['Vercel', 'rgb(16, 16, 16)']
+    ]) {
       await page.getByRole('button', { name: 'Settings', exact: true }).click()
       await page.getByRole('button', { name: 'Terminal', exact: true }).click()
       await page.getByTestId('settings-terminal-theme').click()
@@ -1088,18 +1173,33 @@ test('terminal themes update existing and new sessions without losing output', a
         await expect(host.locator('.xterm-viewport')).toHaveCSS('background-color', color)
       }
       expect(await firstTerminal!.evaluate((el) => el.isConnected)).toBe(true)
-      expect(await page.getByTestId('terminal-tab').evaluateAll((els) => els.map((el) => el.getAttribute('data-terminal-tab-id')))).toEqual(tabIds)
+      expect(
+        await page
+          .getByTestId('terminal-tab')
+          .evaluateAll((els) => els.map((el) => el.getAttribute('data-terminal-tab-id')))
+      ).toEqual(tabIds)
       await page.getByTestId('terminal-tab').first().click()
-      await expect.poll(async () => {
-        const size = await page.locator('.xterm-screen').first().boundingBox()
-        return [size?.width, size?.height]
-      }).toEqual([originalSize?.width, originalSize?.height])
+      await expect
+        .poll(async () => {
+          const size = await page.locator('.xterm-screen').first().boundingBox()
+          return [size?.width, size?.height]
+        })
+        .toEqual([originalSize?.width, originalSize?.height])
       await page.evaluate(async () => {
-        const probe = (window as any).themeProbe
+        const probe = (window as Window & { themeProbe: { sessionId: number; output: string } })
+          .themeProbe
         probe.output = ''
         await window.cerebro.writePty(probe.sessionId, 'printf "state:%s\\n" "$THEME_TOKEN"\n')
       })
-      await expect.poll(() => page.evaluate(() => (window as any).themeProbe.output)).toContain('state:preserved')
+      await expect
+        .poll(() =>
+          page.evaluate(
+            () =>
+              (window as Window & { themeProbe: { sessionId: number; output: string } }).themeProbe
+                .output
+          )
+        )
+        .toContain('state:preserved')
 
       await mkdir(join(tmpdir(), 'cerebro-e2e-artifacts'), { recursive: true })
       const screen = await page.locator('.xterm-screen').first().boundingBox()
@@ -1107,7 +1207,9 @@ test('terminal themes update existing and new sessions without losing output', a
       await page.mouse.down()
       await page.mouse.move(screen!.x + 220, screen!.y + 30, { steps: 10 })
       await page.mouse.up()
-      await page.screenshot({ path: join(tmpdir(), 'cerebro-e2e-artifacts', `theme-${name.replaceAll(' ', '-')}.png`) })
+      await page.screenshot({
+        path: join(tmpdir(), 'cerebro-e2e-artifacts', `theme-${name.replaceAll(' ', '-')}.png`)
+      })
       await page.locator('.xterm-helper-textarea').first().press('ArrowRight')
     }
     await page.getByRole('button', { name: 'Settings', exact: true }).click()
@@ -1118,8 +1220,14 @@ test('terminal themes update existing and new sessions without losing output', a
     await page.getByRole('button', { name: 'Back', exact: true }).click()
     await clickNewTerminalMenu(page)
     await expect(page.locator('.terminal-host .xterm')).toHaveCount(3)
-    await expect(page.locator('.terminal-host').last()).toHaveCSS('background-color', 'rgb(46, 52, 64)')
-    await expect(page.locator('.xterm-viewport').last()).toHaveCSS('background-color', 'rgb(46, 52, 64)')
+    await expect(page.locator('.terminal-host').last()).toHaveCSS(
+      'background-color',
+      'rgb(46, 52, 64)'
+    )
+    await expect(page.locator('.xterm-viewport').last()).toHaveCSS(
+      'background-color',
+      'rgb(46, 52, 64)'
+    )
   } finally {
     await rm(sourcesRoot, { recursive: true, force: true })
   }

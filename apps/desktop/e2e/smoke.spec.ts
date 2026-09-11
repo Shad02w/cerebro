@@ -19,13 +19,19 @@ test('launches the real Electron window with preload and empty state', async ({
   await expect(page.getByTestId('sidebar-brain-mark')).toBeVisible()
   await expect(page.getByTestId('brain-mark')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Create your first project' })).toBeVisible()
-  await expect(page.getByText('No projects yet. Use + to clone a repository or open a folder.')).toBeVisible()
   await expect(
-    page.getByText('Clone a Git repository or open a folder to create a project and open a workspace')
+    page.getByText('No projects yet. Use + to clone a repository or open a folder.')
+  ).toBeVisible()
+  await expect(
+    page.getByText(
+      'Clone a Git repository or open a folder to create a project and open a workspace'
+    )
   ).toBeVisible()
   await expect(page.getByText(/default branch into/i)).toHaveCount(0)
 
-  const addProject = page.locator('[data-slot="sidebar"]').getByRole('button', { name: 'Add project' })
+  const addProject = page
+    .locator('[data-slot="sidebar"]')
+    .getByRole('button', { name: 'Add project' })
   await addProject.hover()
   await expect(page.getByRole('tooltip', { name: 'Add project' })).toBeVisible()
 

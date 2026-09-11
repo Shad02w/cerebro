@@ -11,7 +11,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { ShortcutKbd } from './shortcut-kbd'
-import { useKeybinds } from './provider'
+import { useKeybinds } from './context'
 
 type KeyboardSettingsProps = {
   settings: AppSettings
@@ -48,7 +48,8 @@ export function KeyboardSettings({
       if (!editingId) return
       const conflict = findKeybindConflict(hotkey, bindings, editingId)
       if (conflict) {
-        const conflictLabel = KEYBIND_CATALOG.find((item) => item.id === conflict)?.label ?? conflict
+        const conflictLabel =
+          KEYBIND_CATALOG.find((item) => item.id === conflict)?.label ?? conflict
         setLocalError(`That shortcut is already used by “${conflictLabel}”.`)
         setEditingId(null)
         setRecording(false)
@@ -116,7 +117,9 @@ export function KeyboardSettings({
             >
               <div className="min-w-0 flex-1 space-y-1">
                 <Label className="text-[13px] font-medium">{action.label}</Label>
-                <p className="text-xs leading-relaxed text-muted-foreground">{action.description}</p>
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  {action.description}
+                </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 {isCustom ? (

@@ -48,20 +48,18 @@ export function BranchCombobox({
   const hiddenCount = matches.length - visible.length
 
   useEffect(() => {
-    setHighlight(0)
-  }, [query, open])
-
-  useEffect(() => {
     optionRefs.current[highlight]?.scrollIntoView({ block: 'nearest' })
   }, [highlight])
 
   const selectBranch = (name: string): void => {
     onChange(name)
+    setHighlight(0)
     setOpen(false)
     setQuery('')
   }
 
   const handleOpenChange = (nextOpen: boolean): void => {
+    setHighlight(0)
     setOpen(nextOpen)
     if (nextOpen) {
       setMenuWidth(triggerRef.current?.offsetWidth)
@@ -130,7 +128,10 @@ export function BranchCombobox({
             aria-label="Search branches"
             data-testid={`${testId}-search`}
             autoComplete="off"
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              setQuery(event.target.value)
+              setHighlight(0)
+            }}
             onKeyDown={handleSearchKeyDown}
           />
         </div>
@@ -163,9 +164,7 @@ export function BranchCombobox({
                   onClick={() => selectBranch(name)}
                 >
                   <span className="truncate">{name}</span>
-                  {selected ? (
-                    <CheckIcon className="absolute right-2 size-4" />
-                  ) : null}
+                  {selected ? <CheckIcon className="absolute right-2 size-4" /> : null}
                 </button>
               )
             })

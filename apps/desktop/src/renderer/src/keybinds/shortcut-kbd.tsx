@@ -1,4 +1,4 @@
-import { formatForDisplay } from '@tanstack/react-hotkeys'
+import { shortcutKeys } from './shortcut-keys'
 import { cn } from '@/lib/utils'
 
 type ShortcutKbdProps = {
@@ -8,22 +8,11 @@ type ShortcutKbdProps = {
   inverted?: boolean
 }
 
-/** Split TanStack `formatForDisplay` output into individual key chips. */
-export function shortcutKeys(hotkey: string): string[] {
-  const display = formatForDisplay(hotkey).trim()
-  if (!display) return []
-  // formatForDisplay uses spaces between modifiers/keys (e.g. "⌘ W", "Ctrl+W" may vary).
-  // Prefer splitting on whitespace; also handle "+" separators.
-  if (display.includes(' ')) {
-    return display.split(/\s+/).filter(Boolean)
-  }
-  if (display.includes('+')) {
-    return display.split('+').map((part) => part.trim()).filter(Boolean)
-  }
-  return [display]
-}
-
-export function ShortcutKbd({ hotkey, className, inverted = false }: ShortcutKbdProps): React.JSX.Element {
+export function ShortcutKbd({
+  hotkey,
+  className,
+  inverted = false
+}: ShortcutKbdProps): React.JSX.Element {
   const keys = shortcutKeys(hotkey)
   return (
     <span

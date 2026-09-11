@@ -3,7 +3,9 @@ import { Popover as PopoverPrimitive } from 'radix-ui'
 
 import { cn } from '@/lib/utils'
 
-function Popover({ ...props }: React.ComponentProps<typeof PopoverPrimitive.Root>): React.JSX.Element {
+function Popover({
+  ...props
+}: React.ComponentProps<typeof PopoverPrimitive.Root>): React.JSX.Element {
   return <PopoverPrimitive.Root data-slot="popover" {...props} />
 }
 

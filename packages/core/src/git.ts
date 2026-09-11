@@ -109,7 +109,9 @@ export function isGitHubGitUrl(raw: string, loginHost?: string | null): boolean 
 
   if (loginHost) {
     try {
-      const configured = new URL(loginHost.includes('://') ? loginHost : `https://${loginHost}`).hostname.toLowerCase()
+      const configured = new URL(
+        loginHost.includes('://') ? loginHost : `https://${loginHost}`
+      ).hostname.toLowerCase()
       if (host === configured) return true
     } catch {
       // Ignore invalid override hosts.
@@ -237,7 +239,10 @@ export async function fetchRemote(repoPath: string, token?: string | null): Prom
   await runGit(['fetch', '--all', '--prune'], repoPath)
 }
 
-export async function listRemoteBranches(repoPath: string, token?: string | null): Promise<string[]> {
+export async function listRemoteBranches(
+  repoPath: string,
+  token?: string | null
+): Promise<string[]> {
   await fetchRemote(repoPath, token)
 
   let output: string
@@ -245,7 +250,10 @@ export async function listRemoteBranches(repoPath: string, token?: string | null
     output = await runGit(['ls-remote', '--heads', 'origin'], repoPath)
   } catch {
     // Local-only remotes may not support ls-remote; fall back to remote-tracking refs.
-    output = await runGit(['for-each-ref', '--format=%(refname:short)', 'refs/remotes/origin'], repoPath)
+    output = await runGit(
+      ['for-each-ref', '--format=%(refname:short)', 'refs/remotes/origin'],
+      repoPath
+    )
   }
 
   const branches = new Set<string>()
@@ -326,7 +334,10 @@ export async function addWorktree(
     return
   }
 
-  await runGit(['worktree', 'add', '--track', '-b', branch, destination, `origin/${branch}`], repoPath)
+  await runGit(
+    ['worktree', 'add', '--track', '-b', branch, destination, `origin/${branch}`],
+    repoPath
+  )
 }
 
 /** Remove a linked worktree directory from the primary repository. */
@@ -370,8 +381,7 @@ function parseNameStatusZ(raw: string): ChangedFile[] {
     }
     const path = tokens[index + 1]
     if (!path) break
-    const status: ChangedFileStatus =
-      kind === 'A' ? 'added' : kind === 'D' ? 'deleted' : 'modified'
+    const status: ChangedFileStatus = kind === 'A' ? 'added' : kind === 'D' ? 'deleted' : 'modified'
     files.push({ path, oldPath: null, status })
     index += 2
   }
@@ -488,4 +498,3 @@ export async function readChangedFileDiff(
     newContents: newSide?.text ?? null
   }
 }
-

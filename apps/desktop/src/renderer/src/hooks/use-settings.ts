@@ -23,7 +23,11 @@ export function useSettings(): SettingsState {
 
   useEffect(() => {
     let cancelled = false
-    void refresh()
+    void window.cerebro
+      .getSettings()
+      .then((next) => {
+        if (!cancelled) setSettings(next)
+      })
       .catch((err: unknown) => {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Failed to load settings.')
@@ -35,7 +39,7 @@ export function useSettings(): SettingsState {
     return () => {
       cancelled = true
     }
-  }, [refresh])
+  }, [])
 
   const update = useCallback(async (patch: AppSettingsPatch): Promise<AppSettings> => {
     setError(null)

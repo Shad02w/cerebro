@@ -111,7 +111,11 @@ export async function workspaceCommand(args: string[]): Promise<void> {
     }
 
     try {
-      const workspace = await createWorkspaceFromBranch(projectId, branch, from ? { from } : undefined)
+      const workspace = await createWorkspaceFromBranch(
+        projectId,
+        branch,
+        from ? { from } : undefined
+      )
       printJson(workspace)
       notifyInvalidate()
     } catch (err) {

@@ -42,20 +42,25 @@ export const test = base.extend<Fixtures>({
 
     const cerebroHome = await mkdtemp(path.join(tmpdir(), 'cerebro-e2e-'))
     const userDataDir = path.join(cerebroHome, 'user-data')
+    const cliHome = path.join(cerebroHome, "cli user's home")
+    const packagedApp = process.env.CEREBRO_E2E_PACKAGED_APP
 
     const env = { ...process.env }
     delete env.ELECTRON_RUN_AS_NODE
     delete env.ELECTRON_RENDERER_URL
 
     const electronApp = await electron.launch({
-      executablePath: electronBinary,
-      args: electronAppArgs(userDataDir),
+      executablePath: packagedApp || electronBinary,
+      args: packagedApp ? electronAppArgs(userDataDir).slice(1) : electronAppArgs(userDataDir),
       cwd: desktopRoot,
       timeout: 60_000,
       env: {
         ...env,
         NODE_ENV: 'test',
-        CEREBRO_HOME: cerebroHome
+        CEREBRO_HOME: cerebroHome,
+        CEREBRO_CLI_TEST_HOME: cliHome,
+        ...(packagedApp ? { HOME: cliHome, ZDOTDIR: cliHome } : {}),
+        SHELL: '/bin/zsh'
       }
     })
 

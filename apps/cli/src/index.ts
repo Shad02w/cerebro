@@ -21,6 +21,8 @@ import { layoutCommand } from './commands/layout'
 import { projectCommand } from './commands/project'
 import { workspaceCommand } from './commands/workspace'
 
+declare const __CEREBRO_CLI_VERSION__: string | undefined
+
 const USAGE = `
 Usage: cerebro <command> [options]
 
@@ -49,7 +51,10 @@ async function main(): Promise<void> {
 
   if (command === '--version') {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { version } = require('../../package.json') as { version: string }
+    const version =
+      typeof __CEREBRO_CLI_VERSION__ !== 'undefined'
+        ? __CEREBRO_CLI_VERSION__
+        : (require('../package.json') as { version: string }).version
     process.stdout.write(version + '\n')
     process.exit(0)
   }

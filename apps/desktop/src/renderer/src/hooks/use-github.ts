@@ -24,7 +24,11 @@ export function useGitHub(): GitHubState {
 
   useEffect(() => {
     let cancelled = false
-    void refresh()
+    void window.cerebro
+      .getGitHubStatus()
+      .then((next) => {
+        if (!cancelled) setStatus(next)
+      })
       .catch((err: unknown) => {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Failed to load GitHub status.')
@@ -43,7 +47,7 @@ export function useGitHub(): GitHubState {
       cancelled = true
       unsubscribe()
     }
-  }, [refresh])
+  }, [])
 
   const beginDeviceFlow = useCallback(async (): Promise<GitHubStatus> => {
     setError(null)

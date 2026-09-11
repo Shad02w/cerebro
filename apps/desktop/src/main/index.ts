@@ -10,6 +10,7 @@ import { registerNativeCommandIpc } from './native-commands'
 import { ensureCerebroHome } from './paths'
 import { clearActiveWorkspace } from './projects'
 import { killAllPtys } from './pty'
+import { registerCliIpc } from './cli-install'
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -66,6 +67,7 @@ app.whenReady().then(() => {
   clearActiveWorkspace()
   registerWorkspaceIpc()
   registerSettingsIpc()
+  registerCliIpc()
   registerNativeCommandIpc()
   startSocketServer()
 

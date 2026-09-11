@@ -1,4 +1,9 @@
 export const IPC = {
+  cli: {
+    status: 'cerebro:cli:status',
+    install: 'cerebro:cli:install',
+    remove: 'cerebro:cli:remove'
+  },
   layout: {
     get: 'cerebro:layout:get',
     focusWorkspace: 'cerebro:layout:focus-workspace',

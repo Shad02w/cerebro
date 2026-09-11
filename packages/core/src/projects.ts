@@ -298,10 +298,21 @@ VALUES (?, ?, 'default', ?, ?)
   let firstWorkspaceId: number | null = null
   let firstRepositoryId: number | null = null
   for (const repo of repositories) {
-    const repoInsert = insertRepo.run(projectId, repo.gitUrl, repo.name, repo.localPath, repo.defaultBranch)
+    const repoInsert = insertRepo.run(
+      projectId,
+      repo.gitUrl,
+      repo.name,
+      repo.localPath,
+      repo.defaultBranch
+    )
     const repositoryId = toId(repoInsert.lastInsertRowid)
     if (firstRepositoryId == null) firstRepositoryId = repositoryId
-    const workspaceInsert = insertWorkspace.run(projectId, repositoryId, repo.defaultBranch, repo.localPath)
+    const workspaceInsert = insertWorkspace.run(
+      projectId,
+      repositoryId,
+      repo.defaultBranch,
+      repo.localPath
+    )
     const workspaceId = toId(workspaceInsert.lastInsertRowid)
     if (firstWorkspaceId == null) firstWorkspaceId = workspaceId
   }
@@ -325,9 +336,10 @@ function replaceProjectRepositories(
 ): number {
   const db = getDb()
   db.prepare('DELETE FROM repositories WHERE project_id = ?').run(projectId)
-  db.prepare(
-    `UPDATE projects SET kind = ?, updated_at = datetime('now') WHERE id = ?`
-  ).run(kind, projectId)
+  db.prepare(`UPDATE projects SET kind = ?, updated_at = datetime('now') WHERE id = ?`).run(
+    kind,
+    projectId
+  )
 
   return insertRepositoriesAndDefaultWorkspaces(db, projectId, kind, repositories, directoryRoot)
 }
@@ -406,7 +418,9 @@ function insertProjectWithRepositories(
   }
 
   const db = getDb()
-  const projectInsert = db.prepare('INSERT INTO projects (name, kind) VALUES (?, ?)').run(name, kind)
+  const projectInsert = db
+    .prepare('INSERT INTO projects (name, kind) VALUES (?, ?)')
+    .run(name, kind)
   const projectId = toId(projectInsert.lastInsertRowid)
 
   insertRepositoriesAndDefaultWorkspaces(db, projectId, kind, repositories, directoryRoot)
@@ -437,8 +451,7 @@ function allocateLocalPath(baseName: string): string {
 
 function getActiveWorkspaceId(db = getDb()): number | null {
   const row = db.prepare('SELECT value FROM app_state WHERE key = ?').get(ACTIVE_WORKSPACE_KEY) as
-    | { value: string }
-    | undefined
+    { value: string } | undefined
   if (!row) return null
   const id = Number(row.value)
   return Number.isInteger(id) && id > 0 ? id : null
@@ -469,8 +482,7 @@ function ensureActiveWorkspaceValid(preferredProjectId: number | null, db = getD
   if (active == null) return
 
   const stillThere = db.prepare('SELECT id FROM workspaces WHERE id = ?').get(active) as
-    | { id: number }
-    | undefined
+    { id: number } | undefined
   if (stillThere) return
 
   if (preferredProjectId != null) {
@@ -560,7 +572,7 @@ ORDER BY
     const parsed = primary ? tryParseGitUrl(primary.gitUrl) : null
     const github =
       row.kind !== 'multi-root' && primary && isGitHubGitUrl(primary.gitUrl, getLoginHost())
-        ? parsed?.github ?? null
+        ? (parsed?.github ?? null)
         : null
 
     return {
@@ -576,7 +588,9 @@ ORDER BY
   })
 
   const activeWorkspaceId = getActiveWorkspaceId(db)
-  const allWorkspaceIds = new Set(projects.flatMap((project) => project.workspaces.map((w) => w.id)))
+  const allWorkspaceIds = new Set(
+    projects.flatMap((project) => project.workspaces.map((w) => w.id))
+  )
   const resolvedActive =
     activeWorkspaceId != null && allWorkspaceIds.has(activeWorkspaceId) ? activeWorkspaceId : null
 
@@ -592,8 +606,7 @@ export async function listProjects(): Promise<ProjectListResult> {
 export async function setActiveWorkspace(workspaceId: number): Promise<ProjectListResult> {
   const db = getDb()
   const row = db.prepare('SELECT id FROM workspaces WHERE id = ?').get(workspaceId) as
-    | { id: number }
-    | undefined
+    { id: number } | undefined
   if (!row) throw new Error('Workspace not found.')
 
   setActiveWorkspaceId(workspaceId, db)
@@ -712,8 +725,7 @@ export async function listProjectBranches(
 ): Promise<ProjectBranch[]> {
   const db = getDb()
   const project = db.prepare('SELECT id, kind FROM projects WHERE id = ?').get(projectId) as
-    | { id: number; kind: ProjectKind }
-    | undefined
+    { id: number; kind: ProjectKind } | undefined
   if (!project) throw new Error('Project not found.')
   if (project.kind === 'multi-root') {
     throw new Error('Worktrees are not supported for multi-root workspaces.')
@@ -755,8 +767,7 @@ export async function createWorkspaceFromBranch(
 
   const db = getDb()
   const project = db.prepare('SELECT id, name, kind FROM projects WHERE id = ?').get(projectId) as
-    | { id: number; name: string; kind: ProjectKind }
-    | undefined
+    { id: number; name: string; kind: ProjectKind } | undefined
   if (!project) throw new Error('Project not found.')
   if (project.kind === 'multi-root') {
     throw new Error('Worktrees are not supported for multi-root workspaces.')
@@ -799,7 +810,9 @@ VALUES (?, ?, 'worktree', ?, ?)
     db.exec('COMMIT')
 
     const listed = await listProjects()
-    const workspace = listed.projects.flatMap((item) => item.workspaces).find((item) => item.id === workspaceId)
+    const workspace = listed.projects
+      .flatMap((item) => item.workspaces)
+      .find((item) => item.id === workspaceId)
     if (!workspace) throw new Error('Workspace was created but could not be loaded.')
     return workspace
   } catch (error) {
@@ -870,8 +883,7 @@ export async function removeProject(
 ): Promise<ProjectListResult> {
   const db = getDb()
   const project = db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId) as
-    | { id: number }
-    | undefined
+    { id: number } | undefined
   if (!project) throw new Error('Project not found.')
 
   const worktrees = db
@@ -895,4 +907,3 @@ WHERE w.project_id = ? AND w.kind = 'worktree'
   ensureActiveWorkspaceValid(null, db)
   return listProjects()
 }
-

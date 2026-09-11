@@ -1,3 +1,4 @@
+import type { Locator } from '@playwright/test'
 import { mkdir, mkdtemp, realpath, rm, writeFile, access } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -17,7 +18,10 @@ async function initGitRepo(dir: string, branch: string, marker: string): Promise
   await execFileAsync('git', ['commit', '-m', `init ${marker}`], { cwd: dir })
 }
 
-async function mockChooseFolder(electronApp: ElectronApplication, directory: string): Promise<void> {
+async function mockChooseFolder(
+  electronApp: ElectronApplication,
+  directory: string
+): Promise<void> {
   await electronApp.evaluate(async ({ dialog }, dir: string) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [dir] })
   }, directory)
@@ -37,10 +41,13 @@ async function readClipboard(electronApp: ElectronApplication): Promise<string> 
   return electronApp.evaluate(({ clipboard }) => clipboard.readText())
 }
 
-function multiRootRepoRow(page: Page, repoName: string) {
-  return page.locator('[data-slot="sidebar"]').getByTestId(/workspace-row-/).filter({
-    has: page.getByTestId(/workspace-repo-/).filter({ hasText: repoName })
-  })
+function multiRootRepoRow(page: Page, repoName: string): Locator {
+  return page
+    .locator('[data-slot="sidebar"]')
+    .getByTestId(/workspace-row-/)
+    .filter({
+      has: page.getByTestId(/workspace-repo-/).filter({ hasText: repoName })
+    })
 }
 
 test('adds a local git folder as a directory project', async ({ page, electronApp }) => {
@@ -165,7 +172,8 @@ test('adds a folder of git repos as a multi-root workspace', async ({ page, elec
     expect(project?.kind).toBe('multi-root')
     expect(project?.github).toBeNull()
     expect(project?.repositories.map((repo) => repo.name).sort()).toEqual(['backend', 'frontend'])
-    const repoWorkspaces = project?.workspaces.filter((workspace) => workspace.kind === 'default') ?? []
+    const repoWorkspaces =
+      project?.workspaces.filter((workspace) => workspace.kind === 'default') ?? []
     const rootWorkspace = project?.workspaces.find((workspace) => workspace.kind === 'root')
     expect(repoWorkspaces).toHaveLength(2)
     expect(rootWorkspace).toBeTruthy()
@@ -356,7 +364,9 @@ test('upgrades an opened git folder after sibling git repos appear', async ({
     await expect(page.getByTestId(/project-root-/)).toHaveText('root')
     await expect(multiRootRepoRow(page, 'ark-ui')).toBeVisible()
     await expect(multiRootRepoRow(page, 'other-app')).toBeVisible()
-    await expect(multiRootRepoRow(page, 'ark-ui').getByTestId(/workspace-branch-/)).toHaveText('main')
+    await expect(multiRootRepoRow(page, 'ark-ui').getByTestId(/workspace-branch-/)).toHaveText(
+      'main'
+    )
     await expect(multiRootRepoRow(page, 'other-app').getByTestId(/workspace-branch-/)).toHaveText(
       'main'
     )
@@ -432,7 +442,9 @@ test('treats a git folder with sibling git repos as multi-root', async ({ page, 
     await expect(page.getByTestId(/project-root-/)).toHaveText('root')
     await expect(multiRootRepoRow(page, 'ark-ui')).toBeVisible()
     await expect(multiRootRepoRow(page, 'other-app')).toBeVisible()
-    await expect(multiRootRepoRow(page, 'ark-ui').getByTestId(/workspace-branch-/)).toHaveText('main')
+    await expect(multiRootRepoRow(page, 'ark-ui').getByTestId(/workspace-branch-/)).toHaveText(
+      'main'
+    )
     await expect(multiRootRepoRow(page, 'other-app').getByTestId(/workspace-branch-/)).toHaveText(
       'main'
     )

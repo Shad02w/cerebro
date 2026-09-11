@@ -1,4 +1,4 @@
-import { Blocks, Keyboard, Settings, SquareTerminal, type LucideIcon } from 'lucide-react'
+import { Blocks, Keyboard, Settings, SquareTerminal, Terminal, type LucideIcon } from 'lucide-react'
 import type { SettingsSectionId } from '@/lib/app-route'
 
 export type SettingsSection = {
@@ -20,6 +20,12 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     label: 'Terminal',
     description: 'Configure the integrated terminal.',
     icon: SquareTerminal
+  },
+  {
+    id: 'cli',
+    label: 'CLI',
+    description: 'Install the Cerebro command-line tool.',
+    icon: Terminal
   },
   {
     id: 'keyboard',

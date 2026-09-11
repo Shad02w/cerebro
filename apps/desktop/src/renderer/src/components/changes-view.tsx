@@ -6,7 +6,7 @@ import {
   type LineAnnotation
 } from '@pierre/diffs'
 import { CodeView, type CodeViewHandle, type CodeViewReactOptions } from '@pierre/diffs/react'
-import { FolderTree, List, PanelRightClose, PanelRightOpen, RefreshCw } from 'lucide-react'
+import { PanelRightClose, PanelRightOpen, RefreshCw } from 'lucide-react'
 import type {
   ChangedFile,
   FileDiffContents,
@@ -15,7 +15,7 @@ import type {
 } from '@shared/types'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { ChangesFileList, type ChangesListMode } from '@/components/changes-file-list'
+import { ChangesFileList } from '@/components/changes-file-list'
 import { changeItemId } from '@/lib/changes'
 import { cn } from '@/lib/utils'
 
@@ -94,7 +94,6 @@ export function ChangesView({
 }: ChangesViewProps): React.JSX.Element {
   const viewerRef = useRef<CodeViewHandle<undefined, undefined>>(null)
   const rootRef = useRef<HTMLDivElement>(null)
-  const [mode, setMode] = useState<ChangesListMode>('flat')
   const [filesOpen, setFilesOpen] = useState(true)
   const [filesWidth, setFilesWidth] = useState(DEFAULT_FILES_WIDTH)
   const [filesDragging, setFilesDragging] = useState(false)
@@ -260,111 +259,75 @@ export function ChangesView({
           onResize={setFilesWidth}
           onDraggingChange={setFilesDragging}
         />
-        {filesOpen ? (
-          <>
+        <div className={cn('flex min-h-0 flex-1 flex-col', !filesOpen && 'hidden')}>
+          <div
+            className="flex items-center gap-1 border-b border-border px-1.5 py-1"
+            style={{ paddingRight: 'calc(var(--pane-controls-width, 0px) + 6px)' }}
+          >
+            <span className="min-w-0 flex-1 truncate px-1 text-[11px] font-medium text-muted-foreground">
+              Files
+            </span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  data-testid="changes-refresh"
+                  aria-label="Refresh changes"
+                  onClick={(): void => {
+                    setLoading(true)
+                    void fetchChanges()
+                      .then(({ listed, loaded }) => {
+                        applyListed(listed, loaded)
+                      })
+                      .catch((err: unknown) => {
+                        setError(err instanceof Error ? err.message : 'Failed to load changes.')
+                        setChanges(null)
+                        setDiffs([])
+                      })
+                      .finally(() => setLoading(false))
+                  }}
+                >
+                  <RefreshCw className="size-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Refresh</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  data-testid="changes-sidebar-toggle"
+                  aria-label="Collapse files"
+                  onClick={toggleFiles}
+                >
+                  <PanelRightClose className="size-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Collapse</TooltipContent>
+            </Tooltip>
+          </div>
+          {loading && !changes ? (
+            <div className="px-3 py-4 text-xs text-muted-foreground">Loading…</div>
+          ) : fileCount === 0 ? (
             <div
-              className="flex items-center gap-1 border-b border-border px-1.5 py-1"
-              style={{ paddingRight: 'calc(var(--pane-controls-width, 0px) + 6px)' }}
+              data-testid="changes-sidebar-empty"
+              className="px-3 py-4 text-xs text-muted-foreground"
             >
-              <span className="min-w-0 flex-1 truncate px-1 text-[11px] font-medium text-muted-foreground">
-                Files
-              </span>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-xs"
-                    data-testid="changes-mode-flat"
-                    aria-label="Flat list"
-                    aria-pressed={mode === 'flat'}
-                    className={cn(mode === 'flat' && 'bg-muted')}
-                    onClick={(): void => setMode('flat')}
-                  >
-                    <List className="size-3.5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">Flat</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-xs"
-                    data-testid="changes-mode-tree"
-                    aria-label="Tree list"
-                    aria-pressed={mode === 'tree'}
-                    className={cn(mode === 'tree' && 'bg-muted')}
-                    onClick={(): void => setMode('tree')}
-                  >
-                    <FolderTree className="size-3.5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">Tree</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-xs"
-                    data-testid="changes-refresh"
-                    aria-label="Refresh changes"
-                    onClick={(): void => {
-                      setLoading(true)
-                      void fetchChanges()
-                        .then(({ listed, loaded }) => {
-                          applyListed(listed, loaded)
-                        })
-                        .catch((err: unknown) => {
-                          setError(err instanceof Error ? err.message : 'Failed to load changes.')
-                          setChanges(null)
-                          setDiffs([])
-                        })
-                        .finally(() => setLoading(false))
-                    }}
-                  >
-                    <RefreshCw className="size-3.5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">Refresh</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-xs"
-                    data-testid="changes-sidebar-toggle"
-                    aria-label="Collapse files"
-                    onClick={toggleFiles}
-                  >
-                    <PanelRightClose className="size-3.5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">Collapse</TooltipContent>
-              </Tooltip>
+              No changes
             </div>
-            {loading ? (
-              <div className="px-3 py-4 text-xs text-muted-foreground">Loading…</div>
-            ) : fileCount === 0 ? (
-              <div
-                data-testid="changes-sidebar-empty"
-                className="px-3 py-4 text-xs text-muted-foreground"
-              >
-                No changes
-              </div>
-            ) : (
-              <ChangesFileList
-                groups={changes?.groups ?? []}
-                mode={mode}
-                selectedId={selectedId}
-                onSelect={handleSelect}
-              />
-            )}
-          </>
-        ) : (
+          ) : (
+            <ChangesFileList
+              groups={changes?.groups ?? []}
+              selectedId={selectedId}
+              onSelect={handleSelect}
+            />
+          )}
+        </div>
+        {!filesOpen && (
           <div
             className="flex flex-col items-center py-1"
             style={{ paddingTop: 'calc(var(--pane-controls-height, 0px) + 4px)' }}

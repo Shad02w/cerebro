@@ -78,7 +78,9 @@ export function getKeybindAction(id: KeybindActionId): KeybindAction {
 }
 
 /** Resolve stored overrides against catalog defaults. */
-export function resolveKeybinds(overrides?: KeybindOverrides | null): Record<KeybindActionId, string> {
+export function resolveKeybinds(
+  overrides?: KeybindOverrides | null
+): Record<KeybindActionId, string> {
   const resolved = {} as Record<KeybindActionId, string>
   for (const action of KEYBIND_CATALOG) {
     const override = overrides?.[action.id]

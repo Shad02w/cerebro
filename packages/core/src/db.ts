@@ -199,7 +199,8 @@ VALUES (?, ?, 'root', '.', ?)
 }
 
 function migrateLegacySchema(database: DatabaseSync): void {
-  const hasLegacyWorkspaces = tableExists(database, 'workspaces') && !tableExists(database, 'projects')
+  const hasLegacyWorkspaces =
+    tableExists(database, 'workspaces') && !tableExists(database, 'projects')
   const hasLegacyRepoColumn =
     tableExists(database, 'repositories') && columnExists(database, 'repositories', 'workspace_id')
 
@@ -213,7 +214,10 @@ function migrateLegacySchema(database: DatabaseSync): void {
       database.exec('ALTER TABLE workspaces RENAME TO projects')
     }
 
-    if (tableExists(database, 'repositories') && columnExists(database, 'repositories', 'workspace_id')) {
+    if (
+      tableExists(database, 'repositories') &&
+      columnExists(database, 'repositories', 'workspace_id')
+    ) {
       database.exec(`
 CREATE TABLE repositories_new (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -261,11 +265,11 @@ ORDER BY id ASC
         `
       )
       .all() as Array<{
-        id: number
-        project_id: number
-        local_path: string
-        default_branch: string
-      }>
+      id: number
+      project_id: number
+      local_path: string
+      default_branch: string
+    }>
 
     const insertWorkspace = database.prepare(
       `
@@ -362,11 +366,11 @@ WHERE w.id IS NULL
         `
       )
       .all() as Array<{
-        id: number
-        project_id: number
-        local_path: string
-        default_branch: string
-      }>
+      id: number
+      project_id: number
+      local_path: string
+      default_branch: string
+    }>
 
     const insert = db.prepare(
       `
@@ -401,4 +405,3 @@ export function databaseFileExists(): boolean {
 export function toId(value: number | bigint): number {
   return Number(value)
 }
-

@@ -12,10 +12,7 @@ export type LinkedRepository = {
 export type WorkspacePullRequestState = 'open' | 'closed' | 'merged'
 
 export type WorkspacePullRequestReviewDecision =
-  | 'approved'
-  | 'changes_requested'
-  | 'review_required'
-  | 'none'
+  'approved' | 'changes_requested' | 'review_required' | 'none'
 
 export type WorkspacePullRequest = {
   number: number
@@ -119,4 +116,3 @@ export type FileDiffContents = {
   oldContents: string | null
   newContents: string | null
 }
-

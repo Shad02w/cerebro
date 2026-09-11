@@ -2,6 +2,7 @@ import { resolve } from 'path'
 import { defineConfig } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { cliBuildPlugin } from './scripts/cli-build'
 
 const shared = resolve('src/shared')
 const rendererSrc = resolve('src/renderer/src')
@@ -9,6 +10,7 @@ const coreSrc = resolve('../../packages/core/src/index.ts')
 
 export default defineConfig({
   main: {
+    plugins: [cliBuildPlugin()],
     resolve: {
       alias: {
         '@shared': shared,

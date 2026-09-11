@@ -1,3 +1,5 @@
+import type { Locator } from '@playwright/test'
+import type { Project } from '../src/shared/types'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
@@ -34,14 +36,14 @@ async function addDirectoryViaUi(
   await mockChooseFolder(electronApp, directory)
   await page.getByRole('button', { name: 'Add project' }).first().click()
   await page.getByTestId('add-project-choose-folder').click()
-  await expect(page.getByTestId(/project-row-/).filter({ hasText: basename(directory) })).toBeVisible(
-    {
-      timeout: 30_000
-    }
-  )
+  await expect(
+    page.getByTestId(/project-row-/).filter({ hasText: basename(directory) })
+  ).toBeVisible({
+    timeout: 30_000
+  })
 }
 
-async function listedProject(page: Page, name: string) {
+async function listedProject(page: Page, name: string): Promise<Project | undefined> {
   const listed = await page.evaluate(async () => window.cerebro.listProjects())
   return listed.projects.find((item) => item.name === name)
 }
@@ -68,7 +70,7 @@ async function openChanges(page: Page): Promise<void> {
   await expect(activeChanges(page)).toBeVisible()
 }
 
-function activeChanges(page: Page) {
+function activeChanges(page: Page): Locator {
   return page.locator('[data-testid="changes-view"][data-active="true"]')
 }
 
@@ -89,7 +91,11 @@ test('shows working-tree diffs in a Changes tab with a right-hand file list', as
 
   try {
     await initGitRepo(repo, 'main', 'changed-alpha')
-    await writeFile(join(repo, 'README.md'), 'changed-alpha\nhello from changes\n')
+    await writeFile(
+      join(repo, 'README.md'),
+      'changed-alpha\nhello from changes\n' + 'more changes\n'.repeat(100)
+    )
+    await writeFile(join(repo, 'zzz.ts'), 'export const lastFile = true\n')
     await addDirectoryViaUi(page, electronApp, repo)
     await selectDefaultWorkspace(page, 'changed-alpha')
     await expect(page.getByTestId('terminal-tab-bar')).toBeVisible()
@@ -99,9 +105,9 @@ test('shows working-tree diffs in a Changes tab with a right-hand file list', as
     const sidebar = pane.getByTestId('changes-sidebar')
     const diff = pane.getByTestId('changes-diff')
     await expect(sidebar).toBeVisible()
-    const fileRow = pane.getByTestId('changes-file-row').filter({ hasText: 'README.md' })
+    const fileRow = pane.getByRole('treeitem', { name: 'README.md', exact: true })
     await expect(fileRow).toBeVisible({ timeout: 15_000 })
-    await expect(fileRow).toHaveAttribute('data-path', 'README.md')
+    await expect(fileRow).toHaveAttribute('data-item-path', 'README.md')
     await expect(diff).toContainText('hello from changes', {
       timeout: 15_000
     })
@@ -125,12 +131,22 @@ test('shows working-tree diffs in a Changes tab with a right-hand file list', as
     expect(diffBox).toBeTruthy()
     expect(sidebarBox).toBeTruthy()
     expect(sidebarBox!.x).toBeGreaterThan(diffBox!.x + (diffBox!.width ?? 0) / 2)
+    await pane.getByRole('treeitem', { name: 'zzz.ts', exact: true }).click()
+    await expect
+      .poll(() =>
+        diff
+          .locator(':scope > div')
+          .first()
+          .evaluate((el) => el.scrollTop)
+      )
+      .toBeGreaterThan(100)
+    await expect(diff).toContainText('lastFile')
   } finally {
     await rm(root, { recursive: true, force: true })
   }
 })
 
-test('toggles the Changes sidebar between flat and tree for nested paths', async ({
+test('expands and collapses Pierre folders and preserves expansion across refresh and panel hiding', async ({
   page,
   electronApp
 }) => {
@@ -146,23 +162,36 @@ test('toggles the Changes sidebar between flat and tree for nested paths', async
 
     await openChanges(page)
     const pane = activeChanges(page)
-    await expect(pane.getByTestId('changes-file-list')).toHaveAttribute('data-mode', 'flat')
-    const fileRow = pane.getByTestId('changes-file-row')
-    await expect(fileRow).toHaveAttribute('data-path', 'src/util/hello.ts')
-    await expect(fileRow).toHaveText(/src\/util\/hello\.ts/)
-    await expect(pane.getByTestId('changes-tree-dir')).toHaveCount(0)
+    const folder = pane.getByRole('treeitem', { name: 'src', exact: true })
+    const fileRow = pane.locator('[role="treeitem"][data-item-path="src/util/hello.ts"]')
+    await expect(fileRow).toBeVisible()
+    await expect(fileRow).toHaveAttribute('data-item-git-status', 'untracked')
+    await expect(pane.getByRole('button', { name: 'Flat list' })).toHaveCount(0)
+    await expect(folder).toHaveAttribute('aria-expanded', 'true')
+    await folder.click()
+    await expect(folder).toHaveAttribute('aria-expanded', 'false')
+    await expect(fileRow).toBeHidden()
 
-    await pane.getByTestId('changes-mode-tree').click()
-    await expect(pane.getByTestId('changes-file-list')).toHaveAttribute('data-mode', 'tree')
-    await expect(pane.locator('[data-testid="changes-tree-dir"][data-path="src"]')).toBeVisible()
-    await expect(pane.locator('[data-testid="changes-tree-dir"][data-path="src/util"]')).toBeVisible()
-    await expect(fileRow).toHaveAttribute('data-path', 'src/util/hello.ts')
-    await expect(fileRow).not.toHaveText(/src\/util/)
+    await writeFile(join(repo, 'src', 'util', 'new.ts'), 'export const fresh = true\n')
+    await pane.getByTestId('changes-refresh').click()
+    await expect(pane.getByTestId('changes-diff')).toContainText('fresh')
+    await expect(folder).toHaveAttribute('aria-expanded', 'false')
+    await pane.getByTestId('changes-sidebar-toggle').filter({ visible: true }).click()
+    await pane.getByTestId('changes-sidebar-toggle').filter({ visible: true }).click()
+    await expect(folder).toHaveAttribute('aria-expanded', 'false')
 
-    await pane.getByTestId('changes-mode-flat').click()
-    await expect(pane.getByTestId('changes-file-list')).toHaveAttribute('data-mode', 'flat')
-    await expect(pane.getByTestId('changes-tree-dir')).toHaveCount(0)
-    await expect(fileRow).toHaveText(/src\/util\/hello\.ts/)
+    await folder.focus()
+    await page.keyboard.press('ArrowRight')
+    await expect(folder).toHaveAttribute('aria-expanded', 'true')
+    await expect(fileRow).toBeVisible()
+    await expect(pane.locator('[role="treeitem"][data-item-path="src/util/new.ts"]')).toBeVisible()
+    await page.keyboard.press('ArrowLeft')
+    await expect(fileRow).toBeHidden()
+    await folder.click()
+    await fileRow.click()
+    await expect(fileRow).toHaveAttribute('aria-selected', 'true')
+    await expect(pane.getByTestId('changes-diff')).toContainText('hello')
+    await page.screenshot({ path: '/tmp/cerebro-pierre-tree.png' })
   } finally {
     await rm(root, { recursive: true, force: true })
   }
@@ -202,14 +231,16 @@ test('groups multi-root changes by repo on the root workspace and scopes nested 
     await expect(
       rootChanges.getByTestId('changes-repo-header').filter({ hasText: 'frontend' })
     ).toBeVisible()
-    await expect(rootChanges.getByTestId('changes-file-row')).toHaveCount(2)
+    await expect(rootChanges.locator('[role="treeitem"][data-item-type="file"]')).toHaveCount(2)
     await expect(rootChanges.getByTestId('changes-diff')).toContainText('front-change')
     await expect(rootChanges.getByTestId('changes-diff')).toContainText('back-change')
 
     await page.getByTestId(`workspace-row-${frontendWorkspace?.id}`).click()
     await openChanges(page)
     const repoChanges = activeChanges(page)
-    await expect(repoChanges.getByTestId('changes-file-row')).toHaveCount(1, { timeout: 15_000 })
+    await expect(repoChanges.locator('[role="treeitem"][data-item-type="file"]')).toHaveCount(1, {
+      timeout: 15_000
+    })
     await expect(repoChanges.getByTestId('changes-repo-header')).toHaveCount(0)
     await expect(repoChanges.getByTestId('changes-diff')).toContainText('front-change')
     await expect(repoChanges.getByTestId('changes-diff')).not.toContainText('back-change')
@@ -270,7 +301,7 @@ test('shows an empty state when the working tree is clean', async ({ page, elect
     await openChanges(page)
     await expect(page.getByTestId('changes-empty')).toBeVisible({ timeout: 15_000 })
     await expect(page.getByTestId('changes-sidebar-empty')).toBeVisible()
-    await expect(page.getByTestId('changes-file-row')).toHaveCount(0)
+    await expect(page.locator('[role="treeitem"][data-item-type="file"]')).toHaveCount(0)
   } finally {
     await rm(root, { recursive: true, force: true })
   }
@@ -297,7 +328,10 @@ test('opens Changes with Mod+Shift+G and focuses the existing tab on repeat', as
     await page.keyboard.press(openChangesChord())
     await expect(page.getByTestId('changes-tab')).toHaveCount(0)
 
-    await sidebar.getByTestId(/project-row-/).filter({ hasText: 'changed-keybind' }).focus()
+    await sidebar
+      .getByTestId(/project-row-/)
+      .filter({ hasText: 'changed-keybind' })
+      .focus()
     await page.keyboard.press(openChangesChord())
     await expect(page.getByTestId('changes-tab')).toHaveCount(0)
 
@@ -305,7 +339,9 @@ test('opens Changes with Mod+Shift+G and focuses the existing tab on repeat', as
     await page.keyboard.press(openChangesChord())
     await expect(page.getByTestId('changes-tab')).toBeVisible()
     await expect(activeChanges(page)).toBeVisible()
-    await expect(activeChanges(page).getByTestId('changes-file-row')).toBeVisible({
+    await expect(
+      activeChanges(page).locator('[role="treeitem"][data-item-type="file"]')
+    ).toBeVisible({
       timeout: 15_000
     })
     await expect(page.getByTestId('changes-tab')).toHaveCount(1)
@@ -332,7 +368,7 @@ test('resizes and collapses the Changes files panel', async ({ page, electronApp
     const pane = activeChanges(page)
     const sidebar = pane.getByTestId('changes-sidebar')
     const diff = pane.getByTestId('changes-diff')
-    const fileRow = pane.getByTestId('changes-file-row').filter({ hasText: 'README.md' })
+    const fileRow = pane.getByRole('treeitem', { name: 'README.md', exact: true })
     await expect(fileRow).toBeVisible({ timeout: 15_000 })
     await expect(sidebar).toHaveAttribute('data-state', 'expanded')
 
@@ -353,18 +389,16 @@ test('resizes and collapses the Changes files panel', async ({ page, electronApp
       .toBeGreaterThan((before!.width ?? 0) + 40)
 
     const expandedDiff = await diff.boundingBox()
-    await pane.getByTestId('changes-sidebar-toggle').click()
+    await pane.getByTestId('changes-sidebar-toggle').filter({ visible: true }).click()
     await expect(sidebar).toHaveAttribute('data-state', 'collapsed')
     await expect(fileRow).toBeHidden()
     await expect(pane.getByRole('button', { name: 'Expand files' })).toBeVisible()
-    await expect
-      .poll(async () => (await sidebar.boundingBox())?.width ?? 999)
-      .toBeLessThan(48)
+    await expect.poll(async () => (await sidebar.boundingBox())?.width ?? 999).toBeLessThan(48)
     await expect
       .poll(async () => (await diff.boundingBox())?.width ?? 0)
       .toBeGreaterThan(expandedDiff!.width)
 
-    await pane.getByTestId('changes-sidebar-toggle').click()
+    await pane.getByTestId('changes-sidebar-toggle').filter({ visible: true }).click()
     await expect(sidebar).toHaveAttribute('data-state', 'expanded')
     await expect(fileRow).toBeVisible()
     await expect

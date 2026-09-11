@@ -1,9 +1,5 @@
-export { ShortcutKbd, shortcutKeys } from './shortcut-kbd'
-export {
-  KeybindProvider,
-  useKeybindBinding,
-  useKeybindHandler,
-  useKeybinds,
-  type KeybindHandler
-} from './provider'
+export { ShortcutKbd } from './shortcut-kbd'
+export { shortcutKeys } from './shortcut-keys'
+export { KeybindProvider } from './provider'
+export { useKeybindBinding, useKeybindHandler, useKeybinds, type KeybindHandler } from './context'
 export { KeyboardSettings } from './keyboard-settings'

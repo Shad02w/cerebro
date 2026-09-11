@@ -32,4 +32,3 @@ export function isReservedName(name: string): boolean {
     name === 'cerebro.sqlite-shm'
   )
 }
-

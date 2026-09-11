@@ -25,8 +25,7 @@ function WindowDragOverlay({
   // When the sidebar is collapsed, a workspace tab bar covers this strip. Electron
   // ignores z-index for -webkit-app-region: a sibling trigger over that drag
   // region is not clickable. TerminalTabBar hosts the trigger in that case.
-  const showTrigger =
-    showSidebarTrigger && !(deferTriggerToTabBar && state === 'collapsed')
+  const showTrigger = showSidebarTrigger && !(deferTriggerToTabBar && state === 'collapsed')
 
   return (
     <>

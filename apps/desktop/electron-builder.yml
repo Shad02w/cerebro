@@ -2,7 +2,12 @@ appId: com.electron.app
 productName: desktop
 directories:
   buildResources: build
+beforePack: scripts/check-cli-runtime.cjs
+extraResources:
+  - from: out/cli
+    to: cli
 files:
+  - '!out/cli/**'
   - '!**/.vscode/*'
   - '!src/*'
   - '!electron.vite.config.{js,ts,mjs,cjs}'
@@ -20,6 +25,8 @@ nsis:
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
 mac:
+  binaries:
+    - Contents/Resources/cli/node
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
     - NSCameraUsageDescription: Application requests access to the device's camera.

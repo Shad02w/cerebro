@@ -112,12 +112,20 @@ export async function verifyWorkspaces(): Promise<void> {
     await initGitRepo(join(multiRootDir, 'svc-b'), 'develop', 'svc-b')
     const multiRoot = await createProjectFromDirectory(multiRootDir)
     assert(multiRoot.kind === 'multi-root', 'Folder with sibling git repos should be multi-root.')
-    assert(multiRoot.github === null, 'Multi-root projects are not GitHub-linked at the project level.')
+    assert(
+      multiRoot.github === null,
+      'Multi-root projects are not GitHub-linked at the project level.'
+    )
     assert(multiRoot.repositories.length === 2, 'Multi-root should register each child git repo.')
-    const multiRootDefaults = multiRoot.workspaces.filter((workspace) => workspace.kind === 'default')
+    const multiRootDefaults = multiRoot.workspaces.filter(
+      (workspace) => workspace.kind === 'default'
+    )
     const multiRootRoot = multiRoot.workspaces.find((workspace) => workspace.kind === 'root')
     assert(multiRootDefaults.length === 2, 'Multi-root should create a default workspace per repo.')
-    assert(multiRootRoot != null, 'Multi-root should create a root workspace for the parent folder.')
+    assert(
+      multiRootRoot != null,
+      'Multi-root should create a root workspace for the parent folder.'
+    )
     assert(
       multiRootRoot.localPath === (await realpath(multiRootDir)),
       'Root workspace should point at the multi-root directory.'
@@ -142,7 +150,10 @@ export async function verifyWorkspaces(): Promise<void> {
     )
 
     const afterDirectory = await listProjects()
-    assert(afterDirectory.projects.length === 6, `Expected 6 projects, found ${afterDirectory.projects.length}.`)
+    assert(
+      afterDirectory.projects.length === 6,
+      `Expected 6 projects, found ${afterDirectory.projects.length}.`
+    )
     assert(
       afterDirectory.projects.some((project) => project.kind === 'multi-root'),
       'Listed projects should include the multi-root workspace.'

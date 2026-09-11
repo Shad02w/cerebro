@@ -6,3 +6,9 @@ pnpm-lock.yaml
 LICENSE.md
 tsconfig.json
 tsconfig.*.json
+
+# Nested worktrees and generated test output
+.delta
+**/test-results
+**/playwright-report
+**/blob-report

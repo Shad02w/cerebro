@@ -1,4 +1,5 @@
 import { TerminalThemeCombobox } from '@/components/terminal-theme-combobox'
+import { CliSettings } from '@/components/cli-settings'
 import type { TerminalThemeId } from '@shared/terminal-themes'
 import { useEffect, useRef, useState } from 'react'
 import type { AppSettings, AppSettingsPatch, GitHubStatus } from '@shared/types'
@@ -78,6 +79,8 @@ export function SettingsView({
             ) : (
               <TerminalSettings settings={settings} error={error} onUpdate={onUpdate} />
             )
+          ) : section === 'cli' ? (
+            <CliSettings />
           ) : section === 'keyboard' ? (
             loading || !settings ? (
               <p className="text-sm text-muted-foreground">Loading settings…</p>
@@ -117,9 +120,11 @@ function GeneralSettings({
   const [saving, setSaving] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
 
-  useEffect(() => {
+  const [previousCloneDir, setPreviousCloneDir] = useState(settings.defaultCloneDir)
+  if (previousCloneDir !== settings.defaultCloneDir) {
+    setPreviousCloneDir(settings.defaultCloneDir)
     setCloneDir(settings.defaultCloneDir)
-  }, [settings.defaultCloneDir])
+  }
 
   const persistCloneDir = async (path: string): Promise<void> => {
     const trimmed = path.trim()
@@ -223,9 +228,11 @@ function TerminalSettings({ settings, error, onUpdate }: TerminalSettingsProps):
   ])
   const [localError, setLocalError] = useState<string | null>(null)
 
-  useEffect(() => {
+  const [previousFontSize, setPreviousFontSize] = useState(settings.terminalFontSize)
+  if (previousFontSize !== settings.terminalFontSize) {
+    setPreviousFontSize(settings.terminalFontSize)
     setFontSize(String(settings.terminalFontSize))
-  }, [settings.terminalFontSize])
+  }
 
   useEffect(() => {
     let cancelled = false
