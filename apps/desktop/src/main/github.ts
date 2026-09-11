@@ -38,6 +38,7 @@ type PendingFlow = {
 
 let pendingFlow: PendingFlow | null = null
 let cachedAccount: GitHubAccount | null = null
+let cachedConfigureUrl: string | null = null
 let flowGeneration = 0
 
 function getClientId(): string | null {
@@ -69,10 +70,7 @@ function setStatus(status: GitHubStatus): GitHubStatus {
   return status
 }
 
-async function fetchJson<T>(
-  url: string,
-  init: RequestInit & { signal?: AbortSignal }
-): Promise<T> {
+async function fetchJson<T>(url: string, init: RequestInit & { signal?: AbortSignal }): Promise<T> {
   const response = await fetch(url, init)
   const text = await response.text()
   let body: unknown = null
@@ -95,6 +93,10 @@ async function fetchJson<T>(
   return body as T
 }
 
+function defaultConfigureUrl(): string {
+  return `${getLoginUrl()}/settings/installations`
+}
+
 async function fetchAuthenticatedUser(token: string): Promise<GitHubAccount> {
   const octokit = new Octokit({
     auth: token,
@@ -106,6 +108,39 @@ async function fetchAuthenticatedUser(token: string): Promise<GitHubAccount> {
     name: data.name ?? null,
     avatarUrl: data.avatar_url
   }
+}
+
+async function resolveConfigureUrl(token: string): Promise<string> {
+  const fallback = defaultConfigureUrl()
+  try {
+    const octokit = new Octokit({
+      auth: token,
+      baseUrl: getApiUrl()
+    })
+    const { data } = await octokit.apps.listInstallationsForAuthenticatedUser({ per_page: 2 })
+    const installations = data.installations
+    if (installations.length === 1 && installations[0].html_url) {
+      return installations[0].html_url
+    }
+    return fallback
+  } catch {
+    return fallback
+  }
+}
+
+async function connectedStatus(
+  token: string
+): Promise<Extract<GitHubStatus, { state: 'connected' }>> {
+  const [account, configureUrl] = await Promise.all([
+    fetchAuthenticatedUser(token),
+    resolveConfigureUrl(token)
+  ])
+  return { state: 'connected', account, configureUrl }
+}
+
+function cacheConnected(status: Extract<GitHubStatus, { state: 'connected' }>): void {
+  cachedAccount = status.account
+  cachedConfigureUrl = status.configureUrl
 }
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
@@ -217,18 +252,19 @@ async function runDeviceFlow(
     if (generation !== flowGeneration) return
 
     storeGitHubToken(token)
-    const account = await fetchAuthenticatedUser(token)
+    const status = await connectedStatus(token)
     if (generation !== flowGeneration) return
 
-    cachedAccount = account
+    cacheConnected(status)
     pendingFlow = null
-    setStatus({ state: 'connected', account })
+    setStatus(status)
   } catch (error) {
     if (generation !== flowGeneration || isAbortError(error)) {
       return
     }
     pendingFlow = null
     cachedAccount = null
+    cachedConfigureUrl = null
     setStatus({
       state: 'error',
       message: error instanceof Error ? error.message : 'GitHub authorization failed.'
@@ -251,7 +287,11 @@ export async function getGitHubStatus(): Promise<GitHubStatus> {
   }
 
   if (cachedAccount) {
-    return { state: 'connected', account: cachedAccount }
+    return {
+      state: 'connected',
+      account: cachedAccount,
+      configureUrl: cachedConfigureUrl ?? defaultConfigureUrl()
+    }
   }
 
   const token = readGitHubToken()
@@ -260,12 +300,13 @@ export async function getGitHubStatus(): Promise<GitHubStatus> {
   }
 
   try {
-    const account = await fetchAuthenticatedUser(token)
-    cachedAccount = account
-    return { state: 'connected', account }
+    const status = await connectedStatus(token)
+    cacheConnected(status)
+    return status
   } catch (error) {
     deleteGitHubToken()
     cachedAccount = null
+    cachedConfigureUrl = null
     return {
       state: 'error',
       message:
@@ -353,6 +394,7 @@ export async function cancelGitHubDeviceFlow(): Promise<GitHubStatus> {
   flowGeneration += 1
   cancelPendingFlow()
   cachedAccount = null
+  cachedConfigureUrl = null
 
   if (!getClientId()) {
     return setStatus({ state: 'unconfigured' })
@@ -361,9 +403,9 @@ export async function cancelGitHubDeviceFlow(): Promise<GitHubStatus> {
   const token = readGitHubToken()
   if (token) {
     try {
-      const account = await fetchAuthenticatedUser(token)
-      cachedAccount = account
-      return setStatus({ state: 'connected', account })
+      const status = await connectedStatus(token)
+      cacheConnected(status)
+      return setStatus(status)
     } catch {
       deleteGitHubToken()
     }
@@ -376,6 +418,7 @@ export async function disconnectGitHub(): Promise<GitHubStatus> {
   flowGeneration += 1
   cancelPendingFlow()
   cachedAccount = null
+  cachedConfigureUrl = null
   deleteGitHubToken()
 
   if (!getClientId()) {
