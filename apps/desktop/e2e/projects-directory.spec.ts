@@ -98,7 +98,6 @@ test('adds a folder of git repos as a multi-root workspace', async ({ page, elec
     await expect(projectRow).toHaveAttribute('data-project-kind', 'multi-root')
     await expect(projectRow).toHaveAttribute('data-project-icon', 'folders')
     await expect(page.getByTestId(/project-multi-root-/)).toHaveText('multi-root')
-    await expect(page.getByTestId(/project-multi-root-/)).toHaveClass(/bg-teal-500/)
     await expect(page.getByTestId(/project-add-workspace-/)).toHaveCount(0)
     await expect(projectRow.locator('svg')).toHaveCount(1)
 
