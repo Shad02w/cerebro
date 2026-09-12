@@ -1,12 +1,23 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
+  DEFAULT_VIRTUAL_FILE_METRICS,
   parseDiffFromFile,
+  type CodeViewDiffItem,
   type CodeViewItem,
   type DiffLineAnnotation,
   type LineAnnotation
 } from '@pierre/diffs'
-import { CodeView, type CodeViewHandle, type CodeViewReactOptions } from '@pierre/diffs/react'
-import { PanelRightClose, PanelRightOpen, RefreshCw } from 'lucide-react'
+import { FileDiff, Virtualizer, useVirtualizer, type FileDiffOptions } from '@pierre/diffs/react'
+import {
+  ChevronDown,
+  ChevronRight,
+  ChevronsDownUp,
+  ChevronsUpDown,
+  FileImage,
+  PanelRightClose,
+  PanelRightOpen,
+  RefreshCw
+} from 'lucide-react'
 import type {
   ChangedFile,
   FileDiffContents,
@@ -16,6 +27,7 @@ import type {
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ChangesFileList } from '@/components/changes-file-list'
+import { ChangesImagePreview } from '@/components/changes-image-preview'
 import { changeItemId } from '@/lib/changes'
 import { cn } from '@/lib/utils'
 
@@ -31,14 +43,24 @@ type ChangesViewProps = {
   renderAnnotation?: ChangesAnnotationRender
 }
 
-const CODE_VIEW_OPTIONS: CodeViewReactOptions<undefined, undefined> = {
+const DIFF_OPTIONS: FileDiffOptions<undefined, undefined> = {
   theme: 'pierre-dark',
   themeType: 'dark',
-  stickyHeaders: true,
-  layout: { paddingTop: 8, paddingBottom: 16, gap: 12 }
+  stickyHeader: true,
+  unsafeCSS: `
+    [data-diffs-header] {
+      box-sizing: border-box;
+      height: 32px;
+      min-height: 32px;
+      padding-inline: 12px;
+      font-size: 12px;
+    }
+  `
 }
 
-const CODE_VIEW_STYLE = { height: '100%', overflow: 'auto' } as const
+// Keep virtualized height estimates aligned with the compact header CSS.
+const DIFF_METRICS = { ...DEFAULT_VIRTUAL_FILE_METRICS, diffHeaderHeight: 32 }
+const SCROLL_STYLE = { height: '100%', overflow: 'auto' } as const
 
 const DEFAULT_FILES_WIDTH = 224
 const MIN_FILES_WIDTH = 160
@@ -68,7 +90,7 @@ function toCodeViewItem(
   diff: FileDiffContents,
   annotations: DiffLineAnnotation[] | undefined,
   showRepo: boolean
-): CodeViewItem<undefined> | null {
+): CodeViewDiffItem<undefined> | null {
   if (diff.kind !== 'text') return null
   if (diff.oldContents == null && diff.newContents == null) return null
 
@@ -86,13 +108,142 @@ function toCodeViewItem(
   }
 }
 
+type ReviewItem = {
+  id: string
+  displayName: string
+  diff: FileDiffContents
+  textItem: CodeViewDiffItem<undefined> | null
+}
+
+function ChangeScrollTarget({ request }: { request: { id: string } | null }): null {
+  const virtualizer = useVirtualizer()
+  useLayoutEffect(() => {
+    if (!request || !virtualizer) return
+    // Wait for FileDiff to apply expansion and update its estimated height.
+    const frame = requestAnimationFrame(() => {
+      const root = virtualizer.getRoot()
+      const element = root?.querySelector<HTMLElement>(
+        `[data-change-id="${CSS.escape(request.id)}"]`
+      )
+      if (element) virtualizer.scrollTo({ top: virtualizer.getOffsetInScrollContainer(element) })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [request, virtualizer])
+  return null
+}
+
+function ChangeFileContent({
+  item,
+  collapsed,
+  onToggle,
+  renderAnnotation
+}: {
+  item: ReviewItem
+  collapsed: boolean
+  onToggle: (id: string) => void
+  renderAnnotation?: ChangesAnnotationRender
+}): React.JSX.Element {
+  const options = useMemo(() => ({ ...DIFF_OPTIONS, collapsed }), [collapsed])
+  const renderToggle = useCallback(
+    () => (
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-xs"
+        aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${item.displayName}`}
+        aria-expanded={!collapsed}
+        onClick={() => onToggle(item.id)}
+      >
+        {collapsed ? <ChevronRight className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+      </Button>
+    ),
+    [collapsed, item.displayName, item.id, onToggle]
+  )
+  const renderLineAnnotation = useCallback(
+    (annotation: DiffLineAnnotation) =>
+      item.textItem ? renderAnnotation?.(annotation, item.textItem) : null,
+    [item.textItem, renderAnnotation]
+  )
+
+  return (
+    <section data-change-id={item.id} data-change-path={item.diff.path} className="min-w-0">
+      {item.textItem ? (
+        <FileDiff
+          fileDiff={item.textItem.fileDiff}
+          options={options}
+          metrics={DIFF_METRICS}
+          lineAnnotations={item.textItem.annotations}
+          disableWorkerPool
+          renderHeaderPrefix={renderToggle}
+          renderAnnotation={renderAnnotation ? renderLineAnnotation : undefined}
+        />
+      ) : (
+        <>
+          <div
+            data-testid="changes-file-header"
+            className="sticky top-0 z-10 flex h-8 items-center gap-2 bg-background px-3"
+          >
+            {renderToggle()}
+            <FileImage className="size-4 shrink-0 text-muted-foreground" />
+            <span className="min-w-0 flex-1 truncate text-xs" title={item.displayName}>
+              {item.displayName}
+            </span>
+            <span className="text-xs text-muted-foreground capitalize">{item.diff.status}</span>
+          </div>
+          {!collapsed && <ChangesImagePreview diff={item.diff} />}
+        </>
+      )}
+    </section>
+  )
+}
+
+function DiffFoldControls({
+  onCollapseAll,
+  onExpandAll
+}: {
+  onCollapseAll: () => void
+  onExpandAll: () => void
+}): React.JSX.Element {
+  return (
+    <>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            aria-label="Collapse all diffs"
+            onClick={onCollapseAll}
+          >
+            <ChevronsDownUp className="size-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Collapse all diffs</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            aria-label="Expand all diffs"
+            onClick={onExpandAll}
+          >
+            <ChevronsUpDown className="size-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Expand all diffs</TooltipContent>
+      </Tooltip>
+    </>
+  )
+}
+
 export function ChangesView({
   workspaceId,
   active,
   annotationsByItem,
   renderAnnotation
 }: ChangesViewProps): React.JSX.Element {
-  const viewerRef = useRef<CodeViewHandle<undefined, undefined>>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const [filesOpen, setFilesOpen] = useState(true)
   const [filesWidth, setFilesWidth] = useState(DEFAULT_FILES_WIDTH)
@@ -100,6 +251,8 @@ export function ChangesView({
   const [changes, setChanges] = useState<WorkspaceChanges | null>(null)
   const [diffs, setDiffs] = useState<FileDiffContents[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => new Set())
+  const [scrollRequest, setScrollRequest] = useState<{ id: string } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const showRepoInHeader = (changes?.groups.length ?? 0) > 1
@@ -157,40 +310,47 @@ export function ChangesView({
     }
   }, [active, applyListed, fetchChanges])
 
-  const items = useMemo<CodeViewItem<undefined>[]>(() => {
+  const items = useMemo<ReviewItem[]>(() => {
     if (!changes) return []
     const entries = listedFiles(changes.groups)
     const byKey = new Map(diffs.map((diff) => [`${diff.repositoryId}:${diff.path}`, diff] as const))
     return entries.flatMap((entry) => {
       const diff = byKey.get(`${entry.repositoryId}:${entry.file.path}`)
       if (!diff) return []
-      const item = toCodeViewItem(
-        entry,
-        diff,
-        annotationsByItem?.[changeItemId(entry.repositoryId, entry.file.path)],
-        showRepoInHeader
-      )
-      return item ? [item] : []
+      const id = changeItemId(entry.repositoryId, entry.file.path)
+      return [
+        {
+          id,
+          displayName: showRepoInHeader
+            ? `${entry.repositoryName}/${entry.file.path}`
+            : entry.file.path,
+          diff,
+          textItem: toCodeViewItem(entry, diff, annotationsByItem?.[id], showRepoInHeader)
+        }
+      ]
     })
   }, [annotationsByItem, changes, diffs, showRepoInHeader])
 
   const fileCount = changes ? listedFiles(changes.groups).length : 0
 
   const handleSelect = (itemId: string): void => {
+    setScrollRequest({ id: itemId })
     setSelectedId(itemId)
-    viewerRef.current?.scrollTo({ type: 'item', id: itemId, align: 'start' })
+    setCollapsedIds((current) => {
+      const next = new Set(current)
+      next.delete(itemId)
+      return next
+    })
   }
 
-  const renderHeaderPrefix = useCallback(
-    (item: CodeViewItem<undefined>): React.ReactNode => {
-      if (!showRepoInHeader || item.type !== 'diff') return null
-      const repoId = item.id.slice(0, item.id.indexOf(':'))
-      const group = changes?.groups.find((entry) => String(entry.repositoryId) === repoId)
-      if (!group) return null
-      return <span className="text-[10px] text-muted-foreground">{group.repositoryName}</span>
-    },
-    [changes, showRepoInHeader]
-  )
+  const toggleCollapsed = useCallback((id: string): void => {
+    setCollapsedIds((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
 
   const toggleFiles = (): void => {
     setFilesOpen((current) => !current)
@@ -226,26 +386,24 @@ export function ChangesView({
           >
             No changes
           </div>
-        ) : items.length === 0 ? (
-          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            No text diffs to display
-          </div>
         ) : (
-          <CodeView
-            ref={viewerRef}
-            items={items}
-            style={CODE_VIEW_STYLE}
-            options={CODE_VIEW_OPTIONS}
-            disableWorkerPool
-            renderHeaderPrefix={showRepoInHeader ? renderHeaderPrefix : undefined}
-            renderAnnotation={renderAnnotation}
-          />
+          <Virtualizer style={SCROLL_STYLE} contentClassName="flex flex-col gap-1 pt-1 pb-4">
+            {items.map((item) => (
+              <ChangeFileContent
+                key={item.id}
+                item={item}
+                collapsed={collapsedIds.has(item.id)}
+                onToggle={toggleCollapsed}
+                renderAnnotation={renderAnnotation}
+              />
+            ))}
+            <ChangeScrollTarget request={scrollRequest} />
+          </Virtualizer>
         )}
       </div>
       <aside
         data-testid="changes-sidebar"
         data-state={filesOpen ? 'expanded' : 'collapsed'}
-        aria-expanded={filesOpen}
         className={cn(
           'relative flex shrink-0 flex-col overflow-hidden border-l border-border bg-background',
           !filesDragging && 'transition-[width] duration-150'
@@ -267,6 +425,10 @@ export function ChangesView({
             <span className="min-w-0 flex-1 truncate px-1 text-[11px] font-medium text-muted-foreground">
               Files
             </span>
+            <DiffFoldControls
+              onCollapseAll={() => setCollapsedIds(new Set(items.map((item) => item.id)))}
+              onExpandAll={() => setCollapsedIds(new Set())}
+            />
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button

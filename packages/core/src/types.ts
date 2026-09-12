@@ -112,7 +112,7 @@ export const MAX_TERMINAL_FONT_SIZE = 24
 
 export type ChangedFileStatus = 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked'
 
-export type ChangedFileKind = 'text' | 'binary'
+export type ChangedFileKind = 'text' | 'binary' | 'image'
 
 export type ChangedFile = {
   path: string
@@ -132,6 +132,11 @@ export type WorkspaceChanges = {
   groups: RepoChangeGroup[]
 }
 
+export type FileImageContents = {
+  dataUrl: string | null
+  byteLength: number
+}
+
 export type FileDiffContents = {
   repositoryId: number
   path: string
@@ -140,4 +145,6 @@ export type FileDiffContents = {
   kind: ChangedFileKind
   oldContents: string | null
   newContents: string | null
+  oldImage?: FileImageContents | null
+  newImage?: FileImageContents | null
 }

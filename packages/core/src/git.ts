@@ -1,8 +1,14 @@
 import { execFile } from 'node:child_process'
 import { readFile, stat } from 'node:fs/promises'
-import { join, resolve, sep } from 'node:path'
+import { extname, join, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
-import type { ChangedFile, ChangedFileKind, ChangedFileStatus, FileDiffContents } from './types'
+import type {
+  ChangedFile,
+  ChangedFileKind,
+  ChangedFileStatus,
+  FileDiffContents,
+  FileImageContents
+} from './types'
 
 const execFileAsync = promisify(execFile)
 
@@ -319,6 +325,67 @@ export function sanitizeBranchForPath(branch: string): string {
 }
 
 const MAX_TEXT_BYTES = 1024 * 1024
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024
+const IMAGE_MIME_TYPES: Readonly<Record<string, string>> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.avif': 'image/avif',
+  '.bmp': 'image/bmp',
+  '.ico': 'image/x-icon',
+  '.svg': 'image/svg+xml'
+}
+
+function imageContents(buf: Buffer | null, path: string): FileImageContents | null {
+  if (!buf) return null
+  const mime = IMAGE_MIME_TYPES[extname(path).toLowerCase()]
+  return {
+    byteLength: buf.byteLength,
+    dataUrl:
+      mime && buf.byteLength <= MAX_IMAGE_BYTES
+        ? `data:${mime};base64,${buf.toString('base64')}`
+        : null
+  }
+}
+
+async function readImageVersion(
+  repoPath: string,
+  path: string,
+  fromHead: boolean
+): Promise<FileImageContents | null> {
+  let byteLength: number
+  if (fromHead) {
+    try {
+      byteLength = Number(await runGit(['cat-file', '-s', `HEAD:${path}`], repoPath))
+    } catch {
+      return null
+    }
+  } else {
+    try {
+      const info = await stat(repoFilePath(repoPath, path))
+      if (!info.isFile()) return null
+      byteLength = info.size
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
+      throw error
+    }
+  }
+  // Bound both IPC payloads and image decoding, including versions stored in HEAD.
+  if (byteLength > MAX_IMAGE_BYTES || !IMAGE_MIME_TYPES[extname(path).toLowerCase()]) {
+    return { byteLength, dataUrl: null }
+  }
+  try {
+    const buf = fromHead
+      ? await gitShowBytes(repoPath, `HEAD:${path}`)
+      : await readFile(repoFilePath(repoPath, path))
+    return imageContents(buf, path)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
+    throw error
+  }
+}
 
 function splitNul(raw: string): string[] {
   if (!raw) return []
@@ -417,6 +484,28 @@ export async function readChangedFileDiff(
   file: ChangedFile
 ): Promise<Omit<FileDiffContents, 'repositoryId'>> {
   const fsPath = repoFilePath(repoPath, file.path)
+
+  if (
+    IMAGE_MIME_TYPES[extname(file.path).toLowerCase()] ||
+    IMAGE_MIME_TYPES[extname(file.oldPath ?? '').toLowerCase()]
+  ) {
+    const [oldImage, newImage] = await Promise.all([
+      file.status === 'added' || file.status === 'untracked'
+        ? null
+        : readImageVersion(repoPath, file.oldPath ?? file.path, true),
+      file.status === 'deleted' ? null : readImageVersion(repoPath, file.path, false)
+    ])
+    return {
+      path: file.path,
+      oldPath: file.oldPath,
+      status: file.status,
+      kind: 'image',
+      oldContents: null,
+      newContents: null,
+      oldImage,
+      newImage
+    }
+  }
 
   let oldBuf: Buffer | null = null
   let newBuf: Buffer | null = null

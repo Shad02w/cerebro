@@ -100,6 +100,19 @@ function RepositoryTree({
     <FileTree
       model={model}
       aria-label={`${group.repositoryName} changed files`}
+      onClickCapture={(event) => {
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+        // Selection-change events omit repeated activation of the selected file.
+        // Read the composed path because Pierre renders rows inside a shadow root.
+        const row = event.nativeEvent
+          .composedPath()
+          .find(
+            (target): target is HTMLElement =>
+              target instanceof HTMLElement && target.dataset.itemType === 'file'
+          )
+        const path = row?.dataset.itemPath
+        if (path && changeItemId(group.repositoryId, path) === selectedId) onSelect(selectedId)
+      }}
       style={{ ...TREE_STYLE, height: count * model.getItemHeight() }}
     />
   )

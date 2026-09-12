@@ -146,6 +146,242 @@ test('shows working-tree diffs in a Changes tab with a right-hand file list', as
   }
 })
 
+test('folds whole file diffs individually and together, and opens a folded file from the tree', async ({
+  page,
+  electronApp
+}) => {
+  const root = await mkdtemp(join(tmpdir(), 'cerebro-changes-fold-'))
+  const repo = join(root, 'changed-fold')
+  try {
+    await initGitRepo(repo, 'main', 'changed-fold')
+    await writeFile(
+      join(repo, 'README.md'),
+      'changed-fold\nreview first file\n' + 'long change\n'.repeat(150)
+    )
+    await writeFile(join(repo, 'zzz.ts'), 'export const reviewLastFile = true\n')
+    await addDirectoryViaUi(page, electronApp, repo)
+    await selectDefaultWorkspace(page, 'changed-fold')
+    await openChanges(page)
+    const pane = activeChanges(page)
+    const diff = pane.getByTestId('changes-diff')
+    const collapseReadme = diff.getByRole('button', { name: 'Collapse README.md', exact: true })
+    await expect(collapseReadme).toBeVisible()
+    await collapseReadme.click()
+    await expect(
+      diff.getByRole('button', { name: 'Expand README.md', exact: true })
+    ).toHaveAttribute('aria-expanded', 'false')
+    await expect(diff).not.toContainText('review first file')
+    await expect(diff).toContainText('reviewLastFile')
+
+    await pane.getByRole('button', { name: 'Collapse all diffs', exact: true }).click()
+    await expect(diff.getByRole('button', { name: 'Expand zzz.ts', exact: true })).toBeVisible()
+    await expect(diff).not.toContainText('reviewLastFile')
+    const textHeaders = diff.locator('[data-diffs-header]')
+    for (const header of await textHeaders.all()) {
+      await expect(header).toHaveCSS('height', '32px')
+    }
+    const collapsedSpacing = await diff.locator('[data-change-path]').evaluateAll((files) => {
+      const first = files[0].getBoundingClientRect()
+      const second = files[1].getBoundingClientRect()
+      return second.top - first.bottom
+    })
+    expect(collapsedSpacing).toBe(4)
+    await pane.getByTestId('changes-refresh').click()
+    await expect(diff.getByRole('button', { name: 'Expand README.md', exact: true })).toBeVisible()
+    await expect(diff.getByRole('button', { name: 'Expand zzz.ts', exact: true })).toBeVisible()
+    await pane.getByRole('treeitem', { name: 'zzz.ts', exact: true }).click()
+    await expect(diff).toContainText('reviewLastFile')
+    await expect(
+      diff.getByRole('button', { name: 'Collapse zzz.ts', exact: true })
+    ).toHaveAttribute('aria-expanded', 'true')
+    await expect(diff.getByRole('button', { name: 'Expand README.md', exact: true })).toBeVisible()
+    await pane.getByRole('button', { name: 'Expand all diffs', exact: true }).click()
+    await pane.getByRole('treeitem', { name: 'README.md', exact: true }).click()
+    await expect(diff).toContainText('review first file')
+    await pane.getByRole('button', { name: 'Collapse all diffs', exact: true }).click()
+    const expand = diff.getByRole('button', { name: 'Expand README.md', exact: true })
+    await expand.focus()
+    await page.keyboard.press('Enter')
+    await expect(diff).toContainText('review first file')
+    await pane.getByRole('button', { name: 'Collapse all diffs', exact: true }).click()
+    await page.screenshot({ path: '/tmp/cerebro-changes-folding.png' })
+    // Keep late files reachable when a review has many expanded, long diffs.
+    for (let index = 0; index < 40; index++) {
+      await writeFile(
+        join(repo, `file-${String(index).padStart(2, '0')}.txt`),
+        `file ${index}\n` + 'change\n'.repeat(200)
+      )
+    }
+    await pane.getByTestId('changes-refresh').click()
+    await expect(diff.locator('[data-change-path]')).toHaveCount(42)
+    await pane.getByRole('button', { name: 'Collapse all diffs', exact: true }).click()
+    await page.mouse.move(1000, 700)
+    await page.screenshot({ path: '/tmp/cerebro-changes-compact-headers.png' })
+    const lastRow = pane.getByRole('treeitem', { name: 'file-39.txt', exact: true })
+    await lastRow.scrollIntoViewIfNeeded()
+    await lastRow.click()
+    const lastFile = diff.locator('[data-change-path="file-39.txt"]')
+    await expect(lastFile).toBeInViewport()
+    await expect(lastFile).toContainText('file 39')
+    await expect(
+      diff.getByRole('button', { name: 'Expand file-38.txt', exact: true })
+    ).toBeVisible()
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('scrolls through inline image versions, text diffs, and binary fallbacks', async ({
+  page,
+  electronApp
+}) => {
+  const root = await mkdtemp(join(tmpdir(), 'cerebro-changes-images-'))
+  const repo = join(root, 'changed-images')
+  try {
+    await initGitRepo(repo, 'main', 'changed-images')
+    const pngs = await electronApp.evaluate(({ nativeImage }) => {
+      return [0, 1].map((variant) => {
+        const width = 240
+        const height = 160
+        const bitmap = Buffer.alloc(width * height * 4)
+        for (let y = 0; y < height; y++) {
+          for (let x = 0; x < width; x++) {
+            const offset = (y * width + x) * 4
+            bitmap[offset] = variant ? 110 : 220
+            bitmap[offset + 1] = Math.round((y / height) * 200)
+            bitmap[offset + 2] = Math.round((x / width) * 240)
+            bitmap[offset + 3] = 255
+          }
+        }
+        return nativeImage.createFromBitmap(bitmap, { width, height }).toPNG().toString('base64')
+      })
+    })
+    const before = Buffer.from(pngs[0], 'base64')
+    const after = Buffer.from(pngs[1], 'base64')
+    for (const name of ['modified.png', 'deleted.png', 'old.png']) {
+      // Distinct contents keep Git's similarity-based rename detection unambiguous.
+      await writeFile(join(repo, name), name === 'deleted.png' ? after : before)
+    }
+    await execFileAsync('git', ['add', '.'], { cwd: repo })
+    await execFileAsync('git', ['commit', '-m', 'image baseline'], { cwd: repo })
+    await writeFile(join(repo, 'modified.png'), after)
+    await rm(join(repo, 'deleted.png'))
+    await execFileAsync('git', ['mv', 'old.png', 'renamed.png'], { cwd: repo })
+    await writeFile(join(repo, 'a-new.png'), after)
+    await writeFile(join(repo, 'broken.png'), 'invalid image')
+    await writeFile(join(repo, 'data.bin'), Buffer.from([0, 1, 2]))
+    await writeFile(join(repo, 'large.png'), Buffer.alloc(5 * 1024 * 1024 + 1))
+    await writeFile(
+      join(repo, 'vector.svg'),
+      '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="80"><rect width="120" height="80" fill="teal"/></svg>'
+    )
+    await writeFile(join(repo, 'README.md'), 'changed-images\ntext still works\n')
+    await addDirectoryViaUi(page, electronApp, repo)
+    await selectDefaultWorkspace(page, 'changed-images')
+    await openChanges(page)
+    const pane = activeChanges(page)
+    const diff = pane.getByTestId('changes-diff')
+    const previewFor = (name: string): Locator =>
+      pane
+        .getByTestId('changes-file-preview')
+        .filter({ has: page.locator(`img[alt$=": ${name}"]`) })
+    const block = (name: string): Locator => diff.locator(`[data-change-path="${name}"]`)
+    const reveal = async (name: string): Promise<Locator> => {
+      const target = block(name)
+      await target.scrollIntoViewIfNeeded()
+      await expect(target).toBeInViewport()
+      return target.getByTestId('changes-file-preview')
+    }
+    const expectDecoded = async (preview: Locator, count: number): Promise<void> => {
+      await expect(preview.getByRole('img')).toHaveCount(count)
+      for (const img of await preview.getByRole('img').all()) {
+        await expect
+          .poll(() => img.evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth > 0))
+          .toBe(true)
+      }
+    }
+    await expectDecoded(previewFor('a-new.png'), 1)
+    // Every image is inline; scrolling never requires changing the selected tree row.
+    const initialSelection = pane.getByRole('treeitem', { name: 'a-new.png', exact: true })
+    await expect(initialSelection).toHaveAttribute('aria-selected', 'true')
+    let preview = await reveal('modified.png')
+    await expectDecoded(preview, 2)
+    await expect(
+      preview.getByRole('img', { name: 'Before (HEAD): modified.png', exact: true })
+    ).toHaveAttribute('src', `data:image/png;base64,${pngs[0]}`)
+    await expect(
+      preview.getByRole('img', { name: 'After (working tree): modified.png', exact: true })
+    ).toHaveAttribute('src', `data:image/png;base64,${pngs[1]}`)
+    await expect(initialSelection).toHaveAttribute('aria-selected', 'true')
+    await block('README.md').scrollIntoViewIfNeeded()
+    await expect(block('README.md')).toContainText('text still works')
+    await expect(initialSelection).toHaveAttribute('aria-selected', 'true')
+    await block('modified.png').evaluate((el) => el.scrollIntoView({ block: 'start' }))
+    // Dismiss workspace hover details before capturing the review surface.
+    await page.getByRole('button', { name: 'main', exact: true }).press('Escape')
+    await page.mouse.move(1040, 780)
+    await expect(page.getByText(/Workspace created/)).toBeHidden()
+    await page.screenshot({ path: '/tmp/cerebro-changes-image-preview.png' })
+    await writeFile(join(repo, 'modified.png'), before)
+    await writeFile(join(repo, 'a-new.png'), before)
+    await pane.getByTestId('changes-refresh').click()
+    await expect(block('modified.png')).toHaveCount(0)
+    await expect(previewFor('a-new.png').getByRole('img')).toHaveAttribute(
+      'src',
+      `data:image/png;base64,${pngs[0]}`
+    )
+    preview = await reveal('deleted.png')
+    await expectDecoded(preview, 1)
+    await expect(preview.getByRole('img')).toHaveAttribute('alt', 'Before (HEAD): deleted.png')
+    preview = await reveal('renamed.png')
+    await expectDecoded(preview, 2)
+    await expect(preview.getByRole('img').first()).toHaveAttribute('alt', 'Before (HEAD): old.png')
+    preview = await reveal('vector.svg')
+    await expectDecoded(preview, 1)
+    preview = await reveal('large.png')
+    await expect(preview).toContainText('Image exceeds the 5 MB preview limit.')
+    preview = await reveal('broken.png')
+    await expect(preview).toContainText('This image could not be displayed.')
+    preview = await reveal('data.bin')
+    await expect(preview).toContainText('No preview is available for this binary file.')
+
+    await pane.getByRole('button', { name: 'Collapse all diffs', exact: true }).click()
+    await expect(pane.getByTestId('changes-file-preview')).toHaveCount(0)
+    await expect(diff).not.toContainText('text still works')
+    const imageHeader = block('a-new.png').getByTestId('changes-file-header')
+    const textHeader = block('README.md').locator('[data-diffs-header]')
+    await expect(imageHeader).toHaveCSS('height', '32px')
+    await expect(textHeader).toHaveCSS('height', '32px')
+    await page.screenshot({ path: '/tmp/cerebro-changes-mixed-headers.png' })
+    await pane.getByRole('treeitem', { name: 'a-new.png', exact: true }).click()
+    await expectDecoded(previewFor('a-new.png'), 1)
+    await expect(block('a-new.png')).toBeInViewport()
+    await block('a-new.png')
+      .getByRole('button', { name: 'Collapse a-new.png', exact: true })
+      .click()
+    await initialSelection.focus()
+    await page.keyboard.press('Enter')
+    await expectDecoded(previewFor('a-new.png'), 1)
+    await expect(
+      block('README.md').getByRole('button', { name: 'Expand README.md', exact: true })
+    ).toBeVisible()
+    await pane.getByRole('treeitem', { name: 'README.md', exact: true }).click()
+    await expect(block('README.md')).toContainText('text still works')
+    await expect(previewFor('a-new.png')).toHaveCount(1)
+    await pane.getByRole('button', { name: 'Expand all diffs', exact: true }).click()
+    await expect(block('renamed.png').getByRole('img')).toHaveCount(2)
+    // A changeset containing only images still has a complete scrolling review.
+    await execFileAsync('git', ['add', '.'], { cwd: repo })
+    await execFileAsync('git', ['commit', '-m', 'review baseline'], { cwd: repo })
+    await writeFile(join(repo, 'a-new.png'), after)
+    await pane.getByTestId('changes-refresh').click()
+    await expect(diff.locator('[data-change-path]')).toHaveCount(1)
+    await expectDecoded(previewFor('a-new.png'), 2)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test('expands and collapses Pierre folders and preserves expansion across refresh and panel hiding', async ({
   page,
   electronApp
