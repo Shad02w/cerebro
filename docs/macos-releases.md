@@ -45,7 +45,10 @@ can resume a draft; published releases are not overwritten. Build jobs have
 read-only repository access; only the publish job has `contents: write`.
 
 No Apple credentials are currently required. The workflow disables signing
-identity discovery and publishes unsigned, unnotarized builds. Users may need to
+identity discovery and explicitly ad-hoc signs the final app bundle. This seals
+the modified Electron resources without an Apple certificate. Hardened runtime
+is enabled only for Developer ID builds. Ad-hoc builds are not notarized and
+still require user approval on first launch. Users may need to
 attempt opening the app, then allow it through **System Settings → Privacy &
 Security → Open Anyway**. macOS policy may prevent that on managed computers.
 
@@ -61,7 +64,8 @@ pnpm --filter desktop exec tsx scripts/verify-mac-package.ts
 ```
 
 Outputs are in `apps/desktop/dist/production`. Packaging
-never publishes by itself. The verifier checks the bundle ID, opens the actual
+never publishes by itself. The verifier first runs `codesign --verify --deep --strict`, checks the bundle ID,
+and opens the actual
 packaged Electron app with temporary data, verifies the CLI identity and mux
 connection, and stops the isolated mux afterward.
 
@@ -73,4 +77,13 @@ with `CSC_LINK` (base64 P12 certificate), `CSC_KEY_PASSWORD`, `APPLE_ID`,
 Remove `CSC_IDENTITY_AUTO_DISCOVERY: 'false'` and set
 `CEREBRO_REQUIRE_SIGNING: 'true'`. The packaging script then requires a valid
 signature and enables Electron Builder notarization. Update the release notes to
-remove the unsigned-build instructions after verifying a signed release.
+remove the ad-hoc-build instructions after verifying a notarized release.
+
+## Browser-download installation check
+
+Executable smoke tests do not prove Gatekeeper acceptance. Before releasing a
+packaging change, also download the DMG through a browser, open it in Finder,
+copy Cerebro to Applications, eject the image, and open the installed app.
+Keep quarantine intact and do not disable Gatekeeper. An ad-hoc build may need
+an explicit Open Anyway approval; a "damaged" signature error is a release defect.
+Verify opening a terminal and reopening the app after the first launch.

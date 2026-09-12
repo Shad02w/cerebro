@@ -3,6 +3,7 @@ import { build, Platform } from 'electron-builder'
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2)
+  const requireSigning = process.env.CEREBRO_REQUIRE_SIGNING === 'true'
   if (process.platform !== 'darwin') throw new Error('Build macOS releases on macOS.')
   if (args.some((arg) => arg !== '--dir')) throw new Error('Only --dir is supported.')
 
@@ -19,9 +20,12 @@ async function main(): Promise<void> {
       },
       directories: { output: 'dist/production' },
       artifactName: 'Cerebro-${version}-${arch}.${ext}',
-      forceCodeSigning: process.env.CEREBRO_REQUIRE_SIGNING === 'true',
+      forceCodeSigning: requireSigning,
       mac: {
-        notarize: process.env.CEREBRO_REQUIRE_SIGNING === 'true',
+        // Re-seal the modified Electron bundle even without a Developer ID.
+        identity: requireSigning ? undefined : '-',
+        hardenedRuntime: requireSigning,
+        notarize: requireSigning,
         ...(process.env.GITHUB_RUN_NUMBER ? { bundleVersion: process.env.GITHUB_RUN_NUMBER } : {})
       }
     }

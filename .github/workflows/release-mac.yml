@@ -99,7 +99,8 @@ jobs:
           macOS downloads: choose **arm64** for Apple Silicon or **x64** for Intel.
           Open the DMG and drag the app to Applications. ZIP archives are also available.
 
-          These builds are unsigned and not notarized. After attempting to open the app,
+          These builds are ad-hoc signed, not Apple Developer ID signed or notarized.
+          After attempting to open the app,
           macOS may require System Settings → Privacy & Security → Open Anyway.
           Only allow the app if you trust this repository and release.
 

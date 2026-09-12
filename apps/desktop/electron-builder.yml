@@ -24,7 +24,7 @@ asarUnpack:
 mac:
   target: [dmg, zip]
   category: public.app-category.developer-tools
-  hardenedRuntime: true
+  hardenedRuntime: false
   entitlements: build/entitlements.mac.plist
   icon: build/icon.icns
   binaries:
