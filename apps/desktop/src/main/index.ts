@@ -11,6 +11,7 @@ import { ensureCerebroHome } from './paths'
 import { clearActiveWorkspace } from './projects'
 import { killAllPtys } from './pty'
 import { registerCliIpc } from './cli-install'
+import { IPC } from '../shared/ipc'
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -39,16 +40,21 @@ function createWindow(): void {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      // Keep Query's background refresh interval active while the window is hidden.
+      backgroundThrottling: false
     }
   })
+
+  mainWindow.on('focus', () => mainWindow.webContents.send(IPC.native.focus, true))
+  mainWindow.on('blur', () => mainWindow.webContents.send(IPC.native.focus, false))
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
+    if (process.env.NODE_ENV !== 'test') void shell.openExternal(details.url)
     return { action: 'deny' }
   })
 

@@ -6,6 +6,8 @@ import type { ChangedFile, ChangedFileKind, ChangedFileStatus, FileDiffContents 
 
 const execFileAsync = promisify(execFile)
 
+export type GitRemoteRunner = (args: string[], cwd?: string) => Promise<string>
+
 const GIT_TIMEOUT_MS = 5 * 60 * 1000
 
 const gitEnv = {
@@ -61,8 +63,8 @@ export type ParsedGitUrl = {
 function parseGitHubOwnerRepo(raw: string): { owner: string; repo: string } | null {
   const trimmed = raw
     .trim()
-    .replace(/\.git$/i, '')
     .replace(/\/+$/, '')
+    .replace(/\.git$/i, '')
 
   if (!trimmed || /^file:/i.test(trimmed)) return null
 
@@ -75,7 +77,9 @@ function parseGitHubOwnerRepo(raw: string): { owner: string; repo: string } | nu
     return null
   }
 
-  const httpsMatch = trimmed.match(/^(?:https?:\/\/)(?:[^@]+@)?([^/]+)\/([^/]+)\/([^/]+)$/i)
+  const httpsMatch = trimmed.match(
+    /^(?:(?:https?|ssh):\/\/)(?:[^@/]+@)?([^/:]+)(?::[0-9]+)?\/([^/]+)\/([^/]+)$/i
+  )
   if (httpsMatch) {
     const host = httpsMatch[1].toLowerCase()
     if (host === 'github.com' || host.endsWith('.github.com')) {
@@ -101,7 +105,7 @@ export function isGitHubGitUrl(raw: string, loginHost?: string | null): boolean 
   // Bare owner/repo is treated as GitHub.
   if (/^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+(?:\.git)?$/.test(trimmed)) return true
 
-  const hostMatch = trimmed.match(/^(?:https?:\/\/)?(?:[^@]+@)?([^/:]+)/i)
+  const hostMatch = trimmed.match(/^(?:(?:https?|ssh):\/\/)?(?:[^@]+@)?([^/:]+)/i)
   const host = hostMatch?.[1]?.toLowerCase()
   if (!host) return false
 
@@ -119,13 +123,6 @@ export function isGitHubGitUrl(raw: string, loginHost?: string | null): boolean 
   }
 
   return false
-}
-
-export function withGitHubAccessToken(url: string, token: string | null | undefined): string {
-  if (!token) return url
-  const match = url.match(/^(https?:\/\/)(?:[^@]+@)?(github\.com\/.+)$/i)
-  if (!match) return url
-  return `${match[1]}x-access-token:${encodeURIComponent(token)}@${match[2]}`
 }
 
 /** Test-only rewrite so Playwright can clone GitHub URLs from local fixtures. */
@@ -169,10 +166,10 @@ export function parseGitUrl(raw: string): ParsedGitUrl {
 export async function cloneRepository(
   url: string,
   destination: string,
-  token?: string | null
+  remote: GitRemoteRunner = runGit
 ): Promise<string> {
-  const cloneUrl = withGitHubAccessToken(resolveCloneUrl(url), token)
-  await runGit(['clone', '--', cloneUrl, destination])
+  const cloneUrl = resolveCloneUrl(url)
+  await remote(['clone', '--', cloneUrl, destination])
   return readDefaultBranch(destination)
 }
 
@@ -208,74 +205,46 @@ export async function readDefaultBranch(repoPath: string): Promise<string> {
   return current
 }
 
-export async function fetchRemote(repoPath: string, token?: string | null): Promise<void> {
-  // Prefer the mapped local remote in tests so fetch/ls-remote do not hit the network.
-  if (process.env.NODE_ENV === 'test') {
-    try {
-      const originUrl = await runGit(['remote', 'get-url', 'origin'], repoPath)
-      const mapped = resolveCloneUrl(originUrl)
-      if (mapped !== originUrl) {
-        await runGit(['fetch', '--', mapped], repoPath)
-        return
-      }
-    } catch {
-      // Fall through.
-    }
-  }
-
-  if (token) {
-    try {
-      const originUrl = await runGit(['remote', 'get-url', 'origin'], repoPath)
-      const authed = withGitHubAccessToken(originUrl, token)
-      if (authed !== originUrl) {
-        await runGit(['fetch', '--', authed], repoPath)
-        return
-      }
-    } catch {
-      // Fall through to a plain fetch.
-    }
-  }
-
-  await runGit(['fetch', '--all', '--prune'], repoPath)
-}
-
-export async function listRemoteBranches(
+export async function fetchRemote(
   repoPath: string,
-  token?: string | null
-): Promise<string[]> {
-  await fetchRemote(repoPath, token)
-
-  let output: string
-  try {
-    output = await runGit(['ls-remote', '--heads', 'origin'], repoPath)
-  } catch {
-    // Local-only remotes may not support ls-remote; fall back to remote-tracking refs.
-    output = await runGit(
-      ['for-each-ref', '--format=%(refname:short)', 'refs/remotes/origin'],
+  remote: GitRemoteRunner = runGit
+): Promise<void> {
+  const origin = await readOriginUrl(repoPath)
+  const mapped = origin ? resolveCloneUrl(origin) : null
+  if (mapped && mapped !== origin) {
+    await remote(
+      ['fetch', '--prune', '--', mapped, '+refs/heads/*:refs/remotes/origin/*'],
       repoPath
     )
+  } else {
+    await remote(['fetch', '--prune', 'origin'], repoPath)
   }
+}
 
-  const branches = new Set<string>()
-  for (const line of output.split('\n')) {
-    const trimmed = line.trim()
-    if (!trimmed) continue
-
-    // ls-remote: "<sha>\trefs/heads/<branch>"
-    const lsMatch = trimmed.match(/\srefs\/heads\/(.+)$/)
-    if (lsMatch) {
-      branches.add(lsMatch[1])
-      continue
-    }
-
-    // for-each-ref: "origin/<branch>"
-    if (trimmed.startsWith('origin/')) {
-      const name = trimmed.slice('origin/'.length)
-      if (name && name !== 'HEAD') branches.add(name)
-    }
+export async function listRemoteBranches(repoPath: string): Promise<string[]> {
+  try {
+    const origin = await readOriginUrl(repoPath)
+    const output = await runGit(
+      ['ls-remote', '--heads', '--', origin ? resolveCloneUrl(origin) : 'origin'],
+      repoPath
+    )
+    return [
+      ...new Set(
+        output.split('\n').flatMap((line) => line.match(/\srefs\/heads\/(.+)$/)?.[1] ?? [])
+      )
+    ].sort()
+  } catch {
+    const output = await runGit(
+      ['for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes/origin'],
+      repoPath
+    )
+    const names = output
+      .split('\n')
+      .filter((name) => name && name !== 'refs/remotes/origin/HEAD')
+      .map((name) => name.replace(/^refs\/(?:heads|remotes\/origin)\//, ''))
+    if (!names.length) throw new Error('Git could not read remote or local branches.')
+    return [...new Set(names)].sort()
   }
-
-  return [...branches].sort((a, b) => a.localeCompare(b))
 }
 
 async function gitRefExists(repoPath: string, ref: string): Promise<boolean> {
@@ -301,10 +270,10 @@ export async function addWorktree(
   repoPath: string,
   destination: string,
   branch: string,
-  token?: string | null,
-  from?: string | null
+  from?: string | null,
+  remote: GitRemoteRunner = runGit
 ): Promise<void> {
-  await fetchRemote(repoPath, token)
+  await fetchRemote(repoPath, remote)
 
   const base = from?.trim() || null
   if (base) {

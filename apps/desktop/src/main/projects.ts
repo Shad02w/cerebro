@@ -1,122 +1,144 @@
-import type { Project, ProjectBranch, ProjectListResult, Workspace } from '../shared/types'
-import { fetchPullRequestsByBranchIfConnected } from './github-prs'
-import { readGitHubToken } from './secret-store'
+import type {
+  Project,
+  ProjectBranch,
+  ProjectListResult,
+  Workspace,
+  WorkspaceRepository
+} from '../shared/types'
+import { getGitHubAccessToken } from './github'
+import { RepositoryService, runCommand } from './repository-service'
 import {
   createProjectFromDirectory as coreCreateProjectFromDirectory,
   createProjectFromGitUrl as coreCreateProjectFromGitUrl,
   createWorkspaceFromBranch as coreCreateWorkspaceFromBranch,
   getWorkspaceLocalPath as coreGetWorkspaceLocalPath,
-  listProjectBranches as coreListProjectBranches,
   listProjects as coreListProjects,
   removeProject as coreRemoveProject,
   removeWorkspace as coreRemoveWorkspace,
   setActiveWorkspace as coreSetActiveWorkspace,
-  clearActiveWorkspace as coreClearActiveWorkspace
+  clearActiveWorkspace as coreClearActiveWorkspace,
+  readOriginUrl,
+  parseGitUrl
 } from '@cerebro/core'
 
 export { getWorkspaceProjectId } from '@cerebro/core'
+export const repositoryService = new RepositoryService({
+  getToken: getGitHubAccessToken,
+  apiUrl: process.env.CEREBRO_GITHUB_API_URL?.replace(/\/$/, ''),
+  // Tests must opt in to a fake gh binary; never use the developer's login.
+  run: (command, args, options) => {
+    if (command === 'gh' && process.env.NODE_ENV === 'test' && !process.env.CEREBRO_E2E_GH_PATH)
+      return Promise.reject(new Error('gh is not connected.'))
+    return runCommand(
+      command === 'gh'
+        ? process.env.CEREBRO_E2E_GH_PATH && process.env.NODE_ENV === 'test'
+          ? process.env.CEREBRO_E2E_GH_PATH
+          : command
+        : command,
+      args,
+      options
+    )
+  }
+})
+const git = repositoryService.git.bind(repositoryService)
+const knownRepositories = new Set<string>()
 
-async function attachPullRequests(projects: Project[]): Promise<Project[]> {
-  const token = readGitHubToken()
-  if (!token) return projects
-
-  return Promise.all(
-    projects.map(async (project) => {
-      if (!project.github) return project
-      const byBranch = await fetchPullRequestsByBranchIfConnected(
-        project.github.owner,
-        project.github.repo
-      )
-      if (byBranch.size === 0) return project
-      return {
-        ...project,
-        workspaces: project.workspaces.map((workspace) => ({
-          ...workspace,
-          pullRequest: workspace.kind === 'root' ? null : (byBranch.get(workspace.branch) ?? null)
-        }))
-      }
-    })
-  )
+export function isTrackedRepository(owner: string, repo: string): boolean {
+  return knownRepositories.has(`${owner}/${repo}`.toLowerCase())
 }
 
+// Local project/selection mutations never wait for a GitHub request.
 export async function listProjects(): Promise<ProjectListResult> {
-  const base = await coreListProjects()
-  const withPrs = await attachPullRequests(base.projects as unknown as Project[])
-  return { projects: withPrs, activeWorkspaceId: base.activeWorkspaceId }
+  return coreListProjects()
 }
-
 export async function setActiveWorkspace(workspaceId: number): Promise<ProjectListResult> {
-  const base = await coreSetActiveWorkspace(workspaceId)
-  const withPrs = await attachPullRequests(base.projects as unknown as Project[])
-  return { projects: withPrs, activeWorkspaceId: base.activeWorkspaceId }
+  return coreSetActiveWorkspace(workspaceId)
 }
-
 export function clearActiveWorkspace(): void {
   coreClearActiveWorkspace()
 }
-
-/** Absolute checkout path for a workspace (default clone or worktree). */
 export function getWorkspaceLocalPath(workspaceId: number): string {
   return coreGetWorkspaceLocalPath(workspaceId)
 }
-
 export async function createProjectFromGitUrl(gitUrl: string): Promise<Project> {
-  const token = readGitHubToken()
-  const project = await coreCreateProjectFromGitUrl(gitUrl, { githubToken: token })
-  const withPrs = await attachPullRequests([project as unknown as Project])
-  const result = withPrs[0]
-  if (!result) throw new Error('Project was created but could not be loaded.')
-  return result
+  return coreCreateProjectFromGitUrl(gitUrl, { git })
 }
-
 export async function createProjectFromDirectory(directory: string): Promise<Project> {
-  const project = await coreCreateProjectFromDirectory(directory)
-  const withPrs = await attachPullRequests([project as unknown as Project])
-  const result = withPrs[0]
-  if (!result) throw new Error('Project was created but could not be loaded.')
-  return result
+  return coreCreateProjectFromDirectory(directory)
 }
-
-export async function listProjectBranches(projectId: number): Promise<ProjectBranch[]> {
-  const token = readGitHubToken()
-  return (await coreListProjectBranches(projectId, {
-    githubToken: token
-  })) as unknown as ProjectBranch[]
-}
-
 export async function createWorkspaceFromBranch(
   projectId: number,
   branch: string,
   from?: string
 ): Promise<Workspace> {
-  const token = readGitHubToken()
-  const created = await coreCreateWorkspaceFromBranch(projectId, branch, {
-    githubToken: token,
-    from
-  })
-
-  const listed = await listProjects()
-  const workspace = listed.projects
-    .flatMap((item) => item.workspaces)
-    .find((item) => item.id === created.id)
-  if (!workspace) throw new Error('Workspace was created but could not be loaded.')
-  return workspace
+  return coreCreateWorkspaceFromBranch(projectId, branch, { git, from })
 }
-
 export async function removeWorkspace(
   workspaceId: number,
   deleteFiles: boolean
 ): Promise<ProjectListResult> {
-  const base = await coreRemoveWorkspace(workspaceId, { deleteFiles })
-  const withPrs = await attachPullRequests(base.projects as unknown as Project[])
-  return { projects: withPrs, activeWorkspaceId: base.activeWorkspaceId }
+  return coreRemoveWorkspace(workspaceId, { deleteFiles })
 }
-
 export async function removeProject(
   projectId: number,
   deleteFiles: boolean
 ): Promise<ProjectListResult> {
-  const base = await coreRemoveProject(projectId, { deleteFiles })
-  const withPrs = await attachPullRequests(base.projects as unknown as Project[])
-  return { projects: withPrs, activeWorkspaceId: base.activeWorkspaceId }
+  return coreRemoveProject(projectId, { deleteFiles })
+}
+
+export async function listProjectBranches(projectId: number): Promise<ProjectBranch[]> {
+  const { projects } = await listProjects()
+  const project = projects.find((project) => project.id === projectId)
+  if (!project?.github || project.kind === 'multi-root')
+    throw new Error('Worktrees require a GitHub-linked single-root project.')
+  const repo = project.repositories[0]
+  const names = await repositoryService.branches(
+    project.github.owner,
+    project.github.repo,
+    repo.localPath
+  )
+  const existing = new Set(project.workspaces.map((workspace) => workspace.branch))
+  return names.map((name) => ({ name, hasWorkspace: existing.has(name) }))
+}
+
+/** Read each checkout's current branch and remote, including .git file worktrees. */
+export async function listWorkspaceRepositories(): Promise<WorkspaceRepository[]> {
+  const { projects } = await listProjects()
+  const result: WorkspaceRepository[] = []
+  // A small pool avoids one Git process per workspace running simultaneously.
+  const pending = projects.flatMap((project) =>
+    project.workspaces
+      .filter((workspace) => workspace.kind !== 'root')
+      .map((workspace) => ({ workspace, project }))
+  )
+  await Promise.all(
+    Array.from({ length: Math.min(4, pending.length) }, async () => {
+      while (pending.length) {
+        const item = pending.shift()!
+        const { workspace, project } = item
+        let branch: string | null = null
+        let github: WorkspaceRepository['github'] = null
+        try {
+          branch = await runCommand('git', ['symbolic-ref', '--quiet', '--short', 'HEAD'], {
+            cwd: workspace.localPath
+          })
+          let origin = await readOriginUrl(workspace.localPath)
+          // Clones use a local fixture remote in E2E, while retaining the real repository identity.
+          if (process.env.NODE_ENV === 'test' && origin?.startsWith('file:'))
+            origin =
+              project.repositories.find((repo) => repo.id === workspace.repositoryId)?.gitUrl ??
+              origin
+          github = origin ? parseGitUrl(origin).github : null
+        } catch {
+          /* Detached HEAD, plain folders and removed checkouts have no branch PR. */
+        }
+        result.push({ workspaceId: workspace.id, branch, github })
+      }
+    })
+  )
+  knownRepositories.clear()
+  for (const workspace of result)
+    if (workspace.github)
+      knownRepositories.add(`${workspace.github.owner}/${workspace.github.repo}`.toLowerCase())
+  return result.sort((a, b) => a.workspaceId - b.workspaceId)
 }

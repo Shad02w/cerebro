@@ -7,7 +7,6 @@ import {
   FolderPlus,
   Folders,
   FolderTree,
-  GitBranch,
   MoreHorizontal,
   Plus,
   Settings,
@@ -17,6 +16,7 @@ import type { Project, Workspace } from '@shared/types'
 import type { SettingsSectionId } from '@/lib/app-route'
 import { SETTINGS_SECTIONS } from '@/lib/settings-sections'
 import { BrainMark } from '@/components/brain-mark'
+import { WorkspaceHoverCard } from '@/components/workspace-hover-card'
 import { WorkspacePrPopover } from '@/components/workspace-pr-popover'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
@@ -365,50 +365,53 @@ function MultiRootRepoRow({
 }): React.JSX.Element {
   const name = repositoryDirName(project, workspace)
   const branch = workspace.branch.trim()
-  const title = branch ? `${name} · ${branch}` : name
 
   return (
     <li className="relative">
-      <SidebarMenuRow data-workspace-id={workspace.id}>
-        <button
-          type="button"
-          className={cn(
-            'app-no-drag peer/menu-button flex w-full min-w-0 flex-col items-stretch rounded-md px-2 py-1.5 pr-8 text-left',
-            'bg-sidebar-accent/40 text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
-          )}
-          data-testid={`workspace-row-${workspace.id}`}
-          data-workspace-id={workspace.id}
-          data-workspace-role="repository"
-          data-workspace-icon="directory-name"
-          data-active={active ? 'true' : 'false'}
-          title={title}
-          onClick={(): void => onSelect(workspace.id)}
-        >
-          <span
-            className="min-w-0 truncate text-xs font-medium leading-4"
-            data-testid={`workspace-repo-${workspace.id}`}
+      <WorkspaceHoverCard workspace={workspace}>
+        <SidebarMenuRow data-workspace-id={workspace.id}>
+          <button
+            type="button"
+            className={cn(
+              'app-no-drag peer/menu-button flex w-full min-w-0 flex-col items-stretch rounded-md px-2 py-1.5 pr-8 text-left',
+              'bg-sidebar-accent/40 text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+            )}
+            data-testid={`workspace-row-${workspace.id}`}
+            data-workspace-id={workspace.id}
+            data-workspace-role="repository"
+            data-workspace-icon="directory-name"
+            data-active={active ? 'true' : 'false'}
+            onClick={(): void => onSelect(workspace.id)}
           >
-            {name}
-          </span>
-          {branch ? (
             <span
-              className="mt-0.5 flex min-w-0 items-center gap-1 text-[10px] leading-3 text-sidebar-foreground/55"
-              data-testid={`workspace-branch-${workspace.id}`}
+              className="min-w-0 truncate text-xs font-medium leading-4"
+              data-testid={`workspace-repo-${workspace.id}`}
             >
-              <span
-                aria-hidden
-                className="mb-px ml-0.5 h-2.5 w-2 shrink-0 rounded-bl-[3px] border-b border-l border-current opacity-40"
-              />
-              <GitBranch className="size-2.5 shrink-0 opacity-70" />
-              <span className="min-w-0 flex-1 truncate">{branch}</span>
-              <WorkspacePrPopover workspace={workspace} />
+              {name}
             </span>
-          ) : (
-            <WorkspacePrPopover workspace={workspace} />
-          )}
-        </button>
-        <WorkspaceOverflowMenu workspace={workspace} allowRemove={false} />
-      </SidebarMenuRow>
+            {branch ? (
+              <span
+                className="mt-0.5 flex min-w-0 items-center gap-1 text-[10px] leading-3 text-sidebar-foreground/55"
+                data-testid={`workspace-branch-${workspace.id}`}
+              >
+                <span
+                  aria-hidden
+                  className="mb-px ml-0.5 h-2.5 w-2 shrink-0 rounded-bl-[3px] border-b border-l border-current opacity-40"
+                />
+                <span aria-hidden className="size-3 shrink-0" />
+                <span className="min-w-0 flex-1 truncate">{branch}</span>
+              </span>
+            ) : null}
+          </button>
+          {branch ? (
+            <WorkspacePrPopover
+              workspace={workspace}
+              className="absolute bottom-1.5 left-[22px] size-3"
+            />
+          ) : null}
+          <WorkspaceOverflowMenu workspace={workspace} allowRemove={false} />
+        </SidebarMenuRow>
+      </WorkspaceHoverCard>
     </li>
   )
 }
@@ -431,47 +434,49 @@ function MultiRootWorkspaceTree({
     <SidebarMenuSub>
       <SidebarMenuSubItem>
         <Collapsible open={rootOpen} onOpenChange={setRootOpen}>
-          <SidebarMenuRow data-workspace-id={rootWorkspace?.id}>
-            <button
-              type="button"
-              className={cn(
-                'app-no-drag peer/menu-button flex h-7 w-full min-w-0 items-center gap-2 overflow-hidden rounded-md px-2 pr-14 text-left text-xs hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
-              )}
-              data-testid={`project-root-${project.id}`}
-              data-workspace-role="root"
-              data-workspace-icon="folder-tree"
-              data-workspace-id={rootWorkspace?.id}
-              data-active={rootActive ? 'true' : 'false'}
-              disabled={rootWorkspace == null}
-              onClick={(event): void => {
-                event.stopPropagation()
-                if (rootWorkspace) onSelectWorkspace(rootWorkspace.id)
-              }}
-            >
-              <FolderTree className="size-4 shrink-0 text-sidebar-accent-foreground" />
-              <span className="min-w-0 flex-1 truncate">root</span>
-            </button>
-            <SidebarMenuAction
-              className="app-no-drag right-6"
-              showOnHover
-              data-testid={`root-toggle-${project.id}`}
-              aria-expanded={rootOpen}
-              aria-label={rootOpen ? 'Collapse repositories' : 'Expand repositories'}
-              onClick={(event): void => {
-                event.stopPropagation()
-                setRootOpen((open) => !open)
-              }}
-              onPointerDown={(event): void => event.stopPropagation()}
-            >
-              <ChevronRight
-                className={cn('size-4 shrink-0 transition-transform', rootOpen && 'rotate-90')}
-              />
-              <span className="sr-only">
-                {rootOpen ? 'Collapse repositories' : 'Expand repositories'}
-              </span>
-            </SidebarMenuAction>
-            <RootOverflowMenu project={project} />
-          </SidebarMenuRow>
+          <WorkspaceHoverCard workspace={rootWorkspace ?? undefined}>
+            <SidebarMenuRow data-workspace-id={rootWorkspace?.id}>
+              <button
+                type="button"
+                className={cn(
+                  'app-no-drag peer/menu-button flex h-7 w-full min-w-0 items-center gap-2 overflow-hidden rounded-md px-2 pr-14 text-left text-xs hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+                )}
+                data-testid={`project-root-${project.id}`}
+                data-workspace-role="root"
+                data-workspace-icon="folder-tree"
+                data-workspace-id={rootWorkspace?.id}
+                data-active={rootActive ? 'true' : 'false'}
+                disabled={rootWorkspace == null}
+                onClick={(event): void => {
+                  event.stopPropagation()
+                  if (rootWorkspace) onSelectWorkspace(rootWorkspace.id)
+                }}
+              >
+                <FolderTree className="size-4 shrink-0 text-sidebar-accent-foreground" />
+                <span className="min-w-0 flex-1 truncate">root</span>
+              </button>
+              <SidebarMenuAction
+                className="app-no-drag right-6"
+                showOnHover
+                data-testid={`root-toggle-${project.id}`}
+                aria-expanded={rootOpen}
+                aria-label={rootOpen ? 'Collapse repositories' : 'Expand repositories'}
+                onClick={(event): void => {
+                  event.stopPropagation()
+                  setRootOpen((open) => !open)
+                }}
+                onPointerDown={(event): void => event.stopPropagation()}
+              >
+                <ChevronRight
+                  className={cn('size-4 shrink-0 transition-transform', rootOpen && 'rotate-90')}
+                />
+                <span className="sr-only">
+                  {rootOpen ? 'Collapse repositories' : 'Expand repositories'}
+                </span>
+              </SidebarMenuAction>
+              <RootOverflowMenu project={project} />
+            </SidebarMenuRow>
+          </WorkspaceHoverCard>
           <CollapsibleContent>
             {repos.length > 0 ? (
               <ul
@@ -574,34 +579,37 @@ function ProjectItem({
             <SidebarMenuSub>
               {project.workspaces.map((workspace: Workspace) => (
                 <SidebarMenuSubItem key={workspace.id}>
-                  <SidebarMenuRow data-workspace-id={workspace.id}>
-                    <SidebarMenuSubButton
-                      size="sm"
-                      asChild
-                      isActive={workspace.id === activeWorkspaceId}
-                    >
-                      <button
-                        type="button"
-                        className="app-no-drag flex w-full min-w-0 items-center gap-2 pr-8"
-                        data-testid={`workspace-row-${workspace.id}`}
-                        data-workspace-id={workspace.id}
-                        data-workspace-role="branch"
-                        data-workspace-icon="branch"
-                        title={workspaceLabel(project, workspace)}
-                        onClick={(): void => onSelectWorkspace(workspace.id)}
+                  <WorkspaceHoverCard workspace={workspace}>
+                    <SidebarMenuRow data-workspace-id={workspace.id}>
+                      <SidebarMenuSubButton
+                        size="sm"
+                        asChild
+                        isActive={workspace.id === activeWorkspaceId}
                       >
-                        <GitBranch />
-                        <span className="min-w-0 flex-1 truncate text-left">
-                          {workspaceLabel(project, workspace)}
-                        </span>
-                        <WorkspacePrPopover workspace={workspace} />
-                      </button>
-                    </SidebarMenuSubButton>
-                    <WorkspaceOverflowMenu
-                      workspace={workspace}
-                      onRemoveWorkspace={onRemoveWorkspace}
-                    />
-                  </SidebarMenuRow>
+                        <button
+                          type="button"
+                          className="app-no-drag flex w-full min-w-0 items-center gap-2 pr-8 pl-8"
+                          data-testid={`workspace-row-${workspace.id}`}
+                          data-workspace-id={workspace.id}
+                          data-workspace-role="branch"
+                          data-workspace-icon="branch"
+                          onClick={(): void => onSelectWorkspace(workspace.id)}
+                        >
+                          <span className="min-w-0 flex-1 truncate text-left">
+                            {workspaceLabel(project, workspace)}
+                          </span>
+                        </button>
+                      </SidebarMenuSubButton>
+                      <WorkspacePrPopover
+                        workspace={workspace}
+                        className="absolute top-1/2 left-2 size-4 -translate-y-1/2"
+                      />
+                      <WorkspaceOverflowMenu
+                        workspace={workspace}
+                        onRemoveWorkspace={onRemoveWorkspace}
+                      />
+                    </SidebarMenuRow>
+                  </WorkspaceHoverCard>
                 </SidebarMenuSubItem>
               ))}
             </SidebarMenuSub>

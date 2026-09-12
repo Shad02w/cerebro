@@ -1,3 +1,5 @@
+import type { GraphQlCheck } from '../src/main/github-prs'
+import { buildSchema, parse, validate } from 'graphql'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 
 export type MockPullRequest = {
@@ -6,6 +8,10 @@ export type MockPullRequest = {
   url: string
   createdAt: string
   updatedAt: string
+  ciStatus?: string | null
+  ciChecks?: GraphQlCheck[]
+  isDraft?: boolean
+  headRepoFullName?: string | null
   state: 'OPEN' | 'CLOSED' | 'MERGED'
   reviewDecision: 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED' | null
   mergeable: 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN'
@@ -19,6 +25,13 @@ export type MockGitHubServer = {
   authorize: (deviceCode?: string) => void
   lastUserCode: () => string | null
   setPullRequests: (owner: string, repo: string, pullRequests: MockPullRequest[]) => void
+  setInstallationAccess: (installed: boolean, ready?: boolean) => void
+  setApiError: (status: number | null) => void
+  holdPullRequests: () => () => void
+  requestCount: () => number
+  refreshCount: () => number
+  expireAccessTokens: () => void
+  setTokenLifetime: (seconds: number) => void
   close: () => Promise<void>
 }
 
@@ -55,6 +68,15 @@ export async function startMockGitHubServer(): Promise<MockGitHubServer> {
   const devices = new Map<string, PendingDevice>()
   const tokens = new Map<string, string>()
   const pullRequestsByRepo = new Map<string, MockPullRequest[]>()
+  const refreshTokens = new Set<string>()
+  let installed = true
+  let permissionsReady = true
+  let lifetime = 28800
+  let refreshCount = 0
+  let requestCount = 0
+  let apiError: number | null = null
+  let pullRequestsReady = Promise.resolve()
+  let releasePullRequests = (): void => {}
   let counter = 0
   let lastUserCode: string | null = null
   let baseUrl = 'http://127.0.0.1'
@@ -90,6 +112,24 @@ export async function startMockGitHubServer(): Promise<MockGitHubServer> {
       if (method === 'POST' && url.pathname === '/login/oauth/access_token') {
         const body = await readBody(req)
         const form = new URLSearchParams(body)
+        if (form.get('grant_type') === 'refresh_token') {
+          const refreshToken = form.get('refresh_token') ?? ''
+          if (!refreshTokens.delete(refreshToken)) {
+            sendJson(res, 200, { error: 'bad_refresh_token' })
+            return
+          }
+          refreshCount++
+          const token = `renewed-${refreshCount}`
+          tokens.set(token, 'octocat')
+          refreshTokens.add(`refresh-${token}`)
+          sendJson(res, 200, {
+            access_token: token,
+            expires_in: lifetime,
+            refresh_token: `refresh-${token}`,
+            refresh_token_expires_in: 15897600
+          })
+          return
+        }
         const deviceCode = form.get('device_code') ?? ''
         const device = devices.get(deviceCode)
         if (!device) {
@@ -107,10 +147,14 @@ export async function startMockGitHubServer(): Promise<MockGitHubServer> {
           return
         }
         tokens.set(device.token, device.userCode)
+        refreshTokens.add(`refresh-${device.token}`)
         sendJson(res, 200, {
           access_token: device.token,
           token_type: 'bearer',
-          scope: 'repo,read:user'
+          scope: '',
+          expires_in: lifetime,
+          refresh_token: `refresh-${device.token}`,
+          refresh_token_expires_in: 15897600
         })
         return
       }
@@ -123,23 +167,28 @@ export async function startMockGitHubServer(): Promise<MockGitHubServer> {
           return
         }
         sendJson(res, 200, {
-          total_count: 1,
-          installations: [
-            {
-              id: 42,
-              account: {
-                login: 'octocat',
-                id: 1,
-                type: 'User'
-              },
-              html_url: `${baseUrl}/settings/installations/42`,
-              app_id: 1,
-              app_slug: 'cerebro',
-              target_id: 1,
-              target_type: 'User',
-              repository_selection: 'selected'
-            }
-          ]
+          total_count: installed ? 1 : 0,
+          installations: !installed
+            ? []
+            : [
+                {
+                  id: 42,
+                  account: {
+                    login: 'octocat',
+                    id: 1,
+                    type: 'User'
+                  },
+                  html_url: `${baseUrl}/settings/installations/42`,
+                  app_id: 1,
+                  app_slug: 'cerebro',
+                  target_id: 1,
+                  target_type: 'User',
+                  repository_selection: 'selected',
+                  permissions: permissionsReady
+                    ? { contents: 'read', metadata: 'read', pull_requests: 'read' }
+                    : {}
+                }
+              ]
         })
         return
       }
@@ -161,7 +210,30 @@ export async function startMockGitHubServer(): Promise<MockGitHubServer> {
         return
       }
 
+      if (method === 'GET' && /^\/repos\/[^/]+\/[^/]+\/branches$/.test(url.pathname)) {
+        const token = (req.headers.authorization ?? '').replace(/^(?:Bearer|token)\s+/i, '').trim()
+        if (!tokens.has(token)) {
+          sendJson(res, 401, { message: 'Bad credentials' })
+          return
+        }
+        if (apiError) {
+          sendJson(res, apiError, { message: 'Repository access failed' })
+          return
+        }
+        sendJson(
+          res,
+          200,
+          ['main', 'feature/review', 'feature/conflict', 'feature/closed'].map((name) => ({ name }))
+        )
+        return
+      }
+
       if (method === 'POST' && url.pathname === '/graphql') {
+        requestCount++
+        if (apiError) {
+          sendJson(res, apiError, { message: 'Repository access failed' })
+          return
+        }
         const auth = req.headers.authorization ?? ''
         const token = auth.replace(/^(?:Bearer|token)\s+/i, '').trim()
         if (!token || !tokens.has(token)) {
@@ -170,22 +242,39 @@ export async function startMockGitHubServer(): Promise<MockGitHubServer> {
         }
 
         const body = await readBody(req)
-        let parsed: { variables?: { owner?: string; name?: string } } = {}
+        let parsed: {
+          query: string
+          variables?: { owner?: string; name?: string; cursor?: string | null }
+        }
         try {
-          parsed = JSON.parse(body) as { variables?: { owner?: string; name?: string } }
+          parsed = JSON.parse(body) as typeof parsed
+          const errors = validate(pullRequestSchema, parse(parsed.query))
+          if (errors.length) {
+            sendJson(res, 200, { errors: errors.map((error) => ({ message: error.message })) })
+            return
+          }
         } catch {
           sendJson(res, 400, { message: 'Invalid JSON' })
           return
         }
 
+        await pullRequestsReady
         const owner = parsed.variables?.owner ?? 'octocat'
         const name = parsed.variables?.name ?? 'hello-world'
-        const nodes = pullRequestsByRepo.get(repoKey(owner, name)) ?? []
+        const allNodes = [...(pullRequestsByRepo.get(repoKey(owner, name)) ?? [])].sort((a, b) =>
+          b.updatedAt.localeCompare(a.updatedAt)
+        )
+        const offset = Number(parsed.variables?.cursor ?? 0)
+        const nodes = allNodes.slice(offset, offset + 100)
 
         sendJson(res, 200, {
           data: {
             repository: {
               pullRequests: {
+                pageInfo: {
+                  hasNextPage: offset + 100 < allNodes.length,
+                  endCursor: String(offset + 100)
+                },
                 nodes: nodes.map((pr) => ({
                   number: pr.number,
                   title: pr.title,
@@ -193,7 +282,28 @@ export async function startMockGitHubServer(): Promise<MockGitHubServer> {
                   createdAt: pr.createdAt,
                   updatedAt: pr.updatedAt,
                   state: pr.state,
-                  isDraft: false,
+                  isDraft: pr.isDraft ?? false,
+                  commits: {
+                    nodes: [
+                      {
+                        commit: {
+                          statusCheckRollup: pr.ciStatus
+                            ? {
+                                state: pr.ciStatus,
+                                contexts: {
+                                  totalCount: pr.ciChecks?.length ?? 0,
+                                  nodes: (pr.ciChecks ?? []).slice(0, 20)
+                                }
+                              }
+                            : null
+                        }
+                      }
+                    ]
+                  },
+                  headRepository:
+                    pr.headRepoFullName === null
+                      ? null
+                      : { nameWithOwner: pr.headRepoFullName ?? pr.repoFullName },
                   reviewDecision: pr.reviewDecision,
                   mergeable: pr.mergeable,
                   headRefName: pr.headRefName,
@@ -246,6 +356,25 @@ export async function startMockGitHubServer(): Promise<MockGitHubServer> {
 
   return {
     baseUrl,
+    requestCount: () => requestCount,
+    holdPullRequests: () => {
+      pullRequestsReady = new Promise<void>((resolve) => {
+        releasePullRequests = resolve
+      })
+      return releasePullRequests
+    },
+    setInstallationAccess: (value, ready = true) => {
+      installed = value
+      permissionsReady = ready
+    },
+    refreshCount: () => refreshCount,
+    setApiError: (status) => {
+      apiError = status
+    },
+    expireAccessTokens: () => tokens.clear(),
+    setTokenLifetime: (seconds) => {
+      lifetime = seconds
+    },
     installationHtmlUrl: `${baseUrl}/settings/installations/42`,
     authorize: (deviceCode?: string): void => {
       if (deviceCode) {
@@ -261,6 +390,7 @@ export async function startMockGitHubServer(): Promise<MockGitHubServer> {
       pullRequestsByRepo.set(repoKey(owner, repo), pullRequests)
     },
     close: async (): Promise<void> => {
+      releasePullRequests()
       await new Promise<void>((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()))
         if (typeof server.closeAllConnections === 'function') {
@@ -270,3 +400,24 @@ export async function startMockGitHubServer(): Promise<MockGitHubServer> {
     }
   }
 }
+
+// The relevant subset of GitHub's schema: validate arguments/enums, not just fixture variables.
+const pullRequestSchema = buildSchema(`
+  enum PullRequestState { OPEN CLOSED MERGED }
+  enum OrderDirection { ASC DESC }
+  enum IssueOrderField { CREATED_AT UPDATED_AT COMMENTS }
+  input IssueOrder { field: IssueOrderField!, direction: OrderDirection! }
+  type PageInfo { hasNextPage: Boolean!, endCursor: String }
+  type CheckRun { name: String!, status: String!, conclusion: String, detailsUrl: String }
+  type StatusContext { context: String!, state: String!, description: String, targetUrl: String }
+  union StatusCheckRollupContext = CheckRun | StatusContext
+  type StatusCheckRollupContextConnection { totalCount: Int!, nodes: [StatusCheckRollupContext] }
+  type StatusCheckRollup { state: String!, contexts(first: Int): StatusCheckRollupContextConnection }
+  type Commit { statusCheckRollup: StatusCheckRollup }
+  type PullRequestCommit { commit: Commit! }
+  type PullRequestCommitConnection { nodes: [PullRequestCommit!]! }
+  type PullRequest { commits(last: Int): PullRequestCommitConnection!, number: Int!, title: String!, url: String!, createdAt: String!, updatedAt: String!, state: PullRequestState!, isDraft: Boolean!, reviewDecision: String, mergeable: String!, headRefName: String!, headRepository: Repository, repository: Repository! }
+  type PullRequestConnection { nodes: [PullRequest!]!, pageInfo: PageInfo! }
+  type Repository { nameWithOwner: String!, pullRequests(first: Int, after: String, states: [PullRequestState!], orderBy: IssueOrder): PullRequestConnection! }
+  type Query { repository(owner: String!, name: String!): Repository }
+`)

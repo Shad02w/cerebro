@@ -10,6 +10,9 @@ import {
   createProjectFromGitUrl,
   createWorkspaceFromBranch,
   listProjectBranches,
+  listWorkspaceRepositories,
+  repositoryService,
+  isTrackedRepository,
   listProjects,
   removeProject,
   removeWorkspace,
@@ -75,6 +78,19 @@ export function registerSettingsIpc(): void {
 }
 
 export function registerWorkspaceIpc(): void {
+  ipcMain.handle(IPC.repositories.workspaces, () => listWorkspaceRepositories())
+  ipcMain.handle(IPC.repositories.pullRequests, async (_event, owner: unknown, repo: unknown) => {
+    if (
+      typeof owner !== 'string' ||
+      typeof repo !== 'string' ||
+      !/^[A-Za-z0-9_.-]+$/.test(owner) ||
+      !/^[A-Za-z0-9_.-]+$/.test(repo)
+    )
+      throw new Error('Invalid repository identity.')
+    if (!isTrackedRepository(owner, repo)) await listWorkspaceRepositories()
+    if (!isTrackedRepository(owner, repo)) throw new Error('Repository is not tracked by Cerebro.')
+    return repositoryService.pullRequests(owner, repo)
+  })
   ipcMain.handle(IPC.projects.list, async () => {
     try {
       return await listProjects()
@@ -233,7 +249,7 @@ export function registerWorkspaceIpc(): void {
     if (!/^https?:\/\//i.test(trimmed)) {
       throw new Error('Only http(s) URLs can be opened.')
     }
-    await shell.openExternal(trimmed)
+    if (process.env.NODE_ENV !== 'test') await shell.openExternal(trimmed)
   })
 
   registerGitHubIpc(ipcMain)

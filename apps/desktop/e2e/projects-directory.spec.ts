@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { expect, test, type ElectronApplication, type Page } from './fixtures'
+import type { ElectronApplication, Page } from '@playwright/test'
+import { expect, test } from './fixtures'
 
 const execFileAsync = promisify(execFile)
 
@@ -126,8 +127,9 @@ test('adds a folder of git repos as a multi-root workspace', async ({ page, elec
     await expect(frontendRow.getByTestId(/workspace-repo-/)).toHaveText('frontend')
     await expect(backendRow.getByTestId(/workspace-branch-/)).toHaveText('main')
     await expect(frontendRow.getByTestId(/workspace-branch-/)).toHaveText('main')
-    await expect(backendRow.locator('svg')).toHaveCount(1)
-    await expect(frontendRow.locator('svg')).toHaveCount(1)
+    // Leading icons are siblings of the selection button so PR popovers never nest buttons.
+    await expect(backendRow.locator('..').getByTestId(/workspace-default-icon-/)).toBeVisible()
+    await expect(frontendRow.locator('..').getByTestId(/workspace-default-icon-/)).toBeVisible()
 
     const backendNameBox = await backendRow.getByTestId(/workspace-repo-/).boundingBox()
     const backendBranchBox = await backendRow.getByTestId(/workspace-branch-/).boundingBox()

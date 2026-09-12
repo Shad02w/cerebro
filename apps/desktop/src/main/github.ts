@@ -2,9 +2,13 @@ import { BrowserWindow, shell } from 'electron'
 import { Octokit } from '@octokit/rest'
 import { IPC } from '../shared/ipc'
 import type { GitHubAccount, GitHubStatus } from '../shared/types'
-import { deleteGitHubToken, readGitHubToken, storeGitHubToken } from './secret-store'
+import { deleteGitHubToken, readGitHubCredentials, storeGitHubCredentials } from './secret-store'
 
-const DEVICE_SCOPES = 'repo read:user'
+import {
+  GitHubCredentialManager,
+  credentialsFromResponse,
+  type TokenResponse
+} from './github-credentials'
 const DEFAULT_LOGIN_URL = 'https://github.com'
 const DEFAULT_API_URL = 'https://api.github.com'
 
@@ -16,11 +20,7 @@ type DeviceCodeResponse = {
   interval: number
 }
 
-type TokenSuccessResponse = {
-  access_token: string
-  token_type?: string
-  scope?: string
-}
+type TokenSuccessResponse = TokenResponse
 
 type TokenErrorResponse = {
   error: string
@@ -37,15 +37,13 @@ type PendingFlow = {
 }
 
 let pendingFlow: PendingFlow | null = null
-let cachedAccount: GitHubAccount | null = null
-let cachedConfigureUrl: string | null = null
 let flowGeneration = 0
 
 function getClientId(): string | null {
   // Runtime override for tests / local experiments; baked MAIN_VITE_ ships with the app.
   const fromProcess = process.env.CEREBRO_GITHUB_CLIENT_ID?.trim()
   if (fromProcess) return fromProcess
-  const fromVite = import.meta.env.MAIN_VITE_GITHUB_CLIENT_ID?.trim()
+  const fromVite = import.meta.env?.MAIN_VITE_GITHUB_CLIENT_ID?.trim()
   return fromVite || null
 }
 
@@ -94,13 +92,14 @@ async function fetchJson<T>(url: string, init: RequestInit & { signal?: AbortSig
 }
 
 function defaultConfigureUrl(): string {
-  return `${getLoginUrl()}/settings/installations`
+  return `${getLoginUrl()}/apps/${process.env.CEREBRO_GITHUB_APP_SLUG || 'cerebro-oauth-app'}/installations/new`
 }
 
 async function fetchAuthenticatedUser(token: string): Promise<GitHubAccount> {
   const octokit = new Octokit({
     auth: token,
-    baseUrl: getApiUrl()
+    baseUrl: getApiUrl(),
+    request: { timeout: 20_000 }
   })
   const { data } = await octokit.users.getAuthenticated()
   return {
@@ -110,37 +109,34 @@ async function fetchAuthenticatedUser(token: string): Promise<GitHubAccount> {
   }
 }
 
-async function resolveConfigureUrl(token: string): Promise<string> {
-  const fallback = defaultConfigureUrl()
-  try {
-    const octokit = new Octokit({
-      auth: token,
-      baseUrl: getApiUrl()
-    })
-    const { data } = await octokit.apps.listInstallationsForAuthenticatedUser({ per_page: 2 })
-    const installations = data.installations
-    if (installations.length === 1 && installations[0].html_url) {
-      return installations[0].html_url
-    }
-    return fallback
-  } catch {
-    return fallback
-  }
-}
-
 async function connectedStatus(
   token: string
 ): Promise<Extract<GitHubStatus, { state: 'connected' }>> {
-  const [account, configureUrl] = await Promise.all([
+  const octokit = new Octokit({ auth: token, baseUrl: getApiUrl(), request: { timeout: 20_000 } })
+  const [account, installations] = await Promise.all([
     fetchAuthenticatedUser(token),
-    resolveConfigureUrl(token)
+    octokit.paginate(octokit.apps.listInstallationsForAuthenticatedUser, { per_page: 100 })
   ])
-  return { state: 'connected', account, configureUrl }
-}
-
-function cacheConnected(status: Extract<GitHubStatus, { state: 'connected' }>): void {
-  cachedAccount = status.account
-  cachedConfigureUrl = status.configureUrl
+  const configureUrl =
+    installations.length === 1 && installations[0].html_url
+      ? installations[0].html_url
+      : installations.length
+        ? `${getLoginUrl()}/settings/installations`
+        : defaultConfigureUrl()
+  const repositoryAccess =
+    installations.length > 0 &&
+    installations.every(
+      (installation) =>
+        ['read', 'write'].includes(installation.permissions.pull_requests ?? '') &&
+        ['read', 'write'].includes(installation.permissions.contents ?? '')
+    )
+  return {
+    state: 'connected',
+    account,
+    configureUrl,
+    installationCount: installations.length,
+    repositoryAccess
+  }
 }
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
@@ -170,7 +166,7 @@ async function pollForAccessToken(
   intervalSeconds: number,
   signal: AbortSignal,
   generation: number
-): Promise<string> {
+): Promise<TokenResponse> {
   let intervalMs = Math.max(1, intervalSeconds) * 1000
   const tokenUrl = `${getLoginUrl()}/login/oauth/access_token`
   const clientId = getClientId()
@@ -209,7 +205,7 @@ async function pollForAccessToken(
       if (generation !== flowGeneration) {
         throw new DOMException('Aborted', 'AbortError')
       }
-      return parsed.access_token
+      return parsed
     }
 
     const errorCode = 'error' in parsed ? parsed.error : undefined
@@ -251,11 +247,10 @@ async function runDeviceFlow(
     const token = await pollForAccessToken(deviceCode, intervalSeconds, signal.signal, generation)
     if (generation !== flowGeneration) return
 
-    storeGitHubToken(token)
-    const status = await connectedStatus(token)
+    storeGitHubCredentials(credentialsFromResponse(token))
+    const status = await connectedStatus(token.access_token)
     if (generation !== flowGeneration) return
 
-    cacheConnected(status)
     pendingFlow = null
     setStatus(status)
   } catch (error) {
@@ -263,8 +258,6 @@ async function runDeviceFlow(
       return
     }
     pendingFlow = null
-    cachedAccount = null
-    cachedConfigureUrl = null
     setStatus({
       state: 'error',
       message: error instanceof Error ? error.message : 'GitHub authorization failed.'
@@ -286,33 +279,22 @@ export async function getGitHubStatus(): Promise<GitHubStatus> {
     }
   }
 
-  if (cachedAccount) {
-    return {
-      state: 'connected',
-      account: cachedAccount,
-      configureUrl: cachedConfigureUrl ?? defaultConfigureUrl()
-    }
-  }
-
-  const token = readGitHubToken()
-  if (!token) {
-    return { state: 'disconnected' }
-  }
-
   try {
-    const status = await connectedStatus(token)
-    cacheConnected(status)
-    return status
+    const token = await getGitHubAccessToken()
+    if (!token) return { state: 'disconnected' }
+    try {
+      return await connectedStatus(token)
+    } catch (error) {
+      if (!(error && typeof error === 'object' && 'status' in error && error.status === 401))
+        throw error
+      const renewed = await getGitHubAccessToken(true)
+      if (!renewed) return { state: 'disconnected' }
+      return await connectedStatus(renewed)
+    }
   } catch (error) {
-    deleteGitHubToken()
-    cachedAccount = null
-    cachedConfigureUrl = null
     return {
       state: 'error',
-      message:
-        error instanceof Error
-          ? `Stored GitHub credentials are invalid: ${error.message}`
-          : 'Stored GitHub credentials are invalid.'
+      message: error instanceof Error ? error.message : 'GitHub connection failed.'
     }
   }
 }
@@ -323,6 +305,7 @@ export async function beginGitHubDeviceFlow(): Promise<GitHubStatus> {
     return setStatus({ state: 'unconfigured' })
   }
 
+  credentialManager.reset()
   cancelPendingFlow()
   flowGeneration += 1
   const generation = flowGeneration
@@ -330,8 +313,7 @@ export async function beginGitHubDeviceFlow(): Promise<GitHubStatus> {
 
   const deviceUrl = `${getLoginUrl()}/login/device/code`
   const body = new URLSearchParams({
-    client_id: clientId,
-    scope: DEVICE_SCOPES
+    client_id: clientId
   })
 
   let device: DeviceCodeResponse
@@ -368,9 +350,11 @@ export async function beginGitHubDeviceFlow(): Promise<GitHubStatus> {
     abort
   }
 
-  void shell.openExternal(device.verification_uri).catch(() => {
-    // Headless / CI environments may reject; the user can still open the URI manually.
-  })
+  if (process.env.NODE_ENV !== 'test') {
+    void shell.openExternal(device.verification_uri).catch(() => {
+      // The user can still open the verification URI manually.
+    })
+  }
 
   const status: GitHubStatus = {
     state: 'pending',
@@ -393,32 +377,18 @@ function cancelPendingFlow(): void {
 export async function cancelGitHubDeviceFlow(): Promise<GitHubStatus> {
   flowGeneration += 1
   cancelPendingFlow()
-  cachedAccount = null
-  cachedConfigureUrl = null
 
   if (!getClientId()) {
     return setStatus({ state: 'unconfigured' })
   }
 
-  const token = readGitHubToken()
-  if (token) {
-    try {
-      const status = await connectedStatus(token)
-      cacheConnected(status)
-      return setStatus(status)
-    } catch {
-      deleteGitHubToken()
-    }
-  }
-
-  return setStatus({ state: 'disconnected' })
+  return setStatus(await getGitHubStatus())
 }
 
 export async function disconnectGitHub(): Promise<GitHubStatus> {
+  credentialManager.reset()
   flowGeneration += 1
   cancelPendingFlow()
-  cachedAccount = null
-  cachedConfigureUrl = null
   deleteGitHubToken()
 
   if (!getClientId()) {
@@ -472,4 +442,36 @@ export function registerGitHubIpc(ipcMain: Electron.IpcMain): void {
       })
     }
   })
+}
+
+const credentialManager = new GitHubCredentialManager({
+  read: readGitHubCredentials,
+  write: storeGitHubCredentials,
+  refresh: async (refreshToken) => {
+    const clientId = getClientId()
+    if (!clientId) throw new Error('GitHub client ID is not configured.')
+    const response = await fetchJson<TokenResponse & TokenErrorResponse>(
+      `${getLoginUrl()}/login/oauth/access_token`,
+      {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: new URLSearchParams({
+          client_id: clientId,
+          grant_type: 'refresh_token',
+          refresh_token: refreshToken
+        }),
+        signal: AbortSignal.timeout(20_000)
+      }
+    )
+    if (response.error)
+      throw new Error(response.error_description || 'GitHub session expired. Reconnect GitHub.')
+    return response
+  }
+})
+
+export function getGitHubAccessToken(forceRefresh = false): Promise<string | null> {
+  return credentialManager.token(forceRefresh)
 }

@@ -99,3 +99,41 @@ test('disconnects and reconnects with a new device code', async ({ page, githubM
   const status = await page.evaluate(async () => window.cerebro.getGitHubStatus())
   expect(status.state).toBe('disconnected')
 })
+
+test('distinguishes user authorization from installation and missing repository permissions', async ({
+  page,
+  githubMock,
+  electronApp
+}) => {
+  githubMock.setInstallationAccess(false)
+  await openIntegrations(page)
+  await page.getByTestId('github-connect').click()
+  await expect(page.getByTestId('github-pending')).toBeVisible()
+  githubMock.authorize()
+  await expect(page.getByTestId('github-connected')).toBeVisible()
+  await expect(page.getByTestId('github-repository-access')).toContainText(
+    'Install Cerebro on GitHub'
+  )
+  await expect(page.getByTestId('github-configure')).toHaveAttribute(
+    'href',
+    `${githubMock.baseUrl}/apps/cerebro-oauth-app/installations/new`
+  )
+  githubMock.setInstallationAccess(true, false)
+  await electronApp.evaluate(({ BrowserWindow }) => {
+    const window = BrowserWindow.getAllWindows()[0]
+    window.emit('blur')
+    window.emit('focus')
+  })
+  await expect(page.getByTestId('github-repository-access')).toContainText(
+    'needs read access to Contents and Pull requests'
+  )
+  githubMock.setInstallationAccess(true, true)
+  await electronApp.evaluate(({ BrowserWindow }) => {
+    const window = BrowserWindow.getAllWindows()[0]
+    window.emit('blur')
+    window.emit('focus')
+  })
+  await expect(page.getByTestId('github-repository-access')).toContainText(
+    'Repository access is configured'
+  )
+})

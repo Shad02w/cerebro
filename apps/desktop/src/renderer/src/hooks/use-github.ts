@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { applyGitHubStatus, githubOptions } from '@/lib/query-client'
 import type { GitHubStatus } from '@shared/types'
 
 type GitHubState = {
@@ -12,71 +13,35 @@ type GitHubState = {
 }
 
 export function useGitHub(): GitHubState {
-  const [status, setStatus] = useState<GitHubStatus | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  const refresh = useCallback(async (): Promise<GitHubStatus> => {
-    const next = await window.cerebro.getGitHubStatus()
-    setStatus(next)
-    return next
-  }, [])
-
-  useEffect(() => {
-    let cancelled = false
-    void window.cerebro
-      .getGitHubStatus()
-      .then((next) => {
-        if (!cancelled) setStatus(next)
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Failed to load GitHub status.')
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-
-    const unsubscribe = window.cerebro.onGitHubStatus((next) => {
-      setStatus(next)
-      setError(null)
-    })
-
-    return () => {
-      cancelled = true
-      unsubscribe()
-    }
-  }, [])
-
-  const beginDeviceFlow = useCallback(async (): Promise<GitHubStatus> => {
-    setError(null)
-    const next = await window.cerebro.beginGitHubDeviceFlow()
-    setStatus(next)
-    return next
-  }, [])
-
-  const cancelDeviceFlow = useCallback(async (): Promise<GitHubStatus> => {
-    setError(null)
-    const next = await window.cerebro.cancelGitHubDeviceFlow()
-    setStatus(next)
-    return next
-  }, [])
-
-  const disconnect = useCallback(async (): Promise<GitHubStatus> => {
-    setError(null)
-    const next = await window.cerebro.disconnectGitHub()
-    setStatus(next)
-    return next
-  }, [])
-
+  const query = useQuery(githubOptions)
+  const begin = useMutation({
+    mutationFn: () => window.cerebro.beginGitHubDeviceFlow(),
+    onSuccess: applyGitHubStatus
+  })
+  const cancel = useMutation({
+    mutationFn: () => window.cerebro.cancelGitHubDeviceFlow(),
+    onSuccess: applyGitHubStatus
+  })
+  const disconnect = useMutation({
+    mutationFn: () => window.cerebro.disconnectGitHub(),
+    onSuccess: applyGitHubStatus
+  })
   return {
-    status,
-    loading,
-    error,
-    refresh,
-    beginDeviceFlow,
-    cancelDeviceFlow,
-    disconnect
+    status: query.data ?? null,
+    loading: query.isPending,
+    error:
+      query.error?.message ??
+      begin.error?.message ??
+      cancel.error?.message ??
+      disconnect.error?.message ??
+      null,
+    refresh: async (): Promise<GitHubStatus> => {
+      const result = await query.refetch()
+      if (!result.data) throw result.error
+      return result.data
+    },
+    beginDeviceFlow: begin.mutateAsync,
+    cancelDeviceFlow: cancel.mutateAsync,
+    disconnect: disconnect.mutateAsync
   }
 }

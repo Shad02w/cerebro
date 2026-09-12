@@ -484,6 +484,18 @@ function IntegrationsSettings({
           </div>
         ) : status.state === 'connected' ? (
           <div className="space-y-3" data-testid="github-connected">
+            <p className="text-xs text-muted-foreground" data-testid="github-repository-access">
+              {status.installationCount === 0
+                ? 'Install Cerebro on GitHub and choose the repositories to connect.'
+                : !status.repositoryAccess
+                  ? 'The GitHub App needs read access to Contents and Pull requests. Update its permissions, then approve the installation update.'
+                  : 'Repository access is configured. Use Configure to choose public and private repositories.'}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Cerebro refreshes PR status every minute and when you return to the app. If the App
+              cannot access a repository, Cerebro tries your GitHub CLI login, then Git for
+              branches. CLI access may include repositories outside the App selection.
+            </p>
             <div className="flex items-center gap-3">
               <img
                 src={status.account.avatarUrl}

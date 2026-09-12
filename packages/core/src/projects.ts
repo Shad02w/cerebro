@@ -1,3 +1,4 @@
+import type { GitRemoteRunner } from './git'
 import { existsSync, readFileSync, readdirSync, realpathSync, rmSync, statSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -634,15 +635,14 @@ export async function getWorkspaceProjectId(workspaceId: number): Promise<number
 
 export async function createProjectFromGitUrl(
   gitUrl: string,
-  options?: { githubToken?: string | null }
+  options?: { git?: GitRemoteRunner }
 ): Promise<Project> {
   const { url, name } = parseGitUrl(gitUrl)
   const localPath = allocateLocalPath(name)
-  const token = options?.githubToken
 
   let defaultBranch: string
   try {
-    defaultBranch = await cloneRepository(url, localPath, token)
+    defaultBranch = await cloneRepository(url, localPath, options?.git)
   } catch (error) {
     if (existsSync(localPath)) rmSync(localPath, { recursive: true, force: true })
     throw error
@@ -719,10 +719,7 @@ LIMIT 1
   return repository
 }
 
-export async function listProjectBranches(
-  projectId: number,
-  options?: { githubToken?: string | null }
-): Promise<ProjectBranch[]> {
+export async function listProjectBranches(projectId: number): Promise<ProjectBranch[]> {
   const db = getDb()
   const project = db.prepare('SELECT id, kind FROM projects WHERE id = ?').get(projectId) as
     { id: number; kind: ProjectKind } | undefined
@@ -744,8 +741,7 @@ export async function listProjectBranches(
     ).map((row) => row.branch)
   )
 
-  const token = options?.githubToken
-  const branches = await listRemoteBranches(repository.local_path, token)
+  const branches = await listRemoteBranches(repository.local_path)
   return branches.map((name) => ({
     name,
     hasWorkspace: existing.has(name)
@@ -755,7 +751,7 @@ export async function listProjectBranches(
 export async function createWorkspaceFromBranch(
   projectId: number,
   branch: string,
-  options?: { githubToken?: string | null; from?: string | null }
+  options?: { from?: string | null; git?: GitRemoteRunner }
 ): Promise<Workspace> {
   const trimmed = branch.trim()
   if (!trimmed) throw new Error('Branch name is required.')
@@ -786,10 +782,9 @@ export async function createWorkspaceFromBranch(
   }
 
   const dest = allocateLocalPath(`${repository.name}-${sanitizeBranchForPath(trimmed)}`)
-  const token = options?.githubToken
 
   try {
-    await addWorktree(repository.local_path, dest, trimmed, token, from)
+    await addWorktree(repository.local_path, dest, trimmed, from, options?.git)
   } catch (error) {
     if (existsSync(dest)) rmSync(dest, { recursive: true, force: true })
     throw error

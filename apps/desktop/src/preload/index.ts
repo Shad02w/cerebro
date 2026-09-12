@@ -9,6 +9,16 @@ import type {
 } from '../shared/types'
 
 const api: CerebroApi = {
+  listWorkspaceRepositories: () => ipcRenderer.invoke(IPC.repositories.workspaces),
+  getRepositoryPullRequests: (owner, repo) =>
+    ipcRenderer.invoke(IPC.repositories.pullRequests, owner, repo),
+  onWindowFocus: (listener) => {
+    const handler = (_event: IpcRendererEvent, focused: boolean): void => listener(focused)
+    ipcRenderer.on(IPC.native.focus, handler)
+    return () => {
+      ipcRenderer.removeListener(IPC.native.focus, handler)
+    }
+  },
   getCliStatus: () => ipcRenderer.invoke(IPC.cli.status),
   installCli: () => ipcRenderer.invoke(IPC.cli.install),
   removeCli: () => ipcRenderer.invoke(IPC.cli.remove),

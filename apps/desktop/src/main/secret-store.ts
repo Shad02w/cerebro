@@ -1,5 +1,6 @@
 import { safeStorage } from 'electron'
 import { getDb } from './db'
+import type { GitHubCredentials } from './github-credentials'
 
 const GITHUB_TOKEN_KEY = 'github_token'
 const PLAINTEXT_PREFIX = 'plaintext:'
@@ -76,9 +77,21 @@ export function storeGitHubToken(token: string): void {
 }
 
 export function readGitHubToken(): string | null {
-  return readSecret(GITHUB_TOKEN_KEY)
+  return readGitHubCredentials()?.accessToken ?? null
 }
 
 export function deleteGitHubToken(): void {
   deleteSecret(GITHUB_TOKEN_KEY)
+}
+
+export function storeGitHubCredentials(credentials: GitHubCredentials): void {
+  storeSecret(GITHUB_TOKEN_KEY, JSON.stringify(credentials))
+}
+
+export function readGitHubCredentials(): GitHubCredentials | null {
+  const value = readSecret(GITHUB_TOKEN_KEY)
+  if (!value) return null
+  // Migrate the original encrypted token lazily on the next login/rotation.
+  if (!value.startsWith('{')) return { accessToken: value }
+  return JSON.parse(value) as GitHubCredentials
 }

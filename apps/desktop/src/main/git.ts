@@ -8,6 +8,5 @@ export {
   listRemoteBranches,
   parseGitUrl,
   readDefaultBranch,
-  sanitizeBranchForPath,
-  withGitHubAccessToken
+  sanitizeBranchForPath
 } from '@cerebro/core'

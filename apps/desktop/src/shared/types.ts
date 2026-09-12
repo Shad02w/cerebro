@@ -15,14 +15,39 @@ export type WorkspacePullRequestState = 'open' | 'closed' | 'merged'
 export type WorkspacePullRequestReviewDecision =
   'approved' | 'changes_requested' | 'review_required' | 'none'
 
+export type WorkspaceCiCheck = {
+  name: string
+  state:
+    | 'success'
+    | 'failure'
+    | 'in_progress'
+    | 'queued'
+    | 'pending'
+    | 'waiting'
+    | 'cancelled'
+    | 'skipped'
+    | 'neutral'
+    | 'timed_out'
+    | 'action_required'
+    | 'startup_failure'
+    | 'stale'
+    | 'unavailable'
+  url: string | null
+  description: string | null
+}
+
 export type WorkspacePullRequest = {
   number: number
   title: string
   url: string
   createdAt: string
   state: WorkspacePullRequestState
+  isDraft: boolean
   reviewDecision: WorkspacePullRequestReviewDecision
   mergeable: boolean | null
+  ciStatus?: 'success' | 'failure' | 'pending' | 'none' | 'unavailable'
+  ciChecks?: WorkspaceCiCheck[]
+  ciCheckCount?: number
   repoFullName: string
 }
 
@@ -37,6 +62,28 @@ export type Workspace = {
   localPath: string
   createdAt: string
   pullRequest: WorkspacePullRequest | null
+  prStatus?: {
+    state: 'loading' | 'ready' | 'stale' | 'unavailable'
+    provider: RepositoryProvider | null
+    checkedAt: string | null
+    message: string | null
+  }
+}
+
+export type RepositoryProvider = 'github-app' | 'gh' | 'git'
+export type ProviderIssue = { provider: RepositoryProvider; message: string }
+export type RepositoryPullRequests = {
+  provider: RepositoryProvider
+  available: boolean
+  checkedAt: string
+  byBranch: Record<string, WorkspacePullRequest>
+  issues: ProviderIssue[]
+  retryAfterMs?: number
+}
+export type WorkspaceRepository = {
+  workspaceId: number
+  branch: string | null
+  github: ProjectGitHub | null
 }
 
 export type ProjectGitHub = {
@@ -151,7 +198,13 @@ export type GitHubStatus =
       verificationUri: string
       expiresAt: string
     }
-  | { state: 'connected'; account: GitHubAccount; configureUrl: string }
+  | {
+      state: 'connected'
+      account: GitHubAccount
+      configureUrl: string
+      installationCount: number
+      repositoryAccess: boolean
+    }
   | { state: 'error'; message: string }
 
 export type CliInstallStatus = {
@@ -166,6 +219,9 @@ export type CliInstallStatus = {
 }
 
 export type CerebroApi = {
+  listWorkspaceRepositories: () => Promise<WorkspaceRepository[]>
+  getRepositoryPullRequests: (owner: string, repo: string) => Promise<RepositoryPullRequests>
+  onWindowFocus: (listener: (focused: boolean) => void) => () => void
   getCliStatus: () => Promise<CliInstallStatus>
   installCli: () => Promise<CliInstallStatus>
   removeCli: () => Promise<CliInstallStatus>

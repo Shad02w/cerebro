@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Loader2 } from 'lucide-react'
 import type { ProjectBranch } from '@shared/types'
 import { BranchCombobox } from '@/components/branch-combobox'
@@ -28,11 +29,6 @@ type AddWorkspaceDialogProps = {
 
 type AddWorkspaceMode = 'existing' | 'new'
 
-type BranchLoadState =
-  | { status: 'idle' }
-  | { status: 'ready'; branches: ProjectBranch[] }
-  | { status: 'error'; message: string }
-
 function pickBaseBranch(names: string[], preferred: string | null): string {
   if (preferred && names.includes(preferred)) return preferred
   return names[0] ?? ''
@@ -47,16 +43,20 @@ export function AddWorkspaceDialog({
   onListBranches,
   onCreate
 }: AddWorkspaceDialogProps): React.JSX.Element {
-  const [loadState, setLoadState] = useState<BranchLoadState>({ status: 'idle' })
+  const branchQuery = useQuery({
+    queryKey: ['branches', projectId],
+    queryFn: () => onListBranches(projectId!),
+    enabled: open && projectId != null,
+    refetchOnMount: 'always'
+  })
   const [mode, setMode] = useState<AddWorkspaceMode>('existing')
-  const [branch, setBranch] = useState('')
+  const [selectedBranch, setBranch] = useState('')
   const [newBranch, setNewBranch] = useState('')
-  const [from, setFrom] = useState('')
+  const [selectedFrom, setFrom] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
   const reset = (): void => {
-    setLoadState({ status: 'idle' })
     setMode('existing')
     setBranch('')
     setNewBranch('')
@@ -71,39 +71,13 @@ export function AddWorkspaceDialog({
     onOpenChange(nextOpen)
   }
 
-  useEffect(() => {
-    if (!open || projectId == null) return
-
-    let cancelled = false
-
-    void onListBranches(projectId)
-      .then((result) => {
-        if (cancelled) return
-        const available = result.filter((item) => !item.hasWorkspace)
-        const allNames = result.map((item) => item.name)
-        setLoadState({ status: 'ready', branches: result })
-        setBranch(available[0]?.name ?? '')
-        setFrom(pickBaseBranch(allNames, defaultBranch))
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          setLoadState({
-            status: 'error',
-            message: err instanceof Error ? err.message : 'Failed to list branches.'
-          })
-        }
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [open, projectId, defaultBranch, onListBranches])
-
-  const loading = open && projectId != null && loadState.status === 'idle'
-  const branches = loadState.status === 'ready' ? loadState.branches : []
+  const loading = open && projectId != null && branchQuery.isPending
+  const branches = branchQuery.data ?? []
   const existingBranches = branches.filter((item) => !item.hasWorkspace).map((item) => item.name)
   const allBranchNames = branches.map((item) => item.name)
-  const error = submitError ?? (loadState.status === 'error' ? loadState.message : null)
+  const branch = selectedBranch || existingBranches[0] || ''
+  const from = selectedFrom || pickBaseBranch(allBranchNames, defaultBranch)
+  const error = submitError ?? branchQuery.error?.message ?? null
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault()

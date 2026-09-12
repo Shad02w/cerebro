@@ -11,6 +11,10 @@ export const IPC = {
     changed: 'cerebro:layout:changed',
     measure: 'cerebro:layout:measure'
   },
+  repositories: {
+    workspaces: 'cerebro:repositories:workspaces',
+    pullRequests: 'cerebro:repositories:pull-requests'
+  },
   projects: {
     list: 'cerebro:projects:list',
     create: 'cerebro:projects:create',
@@ -34,6 +38,7 @@ export const IPC = {
     pickDirectory: 'cerebro:settings:pick-directory'
   },
   native: {
+    focus: 'cerebro:native:focus',
     runCommand: 'cerebro:native:run-command'
   },
   keybinds: {

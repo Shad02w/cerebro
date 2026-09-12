@@ -14,14 +14,39 @@ export type WorkspacePullRequestState = 'open' | 'closed' | 'merged'
 export type WorkspacePullRequestReviewDecision =
   'approved' | 'changes_requested' | 'review_required' | 'none'
 
+export type WorkspaceCiCheck = {
+  name: string
+  state:
+    | 'success'
+    | 'failure'
+    | 'in_progress'
+    | 'queued'
+    | 'pending'
+    | 'waiting'
+    | 'cancelled'
+    | 'skipped'
+    | 'neutral'
+    | 'timed_out'
+    | 'action_required'
+    | 'startup_failure'
+    | 'stale'
+    | 'unavailable'
+  url: string | null
+  description: string | null
+}
+
 export type WorkspacePullRequest = {
   number: number
   title: string
   url: string
   createdAt: string
   state: WorkspacePullRequestState
+  isDraft: boolean
   reviewDecision: WorkspacePullRequestReviewDecision
   mergeable: boolean | null
+  ciStatus?: 'success' | 'failure' | 'pending' | 'none' | 'unavailable'
+  ciChecks?: WorkspaceCiCheck[]
+  ciCheckCount?: number
   repoFullName: string
 }
 
