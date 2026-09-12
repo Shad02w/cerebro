@@ -20,6 +20,18 @@ async function main(): Promise<void> {
     { encoding: 'utf8' }
   ).trim()
   assert.equal(bundleId, 'com.cerebro.app')
+  const iconName = execFileSync(
+    '/usr/libexec/PlistBuddy',
+    ['-c', 'Print :CFBundleIconName', join(bundle, 'Contents/Info.plist')],
+    { encoding: 'utf8' }
+  ).trim()
+  assert.equal(iconName, 'Icon', 'Packaged app must use the Icon Composer asset catalog')
+  for (const filename of ['Assets.car', 'icon.icns']) {
+    assert.ok(
+      readFileSync(join(bundle, 'Contents/Resources', filename)).length > 0,
+      `Missing packaged icon resource: ${filename}`
+    )
+  }
   const home = mkdtempSync(join(tmpdir(), 'cerebro-package-'))
   const env: NodeJS.ProcessEnv = {
     ...process.env,
@@ -68,7 +80,9 @@ async function main(): Promise<void> {
       )
     )
     assert.ok(Array.isArray(projects.projects), 'Packaged CLI must connect to its mux')
-    console.log(`Verified Cerebro: ${bundleId}, Electron window, CLI, mux`)
+    console.log(
+      `Verified Cerebro: ${bundleId}, icon catalog, fallback icon, Electron window, CLI, mux`
+    )
   } finally {
     await application?.close()
     try {

@@ -66,7 +66,7 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   nativeTheme.themeSource = 'dark'
-  if (process.platform === 'darwin') app.dock?.setIcon(icon)
+  if (process.platform === 'darwin' && is.dev) app.dock?.setIcon(icon)
   electronApp.setAppUserModelId('com.cerebro.app')
   setAppMenu()
   ensureCerebroHome()
