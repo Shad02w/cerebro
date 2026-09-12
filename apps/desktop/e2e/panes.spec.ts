@@ -142,6 +142,18 @@ test('UI adds mixed BSP panes, preserves terminals, resizes and collapses splits
         return { expected, actual: getComputedStyle(el).borderTopColor }
       })
     expect(color.actual).toBe(color.expected)
+    const inactiveBorder = await pane(page, first)
+      .getByTestId('pane-border')
+      .evaluate((el) => {
+        const probe = document.createElement('span')
+        probe.style.color = 'var(--pane-border)'
+        document.body.append(probe)
+        const expected = getComputedStyle(probe).color
+        probe.remove()
+        return { expected, actual: getComputedStyle(el).borderTopColor }
+      })
+    expect(inactiveBorder.actual).toBe(inactiveBorder.expected)
+    expect(inactiveBorder.actual).not.toBe(color.actual)
     // Floating controls must not cover the Changes view's own controls.
     await pane(page, third).getByTestId('changes-sidebar-toggle').filter({ visible: true }).click()
     await expect(pane(page, third).getByTestId('changes-sidebar')).toHaveAttribute(
