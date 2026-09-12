@@ -1060,6 +1060,71 @@ test('sends CSI u for Ctrl+; so Neovim can bind it', async ({ page }) => {
   }
 })
 
+test('sends CSI u for Shift+Enter so Claude Code and Codex can insert a newline', async ({
+  page
+}) => {
+  const sourcesRoot = await mkdtemp(join(tmpdir(), 'cerebro-terminal-shift-enter-e2e-'))
+  const source = join(sourcesRoot, 'term-shift-enter')
+
+  try {
+    await initGitRepo(source, 'main', 'shift-enter-terminal')
+    await addProjectViaUi(page, `file://${source}`, 'term-shift-enter')
+    await selectWorkspaceRow(page, 'main')
+
+    const workspace = await readActiveWorkspace(page)
+    expect(workspace.localPath).toBeTruthy()
+    await writeFile(
+      join(workspace.localPath!, 'dump-key.sh'),
+      [
+        '#!/bin/sh',
+        'stty raw -echo',
+        'printf ready > ready.txt',
+        // `\x1b[13;2u` is 7 bytes.
+        'dd bs=1 count=7 of=key.bin 2>/dev/null',
+        ''
+      ].join('\n')
+    )
+
+    await openNewTerminal(page)
+
+    const term = page.getByRole('textbox', { name: 'Terminal input' })
+    await expect(term).toBeFocused()
+    await term.press('Control+c')
+    // Exit the interactive shell after the dump so Electron teardown is not blocked by a live PTY.
+    await term.pressSequentially('sh dump-key.sh; exit')
+    await term.press('Enter')
+
+    const readyPath = join(workspace.localPath!, 'ready.txt')
+    const keyPath = join(workspace.localPath!, 'key.bin')
+    await expect
+      .poll(async () => {
+        try {
+          return await readFile(readyPath, 'utf8')
+        } catch {
+          return ''
+        }
+      })
+      .toContain('ready')
+
+    await expect(term).toBeFocused()
+    await term.press('Shift+Enter')
+
+    await expect
+      .poll(async () => {
+        try {
+          return (await readFile(keyPath)).toString('hex')
+        } catch {
+          return ''
+        }
+      })
+      .toBe('1b5b31333b3275')
+
+    await expect(page.getByText('Shell exited', { exact: true })).toBeVisible({ timeout: 15_000 })
+  } finally {
+    await rm(sourcesRoot, { recursive: true, force: true })
+  }
+})
+
 test('reorders content tabs by dragging', async ({ page }) => {
   const sourcesRoot = await mkdtemp(join(tmpdir(), 'cerebro-tab-reorder-e2e-'))
   const source = join(sourcesRoot, 'tab-reorder')

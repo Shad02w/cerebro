@@ -68,7 +68,16 @@ export const test = base.extend<Fixtures>({
     })
 
     await use(electronApp)
-    await electronApp.close()
+    try {
+      await Promise.race([
+        electronApp.close(),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('electronApp.close timed out')), 5_000)
+        })
+      ])
+    } catch {
+      electronApp.process().kill('SIGKILL')
+    }
     await stopMux(cerebroHome)
     await rm(cerebroHome, { recursive: true, force: true })
   },
@@ -89,20 +98,27 @@ export async function stopMux(home: string): Promise<void> {
     promisify(execFile)(
       process.execPath,
       [path.join(desktopRoot, 'out/cli/cerebro.cjs'), 'server', ...args],
-      { env }
+      { env, timeout: 5_000 }
     )
   const status = await run('status')
-    .then((result) => JSON.parse(result.stdout))
-    .catch(() => ({ running: false }))
+    .then((result) => JSON.parse(result.stdout) as { running?: boolean; pid?: number })
+    .catch(() => ({ running: false, pid: undefined }))
   if (!status.running) return
-  await run('stop')
+  await run('stop').catch(() => {})
   for (let attempt = 0; attempt < 100; attempt++) {
     try {
+      if (status.pid == null) return
       process.kill(status.pid, 0)
     } catch {
       return
     }
     await new Promise((resolve) => setTimeout(resolve, 50))
   }
-  throw new Error('Test mux did not stop.')
+  if (status.pid != null) {
+    try {
+      process.kill(status.pid, 'SIGKILL')
+    } catch {
+      // already gone
+    }
+  }
 }

@@ -3,9 +3,13 @@
  * Ctrl+Space, Ctrl+[ \ ], Ctrl+3–8, Ctrl+@, Ctrl+_). Punctuation like Ctrl+;
  * produces no bytes, so Neovim never sees `<C-;>`.
  *
+ * Shift+Enter is also collapsed to plain CR (`\r`), so Claude Code / Codex
+ * cannot tell it apart from Enter and always submit.
+ *
  * Other xterm.js hosts (Wave, VS Code sendSequence workarounds) fill the gap
- * by sending CSI u (`CSI codepoint ; modifiers u`), which Neovim already
- * parses as `<C-;>` without a config change.
+ * by sending CSI u (`CSI codepoint ; modifiers u`). Neovim already parses
+ * Ctrl+punctuation that way; Claude Code / Codex treat `\x1b[13;2u` as
+ * Shift+Enter → insert newline.
  */
 
 const ESC = '\x1b'
@@ -53,6 +57,10 @@ function resolvedChar(event: TerminalKeyEvent): string | null {
   return CODE_TO_CHAR[event.code] ?? null
 }
 
+function isEnterKey(event: TerminalKeyEvent): boolean {
+  return event.key === 'Enter' || event.code === 'Enter' || event.keyCode === 13
+}
+
 /**
  * True when xterm.js Keyboard.ts already emits a C0 byte for this chord.
  * Those must stay as C0 so Ctrl+C still interrupts the shell.
@@ -69,10 +77,21 @@ function hasLegacyCtrlEncoding(event: TerminalKeyEvent): boolean {
   return event.ctrlKey && (event.key === '_' || event.key === '@')
 }
 
-/** CSI u sequence for Ctrl+punctuation that xterm.js would otherwise drop. */
+/** CSI u for bare Shift+Enter (`\x1b[13;2u`). Leave Ctrl/Alt/Meta to xterm. */
+function encodeShiftEnter(event: TerminalKeyEvent): string | null {
+  if (!isEnterKey(event)) return null
+  if (!event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) return null
+  return `${ESC}[13;${csiModifier(event)}u`
+}
+
+/** CSI u sequence for keys that xterm.js would otherwise drop or collapse. */
 export function encodeExtendedKey(event: TerminalKeyEvent): string | null {
   if (event.type !== 'keydown') return null
   if (event.isComposing) return null
+
+  const shiftEnter = encodeShiftEnter(event)
+  if (shiftEnter != null) return shiftEnter
+
   if (!event.ctrlKey || event.altKey || event.metaKey) return null
   if (hasLegacyCtrlEncoding(event)) return null
 
