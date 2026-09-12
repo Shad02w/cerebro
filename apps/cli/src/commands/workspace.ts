@@ -1,12 +1,10 @@
 import {
-  closeDb,
   createWorkspaceFromBranch,
   getWorkspaceLocalPath,
   listProjects,
   removeWorkspace
-} from '@cerebro/core'
+} from '../registry'
 import { die, printJson } from '../output'
-import { notifyInvalidate } from '../notify'
 
 const WORKSPACE_USAGE = `
 Usage: cerebro workspace <command>
@@ -87,8 +85,6 @@ export async function workspaceCommand(args: string[]): Promise<void> {
       printJson({ workspaces, activeWorkspaceId: result.activeWorkspaceId })
     } catch (err) {
       die(err instanceof Error ? err.message : String(err), 'list_failed')
-    } finally {
-      closeDb()
     }
     return
   }
@@ -117,14 +113,11 @@ export async function workspaceCommand(args: string[]): Promise<void> {
         from ? { from } : undefined
       )
       printJson(workspace)
-      notifyInvalidate()
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       // Distinguish conflict (workspace already exists) from other failures.
       const code = msg.toLowerCase().includes('already exists') ? 'conflict' : 'create_failed'
       die(msg, code)
-    } finally {
-      closeDb()
     }
     return
   }
@@ -133,12 +126,10 @@ export async function workspaceCommand(args: string[]): Promise<void> {
     const workspaceId = parseWorkspaceId(rest[0], 'path')
 
     try {
-      const localPath = getWorkspaceLocalPath(workspaceId)
+      const localPath = await getWorkspaceLocalPath(workspaceId)
       printJson({ id: workspaceId, localPath })
     } catch (err) {
       die(err instanceof Error ? err.message : String(err), 'not_found')
-    } finally {
-      closeDb()
     }
     return
   }
@@ -149,12 +140,9 @@ export async function workspaceCommand(args: string[]): Promise<void> {
     try {
       const result = await removeWorkspace(workspaceId, { deleteFiles })
       printJson(result)
-      notifyInvalidate()
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       die(msg, removeErrorCode(msg))
-    } finally {
-      closeDb()
     }
     return
   }

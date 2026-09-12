@@ -1,3 +1,5 @@
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import { access, mkdtemp, rm } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
@@ -48,6 +50,7 @@ export const test = base.extend<Fixtures>({
     const env = { ...process.env }
     delete env.ELECTRON_RUN_AS_NODE
     delete env.ELECTRON_RENDERER_URL
+    delete env.CEREBRO_DB_PATH
 
     const electronApp = await electron.launch({
       executablePath: packagedApp || electronBinary,
@@ -66,6 +69,7 @@ export const test = base.extend<Fixtures>({
 
     await use(electronApp)
     await electronApp.close()
+    await stopMux(cerebroHome)
     await rm(cerebroHome, { recursive: true, force: true })
   },
 
@@ -77,3 +81,28 @@ export const test = base.extend<Fixtures>({
 })
 
 export { expect } from '@playwright/test'
+
+export async function stopMux(home: string): Promise<void> {
+  const env = { ...process.env, CEREBRO_HOME: home }
+  delete env.CEREBRO_DB_PATH
+  const run = (...args: string[]): Promise<{ stdout: string; stderr: string }> =>
+    promisify(execFile)(
+      process.execPath,
+      [path.join(desktopRoot, 'out/cli/cerebro.cjs'), 'server', ...args],
+      { env }
+    )
+  const status = await run('status')
+    .then((result) => JSON.parse(result.stdout))
+    .catch(() => ({ running: false }))
+  if (!status.running) return
+  await run('stop')
+  for (let attempt = 0; attempt < 100; attempt++) {
+    try {
+      process.kill(status.pid, 0)
+    } catch {
+      return
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+  throw new Error('Test mux did not stop.')
+}

@@ -17,6 +17,7 @@ type WorkspaceViewProps = {
   terminalFontFamily: string | null
   onAddProject: () => void
   onSelectWorkspace: (workspaceId: number) => void
+  onStartupReady?: () => void
 }
 
 export function WorkspaceView({
@@ -30,7 +31,8 @@ export function WorkspaceView({
   terminalFontSize,
   terminalFontFamily,
   onAddProject,
-  onSelectWorkspace
+  onSelectWorkspace,
+  onStartupReady
 }: WorkspaceViewProps): React.JSX.Element {
   if (loading) {
     return (
@@ -75,6 +77,7 @@ export function WorkspaceView({
         fontSize={terminalFontSize}
         fontFamily={terminalFontFamily}
         onSelectWorkspace={onSelectWorkspace}
+        onStartupReady={onStartupReady}
       />
     </div>
   )

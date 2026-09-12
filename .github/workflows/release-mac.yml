@@ -1,0 +1,136 @@
+name: Release macOS
+
+on:
+  push:
+    branches: [release]
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Packaged release channel
+        type: choice
+        options: [dev, production]
+        default: dev
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-mac-${{ github.event.inputs.channel || 'production' }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      channel: ${{ steps.release.outputs.channel }}
+      version: ${{ steps.release.outputs.version }}
+      tag: ${{ steps.release.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Select release identity and version
+        id: release
+        env:
+          CHANNEL: ${{ github.event.inputs.channel || 'production' }}
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs')
+          const base = require('./apps/desktop/package.json').version
+          if (!/^\d+\.\d+\.\d+$/.test(base)) throw new Error('Desktop version must be major.minor.patch')
+          const channel = process.env.CHANNEL
+          // Unique versions for every merge, without committing a version bump.
+          const version = channel === 'dev'
+            ? `${base}-dev.${process.env.GITHUB_RUN_NUMBER}`
+            : `${base}+build.${process.env.GITHUB_RUN_NUMBER}`
+          const tag = channel === 'dev' ? `dev-v${version}` : `v${version}`
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `channel=${channel}\nversion=${version}\ntag=${tag}\n`)
+          NODE
+
+  build:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          architecture: ${{ matrix.arch }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build macOS installer and archive
+        working-directory: apps/desktop
+        env:
+          CHANNEL: ${{ needs.prepare.outputs.channel }}
+          CEREBRO_RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: pnpm exec tsx scripts/package-mac.ts "$CHANNEL"
+      - name: Verify packaged app in Electron
+        working-directory: apps/desktop
+        env:
+          CHANNEL: ${{ needs.prepare.outputs.channel }}
+        run: pnpm exec tsx scripts/verify-mac-package.ts "$CHANNEL"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: mac-${{ matrix.arch }}
+          path: |
+            apps/desktop/dist/${{ needs.prepare.outputs.channel }}/*.dmg
+            apps/desktop/dist/${{ needs.prepare.outputs.channel }}/*.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: mac-*
+          path: artifacts
+          merge-multiple: true
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          CHANNEL: ${{ needs.prepare.outputs.channel }}
+          RELEASE_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd artifacts
+          shasum -a 256 ./*.dmg ./*.zip > SHA256SUMS.txt
+          cat > release-notes.md <<'NOTES'
+          macOS downloads: choose **arm64** for Apple Silicon or **x64** for Intel.
+          Open the DMG and drag the app to Applications. ZIP archives are also available.
+
+          These builds are unsigned and not notarized. After attempting to open the app,
+          macOS may require System Settings → Privacy & Security → Open Anyway.
+          Only allow the app if you trust this repository and release.
+
+          Development releases install as Cerebro Dev, alongside Cerebro.
+          NOTES
+          flags=(--latest)
+          if [ "$CHANNEL" = dev ]; then flags=(--prerelease --latest=false); fi
+          # A rerun may resume a draft left by an interrupted asset upload. Never alter
+          # an already published release or point a release at a different commit.
+          if gh release view "$RELEASE_TAG" --json isDraft > release.json 2>/dev/null; then
+            test "$(jq -r .isDraft release.json)" = true
+          else
+            gh release create "$RELEASE_TAG" --target "$RELEASE_SHA" --draft \
+              --title "Cerebro $RELEASE_VERSION" --notes-file release-notes.md
+          fi
+          gh release upload "$RELEASE_TAG" ./*.dmg ./*.zip SHA256SUMS.txt --clobber
+          gh release edit "$RELEASE_TAG" --draft=false "${flags[@]}"

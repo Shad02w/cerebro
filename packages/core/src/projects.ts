@@ -751,7 +751,13 @@ export async function listProjectBranches(projectId: number): Promise<ProjectBra
 export async function createWorkspaceFromBranch(
   projectId: number,
   branch: string,
-  options?: { from?: string | null; git?: GitRemoteRunner }
+  options?: {
+    from?: string | null
+    git?: GitRemoteRunner
+    /** Mux operation journal hooks; invoked before Git and within the metadata transaction. */
+    onPrepared?: (path: string) => void
+    onCommitted?: (workspaceId: number) => void
+  }
 ): Promise<Workspace> {
   const trimmed = branch.trim()
   if (!trimmed) throw new Error('Branch name is required.')
@@ -783,6 +789,7 @@ export async function createWorkspaceFromBranch(
 
   const dest = allocateLocalPath(`${repository.name}-${sanitizeBranchForPath(trimmed)}`)
 
+  options?.onPrepared?.(dest)
   try {
     await addWorktree(repository.local_path, dest, trimmed, from, options?.git)
   } catch (error) {
@@ -802,6 +809,7 @@ VALUES (?, ?, 'worktree', ?, ?)
       .run(projectId, repository.id, trimmed, dest)
     const workspaceId = toId(insert.lastInsertRowid)
     setActiveWorkspaceId(workspaceId, db)
+    options?.onCommitted?.(workspaceId)
     db.exec('COMMIT')
 
     const listed = await listProjects()

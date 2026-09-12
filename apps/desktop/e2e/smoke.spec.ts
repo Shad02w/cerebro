@@ -163,3 +163,37 @@ test('macOS application menu omits Developer Tools in production builds', async 
 
   expect(viewRoles.map((role) => role?.toLowerCase())).not.toContain('toggledevtools')
 })
+
+test('loads the supplied brain artwork and native app icon', async ({
+  electronApp,
+  page
+}, info) => {
+  for (const testId of ['brain-mark']) {
+    const mark = page.getByTestId(testId)
+    await expect(mark).toBeVisible()
+    await expect(mark).toHaveAttribute('src', /brain.*\.svg/)
+    expect(
+      await mark.evaluate(
+        (element: HTMLImageElement) => element.complete && element.naturalWidth > 0
+      )
+    ).toBe(true)
+    const box = await mark.boundingBox()
+    expect(box!.width / box!.height).toBeCloseTo(650 / 565, 1)
+  }
+  const icon = await electronApp.evaluate(({ app, nativeImage }) => {
+    const image = nativeImage.createFromPath(`${app.getAppPath()}/resources/icon.png`)
+    const bitmap = image.toBitmap()
+    const alpha = (x: number, y: number): number => bitmap[(y * 1024 + x) * 4 + 3]
+    return {
+      empty: image.isEmpty(),
+      size: image.getSize(),
+      alpha: [alpha(0, 0), alpha(64, 64), alpha(512, 32), alpha(512, 80)]
+    }
+  })
+  expect(icon).toEqual({
+    empty: false,
+    size: { width: 1024, height: 1024 },
+    alpha: [0, 0, 0, 255]
+  })
+  await page.screenshot({ path: info.outputPath('cerebro-branding.png') })
+})

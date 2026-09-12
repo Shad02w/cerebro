@@ -5,6 +5,7 @@ import {
   type UseQueryOptions
 } from '@tanstack/react-query'
 import type { GitHubStatus, RepositoryPullRequests } from '@shared/types'
+import type { LayoutState } from '@cerebro/core'
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -24,6 +25,22 @@ export const PR_REFRESH_MS = 60_000
 export const projectsOptions = queryOptions({
   queryKey: ['projects'],
   queryFn: () => window.cerebro.listProjects()
+})
+const layoutKey = ['layout'] as const
+
+/** Initial recovery, live mux events, and command replies share one layout. */
+export function acceptLayout(next: LayoutState): LayoutState {
+  return queryClient.setQueryData<LayoutState>(layoutKey, (current) =>
+    !current || next.epoch !== current.epoch || next.revision >= current.revision ? next : current
+  )!
+}
+
+export const layoutOptions = queryOptions({
+  queryKey: layoutKey,
+  queryFn: async () => acceptLayout(await window.cerebro.getLayout()),
+  staleTime: Infinity,
+  refetchOnWindowFocus: false,
+  refetchOnReconnect: false
 })
 export const githubOptions = queryOptions({
   queryKey: ['github-status'],
@@ -88,6 +105,7 @@ export async function applyGitHubStatus(status: GitHubStatus): Promise<void> {
 
 /** Installed once at bootstrap; no component effects or duplicate timers. */
 export function connectQueryEvents(): () => void {
+  const unsubscribeLayout = window.cerebro.onLayoutChanged(acceptLayout)
   focusManager.setEventListener((handleFocus) => window.cerebro.onWindowFocus(handleFocus))
   const unsubscribeProjects = window.cerebro.onProjectsInvalidate(() => {
     void invalidateProjects()
@@ -96,6 +114,7 @@ export function connectQueryEvents(): () => void {
     void applyGitHubStatus(status)
   })
   return () => {
+    unsubscribeLayout()
     unsubscribeProjects()
     unsubscribeGitHub()
     focusManager.setEventListener(() => () => {})

@@ -7,3 +7,7 @@ export * from './projects'
 export * from './changes'
 
 export * from './panes'
+
+export * from './terminal-state'
+
+export * from './terminal-palettes'

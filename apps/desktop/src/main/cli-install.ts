@@ -1,3 +1,5 @@
+import { appIdentity } from './app-identity'
+import { execFileSync } from 'node:child_process'
 import { app, ipcMain } from 'electron'
 import {
   accessSync,
@@ -33,7 +35,7 @@ function locations(): {
   const testing = !app.isPackaged && process.env.NODE_ENV === 'test'
   const home =
     testing && process.env.CEREBRO_CLI_TEST_HOME ? process.env.CEREBRO_CLI_TEST_HOME : homedir()
-  const command = app.isPackaged ? 'cerebro' : 'cerebro-dev'
+  const command = appIdentity.cliCommand
   const bin = join(home, '.local/bin')
   const shell = basename(process.env.SHELL || '/bin/zsh')
   const profile =
@@ -89,8 +91,6 @@ function launcherText(managePath: boolean): string {
 }
 
 function supported(): string | null {
-  if (process.platform === 'win32')
-    return 'One-click CLI installation is currently available on macOS and Linux.'
   if (process.env.APPIMAGE)
     return 'Install Cerebro in a permanent directory before installing the CLI. Portable AppImage mounts change between launches.'
   if (!['zsh', 'bash'].includes(locations().shell))
@@ -99,12 +99,13 @@ function supported(): string | null {
 }
 
 export function getCliStatus(): CliInstallStatus {
+  if (process.platform === 'win32') return windowsCliStatus()
   const { launcher, command, profile, owner, block, bundle } = locations()
   const base = {
     command,
     path: launcher,
     profile,
-    development: !app.isPackaged,
+    development: appIdentity.channel === 'dev',
     version: app.getVersion(),
     onPath: binOnPath()
   }
@@ -178,6 +179,7 @@ function profileWithoutBlock(text: string): string {
 }
 
 export function installCli(): CliInstallStatus {
+  if (process.platform === 'win32') return installWindowsCli()
   const unsupported = supported()
   if (unsupported) throw new Error(unsupported)
   const { launcher, bundle, profile, block, bin } = locations()
@@ -211,6 +213,7 @@ export function installCli(): CliInstallStatus {
 }
 
 export function removeCli(): CliInstallStatus {
+  if (process.platform === 'win32') return removeWindowsCli()
   const unsupported = supported()
   if (unsupported) throw new Error(unsupported)
   const { launcher, profile } = locations()
@@ -235,4 +238,83 @@ export function registerCliIpc(): void {
   ipcMain.handle(IPC.cli.status, getCliStatus)
   ipcMain.handle(IPC.cli.install, installCli)
   ipcMain.handle(IPC.cli.remove, removeCli)
+}
+
+const WINDOWS_OWNER = '@echo off\r\nrem Cerebro CLI launcher v1\r\n'
+function windowsLauncher(): { path: string; text: string } {
+  const { bin, command, bundle } = locations()
+  const escape = (value: string): string => value.replaceAll('%', '%%')
+  return {
+    path: join(bin, `${command}.cmd`),
+    text: `${WINDOWS_OWNER}setlocal DisableDelayedExpansion\r\nif not defined CEREBRO_HOME set "CEREBRO_HOME=${escape(getCerebroHome())}"\r\n"${escape(join(bundle, 'node.exe'))}" --no-warnings "${escape(join(bundle, 'cerebro.cjs'))}" %*\r\n`
+  }
+}
+function windowsCliStatus(): CliInstallStatus {
+  const { command, bundle } = locations()
+  const launcher = windowsLauncher()
+  const base = {
+    command,
+    path: launcher.path,
+    profile: 'User PATH',
+    development: appIdentity.channel === 'dev',
+    version: app.getVersion(),
+    onPath: binOnPath()
+  }
+  try {
+    const text = readRegular(launcher.path)
+    if (text && !text.startsWith(WINDOWS_OWNER))
+      return { ...base, state: 'conflict', message: 'Another application owns this launcher.' }
+    if (text === null)
+      return {
+        ...base,
+        state: 'not-installed',
+        message: `Install ${command} for use in your terminal.`
+      }
+    const ready =
+      text === launcher.text &&
+      existsSync(join(bundle, 'node.exe')) &&
+      existsSync(join(bundle, 'cerebro.cjs'))
+    return {
+      ...base,
+      state: ready ? 'installed' : 'repair',
+      message: 'Open a new terminal after installation. Git commands require Git to be installed.'
+    }
+  } catch (error) {
+    return { ...base, state: 'conflict', message: String(error) }
+  }
+}
+function installWindowsCli(): CliInstallStatus {
+  const launcher = windowsLauncher()
+  const { bin } = locations()
+  const previous = readRegular(launcher.path)
+  if (previous && !previous.startsWith(WINDOWS_OWNER))
+    throw new Error('Another application owns this launcher.')
+  mkdirSync(bin, { recursive: true })
+  atomicWrite(launcher.path, launcher.text, 0o755)
+  try {
+    execFileSync(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        "$p=[string][Environment]::GetEnvironmentVariable('Path','User'); $b=$env:CEREBRO_INSTALL_BIN; if (($p -split ';') -notcontains $b) {[Environment]::SetEnvironmentVariable('Path',(($p.TrimEnd(';')+';'+$b).TrimStart(';')),'User')}"
+      ],
+      { env: { ...process.env, CEREBRO_INSTALL_BIN: bin }, windowsHide: true }
+    )
+  } catch (error) {
+    if (previous === null) unlinkSync(launcher.path)
+    else atomicWrite(launcher.path, previous, 0o755)
+    throw error
+  }
+  return windowsCliStatus()
+}
+function removeWindowsCli(): CliInstallStatus {
+  const launcher = windowsLauncher()
+  const text = readRegular(launcher.path)
+  if (text && !text.startsWith(WINDOWS_OWNER))
+    throw new Error('Another application owns this launcher.')
+  if (text !== null) unlinkSync(launcher.path)
+  // The shared user bin directory may contain other commands; retain its PATH entry.
+  return windowsCliStatus()
 }

@@ -6,6 +6,7 @@ export const IPC = {
   },
   layout: {
     get: 'cerebro:layout:get',
+    paneState: 'cerebro:layout:pane-state',
     focusWorkspace: 'cerebro:layout:focus-workspace',
     command: 'cerebro:layout:command',
     changed: 'cerebro:layout:changed',
@@ -57,6 +58,8 @@ export const IPC = {
   },
   pty: {
     open: 'cerebro:pty:open',
+    ack: 'cerebro:pty:ack',
+    restart: 'cerebro:pty:restart',
     write: 'cerebro:pty:write',
     resize: 'cerebro:pty:resize',
     kill: 'cerebro:pty:kill',

@@ -1,0 +1,33 @@
+name: Mux runtime
+on:
+  pull_request:
+    paths:
+      - packages/core/**
+      - packages/mux/**
+      - apps/cli/**
+      - apps/desktop/scripts/**
+      - apps/desktop/package.json
+      - apps/desktop/electron-builder.yml
+      - pnpm-lock.yaml
+      - .github/workflows/mux.yml
+  workflow_dispatch:
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @cerebro/core build
+      - run: pnpm --filter @cerebro/mux build
+      - run: pnpm --filter desktop build
+      - run: pnpm --filter @cerebro/mux test

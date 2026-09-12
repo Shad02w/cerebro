@@ -1,12 +1,10 @@
 import {
-  closeDb,
   createProjectFromDirectory,
   createProjectFromGitUrl,
   listProjects,
   removeProject
-} from '@cerebro/core'
+} from '../registry'
 import { die, printJson } from '../output'
-import { notifyInvalidate } from '../notify'
 
 const PROJECT_USAGE = `
 Usage: cerebro project <command>
@@ -55,8 +53,6 @@ export async function projectCommand(args: string[]): Promise<void> {
       printJson(result)
     } catch (err) {
       die(err instanceof Error ? err.message : String(err), 'list_failed')
-    } finally {
-      closeDb()
     }
     return
   }
@@ -74,11 +70,8 @@ export async function projectCommand(args: string[]): Promise<void> {
       try {
         const project = await createProjectFromDirectory(directory)
         printJson(project)
-        notifyInvalidate()
       } catch (err) {
         die(err instanceof Error ? err.message : String(err), 'create_failed')
-      } finally {
-        closeDb()
       }
       return
     }
@@ -94,11 +87,8 @@ export async function projectCommand(args: string[]): Promise<void> {
     try {
       const project = await createProjectFromGitUrl(gitUrl)
       printJson(project)
-      notifyInvalidate()
     } catch (err) {
       die(err instanceof Error ? err.message : String(err), 'create_failed')
-    } finally {
-      closeDb()
     }
     return
   }
@@ -109,12 +99,9 @@ export async function projectCommand(args: string[]): Promise<void> {
     try {
       const result = await removeProject(projectId, { deleteFiles })
       printJson(result)
-      notifyInvalidate()
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       die(msg, removeErrorCode(msg))
-    } finally {
-      closeDb()
     }
     return
   }

@@ -5,12 +5,15 @@
     "dev": "turbo run dev",
     "build": "turbo run build",
     "lint": "turbo run lint",
+    "react:doctor": "react-doctor --verbose --no-score --no-supply-chain",
+    "react:doctor:full": "pnpm run react:doctor apps/desktop/src/renderer",
     "typecheck": "turbo run typecheck",
     "test:e2e": "turbo run test:e2e --filter=desktop",
     "format": "prettier --write ."
   },
   "devDependencies": {
     "prettier": "^3.7.4",
+    "react-doctor": "0.9.13",
     "turbo": "^2.5.8"
   },
   "packageManager": "pnpm@10.20.0",

@@ -1,7 +1,13 @@
-/** Live BSP layout shared by Electron and the CLI. IDs last for the app session. */
+/** Live BSP layout shared by Electron and the CLI. IDs are persistent across mux restarts. */
 export type PaneKind = 'terminal' | 'changes'
 export type SplitDirection = 'auto' | 'right' | 'down'
-export type Pane = { type: 'pane'; id: number; kind: PaneKind }
+export type Pane = {
+  type: 'pane'
+  id: number
+  kind: PaneKind
+  repositoryId?: number | null
+  state?: { version: 1; selectedId?: string | null; filesOpen?: boolean; filesWidth?: number }
+}
 export type PaneSplit = {
   type: 'split'
   id: number
@@ -19,7 +25,11 @@ export type WorkspaceTab = {
   activePaneId: number
 }
 export type WorkspaceTabs = { tabs: WorkspaceTab[]; activeTabId: number | null; nextLabel: number }
-export type LayoutState = { revision: number; workspaces: Record<number, WorkspaceTabs> }
+export type LayoutState = {
+  epoch?: string
+  revision: number
+  workspaces: Record<number, WorkspaceTabs>
+}
 export type LayoutCommand = {
   target: 'tab' | 'pane'
   action: 'list' | 'create' | 'split' | 'focus' | 'close' | 'resize' | 'reorder' | 'open-changes'
@@ -30,6 +40,7 @@ export type LayoutCommand = {
   direction?: SplitDirection
   splitId?: number
   ratio?: number
+  repositoryId?: number
   toIndex?: number
 }
 export type LayoutReply = { state: LayoutState; result: unknown }

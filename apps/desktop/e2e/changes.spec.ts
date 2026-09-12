@@ -1,11 +1,12 @@
-import type { Locator } from '@playwright/test'
-import type { Project } from '../src/shared/types'
+import type { ElectronApplication, Locator, Page } from '@playwright/test'
+import type { FileDiffContents, Project } from '../src/shared/types'
+import { IPC } from '../src/shared/ipc'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { expect, test, type ElectronApplication, type Page } from './fixtures'
+import { expect, test } from './fixtures'
 
 const execFileAsync = promisify(execFile)
 
@@ -81,6 +82,311 @@ function closeChord(): string {
 function openChangesChord(): string {
   return process.platform === 'darwin' ? 'Meta+Shift+g' : 'Control+Shift+g'
 }
+
+type WorkerProbe = {
+  requests: number
+  completed: number
+  pending: number
+  terminated: number
+  highlightRequests: number
+  highlighted: number
+  failures: number
+  ticks: number
+  maxGap: number
+}
+type ProbeWindow = typeof window & { changesWorkerProbe: WorkerProbe }
+
+async function observeChangesWorkers(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const probe: WorkerProbe = {
+      requests: 0,
+      completed: 0,
+      pending: 0,
+      terminated: 0,
+      highlightRequests: 0,
+      highlighted: 0,
+      failures: 0,
+      ticks: 0,
+      maxGap: 0
+    }
+    ;(window as ProbeWindow).changesWorkerProbe = probe
+    window.Worker = new Proxy(window.Worker, {
+      construct(Target, args) {
+        const worker = Reflect.construct(Target, args) as Worker
+        const parser = args[1]?.name === 'changes-diff'
+        if (parser || args[1]?.name === 'changes-highlight') {
+          let pending = 0
+          worker.postMessage = new Proxy(worker.postMessage, {
+            apply(target, receiver, messages) {
+              if (parser) {
+                probe.requests++
+                probe.pending++
+                pending++
+              } else if (messages[0]?.type === 'diff') probe.highlightRequests++
+              return Reflect.apply(target, receiver, messages)
+            }
+          })
+          worker.addEventListener('error', () => {
+            probe.failures++
+          })
+          worker.addEventListener('message', ({ data }) => {
+            if (data.type === 'error' || data.error !== undefined) probe.failures++
+            if (parser) {
+              probe.completed++
+              probe.pending--
+              pending--
+            } else if (data.type === 'success' && data.requestType === 'diff') probe.highlighted++
+          })
+          worker.terminate = new Proxy(worker.terminate, {
+            apply(target, receiver, messages) {
+              if (parser) {
+                probe.terminated++
+                probe.pending -= pending
+                pending = 0
+              }
+              return Reflect.apply(target, receiver, messages)
+            }
+          })
+        }
+        return worker
+      }
+    })
+    let last = performance.now()
+    setInterval(() => {
+      const now = performance.now()
+      if (probe.pending > 0) {
+        probe.ticks++
+        probe.maxGap = Math.max(probe.maxGap, now - last)
+      }
+      last = now
+    }, 16)
+  })
+}
+
+type DiffGate = {
+  files: FileDiffContents[]
+  hold: boolean
+  fail: boolean
+  requests: number
+  inFlight: number
+  maxInFlight: number
+  release: Array<() => void>
+}
+type GateGlobal = typeof globalThis & { changesDiffGate: DiffGate }
+
+async function gateDiffReads(page: Page, electronApp: ElectronApplication): Promise<void> {
+  const files = await page.evaluate(async () => {
+    const projects = await window.cerebro.listProjects()
+    const workspaceId = projects.projects[0].workspaces[0].id
+    const listed = await window.cerebro.listWorkspaceChanges(workspaceId)
+    return Promise.all(
+      listed.groups.flatMap((group) =>
+        group.files.map((file) =>
+          window.cerebro.getWorkspaceFileDiff(workspaceId, group.repositoryId, file)
+        )
+      )
+    )
+  })
+  await electronApp.evaluate(
+    ({ ipcMain }, { channel, files }) => {
+      const state: DiffGate = {
+        files,
+        hold: false,
+        fail: false,
+        requests: 0,
+        inFlight: 0,
+        maxInFlight: 0,
+        release: []
+      }
+      ;(globalThis as GateGlobal).changesDiffGate = state
+      ipcMain.removeHandler(channel)
+      ipcMain.handle(channel, async (_event, _workspaceId, repositoryId, file) => {
+        state.requests++
+        state.inFlight++
+        state.maxInFlight = Math.max(state.maxInFlight, state.inFlight)
+        try {
+          if (state.hold) await new Promise<void>((resolve) => state.release.push(resolve))
+          else await new Promise((resolve) => setTimeout(resolve, 20))
+          if (state.fail) throw new Error('Simulated refresh failure')
+          return state.files.find(
+            (entry) => entry.repositoryId === repositoryId && entry.path === file.path
+          )
+        } finally {
+          state.inFlight--
+        }
+      })
+    },
+    { channel: IPC.workspaces.getFileDiff, files }
+  )
+}
+
+test('keeps the previous review and view state while refreshing after a tab switch', async ({
+  page,
+  electronApp
+}) => {
+  const root = await mkdtemp(join(tmpdir(), 'cerebro-changes-cache-'))
+  const repo = join(root, 'cached-review')
+  try {
+    await initGitRepo(repo, 'main', 'cached-review')
+    await writeFile(join(repo, 'README.md'), 'previous review\n'.repeat(300))
+    await writeFile(join(repo, 'zzz.ts'), 'export const preserved = true\n')
+    await addDirectoryViaUi(page, electronApp, repo)
+    await selectDefaultWorkspace(page, 'cached-review')
+    await observeChangesWorkers(page)
+    await gateDiffReads(page, electronApp)
+    await openChanges(page)
+    const pane = activeChanges(page)
+    const diff = pane.getByTestId('changes-diff')
+    await expect(diff).toContainText('previous review')
+    await expect(pane.getByTestId('changes-refresh')).toHaveAttribute('aria-busy', 'false')
+    await pane.getByRole('button', { name: 'Collapse all diffs', exact: true }).click()
+    await pane.getByRole('treeitem', { name: 'README.md', exact: true }).click()
+    const scroll = diff.locator(':scope > div').first()
+    await scroll.evaluate((element) => {
+      element.scrollTop = 240
+      element.setAttribute('data-preserved-review', 'true')
+    })
+    await expect.poll(() => scroll.evaluate((element) => element.scrollTop)).toBe(240)
+    const parsed = await page.evaluate(() => (window as ProbeWindow).changesWorkerProbe.requests)
+    expect(parsed).toBe(2)
+
+    await openAddTabMenu(page)
+    await page.getByTestId('open-terminal-tab').click()
+    await electronApp.evaluate(() => {
+      ;(globalThis as GateGlobal).changesDiffGate.hold = true
+    })
+    await page.getByTestId('changes-tab').click()
+    await expect(pane.getByTestId('changes-refresh')).toHaveAttribute('aria-busy', 'true')
+    await expect(diff.getByText('Loading changes…', { exact: true })).toHaveCount(0)
+    await expect(scroll).toHaveAttribute('data-preserved-review', 'true')
+    await expect.poll(() => scroll.evaluate((element) => element.scrollTop)).toBe(240)
+    await expect(pane.getByRole('treeitem', { name: 'README.md', exact: true })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    )
+    // Offscreen diff headers are virtualized; reveal it before checking its fold state.
+    await diff.locator('[data-change-path="zzz.ts"]').scrollIntoViewIfNeeded()
+    await expect(pane.getByRole('button', { name: 'Expand zzz.ts', exact: true })).toBeVisible()
+    await scroll.evaluate((element) => {
+      element.scrollTop = 240
+    })
+    await expect
+      .poll(() =>
+        electronApp.evaluate(() => (globalThis as GateGlobal).changesDiffGate.release.length)
+      )
+      .toBe(2)
+    await electronApp.evaluate(() => {
+      const state = (globalThis as GateGlobal).changesDiffGate
+      state.hold = false
+      state.release.splice(0).forEach((release) => release())
+    })
+    await expect(pane.getByTestId('changes-refresh')).toHaveAttribute('aria-busy', 'false')
+    expect(await page.evaluate(() => (window as ProbeWindow).changesWorkerProbe.requests)).toBe(
+      parsed
+    )
+    await expect(scroll).toHaveAttribute('data-preserved-review', 'true')
+
+    // A failed refresh retains the previous snapshot and its DOM.
+    await electronApp.evaluate(() => {
+      ;(globalThis as GateGlobal).changesDiffGate.fail = true
+    })
+    await pane.getByTestId('changes-refresh').click()
+    await expect(pane.getByRole('status')).toContainText('Simulated refresh failure')
+    await expect(scroll).toHaveAttribute('data-preserved-review', 'true')
+
+    // Only the changed file needs parsing when a later refresh succeeds.
+    await electronApp.evaluate(() => {
+      const state = (globalThis as GateGlobal).changesDiffGate
+      state.fail = false
+      state.files.find((file) => file.path === 'README.md')!.newContents =
+        'updated review\n'.repeat(300)
+    })
+    await pane.getByTestId('changes-refresh').click()
+    await expect(diff).toContainText('updated review')
+    await expect(pane.getByRole('status')).toHaveCount(0)
+    expect(await page.evaluate(() => (window as ProbeWindow).changesWorkerProbe.requests)).toBe(
+      parsed + 1
+    )
+    await expect(scroll).toHaveAttribute('data-preserved-review', 'true')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('parses heavy changes in workers with bounded reads and cancels when hidden', async ({
+  page,
+  electronApp
+}) => {
+  const root = await mkdtemp(join(tmpdir(), 'cerebro-changes-workers-'))
+  const repo = join(root, 'worker-review')
+  try {
+    await initGitRepo(repo, 'main', 'worker-review')
+    const names = Array.from(
+      { length: 16 },
+      (_, index) => `file-${String(index).padStart(2, '0')}.ts`
+    )
+    const before = Array.from(
+      { length: 1500 },
+      (_, index) => `const value${index} = ${index};`
+    ).join('\n')
+    const after = Array.from(
+      { length: 1500 },
+      (_, index) => `let changed${index} = "new${index}";`
+    ).join('\n')
+    await Promise.all(names.map((name) => writeFile(join(repo, name), before)))
+    await execFileAsync('git', ['add', '.'], { cwd: repo })
+    await execFileAsync('git', ['commit', '-m', 'baseline'], { cwd: repo })
+    await Promise.all(names.map((name) => writeFile(join(repo, name), after)))
+    await addDirectoryViaUi(page, electronApp, repo)
+    await selectDefaultWorkspace(page, 'worker-review')
+    await gateDiffReads(page, electronApp)
+    await observeChangesWorkers(page)
+    await openChanges(page)
+    await expect
+      .poll(() => page.evaluate(() => (window as ProbeWindow).changesWorkerProbe.pending))
+      .toBeGreaterThan(0)
+    await expect(
+      activeChanges(page).getByRole('treeitem', { name: names[0], exact: true })
+    ).toBeVisible()
+    // This must remain clickable while the real parser is busy on rewritten files.
+    await activeChanges(page).getByTestId('changes-sidebar-toggle').click({ timeout: 1500 })
+    await expect(activeChanges(page).getByTestId('changes-sidebar')).toHaveAttribute(
+      'data-state',
+      'collapsed'
+    )
+    await openAddTabMenu(page)
+    await page.getByTestId('open-terminal-tab').click()
+    await expect
+      .poll(() => page.evaluate(() => (window as ProbeWindow).changesWorkerProbe.terminated))
+      .toBe(1)
+    const cancelled = await page.evaluate(() => (window as ProbeWindow).changesWorkerProbe)
+    expect(cancelled.completed).toBeLessThan(names.length)
+    expect(cancelled.pending).toBe(0)
+
+    await page.getByTestId('changes-tab').click()
+    const pane = activeChanges(page)
+    await expect(pane.getByTestId('changes-diff')).toContainText('changed0', { timeout: 30_000 })
+    await expect(pane.getByTestId('changes-refresh')).toHaveAttribute('aria-busy', 'false')
+    await expect
+      .poll(() => page.evaluate(() => (window as ProbeWindow).changesWorkerProbe.highlightRequests))
+      .toBeGreaterThan(0)
+    await expect
+      .poll(() => page.evaluate(() => (window as ProbeWindow).changesWorkerProbe.highlighted))
+      .toBeGreaterThan(0)
+    const probe = await page.evaluate(() => (window as ProbeWindow).changesWorkerProbe)
+    expect(probe.ticks).toBeGreaterThan(10)
+    expect(probe.maxGap).toBeLessThan(1000)
+    expect(probe.failures).toBe(0)
+    expect(
+      await electronApp.evaluate(() => (globalThis as GateGlobal).changesDiffGate.maxInFlight)
+    ).toBeLessThanOrEqual(4)
+    console.log(
+      `Worker review: ${probe.ticks} responsive timer ticks; maximum gap ${Math.round(probe.maxGap)} ms`
+    )
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
 
 test('shows working-tree diffs in a Changes tab with a right-hand file list', async ({
   page,

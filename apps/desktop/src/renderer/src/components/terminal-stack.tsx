@@ -1,12 +1,17 @@
+import { TerminalOutput } from '../lib/terminal-output'
+import { restoreTerminalContinuation } from '@shared/terminal-state'
+import { forwardUserInputOnly } from '@/lib/terminal-input'
+import type { PtyDataEvent, PtyExitEvent } from '@shared/types'
 import type { LayoutState, LayoutCommand, PaneKind, SplitDirection } from '@cerebro/core'
 import { PaneFrame, SplitHandle } from './pane-layout'
 import { positionPanes } from '@/lib/pane-layout'
 import { DEFAULT_TERMINAL_THEME, type TerminalThemeId } from '@shared/terminal-themes'
 import { TERMINAL_PALETTES } from '@/lib/terminal-themes'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { acceptLayout, layoutOptions } from '@/lib/query-client'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
-import { CanvasAddon } from '@xterm/addon-canvas'
 import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
 import '@/assets/terminal.css'
@@ -26,7 +31,7 @@ type TerminalSessionProps = {
   fontSize: number
   themeId: TerminalThemeId
   fontFamilyPreference: string
-  onProcessExit: (tabId: number) => void
+  onStartupReady?: (paneId: number) => void
 }
 
 /** Trailing wait after the last layout change (window resize, sidebar rail drag). */
@@ -50,26 +55,16 @@ function waitForUsableSize(host: HTMLElement, isCancelled: () => boolean): Promi
 }
 
 function attachRenderer(terminal: Terminal, host: HTMLElement): void {
-  const attachCanvas = (): void => {
-    try {
-      terminal.loadAddon(new CanvasAddon())
-      host.dataset.terminalRenderer = 'canvas'
-    } catch {
-      // Canvas is optional; xterm's default DOM renderer still works.
-      host.dataset.terminalRenderer = 'dom'
-    }
-  }
-
   try {
     const webgl = new WebglAddon()
     webgl.onContextLoss(() => {
       webgl.dispose()
-      attachCanvas()
+      host.dataset.terminalRenderer = 'dom'
     })
     terminal.loadAddon(webgl)
     host.dataset.terminalRenderer = 'webgl'
   } catch {
-    attachCanvas()
+    host.dataset.terminalRenderer = 'dom'
   }
 }
 
@@ -98,157 +93,101 @@ function fitSession(
   // cell grid did not change.
   terminal.resize(grid.cols, grid.rows)
   if (sessionId != null && !exited) {
-    void window.cerebro.resizePty(sessionId, grid.cols, grid.rows)
+    void window.cerebro.resizePty(sessionId, grid.cols, grid.rows).catch(() => {})
   }
 }
 
-function TerminalSession({
-  workspaceId,
-  tabId,
-  paneId,
-  visible,
-  active,
-  fontSize,
-  fontFamilyPreference,
-  themeId,
-  onProcessExit
-}: TerminalSessionProps): React.JSX.Element {
-  const themeRef = useRef(themeId)
-  useLayoutEffect(() => {
-    themeRef.current = themeId
-  }, [themeId])
-  const hostRef = useRef<HTMLDivElement>(null)
-  const terminalRef = useRef<Terminal | null>(null)
-  const fitAddonRef = useRef<FitAddon | null>(null)
-  const sessionIdRef = useRef<number | null>(null)
-  const exitedRef = useRef(false)
-  const removeDataListenerRef = useRef<(() => void) | null>(null)
-  const removeExitListenerRef = useRef<(() => void) | null>(null)
-  const onProcessExitRef = useRef(onProcessExit)
-  const [ready, setReady] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+function TerminalNotices({
+  status,
+  previousScreen,
+  error,
+  onRestart
+}: {
+  status: string
+  previousScreen?: string
+  error: string | null
+  onRestart: () => void
+}): React.JSX.Element {
+  return (
+    <>
+      {status === 'connecting' ? (
+        <div className="absolute top-2 right-2 z-20 rounded bg-background px-2 py-1 text-xs text-muted-foreground">
+          Connecting…
+        </div>
+      ) : null}
+      {status === 'exited' ||
+      status === 'failed' ||
+      status === 'interrupted' ||
+      status === 'stopped' ? (
+        <div className="absolute right-2 bottom-2 z-20 flex items-center gap-2 rounded bg-background p-2 text-xs">
+          <span>
+            {status === 'exited'
+              ? 'Shell exited'
+              : status === 'stopped'
+                ? 'Terminal server stopped'
+                : status === 'interrupted'
+                  ? 'Shell stopped'
+                  : 'Shell failed to start'}
+          </span>
+          <button type="button" className="underline" onClick={onRestart}>
+            Restart
+          </button>
+        </div>
+      ) : null}
+      {previousScreen ? (
+        <details className="absolute top-2 left-2 z-20 max-h-64 max-w-full overflow-auto bg-background p-2 text-xs">
+          <summary>Previous interrupted screen</summary>
+          <pre>
+            {/* VT escape codes are intentionally removed from this read-only text view. */}
+            {previousScreen.replace(
+              // eslint-disable-next-line no-control-regex
+              /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))/g,
+              ''
+            )}
+          </pre>
+        </details>
+      ) : null}
+      {error ? (
+        <div className="absolute inset-x-0 bottom-0 bg-destructive/90 px-3 py-2 text-xs text-destructive-foreground">
+          {error}
+        </div>
+      ) : null}
+    </>
+  )
+}
 
+function useTerminalAppearance(
+  {
+    terminalRef,
+    fitAddonRef,
+    hostRef,
+    sessionIdRef,
+    exitedRef
+  }: {
+    terminalRef: RefObject<Terminal | null>
+    fitAddonRef: RefObject<FitAddon | null>
+    hostRef: RefObject<HTMLDivElement | null>
+    sessionIdRef: RefObject<number | null>
+    exitedRef: RefObject<boolean>
+  },
+  fontSize: number,
+  fontFamilyPreference: string,
+  themeId: TerminalThemeId,
+  ready: boolean
+): void {
   useEffect(() => {
-    if (terminalRef.current) {
-      terminalRef.current.options.theme = { ...TERMINAL_PALETTES[themeId] }
+    const terminal = terminalRef.current
+    if (!terminal) return
+    const theme = TERMINAL_PALETTES[themeId]
+    const current = terminal.options.theme ?? {}
+    // Applying the same theme after snapshot replay erases restored OSC colors.
+    if (
+      Object.keys(current).length !== Object.keys(theme).length ||
+      Object.entries(theme).some(([key, value]) => current[key as keyof typeof current] !== value)
+    ) {
+      terminal.options.theme = { ...theme }
     }
-  }, [themeId, ready])
-
-  useLayoutEffect(() => {
-    onProcessExitRef.current = onProcessExit
-  }, [onProcessExit])
-
-  useEffect(() => {
-    const host = hostRef.current
-    if (!host) return
-
-    let cancelled = false
-    let terminal: Terminal | undefined
-
-    const clearPtyListeners = (): void => {
-      removeDataListenerRef.current?.()
-      removeExitListenerRef.current?.()
-      removeDataListenerRef.current = null
-      removeExitListenerRef.current = null
-    }
-
-    void (async () => {
-      try {
-        const fontFamily = await resolveTerminalFontFamily(fontFamilyPreference)
-        if (cancelled || !hostRef.current) return
-
-        await waitForUsableSize(hostRef.current, () => cancelled)
-        if (cancelled || !hostRef.current) return
-
-        const fitAddon = new FitAddon()
-        terminal = new Terminal({
-          convertEol: true,
-          cursorBlink: true,
-          fontSize,
-          lineHeight: 1.1,
-          allowTransparency: false,
-          rescaleOverlappingGlyphs: true,
-          theme: { ...TERMINAL_PALETTES[themeRef.current] },
-          fontFamily
-        })
-        terminal.loadAddon(fitAddon)
-        terminal.open(hostRef.current)
-        attachRenderer(terminal, hostRef.current)
-        const initialGrid =
-          hostRef.current.clientWidth && hostRef.current.clientHeight
-            ? proposedGrid(fitAddon)
-            : undefined
-        if (initialGrid) terminal.resize(initialGrid.cols, initialGrid.rows)
-        hostRef.current.dataset.terminalFont = fontFamily.replaceAll('"', '')
-        hostRef.current.dataset.terminalFontSize = String(fontSize)
-
-        const xterm = terminal
-        xterm.onData((data) => {
-          const sessionId = sessionIdRef.current
-          if (exitedRef.current || sessionId == null) return
-          void window.cerebro.writePty(sessionId, data)
-        })
-
-        xterm.attachCustomKeyEventHandler((event) => {
-          const sequence = encodeExtendedKey(event)
-          if (sequence == null) return true
-          event.preventDefault()
-          xterm.input(sequence)
-          return false
-        })
-
-        terminalRef.current = terminal
-        fitAddonRef.current = fitAddon
-
-        const cols = Math.max(2, terminal.cols)
-        const rows = Math.max(1, terminal.rows)
-        const { sessionId } = await window.cerebro.openPty(workspaceId, cols, rows)
-        if (cancelled) {
-          void window.cerebro.killPty(sessionId)
-          return
-        }
-
-        clearPtyListeners()
-        sessionIdRef.current = sessionId
-        exitedRef.current = false
-
-        removeDataListenerRef.current = window.cerebro.onPtyData((event) => {
-          if (event.sessionId !== sessionIdRef.current) return
-          terminalRef.current?.write(event.data)
-        })
-
-        removeExitListenerRef.current = window.cerebro.onPtyExit((event) => {
-          if (event.sessionId !== sessionIdRef.current) return
-          exitedRef.current = true
-          sessionIdRef.current = null
-          onProcessExitRef.current(paneId)
-        })
-
-        setReady(true)
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Failed to open terminal.')
-        }
-      }
-    })()
-
-    return () => {
-      cancelled = true
-      setReady(false)
-      clearPtyListeners()
-      const sessionId = sessionIdRef.current
-      sessionIdRef.current = null
-      if (sessionId != null) {
-        void window.cerebro.killPty(sessionId)
-      }
-      terminal?.dispose()
-      terminalRef.current = null
-      fitAddonRef.current = null
-    }
-    // Recreate only when the tab changes; font updates apply live below.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: font props handled in separate effect
-  }, [workspaceId, paneId])
-
+  }, [terminalRef, themeId, ready])
   useEffect(() => {
     const terminal = terminalRef.current
     const fitAddon = fitAddonRef.current
@@ -273,7 +212,220 @@ function TerminalSession({
     return () => {
       cancelled = true
     }
-  }, [fontSize, fontFamilyPreference])
+  }, [
+    terminalRef,
+    fitAddonRef,
+    hostRef,
+    sessionIdRef,
+    exitedRef,
+    fontSize,
+    fontFamilyPreference,
+    ready
+  ])
+}
+
+function TerminalSession({
+  workspaceId,
+  tabId,
+  paneId,
+  visible,
+  active,
+  fontSize,
+  fontFamilyPreference,
+  themeId,
+  onStartupReady
+}: TerminalSessionProps): React.JSX.Element {
+  const themeRef = useRef(themeId)
+  useLayoutEffect(() => {
+    themeRef.current = themeId
+  }, [themeId])
+  const hostRef = useRef<HTMLDivElement>(null)
+  const terminalRef = useRef<Terminal | null>(null)
+  const fitAddonRef = useRef<FitAddon | null>(null)
+  const sessionIdRef = useRef<number | null>(null)
+  const exitedRef = useRef(false)
+  const removeDataListenerRef = useRef<(() => void) | null>(null)
+  const removeExitListenerRef = useRef<(() => void) | null>(null)
+  const restarting = useRef(false)
+  const [status, setStatus] = useState('connecting')
+  const [generation, setGeneration] = useState(0)
+  const [previousScreen, setPreviousScreen] = useState<string | undefined>()
+  const [ready, setReady] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  useEffect(() => {
+    // Failed/exited panes have a visible recovery notice; never strand the splash.
+    if (ready || error) onStartupReady?.(paneId)
+  }, [ready, error, paneId, onStartupReady])
+  useTerminalAppearance(
+    { terminalRef, fitAddonRef, hostRef, sessionIdRef, exitedRef },
+    fontSize,
+    fontFamilyPreference,
+    themeId,
+    ready
+  )
+  useEffect(() => {
+    if (status !== 'disconnected') return
+    const timer = setTimeout(() => {
+      setStatus('connecting')
+      setGeneration((value) => value + 1)
+    }, 750)
+    return () => clearTimeout(timer)
+  }, [status])
+
+  useEffect(() => {
+    const host = hostRef.current
+    if (!host) return
+
+    let cancelled = false
+    let terminal: Terminal | undefined
+    let sequence = -1
+    let initializing = true
+    const buffered: PtyDataEvent[] = []
+    const bufferedStatuses: PtyExitEvent[] = []
+
+    let output: TerminalOutput | undefined
+    const clearPtyListeners = (): void => {
+      removeDataListenerRef.current?.()
+      removeExitListenerRef.current?.()
+      removeDataListenerRef.current = null
+      removeExitListenerRef.current = null
+    }
+
+    void (async () => {
+      try {
+        const fontFamily = await resolveTerminalFontFamily(fontFamilyPreference)
+        if (cancelled || !hostRef.current) return
+
+        await waitForUsableSize(hostRef.current, () => cancelled)
+        if (cancelled || !hostRef.current) return
+
+        const fitAddon = new FitAddon()
+        terminal = new Terminal({
+          convertEol: true,
+          scrollback: 10000,
+          cursorBlink: true,
+          fontSize,
+          lineHeight: 1.1,
+          allowTransparency: false,
+          minimumContrastRatio: 1,
+          customGlyphs: true,
+          reflowCursorLine: false,
+          rescaleOverlappingGlyphs: true,
+          theme: { ...TERMINAL_PALETTES[themeRef.current] },
+          fontFamily
+        })
+        forwardUserInputOnly(terminal)
+        terminal.loadAddon(fitAddon)
+        terminal.open(hostRef.current)
+        attachRenderer(terminal, hostRef.current)
+        const initialGrid =
+          hostRef.current.clientWidth && hostRef.current.clientHeight
+            ? proposedGrid(fitAddon)
+            : undefined
+        if (initialGrid) terminal.resize(initialGrid.cols, initialGrid.rows)
+        hostRef.current.dataset.terminalFont = fontFamily.replaceAll('"', '')
+        hostRef.current.dataset.terminalFontSize = String(fontSize)
+
+        const xterm = terminal
+        xterm.onData((data) => {
+          const sessionId = sessionIdRef.current
+          if (exitedRef.current || sessionId == null) return
+          void window.cerebro.writePty(sessionId, data).catch((error) => {
+            if (!cancelled) setError(String(error))
+          })
+        })
+
+        xterm.attachCustomKeyEventHandler((event) => {
+          const sequence = encodeExtendedKey(event)
+          if (sequence == null) return true
+          event.preventDefault()
+          xterm.input(sequence)
+          return false
+        })
+
+        terminalRef.current = terminal
+        fitAddonRef.current = fitAddon
+
+        output = new TerminalOutput((data, callback) => terminal!.write(data, callback))
+        const applyData = (event: PtyDataEvent): void => {
+          if (initializing) {
+            buffered.push(event)
+            return
+          }
+          if (event.sessionId !== sessionIdRef.current || event.sequence <= sequence) return
+          sequence = event.sequence
+          if (event.cols !== terminal!.cols || event.rows !== terminal!.rows)
+            terminal!.resize(event.cols, event.rows)
+          output!.push(event.data, () => {
+            if (!cancelled) window.cerebro.ackPty(event.sessionId, event.sequence)
+          })
+        }
+        clearPtyListeners()
+        removeDataListenerRef.current = window.cerebro.onPtyData(applyData)
+        const applyStatus = (event: PtyExitEvent): void => {
+          if (initializing) {
+            bufferedStatuses.push(event)
+            return
+          }
+          if (event.sessionId !== sessionIdRef.current) return
+          const next = event.status ?? 'exited'
+          setStatus(next)
+          setError(event.error ?? null)
+          exitedRef.current = next !== 'running'
+        }
+        removeExitListenerRef.current = window.cerebro.onPtyExit(applyStatus)
+        const snapshot = await window.cerebro.openPty(workspaceId, paneId)
+        if (cancelled) {
+          void window.cerebro.killPty(snapshot.sessionId).catch(() => {})
+          return
+        }
+        sessionIdRef.current = snapshot.sessionId
+        hostRef.current!.dataset.terminalSessionId = String(snapshot.sessionId)
+        sequence = snapshot.sequence
+        exitedRef.current = snapshot.status !== 'running' || Boolean(snapshot.readOnly)
+        terminal.options.disableStdin = Boolean(snapshot.readOnly)
+        terminal.options.scrollback = snapshot.scrollback ?? 10000
+        terminal.resize(snapshot.cols, snapshot.rows)
+        await new Promise<void>((resolve) => terminal!.write(snapshot.data, resolve))
+        if (cancelled) return
+        if (snapshot.continuation) restoreTerminalContinuation(terminal, snapshot.continuation)
+        initializing = false
+        for (const event of buffered) applyData(event)
+        buffered.length = 0
+        setStatus(snapshot.status)
+        setError(snapshot.error ?? null)
+        setPreviousScreen(snapshot.previousScreen)
+        if (!snapshot.readOnly)
+          fitSession(terminal, fitAddon, snapshot.sessionId, exitedRef.current)
+
+        for (const event of bufferedStatuses) applyStatus(event)
+        bufferedStatuses.length = 0
+        setReady(true)
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to open terminal.')
+          if (/mux|connect|server/i.test(String(err))) setStatus('disconnected')
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+      setReady(false)
+      clearPtyListeners()
+      const sessionId = sessionIdRef.current
+      sessionIdRef.current = null
+      if (sessionId != null) {
+        void window.cerebro.killPty(sessionId).catch(() => {})
+      }
+      output?.dispose()
+      terminal?.dispose()
+      terminalRef.current = null
+      fitAddonRef.current = null
+    }
+    // Recreate only when the tab changes; font updates apply live below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: font props handled in separate effect
+  }, [workspaceId, paneId, generation])
 
   useLayoutEffect(() => {
     if (!active || !ready) return
@@ -326,6 +478,7 @@ function TerminalSession({
       data-terminal-workspace-id={workspaceId}
       data-terminal-tab-id={tabId}
       data-terminal-pane-id={paneId}
+      data-terminal-status={status}
       data-terminal-active={active ? 'true' : 'false'}
       className="absolute inset-0"
       style={{
@@ -340,11 +493,22 @@ function TerminalSession({
         data-terminal-theme={themeId}
         style={{ backgroundColor: TERMINAL_PALETTES[themeId].background ?? '#000000' }}
       />
-      {error ? (
-        <div className="absolute inset-x-0 bottom-0 bg-destructive/90 px-3 py-2 text-xs text-destructive-foreground">
-          {error}
-        </div>
-      ) : null}
+      <TerminalNotices
+        status={status}
+        previousScreen={previousScreen}
+        error={error}
+        onRestart={() => {
+          if (restarting.current) return
+          restarting.current = true
+          void window.cerebro
+            .restartPty(workspaceId, paneId)
+            .then(() => setGeneration((value) => value + 1))
+            .catch((error) => setError(String(error)))
+            .finally(() => {
+              restarting.current = false
+            })
+        }}
+      />
     </div>
   )
 }
@@ -367,7 +531,10 @@ type TerminalStackProps = {
   themeId: TerminalThemeId | null
   fontFamily: string | null
   onSelectWorkspace: (workspaceId: number) => void
+  onStartupReady?: () => void
 }
+
+const EMPTY_LAYOUT: LayoutState = { revision: -1, workspaces: {} }
 
 export function TerminalStack({
   visible,
@@ -375,35 +542,37 @@ export function TerminalStack({
   fontSize,
   fontFamily,
   themeId,
-  onSelectWorkspace
+  onSelectWorkspace,
+  onStartupReady
 }: TerminalStackProps): React.JSX.Element {
-  const [layout, setLayout] = useState<LayoutState>({ revision: -1, workspaces: {} })
+  const layoutQuery = useQuery(layoutOptions)
+  const layout = layoutQuery.data ?? EMPTY_LAYOUT
+  const [readyPanes, setReadyPanes] = useState<Set<string>>(() => new Set())
+  const paneReady = useCallback(
+    (paneId: number) => {
+      const key = `${layout.epoch}:${paneId}`
+      setReadyPanes((current) => (current.has(key) ? current : new Set([...current, key])))
+    },
+    [layout.epoch]
+  )
   const [error, setError] = useState<string | null>(null)
   useEffect(() => window.cerebro.onLayoutFocusWorkspace(onSelectWorkspace), [onSelectWorkspace])
-  const accept = (next: LayoutState): void =>
-    setLayout((current) => (next.revision >= current.revision ? next : current))
   useEffect(() => {
-    let cancelled = false
-    const acceptInitial = (next: LayoutState): void => {
-      if (!cancelled) accept(next)
-    }
-    const unsubscribe = window.cerebro.onLayoutChanged(acceptInitial)
-    void window.cerebro
-      .getLayout()
-      .then(acceptInitial)
-      .catch((error) => {
-        if (!cancelled) setError(String(error))
-      })
-    return () => {
-      cancelled = true
-      unsubscribe()
-    }
-  }, [])
+    if (!onStartupReady || layout.revision < 0) return
+    const workspace = activeWorkspaceId == null ? undefined : layout.workspaces[activeWorkspaceId]
+    const tab = workspace?.tabs.find((tab) => tab.id === workspace.activeTabId)
+    const terminals =
+      visible && tab
+        ? positionPanes(tab.root).panes.filter(({ pane }) => pane.kind === 'terminal')
+        : []
+    if (terminals.every(({ pane }) => readyPanes.has(`${layout.epoch}:${pane.id}`)))
+      onStartupReady()
+  }, [layout, activeWorkspaceId, visible, readyPanes, onStartupReady])
   const command = (request: LayoutCommand): void => {
     setError(null)
     void window.cerebro
       .layoutCommand(request)
-      .then((reply) => accept(reply.state))
+      .then((reply) => acceptLayout(reply.state))
       .catch((error) => setError(String(error)))
   }
   const workspace = activeWorkspaceId == null ? undefined : layout.workspaces[activeWorkspaceId]
@@ -413,7 +582,7 @@ export function TerminalStack({
   const openChanges = (workspaceId: number): void =>
     command({ target: 'tab', action: 'open-changes', workspaceId })
   useKeybindHandler('newTerminal', () => {
-    if (!visible) return false
+    if (!visible || onStartupReady) return false
     const target = focusedWorkspaceId() ?? activeWorkspaceId
     if (target == null) return false
     if (target !== activeWorkspaceId) onSelectWorkspace(target)
@@ -421,7 +590,7 @@ export function TerminalStack({
     return true
   })
   useKeybindHandler('openChanges', () => {
-    if (!visible) return false
+    if (!visible || onStartupReady) return false
     const target = focusedWorkspaceId() ?? activeWorkspaceId
     if (target == null) return false
     if (target !== activeWorkspaceId) onSelectWorkspace(target)
@@ -429,7 +598,7 @@ export function TerminalStack({
     return true
   })
   useKeybindHandler('closeTab', () => {
-    if (!visible || activeWorkspaceId == null || activeTabId == null) return false
+    if (!visible || onStartupReady || activeWorkspaceId == null || activeTabId == null) return false
     command({ target: 'tab', action: 'close', workspaceId: activeWorkspaceId, tabId: activeTabId })
     return true
   })
@@ -470,9 +639,9 @@ export function TerminalStack({
           onAddPane={addPane}
         />
       ) : null}
-      {error ? (
+      {error || layoutQuery.error ? (
         <div role="alert" className="bg-destructive/15 px-3 py-2 text-xs text-destructive">
-          {error}
+          {error ?? layoutQuery.error?.message}
         </div>
       ) : null}
       <div
@@ -480,7 +649,9 @@ export function TerminalStack({
         className="relative min-h-0 flex-1 overflow-hidden"
         style={{
           backgroundColor:
-            TERMINAL_PALETTES[themeId ?? DEFAULT_TERMINAL_THEME].background ?? '#000000'
+            activeTabId == null
+              ? '#000000'
+              : (TERMINAL_PALETTES[themeId ?? DEFAULT_TERMINAL_THEME].background ?? '#000000')
         }}
       >
         {Object.entries(layout.workspaces).flatMap(([workspaceKey, workspace]) =>
@@ -489,6 +660,9 @@ export function TerminalStack({
             const shown =
               visible && workspaceId === activeWorkspaceId && tab.id === workspace.activeTabId
             const { panes, splits } = positionPanes(tab.root)
+            // Keep Changes DOM and view state across tab switches. Terminal surfaces still
+            // detach when hidden; their processes and output remain owned by the mux.
+            if (!shown && !panes.some(({ pane }) => pane.kind === 'changes')) return null
             return (
               <div
                 key={tab.id}
@@ -502,6 +676,7 @@ export function TerminalStack({
                 inert={!shown}
               >
                 {panes.map(({ pane, rect }) => {
+                  if (!shown && pane.kind !== 'changes') return null
                   const active = shown && tab.activePaneId === pane.id
                   const close = (): void =>
                     command({
@@ -532,18 +707,29 @@ export function TerminalStack({
                     >
                       {pane.kind === 'terminal' ? (
                         <TerminalSession
+                          key={layout.epoch}
                           workspaceId={workspaceId}
                           tabId={tab.id}
                           paneId={pane.id}
                           visible={shown}
-                          active={active}
+                          active={active && !onStartupReady}
+                          onStartupReady={onStartupReady ? paneReady : undefined}
                           fontSize={fontSize ?? DEFAULT_TERMINAL_FONT_SIZE}
                           themeId={themeId ?? DEFAULT_TERMINAL_THEME}
                           fontFamilyPreference={fontFamily ?? TERMINAL_FONT_FAMILY_AUTO}
-                          onProcessExit={close}
+                        />
+                      ) : pane.kind === 'changes' ? (
+                        <ChangesView
+                          workspaceId={workspaceId}
+                          paneId={pane.id}
+                          repositoryId={pane.repositoryId}
+                          savedState={pane.state}
+                          active={shown}
                         />
                       ) : (
-                        <ChangesView workspaceId={workspaceId} active={shown} />
+                        <div className="p-4 text-sm text-muted-foreground">
+                          Unsupported pane type: {pane.kind}
+                        </div>
                       )}
                     </PaneFrame>
                   )

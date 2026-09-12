@@ -22,6 +22,9 @@ const api: CerebroApi = {
   getCliStatus: () => ipcRenderer.invoke(IPC.cli.status),
   installCli: () => ipcRenderer.invoke(IPC.cli.install),
   removeCli: () => ipcRenderer.invoke(IPC.cli.remove),
+  setPaneState: (workspaceId, paneId, state) =>
+    ipcRenderer.invoke(IPC.layout.paneState, workspaceId, paneId, state),
+  restartPty: (workspaceId, paneId) => ipcRenderer.invoke(IPC.pty.restart, workspaceId, paneId),
   getLayout: () => ipcRenderer.invoke(IPC.layout.get),
   onLayoutFocusWorkspace: (listener) => {
     const handler = (_event: IpcRendererEvent, workspaceId: number): void => listener(workspaceId)
@@ -54,8 +57,8 @@ const api: CerebroApi = {
   removeWorkspace: (workspaceId, deleteFiles) =>
     ipcRenderer.invoke(IPC.workspaces.remove, workspaceId, deleteFiles),
   listProjectBranches: (projectId) => ipcRenderer.invoke(IPC.projects.listBranches, projectId),
-  listWorkspaceChanges: (workspaceId) =>
-    ipcRenderer.invoke(IPC.workspaces.listChanges, workspaceId),
+  listWorkspaceChanges: (workspaceId, repositoryId) =>
+    ipcRenderer.invoke(IPC.workspaces.listChanges, workspaceId, repositoryId),
   getWorkspaceFileDiff: (workspaceId, repositoryId, file) =>
     ipcRenderer.invoke(IPC.workspaces.getFileDiff, workspaceId, repositoryId, file),
   openExternal: (url) => ipcRenderer.invoke(IPC.shell.openExternal, url),
@@ -91,7 +94,8 @@ const api: CerebroApi = {
       ipcRenderer.removeListener(IPC.keybinds.menuClose, handler)
     }
   },
-  openPty: (workspaceId, cols, rows) => ipcRenderer.invoke(IPC.pty.open, workspaceId, cols, rows),
+  openPty: (workspaceId, paneId) => ipcRenderer.invoke(IPC.pty.open, workspaceId, paneId),
+  ackPty: (sessionId, sequence) => ipcRenderer.send(IPC.pty.ack, sessionId, sequence),
   writePty: (sessionId, data) => ipcRenderer.invoke(IPC.pty.write, sessionId, data),
   resizePty: (sessionId, cols, rows) => ipcRenderer.invoke(IPC.pty.resize, sessionId, cols, rows),
   killPty: (sessionId) => ipcRenderer.invoke(IPC.pty.kill, sessionId),

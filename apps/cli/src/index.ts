@@ -1,4 +1,7 @@
 #!/usr/bin/env node --no-warnings
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { serverCommand } from './commands/server'
 /**
  * cerebro CLI — project and workspace management for humans and coding agents.
  *
@@ -29,8 +32,9 @@ Usage: cerebro <command> [options]
 Commands:
   project    Manage projects (cloned git repositories or opened folders)
   workspace  Manage workspaces (default branch + git worktrees)
-  tab        Manage live workspace tabs (desktop app required)
-  pane       Manage BSP panes inside tabs (desktop app required)
+  tab        Manage persistent workspace tabs
+  pane       Manage persistent BSP panes inside tabs
+  server     Manage the background terminal server
 
 Options:
   --version  Print version
@@ -50,13 +54,21 @@ async function main(): Promise<void> {
   }
 
   if (command === '--version') {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const version =
       typeof __CEREBRO_CLI_VERSION__ !== 'undefined'
         ? __CEREBRO_CLI_VERSION__
-        : (require('../package.json') as { version: string }).version
+        : (
+            JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf8')) as {
+              version: string
+            }
+          ).version
     process.stdout.write(version + '\n')
     process.exit(0)
+  }
+
+  if (command === 'server') {
+    await serverCommand(rest)
+    return
   }
 
   if (command === 'tab' || command === 'pane') {

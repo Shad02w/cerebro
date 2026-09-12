@@ -14,12 +14,13 @@ export default defineConfig({
     resolve: {
       alias: {
         '@shared': shared,
-        '@cerebro/core': coreSrc
+        '@cerebro/core': coreSrc,
+        '@cerebro/mux': resolve('../../packages/mux/src/client.ts')
       }
     },
     build: {
       // Bundle workspace core into main. It is not a runtime Node dependency.
-      externalizeDeps: { exclude: ['@cerebro/core'] },
+      externalizeDeps: { exclude: ['@cerebro/core', '@cerebro/mux'] },
       rollupOptions: {
         external: ['node:sqlite', 'node-pty']
       }

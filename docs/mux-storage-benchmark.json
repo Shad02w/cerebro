@@ -1,0 +1,23 @@
+{
+  "date": "2026-09-12T08:17:36.331Z",
+  "node": "v24.11.0",
+  "platform": "darwin",
+  "batches": 40,
+  "recordsPerBatch": 128,
+  "bytesPerRecord": 2186,
+  "file": {
+    "durableBatchMs": {
+      "p50": 6.129,
+      "p95": 13.794
+    },
+    "bytes": 11192320
+  },
+  "sqlite": {
+    "durableBatchMs": {
+      "p50": 1.043,
+      "p95": 10.231
+    },
+    "bytes": 21024768
+  },
+  "notes": "Storage-only microbenchmark, no VT parsing or recovery snapshots. Both sync each identical batch; this tests burst cost of the one-second durability policy, not elapsed one-second intervals. SQLite uses WAL/FULL and includes automatic checkpoint costs."
+}

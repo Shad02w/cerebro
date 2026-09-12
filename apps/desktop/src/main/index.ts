@@ -1,15 +1,14 @@
+import { appIdentity } from './app-identity'
 import { app, shell, BrowserWindow, nativeTheme } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { closeDb } from './db'
 import { registerSettingsIpc, registerWorkspaceIpc } from './ipc'
-import { startSocketServer, stopSocketServer } from './ipc-socket'
+import { getMux, disconnectMux } from './mux'
 import { setAppMenu } from './menu'
 import { registerNativeCommandIpc } from './native-commands'
 import { ensureCerebroHome } from './paths'
-import { clearActiveWorkspace } from './projects'
-import { killAllPtys } from './pty'
 import { registerCliIpc } from './cli-install'
 import { IPC } from '../shared/ipc'
 
@@ -35,7 +34,7 @@ function createWindow(): void {
           }
         }
       : {}),
-    ...(process.platform === 'linux' ? { icon } : {}),
+    icon,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -67,15 +66,15 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   nativeTheme.themeSource = 'dark'
-  electronApp.setAppUserModelId('com.cerebro.app')
+  if (process.platform === 'darwin') app.dock?.setIcon(icon)
+  electronApp.setAppUserModelId(appIdentity.appId)
   setAppMenu()
   ensureCerebroHome()
-  clearActiveWorkspace()
   registerWorkspaceIpc()
   registerSettingsIpc()
   registerCliIpc()
   registerNativeCommandIpc()
-  startSocketServer()
+  void getMux().catch((error) => console.error('[mux]', error.message))
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
@@ -94,8 +93,8 @@ app.on('window-all-closed', () => {
   }
 })
 
-app.on('before-quit', () => {
-  stopSocketServer()
-  killAllPtys()
+app.on('before-quit', (event) => {
+  if (event.defaultPrevented) return
+  disconnectMux()
   closeDb()
 })

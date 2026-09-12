@@ -105,6 +105,21 @@ export function SplitHandle({
   onResize
 }: PositionedSplit & { priority: number; onResize: (ratio: number) => void }): React.JSX.Element {
   const drag = useRef<{ start: number; size: number } | null>(null)
+  const resizeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingRatio = useRef<number | null>(null)
+  useEffect(
+    () => () => {
+      if (resizeTimer.current) clearTimeout(resizeTimer.current)
+    },
+    []
+  )
+  const flushResize = (): void => {
+    if (resizeTimer.current) clearTimeout(resizeTimer.current)
+    if (pendingRatio.current !== null) {
+      onResize(pendingRatio.current)
+      pendingRatio.current = null
+    }
+  }
   const right = split.direction === 'right'
   const style: CSSProperties = right
     ? {
@@ -154,13 +169,17 @@ export function SplitHandle({
         if (!drag.current) return
         const ratio =
           ((right ? event.clientX : event.clientY) - drag.current.start) / drag.current.size
-        onResize(Math.max(0.1, Math.min(0.9, ratio)))
+        pendingRatio.current = Math.max(0.1, Math.min(0.9, ratio))
+        if (resizeTimer.current) clearTimeout(resizeTimer.current)
+        resizeTimer.current = setTimeout(flushResize, 40)
       }}
       onPointerUp={(event) => {
+        flushResize()
         drag.current = null
         event.currentTarget.releasePointerCapture(event.pointerId)
       }}
       onLostPointerCapture={() => {
+        flushResize()
         drag.current = null
       }}
       onKeyDown={(event) => {

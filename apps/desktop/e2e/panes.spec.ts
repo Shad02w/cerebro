@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import type { Project, WorkspaceTab, Pane } from '@cerebro/core'
 import type { Locator } from '@playwright/test'
-import { test, expect, type Page, type ElectronApplication } from './fixtures'
+import { test, expect, stopMux, type Page, type ElectronApplication } from './fixtures'
 
 const exec = promisify(execFile)
 const cliPath = resolve(__dirname, '../../cli/dist/index.js')
@@ -143,12 +143,12 @@ test('UI adds mixed BSP panes, preserves terminals, resizes and collapses splits
       })
     expect(color.actual).toBe(color.expected)
     // Floating controls must not cover the Changes view's own controls.
-    await pane(page, third).getByTestId('changes-sidebar-toggle').click()
+    await pane(page, third).getByTestId('changes-sidebar-toggle').filter({ visible: true }).click()
     await expect(pane(page, third).getByTestId('changes-sidebar')).toHaveAttribute(
       'data-state',
       'collapsed'
     )
-    await pane(page, third).getByTestId('changes-sidebar-toggle').click()
+    await pane(page, third).getByTestId('changes-sidebar-toggle').filter({ visible: true }).click()
     await expect(pane(page, third).getByTestId('changes-sidebar')).toHaveAttribute(
       'data-state',
       'expanded'
@@ -220,9 +220,15 @@ test('CLI and Electron share pane IDs, focus, BSP ratios and close behavior', as
     const ws = String(workspaceId)
     const tab: WorkspaceTab = await cli<WorkspaceTab>(home, 'tab', 'create', '--workspace', ws)
     await expect(pane(page, tab.activePaneId).locator('.xterm')).toBeVisible()
-    await pane(page, tab.activePaneId)
-      .locator('.xterm')
-      .evaluate((el) => el.setAttribute('data-preserved', 'cli'))
+    const originalSession = await cli<{ sessionId: string }>(
+      home,
+      'pane',
+      'capture',
+      '--workspace',
+      ws,
+      '--pane',
+      String(tab.activePaneId)
+    )
     const added = await cli<Pane>(
       home,
       'pane',
@@ -289,10 +295,17 @@ test('CLI and Electron share pane IDs, focus, BSP ratios and close behavior', as
     await expect(pane(page, secondTab.activePaneId)).toBeVisible()
     await cli(home, 'tab', 'focus', '--workspace', ws, '--tab', String(tab.id))
     await expect(pane(page, added.id)).toHaveAttribute('data-pane-active', 'true')
-    await expect(pane(page, tab.activePaneId).locator('.xterm')).toHaveAttribute(
-      'data-preserved',
-      'cli'
+    // Hidden renderers may unmount; the owning shell must remain the same.
+    const reattachedSession = await cli<{ sessionId: string }>(
+      home,
+      'pane',
+      'capture',
+      '--workspace',
+      ws,
+      '--pane',
+      String(tab.activePaneId)
     )
+    expect(reattachedSession.sessionId).toBe(originalSession.sessionId)
     await cli(
       home,
       'tab',
@@ -311,8 +324,10 @@ test('CLI and Electron share pane IDs, focus, BSP ratios and close behavior', as
     await cli(home, 'pane', 'close', '--workspace', ws, '--pane', String(added.id))
     await expect(pane(page, added.id)).toHaveCount(0)
     await expect(pane(page, third.id)).toHaveAttribute('data-pane-active', 'true')
-    // Process exit closes only its pane, leaving the other terminal and tab intact.
+    // Process exit retains output; explicit close removes only that pane.
     await shell(page, third.id, 'exit')
+    await expect(pane(page, third.id).getByText('Shell exited', { exact: true })).toBeVisible()
+    await cli(home, 'pane', 'close', '--workspace', ws, '--pane', String(third.id))
     await expect(pane(page, third.id)).toHaveCount(0)
     await expect(pane(page, tab.activePaneId)).toBeVisible()
     await cli(home, 'pane', 'close', '--workspace', ws, '--pane', String(tab.activePaneId))
@@ -351,6 +366,12 @@ test('CLI rejects invalid and cross-workspace targets without changing the layou
     await expect(pane(page, tab.activePaneId).getByTestId('changes-view')).toContainText('one')
     await expect(pane(page, tab.activePaneId).getByTestId('changes-view')).toContainText('two')
     const other = await cli<WorkspaceTab>(home, 'tab', 'create', '--workspace', String(nested.id))
+    await expect
+      .poll(async () => {
+        const tabs = await cli<WorkspaceTab[]>(home, 'tab', 'list', '--workspace', String(root.id))
+        return tabs[0].root.type === 'pane' ? tabs[0].root.state?.selectedId : null
+      })
+      .toBeTruthy()
     const before = await cli(home, 'tab', 'list', '--workspace', String(root.id))
     const badCases = [
       {
@@ -456,7 +477,7 @@ test('CLI rejects invalid and cross-workspace targets without changing the layou
   }
 })
 
-test('CLI reports unavailable when the desktop app is not running', async () => {
+test('CLI starts mux without the desktop and returns structured workspace errors', async () => {
   const home = await mkdtemp(join(tmpdir(), 'cerebro-pane-offline-'))
   try {
     const error = await cli(home, 'tab', 'list', '--workspace', '1').then(
@@ -464,8 +485,9 @@ test('CLI reports unavailable when the desktop app is not running', async () => 
       (error) => error
     )
     expect(error?.code).toBe(1)
-    expect(JSON.parse(error.stderr).code).toBe('unavailable')
+    expect(JSON.parse(error.stderr).code).toBe('not_found')
   } finally {
+    await stopMux(home)
     await rm(home, { recursive: true, force: true })
   }
 })

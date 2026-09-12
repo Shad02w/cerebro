@@ -13,7 +13,8 @@
     "forceConsistentCasingInFileNames": true,
     "typeRoots": ["../../apps/desktop/node_modules/@types", "../../node_modules/@types"],
     "paths": {
-      "@cerebro/core": ["../../packages/core/dist/index.d.ts"]
+      "@cerebro/core": ["../../packages/core/dist/index.d.ts"],
+      "@cerebro/mux": ["../../packages/mux/dist/client.d.ts"]
     }
   },
   "include": ["src/**/*"]

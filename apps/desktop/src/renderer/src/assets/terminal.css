@@ -27,15 +27,15 @@
   padding: 0;
 }
 
-.terminal-host .xterm .xterm-viewport {
-  background-color: inherit;
-  overflow-y: auto;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+/* xterm 6 owns scrolling through its scrollable element. Hide the slider
+ * without disabling wheel scrolling or changing the cell-grid calculation. */
+.terminal-host .xterm .xterm-scrollable-element > .scrollbar {
+  opacity: 0 !important;
+  pointer-events: none;
 }
 
-.terminal-host .xterm .xterm-viewport::-webkit-scrollbar {
-  display: none;
-  width: 0;
-  height: 0;
+/* xterm 6 still mounts the legacy viewport, but only themes the new scrollable
+ * element. Let the host background show below the last complete terminal row. */
+.terminal-host .xterm .xterm-viewport {
+  background-color: transparent;
 }

@@ -11,7 +11,8 @@
     "lint": "node -e \"process.exit(0)\""
   },
   "dependencies": {
-    "@cerebro/core": "workspace:*"
+    "@cerebro/core": "workspace:*",
+    "@cerebro/mux": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.19.1",

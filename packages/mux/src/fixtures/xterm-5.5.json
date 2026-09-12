@@ -1,0 +1,654 @@
+{
+  "engine": "5.5.0",
+  "cases": [
+    {
+      "snapshot": {
+        "data": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "continuation": {
+          "version": 1,
+          "charset": {
+            "glevel": 0,
+            "_charsets": []
+          },
+          "normal": {
+            "savedX": 0,
+            "savedY": 0,
+            "savedCurAttrData": {
+              "fg": 0,
+              "bg": 0,
+              "extended": {
+                "_ext": 0,
+                "_urlId": 0
+              }
+            },
+            "scrollTop": 0,
+            "scrollBottom": 23,
+            "tabs": {
+              "0": true,
+              "8": true,
+              "16": true,
+              "24": true,
+              "32": true,
+              "40": true,
+              "48": true,
+              "56": true,
+              "64": true,
+              "72": true
+            }
+          },
+          "alternate": {
+            "savedX": 0,
+            "savedY": 0,
+            "savedCurAttrData": {
+              "fg": 0,
+              "bg": 0,
+              "extended": {
+                "_ext": 0,
+                "_urlId": 0
+              }
+            },
+            "scrollTop": 0,
+            "scrollBottom": 23,
+            "tabs": {
+              "0": true,
+              "8": true,
+              "16": true,
+              "24": true,
+              "32": true,
+              "40": true,
+              "48": true,
+              "56": true,
+              "64": true,
+              "72": true
+            }
+          },
+          "modes": {
+            "insertMode": false
+          },
+          "privateModes": {
+            "applicationCursorKeys": false,
+            "applicationKeypad": false,
+            "bracketedPasteMode": false,
+            "origin": false,
+            "reverseWraparound": false,
+            "sendFocus": false,
+            "wraparound": true
+          },
+          "attributes": {
+            "fg": 0,
+            "bg": 0,
+            "extended": {
+              "_ext": 0,
+              "_urlId": 0
+            }
+          },
+          "cursorHidden": false,
+          "mouseProtocol": "NONE",
+          "mouseEncoding": "DEFAULT"
+        }
+      },
+      "suffix": "\u001b8\tX\r\nnext\u001b[0m",
+      "expected": {
+        "text": "AAAAAAAAXAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\nnext\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+        "x": 4,
+        "y": 1
+      }
+    },
+    {
+      "snapshot": {
+        "data": "INSERT\u001b[1B\u001b[6D\u001b[4h",
+        "continuation": {
+          "version": 1,
+          "charset": {
+            "glevel": 0,
+            "_charsets": []
+          },
+          "normal": {
+            "savedX": 0,
+            "savedY": 0,
+            "savedCurAttrData": {
+              "fg": 0,
+              "bg": 0,
+              "extended": {
+                "_ext": 0,
+                "_urlId": 0
+              }
+            },
+            "scrollTop": 0,
+            "scrollBottom": 23,
+            "tabs": {
+              "0": true,
+              "8": true,
+              "16": true,
+              "24": true,
+              "32": true,
+              "40": true,
+              "48": true,
+              "56": true,
+              "64": true,
+              "72": true
+            }
+          },
+          "alternate": {
+            "savedX": 0,
+            "savedY": 0,
+            "savedCurAttrData": {
+              "fg": 0,
+              "bg": 0,
+              "extended": {
+                "_ext": 0,
+                "_urlId": 0
+              }
+            },
+            "scrollTop": 0,
+            "scrollBottom": 23,
+            "tabs": {
+              "0": true,
+              "8": true,
+              "16": true,
+              "24": true,
+              "32": true,
+              "40": true,
+              "48": true,
+              "56": true,
+              "64": true,
+              "72": true
+            }
+          },
+          "modes": {
+            "insertMode": true
+          },
+          "privateModes": {
+            "applicationCursorKeys": false,
+            "applicationKeypad": false,
+            "bracketedPasteMode": false,
+            "origin": false,
+            "reverseWraparound": false,
+            "sendFocus": false,
+            "wraparound": true
+          },
+          "attributes": {
+            "fg": 0,
+            "bg": 0,
+            "extended": {
+              "_ext": 0,
+              "_urlId": 0
+            }
+          },
+          "cursorHidden": true,
+          "mouseProtocol": "NONE",
+          "mouseEncoding": "DEFAULT"
+        }
+      },
+      "suffix": "\u001b8\tX\r\nnext\u001b[0m",
+      "expected": {
+        "text": "INSERT  X\nnext\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+        "x": 4,
+        "y": 1
+      }
+    },
+    {
+      "snapshot": {
+        "data": "\u001b[31mred\r\n\u001b[0m你好 😀\r\nsaved\u001b[7B\u001b[1D",
+        "continuation": {
+          "version": 1,
+          "charset": {
+            "glevel": 0,
+            "_charsets": []
+          },
+          "normal": {
+            "savedX": 0,
+            "savedY": 2,
+            "savedCurAttrData": {
+              "fg": 0,
+              "bg": 0,
+              "extended": {
+                "_ext": 0,
+                "_urlId": 0
+              }
+            },
+            "scrollTop": 0,
+            "scrollBottom": 23,
+            "tabs": {
+              "0": true,
+              "8": true,
+              "16": true,
+              "24": true,
+              "32": true,
+              "40": true,
+              "48": true,
+              "56": true,
+              "64": true,
+              "72": true
+            }
+          },
+          "alternate": {
+            "savedX": 0,
+            "savedY": 0,
+            "savedCurAttrData": {
+              "fg": 0,
+              "bg": 0,
+              "extended": {
+                "_ext": 0,
+                "_urlId": 0
+              }
+            },
+            "scrollTop": 0,
+            "scrollBottom": 23,
+            "tabs": {
+              "0": true,
+              "8": true,
+              "16": true,
+              "24": true,
+              "32": true,
+              "40": true,
+              "48": true,
+              "56": true,
+              "64": true,
+              "72": true
+            }
+          },
+          "modes": {
+            "insertMode": false
+          },
+          "privateModes": {
+            "applicationCursorKeys": false,
+            "applicationKeypad": false,
+            "bracketedPasteMode": false,
+            "origin": false,
+            "reverseWraparound": false,
+            "sendFocus": false,
+            "wraparound": true
+          },
+          "attributes": {
+            "fg": 0,
+            "bg": 0,
+            "extended": {
+              "_ext": 0,
+              "_urlId": 0
+            }
+          },
+          "cursorHidden": false,
+          "mouseProtocol": "NONE",
+          "mouseEncoding": "DEFAULT"
+        }
+      },
+      "suffix": "\u001b8\tX\r\nnext\u001b[0m",
+      "expected": {
+        "text": "red\n你好 😀\nsaved   X\nnext\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+        "x": 4,
+        "y": 3
+      }
+    },
+    {
+      "snapshot": {
+        "data": "┌──┐\u001b[4B\u001b[4D",
+        "continuation": {
+          "version": 1,
+          "charset": {
+            "glevel": 0,
+            "charset": {
+              "`": "◆",
+              "a": "▒",
+              "b": "␉",
+              "c": "␌",
+              "d": "␍",
+              "e": "␊",
+              "f": "°",
+              "g": "±",
+              "h": "␤",
+              "i": "␋",
+              "j": "┘",
+              "k": "┐",
+              "l": "┌",
+              "m": "└",
+              "n": "┼",
+              "o": "⎺",
+              "p": "⎻",
+              "q": "─",
+              "r": "⎼",
+              "s": "⎽",
+              "t": "├",
+              "u": "┤",
+              "v": "┴",
+              "w": "┬",
+              "x": "│",
+              "y": "≤",
+              "z": "≥",
+              "{": "π",
+              "|": "≠",
+              "}": "£",
+              "~": "·"
+            },
+            "_charsets": [
+              {
+                "`": "◆",
+                "a": "▒",
+                "b": "␉",
+                "c": "␌",
+                "d": "␍",
+                "e": "␊",
+                "f": "°",
+                "g": "±",
+                "h": "␤",
+                "i": "␋",
+                "j": "┘",
+                "k": "┐",
+                "l": "┌",
+                "m": "└",
+                "n": "┼",
+                "o": "⎺",
+                "p": "⎻",
+                "q": "─",
+                "r": "⎼",
+                "s": "⎽",
+                "t": "├",
+                "u": "┤",
+                "v": "┴",
+                "w": "┬",
+                "x": "│",
+                "y": "≤",
+                "z": "≥",
+                "{": "π",
+                "|": "≠",
+                "}": "£",
+                "~": "·"
+              }
+            ]
+          },
+          "normal": {
+            "savedX": 4,
+            "savedY": 0,
+            "savedCharset": {
+              "`": "◆",
+              "a": "▒",
+              "b": "␉",
+              "c": "␌",
+              "d": "␍",
+              "e": "␊",
+              "f": "°",
+              "g": "±",
+              "h": "␤",
+              "i": "␋",
+              "j": "┘",
+              "k": "┐",
+              "l": "┌",
+              "m": "└",
+              "n": "┼",
+              "o": "⎺",
+              "p": "⎻",
+              "q": "─",
+              "r": "⎼",
+              "s": "⎽",
+              "t": "├",
+              "u": "┤",
+              "v": "┴",
+              "w": "┬",
+              "x": "│",
+              "y": "≤",
+              "z": "≥",
+              "{": "π",
+              "|": "≠",
+              "}": "£",
+              "~": "·"
+            },
+            "savedCurAttrData": {
+              "fg": 0,
+              "bg": 0,
+              "extended": {
+                "_ext": 0,
+                "_urlId": 0
+              }
+            },
+            "scrollTop": 0,
+            "scrollBottom": 23,
+            "tabs": {
+              "0": true,
+              "8": true,
+              "16": true,
+              "24": true,
+              "32": true,
+              "40": true,
+              "48": true,
+              "56": true,
+              "64": true,
+              "72": true
+            }
+          },
+          "alternate": {
+            "savedX": 0,
+            "savedY": 0,
+            "savedCurAttrData": {
+              "fg": 0,
+              "bg": 0,
+              "extended": {
+                "_ext": 0,
+                "_urlId": 0
+              }
+            },
+            "scrollTop": 0,
+            "scrollBottom": 23,
+            "tabs": {
+              "0": true,
+              "8": true,
+              "16": true,
+              "24": true,
+              "32": true,
+              "40": true,
+              "48": true,
+              "56": true,
+              "64": true,
+              "72": true
+            }
+          },
+          "modes": {
+            "insertMode": false
+          },
+          "privateModes": {
+            "applicationCursorKeys": false,
+            "applicationKeypad": false,
+            "bracketedPasteMode": false,
+            "origin": false,
+            "reverseWraparound": false,
+            "sendFocus": false,
+            "wraparound": true
+          },
+          "attributes": {
+            "fg": 0,
+            "bg": 0,
+            "extended": {
+              "_ext": 0,
+              "_urlId": 0
+            }
+          },
+          "cursorHidden": false,
+          "mouseProtocol": "NONE",
+          "mouseEncoding": "DEFAULT"
+        }
+      },
+      "suffix": "\u001b8\tX\r\nnext\u001b[0m",
+      "expected": {
+        "text": "┌──┐    X\n┼␊│├\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+        "x": 4,
+        "y": 1
+      }
+    },
+    {
+      "snapshot": {
+        "data": "",
+        "continuation": {
+          "version": 1,
+          "charset": {
+            "glevel": 0,
+            "_charsets": []
+          },
+          "normal": {
+            "savedX": 0,
+            "savedY": 0,
+            "savedCurAttrData": {
+              "fg": 0,
+              "bg": 0,
+              "extended": {
+                "_ext": 0,
+                "_urlId": 0
+              }
+            },
+            "scrollTop": 0,
+            "scrollBottom": 23,
+            "tabs": {
+              "4": true
+            }
+          },
+          "alternate": {
+            "savedX": 0,
+            "savedY": 0,
+            "savedCurAttrData": {
+              "fg": 0,
+              "bg": 0,
+              "extended": {
+                "_ext": 0,
+                "_urlId": 0
+              }
+            },
+            "scrollTop": 0,
+            "scrollBottom": 23,
+            "tabs": {
+              "0": true,
+              "8": true,
+              "16": true,
+              "24": true,
+              "32": true,
+              "40": true,
+              "48": true,
+              "56": true,
+              "64": true,
+              "72": true
+            }
+          },
+          "modes": {
+            "insertMode": false
+          },
+          "privateModes": {
+            "applicationCursorKeys": false,
+            "applicationKeypad": false,
+            "bracketedPasteMode": false,
+            "origin": false,
+            "reverseWraparound": false,
+            "sendFocus": false,
+            "wraparound": true
+          },
+          "attributes": {
+            "fg": 0,
+            "bg": 0,
+            "extended": {
+              "_ext": 0,
+              "_urlId": 0
+            }
+          },
+          "cursorHidden": false,
+          "mouseProtocol": "NONE",
+          "mouseEncoding": "DEFAULT"
+        }
+      },
+      "suffix": "\u001b8\tX\r\nnext\u001b[0m",
+      "expected": {
+        "text": "    X\nnext\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+        "x": 4,
+        "y": 1
+      }
+    },
+    {
+      "snapshot": {
+        "data": "normal\u001b[?1049h\u001b[H\r\n\u001b[9Calternate\u001b[1B\u001b[18D\u001b[?6h",
+        "continuation": {
+          "version": 1,
+          "charset": {
+            "glevel": 0,
+            "_charsets": []
+          },
+          "normal": {
+            "savedX": 6,
+            "savedY": 0,
+            "savedCurAttrData": {
+              "fg": 0,
+              "bg": 0,
+              "extended": {
+                "_ext": 0,
+                "_urlId": 0
+              }
+            },
+            "scrollTop": 0,
+            "scrollBottom": 23,
+            "tabs": {
+              "0": true,
+              "8": true,
+              "16": true,
+              "24": true,
+              "32": true,
+              "40": true,
+              "48": true,
+              "56": true,
+              "64": true,
+              "72": true
+            }
+          },
+          "alternate": {
+            "savedX": 0,
+            "savedY": 0,
+            "savedCurAttrData": {
+              "fg": 0,
+              "bg": 0,
+              "extended": {
+                "_ext": 0,
+                "_urlId": 0
+              }
+            },
+            "scrollTop": 2,
+            "scrollBottom": 7,
+            "tabs": {
+              "0": true,
+              "8": true,
+              "16": true,
+              "24": true,
+              "32": true,
+              "40": true,
+              "48": true,
+              "56": true,
+              "64": true,
+              "72": true
+            }
+          },
+          "modes": {
+            "insertMode": false
+          },
+          "privateModes": {
+            "applicationCursorKeys": false,
+            "applicationKeypad": false,
+            "bracketedPasteMode": false,
+            "origin": true,
+            "reverseWraparound": false,
+            "sendFocus": false,
+            "wraparound": true
+          },
+          "attributes": {
+            "fg": 0,
+            "bg": 0,
+            "extended": {
+              "_ext": 0,
+              "_urlId": 0
+            }
+          },
+          "cursorHidden": false,
+          "mouseProtocol": "NONE",
+          "mouseEncoding": "DEFAULT"
+        }
+      },
+      "suffix": "\u001b8\tX\r\nnext\u001b[0m",
+      "expected": {
+        "text": "\n         alternate\n        X\nnext\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+        "x": 4,
+        "y": 3
+      }
+    }
+  ]
+}

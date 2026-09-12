@@ -1,0 +1,69 @@
+{
+  "date": "2026-09-12T08:52:34.005Z",
+  "runtime": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "nodeVersion": "v24.11.0",
+    "muxHash": "720b466498095a2ef000722196ad752315ae3ef304f6ff663f274abbadfdc456",
+    "version": "1.0.0"
+  },
+  "platform": "darwin",
+  "arch": "arm64",
+  "node": "v24.11.0",
+  "cpu": "Apple M1 Pro",
+  "totalMemory": 34359738368,
+  "notes": "12 samples per measurement. Input-to-capture is daemon latency, not renderer paint. Idle sample is 1.2 seconds. RSS covers daemon and its storage worker, excluding shell children. File bytes include bounded current and previous checkpoints/journals.",
+  "results": [
+    {
+      "terminals": 1,
+      "historyRows": 10000,
+      "fillMs": 275,
+      "snapshotBytes": 370837,
+      "reconnectMs": {
+        "p50": 41.37,
+        "p95": 55.19
+      },
+      "inputToCaptureMs": {
+        "p50": 6.48,
+        "p95": 8.14
+      },
+      "rssBytes": 228753408,
+      "idleCpuMs": 1.195,
+      "retainedFileBytes": 460034
+    },
+    {
+      "terminals": 10,
+      "historyRows": 10000,
+      "fillMs": 267,
+      "snapshotBytes": 370838,
+      "reconnectMs": {
+        "p50": 35.33,
+        "p95": 44.21
+      },
+      "inputToCaptureMs": {
+        "p50": 5.98,
+        "p95": 6.68
+      },
+      "rssBytes": 386416640,
+      "idleCpuMs": 1.504,
+      "retainedFileBytes": 8206638
+    },
+    {
+      "terminals": 50,
+      "historyRows": 10000,
+      "fillMs": 1534,
+      "snapshotBytes": 370838,
+      "reconnectMs": {
+        "p50": 33.27,
+        "p95": 42.57
+      },
+      "inputToCaptureMs": {
+        "p50": 5.03,
+        "p95": 6.34
+      },
+      "rssBytes": 1040580608,
+      "idleCpuMs": 2.81,
+      "retainedFileBytes": 36655767
+    }
+  ]
+}

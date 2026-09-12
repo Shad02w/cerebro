@@ -1,241 +1,192 @@
-import { existsSync } from 'node:fs'
-import { userInfo } from 'node:os'
-import { basename } from 'node:path'
-import type { WebContents } from 'electron'
-import { ipcMain } from 'electron'
-import * as pty from 'node-pty'
+import { ipcMain, type WebContents } from 'electron'
+import type { TerminalSnapshot, TerminalEvent } from '@cerebro/mux'
 import { IPC } from '../shared/ipc'
-import type { PtyExitEvent, PtyOpenResult } from '../shared/types'
-import { getWorkspaceLocalPath, getWorkspaceProjectId } from './projects'
-import { getCerebroHome } from './paths'
+import { muxCall, onTerminal, onMuxDisconnect } from './mux'
 
-type PtySession = {
-  sessionId: number
+type Attachment = {
+  id: number
   workspaceId: number
-  process: pty.IPty
-  webContents: WebContents
+  paneId: number
+  owner: WebContents
+  pending: Array<{ sequence: number; bytes: number }>
+  queued: number
+  snapshot: TerminalSnapshot
 }
-
-const sessionsById = new Map<number, PtySession>()
-let nextSessionId = 1
-
-function isUsableShell(shell: string | null | undefined): shell is string {
-  if (!shell || shell === '/bin/false' || shell === '/usr/bin/false') return false
-  return existsSync(shell)
-}
-
-function loginArgsForShell(shellPath: string): string[] {
-  const name = basename(shellPath).toLowerCase()
-  if (name === 'zsh' || name === 'bash' || name === 'fish' || name === 'sh') {
-    return ['-l']
+const attachments = new Map<number, Attachment>()
+const early = new Map<string, Array<TerminalEvent & { attachmentId: string }>>()
+const earlyOverflow = new Set<string>()
+let nextId = 1
+let pendingOpens = 0
+const watchedOwners = new Set<number>()
+function deliver(attachment: Attachment, event: TerminalEvent): void {
+  if (attachment.owner.isDestroyed()) return
+  if (event.sessionId !== attachment.snapshot.sessionId) {
+    attachment.owner.send(IPC.pty.exit, {
+      sessionId: attachment.id,
+      status: 'disconnected',
+      exitCode: 0,
+      error: 'Reattaching to restarted shell…'
+    })
+    attachments.delete(attachment.id)
+    void muxCall('terminal.detach', { attachmentId: attachment.snapshot.attachmentId }).catch(
+      () => {}
+    )
+    return
   }
-  return []
-}
-
-/** Resolve the user's default login shell (VS Code–style). */
-export function resolveDefaultShell(): { file: string; args: string[] } {
-  if (process.platform === 'win32') {
-    const comspec = process.env.COMSPEC
-    if (isUsableShell(comspec)) {
-      return { file: comspec, args: [] }
-    }
-    return { file: 'powershell.exe', args: [] }
-  }
-
-  const fromEnv = process.env.SHELL
-  if (isUsableShell(fromEnv)) {
-    return { file: fromEnv, args: loginArgsForShell(fromEnv) }
-  }
-
-  try {
-    const fromPasswd = userInfo().shell
-    if (isUsableShell(fromPasswd)) {
-      return { file: fromPasswd, args: loginArgsForShell(fromPasswd) }
-    }
-  } catch {
-    // userInfo() can throw when username/homedir are unavailable.
-  }
-
-  const fallback = process.platform === 'darwin' ? '/bin/zsh' : '/bin/bash'
-  return { file: fallback, args: loginArgsForShell(fallback) }
-}
-
-function disposeSession(sessionId: number): void {
-  const session = sessionsById.get(sessionId)
-  if (!session) return
-  sessionsById.delete(sessionId)
-  try {
-    session.process.kill()
-  } catch {
-    // Process may already have exited.
-  }
-}
-
-function emitExit(session: PtySession, exitCode: number, signal?: number): void {
-  if (session.webContents.isDestroyed()) return
-  const payload: PtyExitEvent = {
-    sessionId: session.sessionId,
-    exitCode,
-    signal
-  }
-  session.webContents.send(IPC.pty.exit, payload)
-}
-
-export async function openPty(
-  webContents: WebContents,
-  workspaceId: number,
-  cols: number,
-  rows: number
-): Promise<PtyOpenResult> {
-  const cwd = getWorkspaceLocalPath(workspaceId)
-  if (!existsSync(cwd)) {
-    throw new Error(`Workspace path does not exist: ${cwd}`)
-  }
-
-  // Resolve project ID for env injection (best-effort; ignore if workspace lookup fails).
-  let projectId: number | null = null
-  try {
-    projectId = await getWorkspaceProjectId(workspaceId)
-  } catch {
-    // Non-fatal; env vars will just be omitted.
-  }
-
-  const { file, args } = resolveDefaultShell()
-  const env: Record<string, string> = {}
-  for (const [key, value] of Object.entries(process.env)) {
-    if (typeof value === 'string') env[key] = value
-  }
-  env.TERM = 'xterm-256color'
-  env.COLORTERM = 'truecolor'
-
-  // Inject Cerebro context so agents running inside a workspace terminal can
-  // use the CLI without specifying --project / --workspace flags.
-  env.CEREBRO_HOME = getCerebroHome()
-  env.CEREBRO_WORKSPACE_ID = String(workspaceId)
-  env.CEREBRO_WORKSPACE_PATH = cwd
-  if (projectId !== null) {
-    env.CEREBRO_PROJECT_ID = String(projectId)
-  }
-
-  const processHandle = pty.spawn(file, args, {
-    name: 'xterm-256color',
-    cols: Math.max(2, cols),
-    rows: Math.max(1, rows),
-    cwd,
-    env
-  })
-
-  const sessionId = nextSessionId
-  nextSessionId += 1
-  const session: PtySession = {
-    sessionId,
-    workspaceId,
-    process: processHandle,
-    webContents
-  }
-  sessionsById.set(sessionId, session)
-
-  processHandle.onData((data) => {
-    if (session.webContents.isDestroyed()) return
-    session.webContents.send(IPC.pty.data, { sessionId: session.sessionId, data })
-  })
-
-  processHandle.onExit(({ exitCode, signal }) => {
-    const current = sessionsById.get(sessionId)
-    if (current?.process === processHandle) {
-      sessionsById.delete(sessionId)
-    }
-    emitExit(session, exitCode, signal)
-  })
-
-  return { sessionId: session.sessionId }
-}
-
-export function writePty(sessionId: number, data: string): void {
-  const session = sessionsById.get(sessionId)
-  if (!session) return
-  session.process.write(data)
-}
-
-export function resizePty(sessionId: number, cols: number, rows: number): void {
-  const session = sessionsById.get(sessionId)
-  if (!session) return
-  const nextCols = Math.max(2, cols)
-  const nextRows = Math.max(1, rows)
-  if (session.process.cols === nextCols && session.process.rows === nextRows) return
-  try {
-    session.process.resize(nextCols, nextRows)
-  } catch {
-    // Ignore resize failures on a dying process.
-  }
-}
-
-export function killPty(sessionId: number): void {
-  disposeSession(sessionId)
-}
-
-/** Kill every PTY session for a workspace. Safe when none are open. */
-export function killPtyForWorkspace(workspaceId: number): void {
-  for (const session of [...sessionsById.values()]) {
-    if (session.workspaceId === workspaceId) {
-      disposeSession(session.sessionId)
+  if (event.type !== 'status') {
+    const bytes = Buffer.byteLength(event.data ?? '') + 64
+    attachment.pending.push({ sequence: event.sequence, bytes })
+    attachment.queued += bytes
+    if (attachment.queued > 2 * 1024 * 1024) {
+      attachments.delete(attachment.id)
+      void muxCall('terminal.detach', { attachmentId: attachment.snapshot.attachmentId }).catch(
+        () => {}
+      )
+      attachment.owner.send(IPC.pty.exit, {
+        sessionId: attachment.id,
+        status: 'disconnected',
+        exitCode: 0,
+        error: 'Terminal view fell behind; restoring current screen…'
+      })
+      return
     }
   }
+  if (event.type === 'status')
+    attachment.owner.send(IPC.pty.exit, {
+      sessionId: attachment.id,
+      status: event.status,
+      exitCode: event.exitCode ?? 0,
+      error: event.error
+    })
+  else
+    attachment.owner.send(IPC.pty.data, {
+      sessionId: attachment.id,
+      data: event.data ?? '',
+      sequence: event.sequence,
+      cols: event.cols,
+      rows: event.rows
+    })
 }
-
-export function killAllPtys(): void {
-  for (const sessionId of [...sessionsById.keys()]) {
-    disposeSession(sessionId)
+onTerminal((event) => {
+  const attachment = [...attachments.values()].find(
+    (item) => item.snapshot.attachmentId === event.attachmentId
+  )
+  if (attachment) deliver(attachment, event)
+  else if (pendingOpens > 0) {
+    const events = early.get(event.attachmentId) ?? []
+    if (events.length < 128 && early.size < 128) {
+      events.push(event)
+      early.set(event.attachmentId, events)
+    } else if (earlyOverflow.size < 256) earlyOverflow.add(event.attachmentId)
   }
+})
+onMuxDisconnect((stopped) => {
+  for (const attachment of attachments.values())
+    if (!attachment.owner.isDestroyed())
+      attachment.owner.send(IPC.pty.exit, {
+        sessionId: attachment.id,
+        status: stopped ? 'stopped' : 'disconnected',
+        exitCode: 0,
+        error: stopped ? 'Terminal server stopped.' : 'Reconnecting to terminal server…'
+      })
+  attachments.clear()
+  early.clear()
+  earlyOverflow.clear()
+})
+function owned(id: number, owner: WebContents): Attachment {
+  const attachment = attachments.get(id)
+  if (!attachment || attachment.owner !== owner) throw new Error('Terminal attachment not found.')
+  return attachment
 }
-
-function assertWorkspaceId(value: unknown): number {
-  if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
-    throw new Error('Workspace id is required.')
-  }
-  return value
-}
-
-function assertSessionId(value: unknown): number {
-  if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
-    throw new Error('Session id is required.')
-  }
-  return value
-}
-
-function assertPositiveInt(value: unknown, label: string): number {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value < 1) {
-    throw new Error(`${label} is required.`)
-  }
-  return Math.floor(value)
-}
-
 export function registerPtyIpc(): void {
-  ipcMain.handle(IPC.pty.open, (event, workspaceId: unknown, cols: unknown, rows: unknown) => {
-    return openPty(
-      event.sender,
-      assertWorkspaceId(workspaceId),
-      assertPositiveInt(cols, 'Columns'),
-      assertPositiveInt(rows, 'Rows')
-    )
+  ipcMain.on(IPC.pty.ack, (event, id: number, sequence: number) => {
+    const attachment = attachments.get(id)
+    if (!attachment || attachment.owner !== event.sender || !Number.isSafeInteger(sequence)) return
+    while (attachment.pending.length && attachment.pending[0].sequence <= sequence)
+      attachment.queued -= attachment.pending.shift()!.bytes
   })
-
-  ipcMain.handle(IPC.pty.write, (_event, sessionId: unknown, data: unknown) => {
-    if (typeof data !== 'string') {
-      throw new Error('PTY write data must be a string.')
+  ipcMain.handle(IPC.pty.open, async (event, workspaceId: number, paneId: number) => {
+    pendingOpens++
+    let snapshot: TerminalSnapshot
+    try {
+      snapshot = await muxCall<TerminalSnapshot>('terminal.attach', { workspaceId, paneId })
+    } finally {
+      pendingOpens--
     }
-    writePty(assertSessionId(sessionId), data)
+    if (earlyOverflow.delete(snapshot.attachmentId!)) {
+      early.delete(snapshot.attachmentId!)
+      await muxCall('terminal.detach', { attachmentId: snapshot.attachmentId })
+      throw new Error('Mux view must resynchronize.')
+    }
+    if (!watchedOwners.has(event.sender.id)) {
+      const ownerId = event.sender.id
+      watchedOwners.add(ownerId)
+      const cleanup = (): void => {
+        for (const [id, attachment] of attachments)
+          if (attachment.owner === event.sender) {
+            attachments.delete(id)
+            void muxCall('terminal.detach', {
+              attachmentId: attachment.snapshot.attachmentId
+            }).catch(() => {})
+          }
+      }
+      event.sender.on('render-process-gone', cleanup)
+      event.sender.on('did-start-navigation', (details) => {
+        // Hash routing keeps the renderer and its terminal attachments alive.
+        if (details.isMainFrame && !details.isSameDocument) cleanup()
+      })
+      event.sender.once('destroyed', () => {
+        cleanup()
+        watchedOwners.delete(ownerId)
+      })
+    }
+    const id = nextId++
+    if (event.sender.isDestroyed()) {
+      await muxCall('terminal.detach', { attachmentId: snapshot.attachmentId })
+      throw new Error('Terminal view closed.')
+    }
+    const attachment: Attachment = {
+      id,
+      workspaceId,
+      paneId,
+      owner: event.sender,
+      snapshot,
+      pending: [],
+      queued: 0
+    }
+    attachments.set(id, attachment)
+    for (const data of early.get(snapshot.attachmentId!) ?? []) deliver(attachment, data)
+    early.delete(snapshot.attachmentId!)
+    return { ...snapshot, sessionId: id }
   })
-
-  ipcMain.handle(IPC.pty.resize, (_event, sessionId: unknown, cols: unknown, rows: unknown) => {
-    resizePty(
-      assertSessionId(sessionId),
-      assertPositiveInt(cols, 'Columns'),
-      assertPositiveInt(rows, 'Rows')
-    )
+  ipcMain.handle(IPC.pty.write, (event, id: number, data: string) => {
+    const attachment = owned(id, event.sender)
+    return muxCall('terminal.write', {
+      workspaceId: attachment.workspaceId,
+      paneId: attachment.paneId,
+      sessionId: attachment.snapshot.sessionId,
+      attachmentId: attachment.snapshot.attachmentId,
+      data
+    })
   })
-
-  ipcMain.handle(IPC.pty.kill, (_event, sessionId: unknown) => {
-    killPty(assertSessionId(sessionId))
+  ipcMain.handle(IPC.pty.resize, (event, id: number, cols: number, rows: number) => {
+    const attachment = owned(id, event.sender)
+    return muxCall('terminal.resize', {
+      workspaceId: attachment.workspaceId,
+      paneId: attachment.paneId,
+      sessionId: attachment.snapshot.sessionId,
+      attachmentId: attachment.snapshot.attachmentId,
+      cols,
+      rows
+    })
   })
+  ipcMain.handle(IPC.pty.kill, async (event, id: number) => {
+    const attachment = attachments.get(id)
+    if (!attachment || attachment.owner !== event.sender) return
+    attachments.delete(id)
+    await muxCall('terminal.detach', { attachmentId: attachment.snapshot.attachmentId })
+  })
+  ipcMain.handle(IPC.pty.restart, (_event, workspaceId: number, paneId: number) =>
+    muxCall('terminal.restart', { workspaceId, paneId })
+  )
 }

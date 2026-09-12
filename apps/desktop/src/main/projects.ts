@@ -1,3 +1,4 @@
+import { muxCall } from './mux'
 import type {
   Project,
   ProjectBranch,
@@ -7,19 +8,7 @@ import type {
 } from '../shared/types'
 import { getGitHubAccessToken } from './github'
 import { RepositoryService, runCommand } from './repository-service'
-import {
-  createProjectFromDirectory as coreCreateProjectFromDirectory,
-  createProjectFromGitUrl as coreCreateProjectFromGitUrl,
-  createWorkspaceFromBranch as coreCreateWorkspaceFromBranch,
-  getWorkspaceLocalPath as coreGetWorkspaceLocalPath,
-  listProjects as coreListProjects,
-  removeProject as coreRemoveProject,
-  removeWorkspace as coreRemoveWorkspace,
-  setActiveWorkspace as coreSetActiveWorkspace,
-  clearActiveWorkspace as coreClearActiveWorkspace,
-  readOriginUrl,
-  parseGitUrl
-} from '@cerebro/core'
+import { readOriginUrl, parseGitUrl } from '@cerebro/core'
 
 export { getWorkspaceProjectId } from '@cerebro/core'
 export const repositoryService = new RepositoryService({
@@ -40,7 +29,6 @@ export const repositoryService = new RepositoryService({
     )
   }
 })
-const git = repositoryService.git.bind(repositoryService)
 const knownRepositories = new Set<string>()
 
 export function isTrackedRepository(owner: string, repo: string): boolean {
@@ -49,41 +37,41 @@ export function isTrackedRepository(owner: string, repo: string): boolean {
 
 // Local project/selection mutations never wait for a GitHub request.
 export async function listProjects(): Promise<ProjectListResult> {
-  return coreListProjects()
+  return muxCall('registry', { action: 'list' })
 }
 export async function setActiveWorkspace(workspaceId: number): Promise<ProjectListResult> {
-  return coreSetActiveWorkspace(workspaceId)
-}
-export function clearActiveWorkspace(): void {
-  coreClearActiveWorkspace()
-}
-export function getWorkspaceLocalPath(workspaceId: number): string {
-  return coreGetWorkspaceLocalPath(workspaceId)
+  return muxCall('registry', { action: 'select', workspaceId })
 }
 export async function createProjectFromGitUrl(gitUrl: string): Promise<Project> {
-  return coreCreateProjectFromGitUrl(gitUrl, { git })
+  return muxCall('registry', { action: 'project.create', gitUrl, provider: true })
 }
 export async function createProjectFromDirectory(directory: string): Promise<Project> {
-  return coreCreateProjectFromDirectory(directory)
+  return muxCall('registry', { action: 'project.createDirectory', directory })
 }
 export async function createWorkspaceFromBranch(
   projectId: number,
   branch: string,
   from?: string
 ): Promise<Workspace> {
-  return coreCreateWorkspaceFromBranch(projectId, branch, { git, from })
+  return muxCall('registry', {
+    action: 'workspace.create',
+    projectId,
+    branch,
+    from,
+    provider: true
+  })
 }
 export async function removeWorkspace(
   workspaceId: number,
   deleteFiles: boolean
 ): Promise<ProjectListResult> {
-  return coreRemoveWorkspace(workspaceId, { deleteFiles })
+  return muxCall('registry', { action: 'workspace.remove', workspaceId, deleteFiles })
 }
 export async function removeProject(
   projectId: number,
   deleteFiles: boolean
 ): Promise<ProjectListResult> {
-  return coreRemoveProject(projectId, { deleteFiles })
+  return muxCall('registry', { action: 'project.remove', projectId, deleteFiles })
 }
 
 export async function listProjectBranches(projectId: number): Promise<ProjectBranch[]> {

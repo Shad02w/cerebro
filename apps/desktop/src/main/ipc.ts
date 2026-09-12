@@ -1,10 +1,11 @@
-import { registerLayoutIpc, removeWorkspaceLayout } from './panes'
+import { muxCall } from './mux'
+import { registerLayoutIpc } from './panes'
 import { ipcMain, shell } from 'electron'
-import { getWorkspaceFileDiff, isChangedFileStatus, listWorkspaceChanges } from '@cerebro/core'
+import { isChangedFileStatus } from '@cerebro/core'
 import { IPC } from '../shared/ipc'
 import type { AppSettingsPatch, ChangedFile } from '../shared/types'
 import { registerGitHubIpc } from './github'
-import { killPtyForWorkspace, registerPtyIpc } from './pty'
+import { registerPtyIpc } from './pty'
 import {
   createProjectFromDirectory,
   createProjectFromGitUrl,
@@ -179,9 +180,7 @@ export function registerWorkspaceIpc(): void {
         throw new Error('deleteFiles is required.')
       }
       try {
-        killPtyForWorkspace(workspaceId)
         const result = await removeWorkspace(workspaceId, deleteFiles)
-        removeWorkspaceLayout(workspaceId)
         return result
       } catch (error) {
         throw new Error(errorMessage(error))
@@ -189,16 +188,19 @@ export function registerWorkspaceIpc(): void {
     }
   )
 
-  ipcMain.handle(IPC.workspaces.listChanges, async (_event, workspaceId: unknown) => {
-    if (typeof workspaceId !== 'number' || !Number.isInteger(workspaceId)) {
-      throw new Error('Workspace id is required.')
+  ipcMain.handle(
+    IPC.workspaces.listChanges,
+    async (_event, workspaceId: unknown, repositoryId: unknown) => {
+      if (typeof workspaceId !== 'number' || !Number.isInteger(workspaceId)) {
+        throw new Error('Workspace id is required.')
+      }
+      try {
+        return await muxCall('changes.list', { workspaceId, repositoryId })
+      } catch (error) {
+        throw new Error(errorMessage(error))
+      }
     }
-    try {
-      return await listWorkspaceChanges(workspaceId)
-    } catch (error) {
-      throw new Error(errorMessage(error))
-    }
-  })
+  )
 
   ipcMain.handle(
     IPC.workspaces.getFileDiff,
@@ -211,7 +213,7 @@ export function registerWorkspaceIpc(): void {
       }
       const changed = parseChangedFile(file)
       try {
-        return await getWorkspaceFileDiff(workspaceId, repositoryId, changed)
+        return await muxCall('changes.file', { workspaceId, repositoryId, file: changed })
       } catch (error) {
         throw new Error(errorMessage(error))
       }
@@ -226,15 +228,7 @@ export function registerWorkspaceIpc(): void {
       throw new Error('deleteFiles is required.')
     }
     try {
-      const listed = await listProjects()
-      const project = listed.projects.find((item) => item.id === projectId)
-      if (project) {
-        for (const workspace of project.workspaces) {
-          killPtyForWorkspace(workspace.id)
-        }
-      }
       const result = await removeProject(projectId, deleteFiles)
-      for (const workspace of project?.workspaces ?? []) removeWorkspaceLayout(workspace.id)
       return result
     } catch (error) {
       throw new Error(errorMessage(error))

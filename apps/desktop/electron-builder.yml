@@ -1,11 +1,17 @@
-appId: com.electron.app
-productName: desktop
+appId: com.cerebro.app
+productName: Cerebro
+extraMetadata:
+  cerebroChannel: production
+artifactName: Cerebro-${version}-${arch}.${ext}
 directories:
   buildResources: build
 beforePack: scripts/check-cli-runtime.cjs
+afterPack: scripts/check-mux-runtime.cjs
 extraResources:
   - from: out/cli
     to: cli
+  - from: out/cli/node_modules/node-pty
+    to: cli/node_modules/node-pty
 files:
   - '!out/cli/**'
   - '!**/.vscode/*'
@@ -17,16 +23,18 @@ files:
 asarUnpack:
   - resources/**
   - node_modules/node-pty/**
-win:
-  executableName: desktop
-nsis:
-  artifactName: ${name}-${version}-setup.${ext}
-  shortcutName: ${productName}
-  uninstallDisplayName: ${productName}
-  createDesktopShortcut: always
 mac:
+  target: [dmg, zip]
+  category: public.app-category.developer-tools
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  icon: build/icon.icns
   binaries:
     - Contents/Resources/cli/node
+    - Contents/Resources/cli/node_modules/node-pty/prebuilds/darwin-arm64/spawn-helper
+    - Contents/Resources/cli/node_modules/node-pty/prebuilds/darwin-arm64/pty.node
+    - Contents/Resources/cli/node_modules/node-pty/prebuilds/darwin-x64/spawn-helper
+    - Contents/Resources/cli/node_modules/node-pty/prebuilds/darwin-x64/pty.node
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
     - NSCameraUsageDescription: Application requests access to the device's camera.
@@ -34,18 +42,4 @@ mac:
     - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
     - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
   notarize: false
-dmg:
-  artifactName: ${name}-${version}.${ext}
-linux:
-  target:
-    - AppImage
-    - snap
-    - deb
-  maintainer: electronjs.org
-  category: Utility
-appImage:
-  artifactName: ${name}-${version}.${ext}
 npmRebuild: false
-publish:
-  provider: generic
-  url: https://example.com/auto-updates

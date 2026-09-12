@@ -6,6 +6,13 @@
 - **Check only files changed by the current task.** Pass explicit changed-file paths to linters and formatters, and run only test cases covering those files. Do not run repository-wide checks or include unrelated files or pre-existing changes.
 - **Do not run tests when the task makes no code changes**, including documentation-only edits and commit/push-only requests. Existing uncommitted code changes do not make a commit/push-only request a code-change task.
 
+### React Doctor
+
+- After changing React renderer code, run `pnpm react:doctor <file> [file...]` from the repository root with explicit paths to only the files changed by the current task. Include changed components, hooks, and renderer utilities. Always pass file paths for task validation; omit the scan when no renderer code changed.
+- Review each finding against the source. Fix issues introduced by the task and report remaining findings; Electron IPC and shared query-cache helpers can produce false positives. Do not suppress rules solely to clear the report.
+- `pnpm react:doctor:full` audits all of `apps/desktop/src/renderer`. Run it only when a full React audit is requested. React Doctor supplements the scoped lint, formatting, and Electron tests above.
+- The pinned CLI runs with telemetry/scoring and dependency supply-chain requests disabled. See [React Doctor workflow and baseline](docs/react-doctor.md).
+
 ## Desktop app (`apps/desktop`)
 
 `apps/desktop` is an **Electron** app. `pnpm --filter desktop dev` starts electron-vite, which boots a Vite renderer server **only so Electron can load the UI** (HMR / `ELECTRON_RENDERER_URL`). That localhost URL is not the product.
@@ -148,8 +155,8 @@ cerebro workspace --help
 
 ### Live tabs and panes
 
-- Tab and pane commands require the running desktop app, using the same `$CEREBRO_HOME` as the app. They share the main process BSP state with the UI. Project/workspace commands still work without the desktop app.
-- IDs and layouts last for the app session; this is not daemon-backed terminal persistence or restart restoration.
+- Project/workspace/tab/pane commands use the standalone mux, which starts on demand without the desktop app. Use the same `$CEREBRO_HOME` and `$CEREBRO_DB_PATH` as the app.
+- Layout IDs and pane state persist in SQLite. Electron quit/reload detaches from live shells. Daemon restart restores output and starts a fresh shell on activation; commands are never replayed. See `docs/mux-runtime.md`.
 - `tab create` starts with one pane (`terminal` by default). `tab list` includes each tab’s BSP tree, split IDs/ratios, and active pane ID.
 - `pane split` targets `--pane`, or the active pane in `--tab` (the active tab when omitted). `--direction` accepts `auto`, `right`, or `down`. `--kind` accepts `terminal` or `changes`.
 - `pane list` lists the selected tab’s panes. Focus commands select the owning workspace in the UI. Creation/splitting selects the new content within its workspace without switching from another workspace.
@@ -187,7 +194,7 @@ cerebro workspace list --project 3
 # Exit 2  = bad usage (missing required flag, unknown command)
 ```
 
-**Stable error codes** in the `code` field: `not_found`, `conflict`, `create_failed`, `list_failed`, `usage`, `internal`. Live tab/pane commands also return `unavailable` when the desktop socket cannot be reached.
+**Stable error codes** in the `code` field: `not_found`, `conflict`, `create_failed`, `list_failed`, `usage`, `internal`. Mux commands also return `unavailable` for startup/connection failures.
 
 **`workspace create` is for GitHub-linked single-root projects only.** Multi-root projects cannot add worktrees.
 
@@ -212,6 +219,6 @@ cerebro workspace list --project 3
 
 ### Architecture notes
 
-- The CLI talks directly to `~/cerebro/cerebro.sqlite` — it works even when the desktop app is closed.
-- When the desktop app is running, CLI mutations trigger a sidebar refresh via a Unix socket at `$CEREBRO_HOME/cerebro.sock`. If the socket is missing (app not running), the CLI skips the notify silently.
+- The CLI and desktop coordinate layout and project/workspace mutations through the mux storage worker. SQLite holds metadata; bounded terminal snapshots/journals hold screen and scrollback.
+- Clients use an authenticated local socket (macOS/Linux) or named pipe (Windows). Mux events refresh connected views. `cerebro server status|start|stop` controls the daemon; `pane capture|send|restart` controls terminals without Electron.
 - GitHub tokens stored by the desktop app are encrypted by Electron `safeStorage` and are not accessible to the CLI. Private clones must use system git credentials (`gh auth`, SSH, or osxkeychain).

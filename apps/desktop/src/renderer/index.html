@@ -3,13 +3,26 @@
   <head>
     <meta charset="UTF-8" />
     <title>Cerebro</title>
+    <link rel="stylesheet" href="/src/assets/startup.css" />
     <meta
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://avatars.githubusercontent.com; font-src 'self'"
     />
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="startup-splash" data-testid="startup-splash">
+        <div class="startup-drag-region"></div>
+        <div class="startup-content">
+          <img class="startup-mark" src="/src/assets/brain.svg" alt="" width="140" height="122" />
+          <h1 class="startup-title">Cerebro</h1>
+          <div role="status" class="startup-status">
+            <span class="startup-spinner" aria-hidden="true"></span>
+            Opening your workspaces…
+          </div>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

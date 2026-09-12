@@ -1,13 +1,20 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import type { Pane } from '@cerebro/core'
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   DEFAULT_VIRTUAL_FILE_METRICS,
-  parseDiffFromFile,
   type CodeViewDiffItem,
   type CodeViewItem,
   type DiffLineAnnotation,
   type LineAnnotation
 } from '@pierre/diffs'
-import { FileDiff, Virtualizer, useVirtualizer, type FileDiffOptions } from '@pierre/diffs/react'
+import {
+  FileDiff,
+  Virtualizer,
+  useVirtualizer,
+  WorkerPoolContextProvider,
+  type FileDiffOptions
+} from '@pierre/diffs/react'
+import { useQuery } from '@tanstack/react-query'
 import {
   ChevronDown,
   ChevronRight,
@@ -18,17 +25,14 @@ import {
   PanelRightOpen,
   RefreshCw
 } from 'lucide-react'
-import type {
-  ChangedFile,
-  FileDiffContents,
-  RepoChangeGroup,
-  WorkspaceChanges
-} from '@shared/types'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ChangesFileList } from '@/components/changes-file-list'
 import { ChangesImagePreview } from '@/components/changes-image-preview'
 import { changeItemId } from '@/lib/changes'
+import { changesOptions, changesManifestOptions, type LoadedChange } from '@/lib/changes-query'
+import { changesWorkerPool, changesHighlighterOptions } from '@/lib/changes-highlighter'
+import { queryClient } from '@/lib/query-client'
 import { cn } from '@/lib/utils'
 
 export type ChangesAnnotationRender = (
@@ -38,6 +42,9 @@ export type ChangesAnnotationRender = (
 
 type ChangesViewProps = {
   workspaceId: number
+  paneId?: number
+  repositoryId?: number | null
+  savedState?: Pane['state']
   active: boolean
   annotationsByItem?: Record<string, DiffLineAnnotation[]>
   renderAnnotation?: ChangesAnnotationRender
@@ -69,52 +76,6 @@ const MIN_DIFF_WIDTH = 240
 const COLLAPSED_FILES_WIDTH = 32
 const RAIL_DRAG_THRESHOLD = 6
 
-type ListedFile = {
-  repositoryId: number
-  repositoryName: string
-  file: ChangedFile
-}
-
-function listedFiles(groups: RepoChangeGroup[]): ListedFile[] {
-  return groups.flatMap((group) =>
-    group.files.map((file) => ({
-      repositoryId: group.repositoryId,
-      repositoryName: group.repositoryName,
-      file
-    }))
-  )
-}
-
-function toCodeViewItem(
-  entry: ListedFile,
-  diff: FileDiffContents,
-  annotations: DiffLineAnnotation[] | undefined,
-  showRepo: boolean
-): CodeViewDiffItem<undefined> | null {
-  if (diff.kind !== 'text') return null
-  if (diff.oldContents == null && diff.newContents == null) return null
-
-  const displayName = showRepo ? `${entry.repositoryName}/${entry.file.path}` : entry.file.path
-  const oldFile =
-    diff.oldContents == null ? null : { name: displayName, contents: diff.oldContents }
-  const newFile =
-    diff.newContents == null ? null : { name: displayName, contents: diff.newContents }
-
-  return {
-    id: changeItemId(entry.repositoryId, entry.file.path),
-    type: 'diff',
-    fileDiff: parseDiffFromFile(oldFile, newFile),
-    annotations
-  }
-}
-
-type ReviewItem = {
-  id: string
-  displayName: string
-  diff: FileDiffContents
-  textItem: CodeViewDiffItem<undefined> | null
-}
-
 function ChangeScrollTarget({ request }: { request: { id: string } | null }): null {
   const virtualizer = useVirtualizer()
   useLayoutEffect(() => {
@@ -132,17 +93,31 @@ function ChangeScrollTarget({ request }: { request: { id: string } | null }): nu
   return null
 }
 
-function ChangeFileContent({
+const ChangeFileContent = memo(function ChangeFileContent({
   item,
   collapsed,
   onToggle,
-  renderAnnotation
+  renderAnnotation,
+  annotations
 }: {
-  item: ReviewItem
+  item: LoadedChange
   collapsed: boolean
   onToggle: (id: string) => void
   renderAnnotation?: ChangesAnnotationRender
+  annotations?: DiffLineAnnotation[]
 }): React.JSX.Element {
+  const textItem = useMemo<CodeViewDiffItem<undefined> | null>(
+    () =>
+      item.fileDiff
+        ? {
+            id: item.id,
+            type: 'diff',
+            fileDiff: item.fileDiff,
+            annotations
+          }
+        : null,
+    [item, annotations]
+  )
   const options = useMemo(() => ({ ...DIFF_OPTIONS, collapsed }), [collapsed])
   const renderToggle = useCallback(
     () => (
@@ -161,19 +136,18 @@ function ChangeFileContent({
   )
   const renderLineAnnotation = useCallback(
     (annotation: DiffLineAnnotation) =>
-      item.textItem ? renderAnnotation?.(annotation, item.textItem) : null,
-    [item.textItem, renderAnnotation]
+      textItem ? renderAnnotation?.(annotation, textItem) : null,
+    [textItem, renderAnnotation]
   )
 
   return (
     <section data-change-id={item.id} data-change-path={item.diff.path} className="min-w-0">
-      {item.textItem ? (
+      {textItem ? (
         <FileDiff
-          fileDiff={item.textItem.fileDiff}
+          fileDiff={textItem.fileDiff}
           options={options}
           metrics={DIFF_METRICS}
-          lineAnnotations={item.textItem.annotations}
-          disableWorkerPool
+          lineAnnotations={textItem.annotations}
           renderHeaderPrefix={renderToggle}
           renderAnnotation={renderAnnotation ? renderLineAnnotation : undefined}
         />
@@ -195,7 +169,7 @@ function ChangeFileContent({
       )}
     </section>
   )
-}
+})
 
 function DiffFoldControls({
   onCollapseAll,
@@ -240,98 +214,70 @@ function DiffFoldControls({
 
 export function ChangesView({
   workspaceId,
+  paneId,
+  repositoryId,
+  savedState,
   active,
   annotationsByItem,
   renderAnnotation
 }: ChangesViewProps): React.JSX.Element {
   const rootRef = useRef<HTMLDivElement>(null)
-  const [filesOpen, setFilesOpen] = useState(true)
-  const [filesWidth, setFilesWidth] = useState(DEFAULT_FILES_WIDTH)
+  const [filesOpen, setFilesOpen] = useState(savedState?.filesOpen ?? true)
+  const [filesWidth, setFilesWidth] = useState(savedState?.filesWidth ?? DEFAULT_FILES_WIDTH)
   const [filesDragging, setFilesDragging] = useState(false)
-  const [changes, setChanges] = useState<WorkspaceChanges | null>(null)
-  const [diffs, setDiffs] = useState<FileDiffContents[]>([])
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const query = useQuery({
+    ...changesOptions(workspaceId, repositoryId),
+    enabled: active,
+    // An open tab retains its cache even while hidden, without repainting on updates.
+    notifyOnChangeProps: active ? undefined : []
+  })
+  useEffect(() => {
+    if (active) return
+    const queryKey = changesOptions(workspaceId, repositoryId).queryKey
+    // Another visible Changes pane may be using the same in-flight refresh.
+    if (!queryClient.getQueryCache().find({ queryKey, exact: true })?.isActive()) {
+      void queryClient.cancelQueries({ queryKey, exact: true })
+    }
+  }, [active, workspaceId, repositoryId])
+  const manifest = useQuery(changesManifestOptions(workspaceId, repositoryId))
+  const changes = query.data?.listed ?? manifest.data
+  const loading = !query.data && query.isPending
+  const [selection, setSelectedId] = useState<string | null>(savedState?.selectedId ?? null)
+  const entries = useMemo(
+    () =>
+      changes?.groups.flatMap((group) =>
+        group.files.map((file) => changeItemId(group.repositoryId, file.path))
+      ) ?? [],
+    [changes]
+  )
+  const selectedId = selection && entries.includes(selection) ? selection : (entries[0] ?? null)
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => new Set())
   const [scrollRequest, setScrollRequest] = useState<{ id: string } | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const showRepoInHeader = (changes?.groups.length ?? 0) > 1
-
-  const applyListed = useCallback((listed: WorkspaceChanges, loaded: FileDiffContents[]): void => {
-    const entries = listedFiles(listed.groups)
-    setChanges(listed)
-    setDiffs(loaded)
-    setError(null)
-    setSelectedId((current) => {
-      if (
-        current &&
-        entries.some((entry) => changeItemId(entry.repositoryId, entry.file.path) === current)
-      ) {
-        return current
-      }
-      const first = entries[0]
-      return first ? changeItemId(first.repositoryId, first.file.path) : null
-    })
-  }, [])
-
-  const fetchChanges = useCallback(async (): Promise<{
-    listed: WorkspaceChanges
-    loaded: FileDiffContents[]
-  }> => {
-    const listed = await window.cerebro.listWorkspaceChanges(workspaceId)
-    const entries = listedFiles(listed.groups)
-    const loaded = await Promise.all(
-      entries.map(async (entry) =>
-        window.cerebro.getWorkspaceFileDiff(workspaceId, entry.repositoryId, entry.file)
-      )
-    )
-    return { listed, loaded }
-  }, [workspaceId])
-
+  const [stateError, setError] = useState<string | null>(null)
+  const error = query.error?.message ?? stateError
+  const latestState = useRef({ version: 1 as const, selectedId, filesOpen, filesWidth })
   useEffect(() => {
-    if (!active) return
-    let cancelled = false
-    void (async () => {
-      try {
-        const { listed, loaded } = await fetchChanges()
-        if (cancelled) return
-        applyListed(listed, loaded)
-      } catch (err) {
-        if (cancelled) return
-        setError(err instanceof Error ? err.message : 'Failed to load changes.')
-        setChanges(null)
-        setDiffs([])
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [active, applyListed, fetchChanges])
+    latestState.current = { version: 1, selectedId, filesOpen, filesWidth }
+  }, [selectedId, filesOpen, filesWidth])
+  useEffect(
+    () => () => {
+      if (paneId != null)
+        void window.cerebro.setPaneState(workspaceId, paneId, latestState.current).catch(() => {})
+    },
+    [workspaceId, paneId]
+  )
+  useEffect(() => {
+    if (paneId == null) return
+    const timer = setTimeout(() => {
+      void window.cerebro
+        .setPaneState(workspaceId, paneId, { version: 1, selectedId, filesOpen, filesWidth })
+        .catch((error) => setError(String(error)))
+    }, 200)
+    return () => clearTimeout(timer)
+  }, [workspaceId, paneId, selectedId, filesOpen, filesWidth])
+  const items = query.data?.items ?? []
 
-  const items = useMemo<ReviewItem[]>(() => {
-    if (!changes) return []
-    const entries = listedFiles(changes.groups)
-    const byKey = new Map(diffs.map((diff) => [`${diff.repositoryId}:${diff.path}`, diff] as const))
-    return entries.flatMap((entry) => {
-      const diff = byKey.get(`${entry.repositoryId}:${entry.file.path}`)
-      if (!diff) return []
-      const id = changeItemId(entry.repositoryId, entry.file.path)
-      return [
-        {
-          id,
-          displayName: showRepoInHeader
-            ? `${entry.repositoryName}/${entry.file.path}`
-            : entry.file.path,
-          diff,
-          textItem: toCodeViewItem(entry, diff, annotationsByItem?.[id], showRepoInHeader)
-        }
-      ]
-    })
-  }, [annotationsByItem, changes, diffs, showRepoInHeader])
-
-  const fileCount = changes ? listedFiles(changes.groups).length : 0
+  const fileCount = entries.length
 
   const handleSelect = (itemId: string): void => {
     setScrollRequest({ id: itemId })
@@ -357,162 +303,168 @@ export function ChangesView({
   }
 
   return (
-    <div
-      ref={rootRef}
-      data-testid="changes-view"
-      data-workspace-id={workspaceId}
-      data-active={active ? 'true' : 'false'}
-      data-dragging={filesDragging ? 'true' : undefined}
-      className="absolute inset-0 flex min-h-0 bg-background"
-      style={{
-        visibility: active ? 'visible' : 'hidden',
-        pointerEvents: active ? 'auto' : 'none',
-        zIndex: active ? 1 : 0
-      }}
+    <WorkerPoolContextProvider
+      poolOptions={changesWorkerPool}
+      highlighterOptions={changesHighlighterOptions}
     >
-      <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden" data-testid="changes-diff">
-        {loading ? (
-          <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
-            Loading changes…
-          </div>
-        ) : error ? (
-          <div className="flex h-full items-center justify-center px-6 text-center text-xs text-destructive">
-            {error}
-          </div>
-        ) : fileCount === 0 ? (
-          <div
-            data-testid="changes-empty"
-            className="flex h-full items-center justify-center text-sm text-muted-foreground"
-          >
-            No changes
-          </div>
-        ) : (
-          <Virtualizer style={SCROLL_STYLE} contentClassName="flex flex-col gap-1 pt-1 pb-4">
-            {items.map((item) => (
-              <ChangeFileContent
-                key={item.id}
-                item={item}
-                collapsed={collapsedIds.has(item.id)}
-                onToggle={toggleCollapsed}
-                renderAnnotation={renderAnnotation}
-              />
-            ))}
-            <ChangeScrollTarget request={scrollRequest} />
-          </Virtualizer>
-        )}
-      </div>
-      <aside
-        data-testid="changes-sidebar"
-        data-state={filesOpen ? 'expanded' : 'collapsed'}
-        className={cn(
-          'relative flex shrink-0 flex-col overflow-hidden border-l border-border bg-background',
-          !filesDragging && 'transition-[width] duration-150'
-        )}
-        style={{ width: filesOpen ? filesWidth : COLLAPSED_FILES_WIDTH }}
+      <div
+        ref={rootRef}
+        data-testid="changes-view"
+        data-workspace-id={workspaceId}
+        data-active={active ? 'true' : 'false'}
+        data-dragging={filesDragging ? 'true' : undefined}
+        className="absolute inset-0 flex min-h-0 bg-background"
+        style={{
+          visibility: active ? 'visible' : 'hidden',
+          pointerEvents: active ? 'auto' : 'none',
+          zIndex: active ? 1 : 0
+        }}
       >
-        <ChangesSidebarRail
-          open={filesOpen}
-          containerRef={rootRef}
-          onToggle={toggleFiles}
-          onResize={setFilesWidth}
-          onDraggingChange={setFilesDragging}
-        />
-        <div className={cn('flex min-h-0 flex-1 flex-col', !filesOpen && 'hidden')}>
-          <div
-            className="flex items-center gap-1 border-b border-border px-1.5 py-1"
-            style={{ paddingRight: 'calc(var(--pane-controls-width, 0px) + 6px)' }}
-          >
-            <span className="min-w-0 flex-1 truncate px-1 text-[11px] font-medium text-muted-foreground">
-              Files
-            </span>
-            <DiffFoldControls
-              onCollapseAll={() => setCollapsedIds(new Set(items.map((item) => item.id)))}
-              onExpandAll={() => setCollapsedIds(new Set())}
-            />
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-xs"
-                  data-testid="changes-refresh"
-                  aria-label="Refresh changes"
-                  onClick={(): void => {
-                    setLoading(true)
-                    void fetchChanges()
-                      .then(({ listed, loaded }) => {
-                        applyListed(listed, loaded)
-                      })
-                      .catch((err: unknown) => {
-                        setError(err instanceof Error ? err.message : 'Failed to load changes.')
-                        setChanges(null)
-                        setDiffs([])
-                      })
-                      .finally(() => setLoading(false))
-                  }}
-                >
-                  <RefreshCw className="size-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">Refresh</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-xs"
-                  data-testid="changes-sidebar-toggle"
-                  aria-label="Collapse files"
-                  onClick={toggleFiles}
-                >
-                  <PanelRightClose className="size-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">Collapse</TooltipContent>
-            </Tooltip>
-          </div>
-          {loading && !changes ? (
-            <div className="px-3 py-4 text-xs text-muted-foreground">Loading…</div>
+        <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden" data-testid="changes-diff">
+          {loading ? (
+            <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+              Loading changes…
+            </div>
+          ) : error && !query.data ? (
+            <div className="flex h-full items-center justify-center px-6 text-center text-xs text-destructive">
+              {error}
+            </div>
           ) : fileCount === 0 ? (
             <div
-              data-testid="changes-sidebar-empty"
-              className="px-3 py-4 text-xs text-muted-foreground"
+              data-testid="changes-empty"
+              className="flex h-full items-center justify-center text-sm text-muted-foreground"
             >
               No changes
             </div>
           ) : (
-            <ChangesFileList
-              groups={changes?.groups ?? []}
-              selectedId={selectedId}
-              onSelect={handleSelect}
-            />
+            <Virtualizer style={SCROLL_STYLE} contentClassName="flex flex-col gap-1 pt-1 pb-4">
+              {items.map((item) => (
+                <ChangeFileContent
+                  key={item.id}
+                  item={item}
+                  collapsed={collapsedIds.has(item.id)}
+                  onToggle={toggleCollapsed}
+                  renderAnnotation={renderAnnotation}
+                  annotations={annotationsByItem?.[item.id]}
+                />
+              ))}
+              <ChangeScrollTarget request={scrollRequest} />
+            </Virtualizer>
           )}
         </div>
-        {!filesOpen && (
-          <div
-            className="flex flex-col items-center py-1"
-            style={{ paddingTop: 'calc(var(--pane-controls-height, 0px) + 4px)' }}
-          >
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-xs"
-                  data-testid="changes-sidebar-toggle"
-                  aria-label="Expand files"
-                  onClick={toggleFiles}
+        <aside
+          data-testid="changes-sidebar"
+          data-state={filesOpen ? 'expanded' : 'collapsed'}
+          className={cn(
+            'relative flex shrink-0 flex-col overflow-hidden border-l border-border bg-background',
+            !filesDragging && 'transition-[width] duration-150'
+          )}
+          style={{ width: filesOpen ? filesWidth : COLLAPSED_FILES_WIDTH }}
+        >
+          <ChangesSidebarRail
+            open={filesOpen}
+            containerRef={rootRef}
+            onToggle={toggleFiles}
+            onResize={setFilesWidth}
+            onDraggingChange={setFilesDragging}
+          />
+          <div className={cn('flex min-h-0 flex-1 flex-col', !filesOpen && 'hidden')}>
+            <div
+              className="flex items-center gap-1 border-b border-border px-1.5 py-1"
+              style={{ paddingRight: 'calc(var(--pane-controls-width, 0px) + 6px)' }}
+            >
+              <span className="min-w-0 flex-1 truncate px-1 text-[11px] font-medium text-muted-foreground">
+                Files
+              </span>
+              {error && query.data && (
+                <span
+                  role="status"
+                  className="max-w-48 truncate text-xs text-destructive"
+                  title={error}
                 >
-                  <PanelRightOpen className="size-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="left">Expand files</TooltipContent>
-            </Tooltip>
+                  Refresh failed: {error}
+                </span>
+              )}
+              <DiffFoldControls
+                onCollapseAll={() => setCollapsedIds(new Set(items.map((item) => item.id)))}
+                onExpandAll={() => setCollapsedIds(new Set())}
+              />
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    data-testid="changes-refresh"
+                    aria-label="Refresh changes"
+                    aria-busy={query.isFetching}
+                    onClick={(): void => {
+                      if (!query.isFetching) void query.refetch({ cancelRefetch: false })
+                    }}
+                  >
+                    <RefreshCw className={cn('size-3.5', query.isFetching && 'animate-spin')} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Refresh</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    data-testid="changes-sidebar-toggle"
+                    aria-label="Collapse files"
+                    onClick={toggleFiles}
+                  >
+                    <PanelRightClose className="size-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Collapse</TooltipContent>
+              </Tooltip>
+            </div>
+            {loading && !changes ? (
+              <div className="px-3 py-4 text-xs text-muted-foreground">Loading…</div>
+            ) : fileCount === 0 ? (
+              <div
+                data-testid="changes-sidebar-empty"
+                className="px-3 py-4 text-xs text-muted-foreground"
+              >
+                No changes
+              </div>
+            ) : (
+              <ChangesFileList
+                groups={changes?.groups ?? []}
+                selectedId={selectedId}
+                onSelect={handleSelect}
+              />
+            )}
           </div>
-        )}
-      </aside>
-    </div>
+          {!filesOpen && (
+            <div
+              className="flex flex-col items-center py-1"
+              style={{ paddingTop: 'calc(var(--pane-controls-height, 0px) + 4px)' }}
+            >
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    data-testid="changes-sidebar-toggle"
+                    aria-label="Expand files"
+                    onClick={toggleFiles}
+                  >
+                    <PanelRightOpen className="size-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="left">Expand files</TooltipContent>
+              </Tooltip>
+            </div>
+          )}
+        </aside>
+      </div>
+    </WorkerPoolContextProvider>
   )
 }
 

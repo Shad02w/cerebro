@@ -116,16 +116,31 @@ export type ProjectBranch = {
 
 export type PtyOpenResult = {
   sessionId: number
+  continuation?: import('@cerebro/core').TerminalContinuation
+  scrollback?: number
+  data: string
+  cols: number
+  rows: number
+  sequence: number
+  status: 'running' | 'exited' | 'interrupted' | 'failed'
+  readOnly?: boolean
+  previousScreen?: string
+  error?: string
 }
 
 export type PtyDataEvent = {
   sessionId: number
   data: string
+  sequence: number
+  cols: number
+  rows: number
 }
 
 export type PtyExitEvent = {
   sessionId: number
   exitCode: number
+  status?: string
+  error?: string
   signal?: number
 }
 
@@ -232,6 +247,12 @@ export type CerebroApi = {
   getCliStatus: () => Promise<CliInstallStatus>
   installCli: () => Promise<CliInstallStatus>
   removeCli: () => Promise<CliInstallStatus>
+  setPaneState: (
+    workspaceId: number,
+    paneId: number,
+    state: import('@cerebro/core').Pane['state']
+  ) => Promise<LayoutState>
+  restartPty: (workspaceId: number, paneId: number) => Promise<void>
   getLayout: () => Promise<LayoutState>
   onLayoutFocusWorkspace: (listener: (workspaceId: number) => void) => () => void
   layoutCommand: (command: LayoutCommand) => Promise<LayoutReply>
@@ -246,7 +267,10 @@ export type CerebroApi = {
   createWorkspace: (projectId: number, branch: string, from?: string | null) => Promise<Workspace>
   removeWorkspace: (workspaceId: number, deleteFiles: boolean) => Promise<ProjectListResult>
   listProjectBranches: (projectId: number) => Promise<ProjectBranch[]>
-  listWorkspaceChanges: (workspaceId: number) => Promise<WorkspaceChanges>
+  listWorkspaceChanges: (
+    workspaceId: number,
+    repositoryId?: number | null
+  ) => Promise<WorkspaceChanges>
   getWorkspaceFileDiff: (
     workspaceId: number,
     repositoryId: number,
@@ -266,7 +290,8 @@ export type CerebroApi = {
   onProjectsInvalidate: (listener: () => void) => () => void
   /** File › Close menu (no accelerator); runs the same path as the closeTab keybind. */
   onMenuClose: (listener: () => void) => () => void
-  openPty: (workspaceId: number, cols: number, rows: number) => Promise<PtyOpenResult>
+  openPty: (workspaceId: number, paneId: number) => Promise<PtyOpenResult>
+  ackPty: (sessionId: number, sequence: number) => void
   writePty: (sessionId: number, data: string) => Promise<void>
   resizePty: (sessionId: number, cols: number, rows: number) => Promise<void>
   killPty: (sessionId: number) => Promise<void>
