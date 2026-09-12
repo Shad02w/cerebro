@@ -17,9 +17,8 @@
     "test:e2e": "electron-vite build && node ./scripts/playwright-e2e.mjs",
     "test:e2e:repeat": "node ./scripts/playwright-e2e.mjs",
     "postinstall": "electron-builder install-app-deps",
-    "build:unpack": "tsx scripts/package-mac.ts production --dir",
-    "build:mac": "tsx scripts/package-mac.ts production",
-    "build:mac:dev": "tsx scripts/package-mac.ts dev"
+    "build:unpack": "tsx scripts/package-mac.ts --dir",
+    "build:mac": "tsx scripts/package-mac.ts"
   },
   "dependencies": {
     "@cerebro/core": "workspace:*",

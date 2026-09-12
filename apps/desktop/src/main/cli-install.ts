@@ -1,4 +1,3 @@
-import { appIdentity } from './app-identity'
 import { execFileSync } from 'node:child_process'
 import { app, ipcMain } from 'electron'
 import {
@@ -35,7 +34,7 @@ function locations(): {
   const testing = !app.isPackaged && process.env.NODE_ENV === 'test'
   const home =
     testing && process.env.CEREBRO_CLI_TEST_HOME ? process.env.CEREBRO_CLI_TEST_HOME : homedir()
-  const command = appIdentity.cliCommand
+  const command = app.isPackaged ? 'cerebro' : 'cerebro-dev'
   const bin = join(home, '.local/bin')
   const shell = basename(process.env.SHELL || '/bin/zsh')
   const profile =
@@ -105,7 +104,7 @@ export function getCliStatus(): CliInstallStatus {
     command,
     path: launcher,
     profile,
-    development: appIdentity.channel === 'dev',
+    development: !app.isPackaged,
     version: app.getVersion(),
     onPath: binOnPath()
   }
@@ -256,7 +255,7 @@ function windowsCliStatus(): CliInstallStatus {
     command,
     path: launcher.path,
     profile: 'User PATH',
-    development: appIdentity.channel === 'dev',
+    development: !app.isPackaged,
     version: app.getVersion(),
     onPath: binOnPath()
   }

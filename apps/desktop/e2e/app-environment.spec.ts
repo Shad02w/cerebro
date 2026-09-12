@@ -4,7 +4,7 @@ test('local development preserves its explicit data override and development CLI
   electronApp,
   page
 }) => {
-  test.skip(Boolean(process.env.CEREBRO_E2E_PACKAGED_APP), 'Local development identity only')
+  test.skip(Boolean(process.env.CEREBRO_E2E_PACKAGED_APP), 'Local development only')
   const runtime = await electronApp.evaluate(({ app }) => ({
     packaged: app.isPackaged,
     home: process.env.CEREBRO_HOME,

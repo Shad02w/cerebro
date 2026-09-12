@@ -1,4 +1,4 @@
-import { appIdentity } from './app-identity'
+import './app-environment'
 import { app, shell, BrowserWindow, nativeTheme } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -67,7 +67,7 @@ function createWindow(): void {
 app.whenReady().then(() => {
   nativeTheme.themeSource = 'dark'
   if (process.platform === 'darwin') app.dock?.setIcon(icon)
-  electronApp.setAppUserModelId(appIdentity.appId)
+  electronApp.setAppUserModelId('com.cerebro.app')
   setAppMenu()
   ensureCerebroHome()
   registerWorkspaceIpc()

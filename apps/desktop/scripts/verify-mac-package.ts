@@ -4,20 +4,18 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { _electron as electron, expect } from '@playwright/test'
-import { getReleaseIdentity } from '../src/shared/release-identity'
 
 async function main(): Promise<void> {
-  const identity = getReleaseIdentity(process.argv[2] ?? 'production')
-  const output = resolve('dist', identity.channel)
+  const output = resolve('dist/production')
   const appDirectory = process.arch === 'x64' ? 'mac' : `mac-${process.arch}`
   assert.ok(existsSync(join(output, appDirectory)), 'Missing packaged macOS app')
-  const bundle = join(output, appDirectory, `${identity.productName}.app`)
+  const bundle = join(output, appDirectory, 'Cerebro.app')
   const bundleId = execFileSync(
     '/usr/libexec/PlistBuddy',
     ['-c', 'Print :CFBundleIdentifier', join(bundle, 'Contents/Info.plist')],
     { encoding: 'utf8' }
   ).trim()
-  assert.equal(bundleId, identity.appId)
+  assert.equal(bundleId, 'com.cerebro.app')
   const home = mkdtempSync(join(tmpdir(), 'cerebro-package-'))
   const env: NodeJS.ProcessEnv = {
     ...process.env,
@@ -32,20 +30,23 @@ async function main(): Promise<void> {
   let application: Awaited<ReturnType<typeof electron.launch>> | undefined
   try {
     application = await electron.launch({
-      executablePath: join(bundle, 'Contents/MacOS', identity.productName),
+      executablePath: join(bundle, 'Contents/MacOS', 'Cerebro'),
       args: [`--user-data-dir=${join(home, 'electron')}`],
       env,
       timeout: 30_000
     })
     assert.deepEqual(
-      await application.evaluate(({ app }) => ({ name: app.getName(), packaged: app.isPackaged })),
-      { name: identity.productName, packaged: true }
+      await application.evaluate(({ app }) => ({
+        packaged: app.isPackaged,
+        home: process.env.CEREBRO_HOME
+      })),
+      { packaged: true, home }
     )
     const page = await application.firstWindow()
     await expect(page.getByTestId('sidebar-heading')).toBeVisible({ timeout: 30_000 })
     const cli = await page.evaluate(() => window.cerebro.getCliStatus())
-    assert.equal(cli.command, identity.cliCommand)
-    assert.equal(cli.development, identity.channel === 'dev')
+    assert.equal(cli.command, 'cerebro')
+    assert.equal(cli.development, false)
     const version = await application.evaluate(({ app }) => app.getVersion())
     assert.equal(runtimeMetadata.version, version)
     assert.equal(
@@ -63,15 +64,24 @@ async function main(): Promise<void> {
       )
     )
     assert.ok(Array.isArray(projects.projects), 'Packaged CLI must connect to its mux')
-    console.log(`Verified ${identity.productName}: ${bundleId}, Electron window, CLI, mux`)
+    console.log(`Verified Cerebro: ${bundleId}, Electron window, CLI, mux`)
   } finally {
     await application?.close()
     try {
-      execFileSync(
-        join(runtime, 'node'),
-        ['--no-warnings', join(runtime, 'cerebro.cjs'), 'server', 'stop'],
-        { env, timeout: 10_000, stdio: 'pipe' }
+      const status = JSON.parse(
+        execFileSync(
+          join(runtime, 'node'),
+          ['--no-warnings', join(runtime, 'cerebro.cjs'), 'server', 'status'],
+          { env, timeout: 10_000, encoding: 'utf8' }
+        )
       )
+      if (status.running) {
+        execFileSync(
+          join(runtime, 'node'),
+          ['--no-warnings', join(runtime, 'cerebro.cjs'), 'server', 'stop'],
+          { env, timeout: 10_000, stdio: 'pipe' }
+        )
+      }
     } finally {
       rmSync(home, { recursive: true, force: true })
     }

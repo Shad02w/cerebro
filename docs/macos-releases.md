@@ -4,21 +4,23 @@ Cerebro currently distributes macOS builds only. Each release includes a DMG and
 ZIP for Apple Silicon (`arm64`) and Intel (`x64`). Build each architecture on its
 native runner: the app bundles the build host's Node runtime and native PTY.
 
-| Build                | App ID                | Installed name | Default data    | Installed CLI |
-| -------------------- | --------------------- | -------------- | --------------- | ------------- |
-| Production           | `com.cerebro.app`     | Cerebro        | `~/cerebro`     | `cerebro`     |
-| Packaged development | `com.cerebro.app.dev` | Cerebro Dev    | `~/cerebro-dev` | `cerebro-dev` |
+| Mode                | Default home    | SQLite database                |
+| ------------------- | --------------- | ------------------------------ |
+| Local `pnpm dev`    | `~/cerebro-dev` | `~/cerebro-dev/cerebro.sqlite` |
+| Packaged production | `~/cerebro`     | `~/cerebro/cerebro.sqlite`     |
 
-The packaged channel is recorded in `package.json` as `cerebroChannel`. It does
-not depend on `NODE_ENV`, `is.dev`, or a runtime environment switch. Distinct
-product names also separate Electron's default user-data directories.
-`CEREBRO_HOME` and `CEREBRO_DB_PATH` remain explicit overrides. Do not point both
-channels at the same data if you want independent databases and mux instances.
-The installed CLI launcher uses its app's data directory.
+The original dev command remains `electron-vite dev --watch`. It launches the
+installed Electron runtime directly. There is no custom dev launcher, copied
+bundle, app-ID switching, or packaged development release channel.
 
-Local `pnpm dev` retains its existing data behavior and `cerebro-dev` CLI name.
-A local CLI installation and a packaged dev CLI installation use the same command;
-installing either updates that development launcher to the selected build.
+Before storage initialization, unpackaged Electron sets a default `CEREBRO_HOME`
+of `~/cerebro-dev`. Packaged builds retain the core default of `~/cerebro`.
+This uses `app.isPackaged`, not `NODE_ENV`, so a local production-mode build used
+for previews or tests still uses the development home.
+
+`CEREBRO_HOME` overrides the home in either mode. `CEREBRO_DB_PATH` overrides the
+SQLite file independently. Mux state follows the selected home; the installed CLI
+launcher uses its app's home. Existing `~/cerebro` data is not moved or deleted.
 
 ## Automatic releases
 
@@ -26,12 +28,11 @@ The GitHub repository is public. Published releases and installer downloads are
 available to users without repository membership.
 
 `.github/workflows/release-mac.yml` runs on pushes to `release`, including merges.
-It builds production by default. Protect that branch in GitHub if releases should
-only come from reviewed pull requests. Manual workflow runs offer `dev` or
-`production`; dev uploads are GitHub prereleases and never become Latest.
+It always builds production. Protect that branch in GitHub if releases should
+only come from reviewed pull requests. Manual workflow runs also build production.
 
 Every workflow run has a unique version. The desktop package version is the base:
-`1.0.0` becomes `1.0.0+build.42` in production or `1.0.0-dev.42` for development.
+`1.0.0` becomes `1.0.0+build.42`.
 The workflow run number is also the macOS bundle build number. Increment the base
 version in `apps/desktop/package.json` when the product version changes. Build
 metadata distinguishes production artifacts; it does not change SemVer precedence.
@@ -54,16 +55,12 @@ Run from the repository root on a Mac with Node 22.13+ (CI uses Node 24):
 
 ```sh
 pnpm --filter desktop build:mac
-pnpm --filter desktop build:mac:dev
 # Faster unpacked production build:
 pnpm --filter desktop build:unpack
-# Unpacked development build:
-pnpm --filter desktop exec tsx scripts/package-mac.ts dev --dir
-pnpm --filter desktop exec tsx scripts/verify-mac-package.ts production
-pnpm --filter desktop exec tsx scripts/verify-mac-package.ts dev
+pnpm --filter desktop exec tsx scripts/verify-mac-package.ts
 ```
 
-Outputs are in `apps/desktop/dist/production` and `apps/desktop/dist/dev`. Packaging
+Outputs are in `apps/desktop/dist/production`. Packaging
 never publishes by itself. The verifier checks the bundle ID, opens the actual
 packaged Electron app with temporary data, verifies the CLI identity and mux
 connection, and stops the isolated mux afterward.

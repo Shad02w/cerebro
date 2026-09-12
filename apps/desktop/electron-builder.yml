@@ -1,7 +1,5 @@
 appId: com.cerebro.app
 productName: Cerebro
-extraMetadata:
-  cerebroChannel: production
 artifactName: Cerebro-${version}-${arch}.${ext}
 directories:
   buildResources: build
