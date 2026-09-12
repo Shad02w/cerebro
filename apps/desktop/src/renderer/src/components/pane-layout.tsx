@@ -57,7 +57,7 @@ export function PaneFrame({
       }}
     >
       <div
-        className={`relative isolate h-full overflow-hidden ${multiple ? 'rounded-sm border-2' : ''}`}
+        className={`relative isolate h-full overflow-hidden ${multiple ? 'rounded-sm border-[0.5px]' : ''} ${active && multiple ? 'ring ring-(--sidebar-selected) shadow-[0_0_7px_1px_color-mix(in_oklch,var(--sidebar-selected)_42%,transparent)]' : ''}`}
         data-testid="pane-border"
         style={
           {
@@ -66,10 +66,6 @@ export function PaneFrame({
                 ? 'var(--sidebar-selected)'
                 : 'var(--pane-border)'
               : 'transparent',
-            boxShadow:
-              active && multiple
-                ? '0 0 7px 1px color-mix(in oklch, var(--sidebar-selected) 42%, transparent)'
-                : 'none',
             '--pane-controls-width': multiple ? '3.5rem' : '2rem',
             '--pane-controls-height': '1.5rem'
           } as CSSProperties

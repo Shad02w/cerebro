@@ -130,7 +130,24 @@ test('UI adds mixed BSP panes, preserves terminals, resizes and collapses splits
     const glow = await pane(page, third)
       .getByTestId('pane-border')
       .evaluate((el) => getComputedStyle(el).boxShadow)
-    expect(glow).not.toBe('none')
+    expect(glow).toContain('0px 0px 0px 1px')
+    // Chromium snaps fractional borders to device pixels at the current display scale.
+    const hairlineWidth = await page.evaluate(() => {
+      const probe = document.createElement('div')
+      probe.style.border = '0.5px solid black'
+      document.body.append(probe)
+      const width = getComputedStyle(probe).borderTopWidth
+      probe.remove()
+      return width
+    })
+    await expect(pane(page, third).getByTestId('pane-border')).toHaveCSS(
+      'border-top-width',
+      hairlineWidth
+    )
+    await expect(pane(page, first).getByTestId('pane-border')).toHaveCSS(
+      'border-top-width',
+      hairlineWidth
+    )
     const color = await pane(page, third)
       .getByTestId('pane-border')
       .evaluate((el) => {
@@ -165,7 +182,11 @@ test('UI adds mixed BSP panes, preserves terminals, resizes and collapses splits
       'data-state',
       'expanded'
     )
+    const contentBeforeFocus = await pane(page, first).getByTestId('pane-content').boundingBox()
     await pane(page, first).getByTestId('pane-id').click()
+    expect(await pane(page, first).getByTestId('pane-content').boundingBox()).toEqual(
+      contentBeforeFocus
+    )
     await expect(pane(page, first)).toHaveAttribute('data-pane-active', 'true')
     await expect(pane(page, third).getByTestId('pane-border')).toHaveCSS('box-shadow', 'none')
     const before = await pane(page, first).boundingBox()
