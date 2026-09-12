@@ -61,7 +61,11 @@ export function PaneFrame({
         data-testid="pane-border"
         style={
           {
-            borderColor: active && multiple ? 'var(--sidebar-selected)' : 'transparent',
+            borderColor: multiple
+              ? active
+                ? 'var(--sidebar-selected)'
+                : 'var(--pane-border)'
+              : 'transparent',
             boxShadow:
               active && multiple
                 ? '0 0 7px 1px color-mix(in oklch, var(--sidebar-selected) 42%, transparent)'
