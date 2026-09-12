@@ -55,6 +55,10 @@ The window is two regions: **sidebar** | **content area**. Use these names, not 
 
 ### UI conventions
 
+#### Selection highlights
+
+Do not use a left border, accent strip, or one-sided inset shadow to highlight selected or active items, especially on rounded rows or cards. Use a subtle background change and, if needed, a uniform outline around the whole item.
+
 #### Forms
 
 Never disable a form submit button — not for empty or invalid fields, and not while loading or mutating.

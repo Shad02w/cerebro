@@ -1,0 +1,101 @@
+/* App-specific tree styling; shared pane selection keeps its existing treatment. */
+.cerebro-sidebar [data-sidebar='group'] {
+  padding-inline: 12px;
+}
+
+.cerebro-sidebar .sidebar-project-button {
+  height: 34px;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.cerebro-sidebar .sidebar-project-button > svg {
+  width: 15px;
+  height: 15px;
+  color: color-mix(in oklch, var(--sidebar-foreground) 65%, transparent);
+}
+
+.cerebro-sidebar [data-sidebar='menu-sub'] {
+  margin-left: 16px;
+  padding-left: 8px;
+  padding-block: 3px;
+}
+
+.cerebro-sidebar [data-workspace-role='branch'],
+.cerebro-sidebar [data-workspace-role='root'] {
+  height: 32px;
+  font-size: 12px;
+}
+
+.cerebro-sidebar [data-workspace-role='repository'] {
+  padding-block: 8px;
+}
+
+.cerebro-sidebar [data-sidebar='menu-action'] {
+  top: 5px;
+  width: 22px;
+  height: 22px;
+}
+
+.cerebro-sidebar [data-sidebar='menu-action'].right-6 {
+  right: 28px;
+}
+
+.cerebro-sidebar [data-sidebar='menu-action'],
+.cerebro-sidebar [data-sidebar='group-action'],
+[data-sidebar='trigger'] {
+  border-radius: 4px;
+}
+
+.cerebro-sidebar [data-sidebar='menu-button'],
+.cerebro-sidebar [data-workspace-role] {
+  border-radius: 7px;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.cerebro-sidebar [data-active='true']:is([data-sidebar='menu-button'], [data-workspace-role]) {
+  background-color: color-mix(in srgb, var(--sidebar-selected) 10%, var(--sidebar));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sidebar-selected) 24%, transparent);
+  color: var(--sidebar-accent-foreground);
+}
+
+.cerebro-sidebar
+  [data-active='true']:is([data-sidebar='menu-button'], [data-workspace-role]):hover {
+  background-color: color-mix(in srgb, var(--sidebar-selected) 16%, var(--sidebar));
+}
+
+.cerebro-sidebar button:focus-visible {
+  outline: 2px solid var(--sidebar-selected);
+  outline-offset: -2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cerebro-sidebar [data-sidebar='menu-button'],
+  .cerebro-sidebar [data-workspace-role] {
+    transition: none;
+  }
+}
+
+.cerebro-sidebar .sidebar-header-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  color: var(--sidebar-foreground);
+}
+
+.cerebro-sidebar .sidebar-header-action:hover {
+  background-color: var(--sidebar-accent);
+}
+
+.cerebro-sidebar .sidebar-root-group {
+  padding: 4px;
+  border-radius: 9px;
+  background-color: color-mix(in srgb, var(--sidebar-foreground) 4%, transparent);
+}

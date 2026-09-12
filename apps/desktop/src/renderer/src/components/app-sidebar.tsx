@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import '@/assets/sidebar.css'
 import {
   ArrowLeft,
   ChevronRight,
@@ -7,15 +8,18 @@ import {
   FolderPlus,
   Folders,
   FolderTree,
+  GitBranch,
   MoreHorizontal,
   Plus,
+  Search,
   Settings,
-  Trash2
+  Trash2,
+  X
 } from 'lucide-react'
 import type { Project, Workspace } from '@shared/types'
 import type { SettingsSectionId } from '@/lib/app-route'
 import { SETTINGS_SECTIONS } from '@/lib/settings-sections'
-import { BrainMark } from '@/components/brain-mark'
+import { Input } from '@/components/ui/input'
 import { WorkspaceHoverCard } from '@/components/workspace-hover-card'
 import { WorkspacePrPopover } from '@/components/workspace-pr-popover'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
@@ -33,9 +37,7 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
-  SidebarGroupAction,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuAction,
@@ -374,24 +376,25 @@ function MultiRootRepoRow({
             type="button"
             className={cn(
               'app-no-drag peer/menu-button flex w-full min-w-0 flex-col items-stretch rounded-md px-2 py-1.5 pr-8 text-left',
-              'bg-sidebar-accent/40 text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+              'text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
             )}
             data-testid={`workspace-row-${workspace.id}`}
             data-workspace-id={workspace.id}
             data-workspace-role="repository"
             data-workspace-icon="directory-name"
             data-active={active ? 'true' : 'false'}
+            aria-current={active ? 'location' : undefined}
             onClick={(): void => onSelect(workspace.id)}
           >
             <span
-              className="min-w-0 truncate text-xs font-medium leading-4"
+              className="min-w-0 truncate text-[13px] font-medium leading-4"
               data-testid={`workspace-repo-${workspace.id}`}
             >
               {name}
             </span>
             {branch ? (
               <span
-                className="mt-0.5 flex min-w-0 items-center gap-1 text-[10px] leading-3 text-sidebar-foreground/55"
+                className="mt-0.5 flex min-w-0 items-center gap-1 text-[11px] leading-3 text-sidebar-foreground/65"
                 data-testid={`workspace-branch-${workspace.id}`}
               >
                 <span
@@ -406,7 +409,7 @@ function MultiRootRepoRow({
           {branch ? (
             <WorkspacePrPopover
               workspace={workspace}
-              className="absolute bottom-1.5 left-[22px] size-3"
+              className="absolute bottom-2 left-[22px] size-3"
             />
           ) : null}
           <WorkspaceOverflowMenu workspace={workspace} allowRemove={false} />
@@ -433,7 +436,14 @@ function MultiRootWorkspaceTree({
   return (
     <SidebarMenuSub>
       <SidebarMenuSubItem>
-        <Collapsible open={rootOpen} onOpenChange={setRootOpen}>
+        <Collapsible
+          open={rootOpen}
+          onOpenChange={setRootOpen}
+          className="sidebar-root-group"
+          data-testid={`root-group-${project.id}`}
+          role="group"
+          aria-label={`${project.name} root workspace`}
+        >
           <WorkspaceHoverCard workspace={rootWorkspace ?? undefined}>
             <SidebarMenuRow data-workspace-id={rootWorkspace?.id}>
               <button
@@ -446,6 +456,7 @@ function MultiRootWorkspaceTree({
                 data-workspace-icon="folder-tree"
                 data-workspace-id={rootWorkspace?.id}
                 data-active={rootActive ? 'true' : 'false'}
+                aria-current={rootActive ? 'location' : undefined}
                 disabled={rootWorkspace == null}
                 onClick={(event): void => {
                   event.stopPropagation()
@@ -453,11 +464,17 @@ function MultiRootWorkspaceTree({
                 }}
               >
                 <FolderTree className="size-4 shrink-0 text-sidebar-accent-foreground" />
-                <span className="min-w-0 flex-1 truncate">root</span>
+                <span className="min-w-0 flex-1 truncate font-medium">root</span>
+                <span
+                  className="shrink-0 text-[10px] text-sidebar-foreground/55 tabular-nums"
+                  aria-label={`${repos.length} repositories in root`}
+                  data-testid={`root-repo-count-${project.id}`}
+                >
+                  {repos.length} {repos.length === 1 ? 'repo' : 'repos'}
+                </span>
               </button>
               <SidebarMenuAction
                 className="app-no-drag right-6"
-                showOnHover
                 data-testid={`root-toggle-${project.id}`}
                 aria-expanded={rootOpen}
                 aria-label={rootOpen ? 'Collapse repositories' : 'Expand repositories'}
@@ -480,7 +497,8 @@ function MultiRootWorkspaceTree({
           <CollapsibleContent>
             {repos.length > 0 ? (
               <ul
-                className="ml-3 flex min-w-0 flex-col gap-1 py-1"
+                className="ml-3 flex min-w-0 flex-col gap-1 pt-1 pb-0.5"
+                aria-label="Repositories in root"
                 data-testid={`project-repo-tree-${project.id}`}
               >
                 {repos.map((workspace: Workspace) => (
@@ -528,7 +546,7 @@ function ProjectItem({
         <SidebarMenuRow>
           <CollapsibleTrigger asChild>
             <SidebarMenuButton
-              className={cn('app-no-drag', githubLinked && 'pr-14')}
+              className={cn('app-no-drag sidebar-project-button', githubLinked && 'pr-14')}
               data-testid={`project-row-${project.id}`}
               data-project-kind={project.kind}
               data-project-icon={multiRoot ? 'folders' : 'folder'}
@@ -591,6 +609,7 @@ function ProjectItem({
                           className="app-no-drag flex w-full min-w-0 items-center gap-2 pr-8 pl-8"
                           data-testid={`workspace-row-${workspace.id}`}
                           data-workspace-id={workspace.id}
+                          aria-current={workspace.id === activeWorkspaceId ? 'location' : undefined}
                           data-workspace-role="branch"
                           data-workspace-icon="branch"
                           onClick={(): void => onSelectWorkspace(workspace.id)}
@@ -620,6 +639,160 @@ function ProjectItem({
   )
 }
 
+type WorkspaceSearchResult = { project: Project; workspace: Workspace; label: string }
+
+function searchWorkspaces(projects: Project[], query: string): WorkspaceSearchResult[] {
+  if (!query) return []
+  return projects.flatMap((project) =>
+    project.workspaces.flatMap((workspace) => {
+      const label =
+        workspace.kind === 'root'
+          ? 'root'
+          : isMultiRootProject(project)
+            ? [repositoryDirName(project, workspace), workspace.branch].filter(Boolean).join(' · ')
+            : workspaceLabel(project, workspace)
+      return `${project.name} ${label}`.toLowerCase().includes(query)
+        ? [{ project, workspace, label }]
+        : []
+    })
+  )
+}
+
+function NavigationHeader({
+  isSettings,
+  projectCount,
+  search,
+  onSearchChange,
+  onAddProject,
+  firstResultId,
+  onSelectWorkspace
+}: {
+  isSettings: boolean
+  projectCount: number
+  search: string
+  onSearchChange: (value: string) => void
+  onAddProject: () => void
+  firstResultId: number | undefined
+  onSelectWorkspace: (workspaceId: number) => void
+}): React.JSX.Element {
+  const searchInput = useRef<HTMLInputElement>(null)
+  return (
+    <SidebarHeader className="gap-2 px-3 pt-12 pb-1">
+      <div className="app-drag-region flex h-8 items-center gap-2 px-2">
+        <h2 className="flex-1 text-sm font-semibold" data-testid="sidebar-heading">
+          {isSettings ? 'Settings' : 'Projects'}
+        </h2>
+        {!isSettings ? (
+          <>
+            <span
+              className="text-xs text-sidebar-foreground/50 tabular-nums"
+              aria-label={`${projectCount} projects`}
+            >
+              {projectCount}
+            </span>
+            <PlusActionTooltip label="Add project">
+              <button
+                type="button"
+                className="app-no-drag sidebar-header-action -mr-1"
+                onClick={onAddProject}
+                aria-label="Add project"
+              >
+                <FolderPlus className="size-4" />
+              </button>
+            </PlusActionTooltip>
+          </>
+        ) : null}
+      </div>
+      {!isSettings ? (
+        <div className="app-no-drag relative">
+          <Search
+            aria-hidden="true"
+            className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-sidebar-foreground/50"
+          />
+          <Input
+            ref={searchInput}
+            aria-label="Search projects and workspaces"
+            placeholder="Find a workspace…"
+            value={search}
+            className="h-8 rounded-md pr-8 pl-8 text-xs shadow-none md:text-xs"
+            onChange={(event) => onSearchChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.nativeEvent.isComposing) return
+              if (event.key === 'Escape') {
+                event.preventDefault()
+                onSearchChange('')
+              } else if (event.key === 'Enter' && firstResultId != null) {
+                event.preventDefault()
+                onSelectWorkspace(firstResultId)
+              }
+            }}
+          />
+          {search ? (
+            <button
+              type="button"
+              className="sidebar-header-action absolute top-1/2 right-0.5 -translate-y-1/2"
+              aria-label="Clear search"
+              onClick={() => {
+                onSearchChange('')
+                searchInput.current?.focus()
+              }}
+            >
+              <X className="size-3.5" />
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </SidebarHeader>
+  )
+}
+
+function WorkspaceSearchResults({
+  results,
+  activeWorkspaceId,
+  onSelectWorkspace
+}: {
+  results: WorkspaceSearchResult[]
+  activeWorkspaceId: number | null
+  onSelectWorkspace: (workspaceId: number) => void
+}): React.JSX.Element {
+  return (
+    <div>
+      <p role="status" className="px-2 pt-1 pb-2 text-xs text-sidebar-foreground/60">
+        {results.length === 0
+          ? 'No matching workspaces'
+          : `${results.length} ${results.length === 1 ? 'workspace' : 'workspaces'} found`}
+      </p>
+      <SidebarMenu>
+        {results.map(({ project, workspace, label }) => (
+          <SidebarMenuItem key={workspace.id}>
+            <WorkspaceHoverCard workspace={workspace}>
+              <SidebarMenuButton
+                className="app-no-drag h-auto min-h-12 items-start py-2"
+                isActive={workspace.id === activeWorkspaceId}
+                aria-current={workspace.id === activeWorkspaceId ? 'location' : undefined}
+                onClick={() => onSelectWorkspace(workspace.id)}
+                data-testid={`workspace-search-result-${workspace.id}`}
+              >
+                {workspace.kind === 'root' ? (
+                  <FolderTree className="mt-0.5" />
+                ) : (
+                  <GitBranch className="mt-0.5" />
+                )}
+                <span className="flex min-w-0 flex-col gap-0.5">
+                  <span className="truncate text-xs font-medium">{label}</span>
+                  <span className="truncate text-[11px] text-sidebar-foreground/60">
+                    {project.name}
+                  </span>
+                </span>
+              </SidebarMenuButton>
+            </WorkspaceHoverCard>
+          </SidebarMenuItem>
+        ))}
+      </SidebarMenu>
+    </div>
+  )
+}
+
 export function AppSidebar({
   mode,
   projects,
@@ -635,31 +808,27 @@ export function AppSidebar({
   onBack
 }: AppSidebarProps): React.JSX.Element {
   const isSettings = mode === 'settings'
+  const [search, setSearch] = useState('')
+  const query = search.trim().toLowerCase()
+  const results = searchWorkspaces(projects, query)
 
   return (
     <Sidebar
       collapsible={isSettings ? 'none' : 'offcanvas'}
-      className={isSettings ? 'border-r border-sidebar-border' : undefined}
+      className={cn('cerebro-sidebar', isSettings && 'border-r border-sidebar-border')}
     >
-      <SidebarHeader className="pt-11">
-        <div className="app-drag-region flex items-center gap-2 px-2 py-1.5">
-          <div className="flex size-8 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground">
-            <BrainMark
-              size="sm"
-              testId="sidebar-brain-mark"
-              className="text-sidebar-primary-foreground"
-            />
-          </div>
-          <div className="flex min-w-0 flex-col">
-            <span className="truncate text-sm font-semibold">Cerebro</span>
-            <span className="truncate text-xs text-sidebar-foreground/70">Agentic development</span>
-          </div>
-        </div>
-      </SidebarHeader>
+      <NavigationHeader
+        isSettings={isSettings}
+        projectCount={projects.length}
+        search={search}
+        onSearchChange={setSearch}
+        onAddProject={onAddProject}
+        firstResultId={results[0]?.workspace.id}
+        onSelectWorkspace={onSelectWorkspace}
+      />
       <SidebarContent>
         {isSettings ? (
           <SidebarGroup>
-            <SidebarGroupLabel>Settings</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {SETTINGS_SECTIONS.map((section) => {
@@ -684,20 +853,25 @@ export function AppSidebar({
           </SidebarGroup>
         ) : (
           <SidebarGroup>
-            <SidebarGroupLabel>Projects</SidebarGroupLabel>
-            <PlusActionTooltip label="Add project">
-              <SidebarGroupAction className="app-no-drag" onClick={onAddProject}>
-                <FolderPlus />
-                <span className="sr-only">Add project</span>
-              </SidebarGroupAction>
-            </PlusActionTooltip>
             <SidebarGroupContent>
+              {query ? (
+                <WorkspaceSearchResults
+                  results={results}
+                  activeWorkspaceId={activeWorkspaceId}
+                  onSelectWorkspace={onSelectWorkspace}
+                />
+              ) : null}
               {projects.length === 0 ? (
-                <p className="px-2 py-1.5 text-xs text-sidebar-foreground/60">
+                <p
+                  className={cn(
+                    'px-2 py-1.5 text-xs text-sidebar-foreground/60',
+                    query && 'hidden'
+                  )}
+                >
                   No projects yet. Use + to clone a repository or open a folder.
                 </p>
               ) : (
-                <SidebarMenu>
+                <SidebarMenu className={query ? 'hidden' : 'gap-1'}>
                   {projects.map((project) => {
                     const containsActive = project.workspaces.some(
                       (workspace) => workspace.id === activeWorkspaceId
@@ -721,7 +895,7 @@ export function AppSidebar({
           </SidebarGroup>
         )}
       </SidebarContent>
-      <SidebarFooter>
+      <SidebarFooter className="mx-3 border-t border-sidebar-border px-0 py-3">
         <SidebarMenu>
           <SidebarMenuItem>
             {isSettings ? (

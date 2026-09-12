@@ -16,7 +16,7 @@ test('launches the real Electron window with preload and empty state', async ({
   )
   expect(hasPreloadApi).toBe(true)
 
-  await expect(page.getByTestId('sidebar-brain-mark')).toBeVisible()
+  await expect(page.getByTestId('sidebar-heading')).toBeVisible()
   await expect(page.getByTestId('brain-mark')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Create your first project' })).toBeVisible()
   await expect(
@@ -115,7 +115,7 @@ test('keeps the fixed sidebar trigger visible after collapsing', async ({ page }
   const trigger = page.getByRole('button', { name: 'Toggle Sidebar' })
   await expect(trigger).toBeVisible()
   await expect(page.getByTestId('titlebar-sidebar-trigger')).toBeVisible()
-  await expect(page.getByTestId('sidebar-brain-mark')).toBeVisible()
+  await expect(page.getByTestId('sidebar-heading')).toBeVisible()
 
   await trigger.click()
   await expect(page.locator('[data-slot="sidebar"]')).toHaveAttribute('data-state', 'collapsed')
@@ -147,7 +147,7 @@ test('keeps the fixed sidebar trigger visible after collapsing', async ({ page }
 
   await trigger.click()
   await expect(page.locator('[data-slot="sidebar"]')).toHaveAttribute('data-state', 'expanded')
-  await expect(page.getByTestId('sidebar-brain-mark')).toBeVisible()
+  await expect(page.getByTestId('sidebar-heading')).toBeVisible()
 })
 
 test('macOS application menu omits Developer Tools in production builds', async ({
