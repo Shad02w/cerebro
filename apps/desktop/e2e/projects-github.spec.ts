@@ -8,6 +8,7 @@ import {
   test as base,
   expect,
   type ElectronApplication,
+  type Locator,
   type Page,
   _electron as electron
 } from '@playwright/test'
@@ -491,6 +492,16 @@ async function focusCerebro(electronApp: ElectronApplication): Promise<void> {
   })
 }
 
+async function openWorkspaceHover(page: Page, workspaceId: number): Promise<Locator> {
+  const row = page.getByTestId(`workspace-row-${workspaceId}`)
+  const card = page.getByTestId(`workspace-hover-${workspaceId}`)
+  await expect(async () => {
+    await row.hover()
+    await expect(card).toBeVisible({ timeout: 1500 })
+  }).toPass()
+  return card
+}
+
 function mainPr(
   patch: Partial<import('./mock-github').MockPullRequest> = {}
 ): import('./mock-github').MockPullRequest {
@@ -862,12 +873,15 @@ test('workspace hover shows relative dates, PR details, CI and a usable link', a
   const id = project.workspaces[0].id
   const row = page.getByTestId(`workspace-row-${id}`)
   await expect(page.getByTestId(`workspace-pr-icon-${id}`)).toBeVisible()
-  await row.hover()
-  const card = page.getByTestId(`workspace-hover-${id}`)
-  await expect(card).toBeVisible()
+  const card = await openWorkspaceHover(page, id)
   await expect(card).toContainText('main')
   await expect(card).toContainText('Workspace created just now')
   await expect(card).toContainText('PR created 20 days ago')
+  const status = card.getByTestId(`workspace-pr-status-${id}`)
+  await expect(status).toHaveAttribute('data-pr-state', 'open')
+  await expect(status).toContainText('Open')
+  const statusBg = await status.evaluate((el) => getComputedStyle(el).backgroundColor)
+  expect(statusBg).not.toBe('rgba(0, 0, 0, 0)')
   await expect(card).toContainText('Changes requested')
   await expect(card).toContainText('Passing')
   const checks = card.getByRole('region', { name: 'CI checks' })
@@ -909,7 +923,7 @@ test('workspace hover shows relative dates, PR details, CI and a usable link', a
   await expect(card).toHaveCount(0)
   githubMock.setPullRequests('octocat', 'hello-world', [mainPr({ ciStatus: 'FAILURE', ciChecks })])
   await focusCerebro(electronApp)
-  await row.hover()
+  await openWorkspaceHover(page, id)
   await expect(card).toContainText('Failing')
   const artifacts =
     process.env.CEREBRO_E2E_ARTIFACTS ?? path.join(tmpdir(), 'cerebro-e2e-artifacts')

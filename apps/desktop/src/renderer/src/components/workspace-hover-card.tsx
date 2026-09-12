@@ -1,7 +1,80 @@
 import { useRef, useState, type ReactElement } from 'react'
+import { GitMerge, GitPullRequest, GitPullRequestClosed, GitPullRequestDraft } from 'lucide-react'
 import { HoverCard } from 'radix-ui'
-import type { Workspace } from '@shared/types'
+import type { Workspace, WorkspacePullRequest } from '@shared/types'
+import { Badge } from '@/components/ui/badge'
+import { cn } from '@/lib/utils'
 import { CiChecks, CiStatus } from './ci-status'
+
+function prStatePresentation(pr: WorkspacePullRequest): {
+  label: string
+  state: 'open' | 'draft' | 'merged' | 'closed'
+  Icon: typeof GitPullRequest
+  className: string
+} {
+  if (pr.state === 'merged') {
+    return {
+      label: 'Merged',
+      state: 'merged',
+      Icon: GitMerge,
+      className: 'border-transparent bg-violet-600 text-white dark:bg-violet-500'
+    }
+  }
+  if (pr.state === 'closed') {
+    return {
+      label: 'Closed',
+      state: 'closed',
+      Icon: GitPullRequestClosed,
+      className: 'border-transparent bg-red-600 text-white dark:bg-red-500'
+    }
+  }
+  if (pr.isDraft) {
+    return {
+      label: 'Draft',
+      state: 'draft',
+      Icon: GitPullRequestDraft,
+      className: 'border-transparent bg-zinc-500 text-white'
+    }
+  }
+  return {
+    label: 'Open',
+    state: 'open',
+    Icon: GitPullRequest,
+    className: 'border-transparent bg-emerald-600 text-white dark:bg-emerald-500'
+  }
+}
+
+function reviewLabel(pr: WorkspacePullRequest): string {
+  return (
+    {
+      approved: 'Approved',
+      changes_requested: 'Changes requested',
+      review_required: 'Review required',
+      none: 'No review decision'
+    }[pr.reviewDecision] ?? 'No review decision'
+  )
+}
+
+function PrStateBadge({
+  pr,
+  workspaceId
+}: {
+  pr: WorkspacePullRequest
+  workspaceId: number
+}): React.JSX.Element {
+  const { label, state, Icon, className } = prStatePresentation(pr)
+  return (
+    <Badge
+      data-testid={`workspace-pr-status-${workspaceId}`}
+      data-pr-state={state}
+      aria-label={`${label} pull request`}
+      className={cn('font-semibold', className)}
+    >
+      <Icon aria-hidden />
+      {label}
+    </Badge>
+  )
+}
 
 function relativeCreatedAt(value: string): string {
   const date = new Date(value.includes('T') ? value : `${value.replace(' ', 'T')}Z`)
@@ -31,22 +104,6 @@ export function WorkspaceHoverCard({
   const trigger = useRef<HTMLElement | null>(null)
   if (!workspace) return children
   const pr = workspace.pullRequest
-  const state =
-    pr?.state === 'merged'
-      ? 'Merged'
-      : pr?.state === 'closed'
-        ? 'Closed'
-        : pr?.isDraft
-          ? 'Draft'
-          : 'Open'
-  const review = pr
-    ? {
-        approved: 'Approved',
-        changes_requested: 'Changes requested',
-        review_required: 'Review required',
-        none: 'No review decision'
-      }[pr.reviewDecision]
-    : null
   return (
     <HoverCard.Root
       open={open}
@@ -91,24 +148,25 @@ export function WorkspaceHoverCard({
           </div>
           {pr ? (
             <div className="space-y-2 border-t pt-3">
-              <a
-                href={pr.url}
-                className="block break-words font-medium text-primary underline underline-offset-4"
-                onClick={(event) => {
-                  event.preventDefault()
-                  void window.cerebro.openExternal(pr.url)
-                }}
-              >
-                #{pr.number} · {pr.title}
-              </a>
+              <div className="flex items-start justify-between gap-2">
+                <a
+                  href={pr.url}
+                  className="min-w-0 flex-1 break-words font-medium text-primary underline underline-offset-4"
+                  onClick={(event) => {
+                    event.preventDefault()
+                    void window.cerebro.openExternal(pr.url)
+                  }}
+                >
+                  #{pr.number} · {pr.title}
+                </a>
+                <PrStateBadge pr={pr} workspaceId={workspace.id} />
+              </div>
               <p className="text-xs text-muted-foreground">
                 PR created {relativeCreatedAt(pr.createdAt)}
               </p>
               <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
-                <dt className="text-muted-foreground">Status</dt>
-                <dd>{state}</dd>
                 <dt className="text-muted-foreground">Review</dt>
-                <dd>{review}</dd>
+                <dd>{reviewLabel(pr)}</dd>
                 <dt className="text-muted-foreground">Mergeable</dt>
                 <dd>{pr.mergeable === null ? 'Unknown' : pr.mergeable ? 'Yes' : 'Conflicts'}</dd>
                 <dt className="text-muted-foreground">CI</dt>
