@@ -529,6 +529,10 @@ test('remove from app unregisters a directory project but keeps the folder', asy
     ).toBeDisabled()
     await page.keyboard.press('Escape')
 
+    // Let the hover-open delay expire after Radix restores menu-button focus.
+    await page.waitForTimeout(500)
+    await expect(page.getByTestId(`workspace-hover-${defaultWorkspace!.id}`)).toBeHidden()
+
     await page.getByTestId(`project-row-${project!.id}`).hover()
     await page.getByTestId(`project-menu-${project!.id}`).click()
     await page.getByTestId(`project-remove-${project!.id}`).click()

@@ -287,6 +287,10 @@ test('GitHub-linked project shows PR state and can create worktree workspaces', 
   await expect(popover).toContainText('Review: Approved')
   await page.keyboard.press('Escape')
 
+  // Restoring focus to the PR button must not reopen hover details over a dialog.
+  await page.waitForTimeout(500)
+  await expect(page.getByTestId(`workspace-hover-${defaultWorkspace!.id}`)).toBeHidden()
+
   await page.getByTestId(`project-add-workspace-${projectMeta.projectId}`).click()
   const dialog = page.getByRole('dialog')
   await expect(dialog.getByRole('heading', { name: 'Add workspace' })).toBeVisible()

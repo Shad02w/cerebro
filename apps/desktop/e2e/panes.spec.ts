@@ -464,7 +464,7 @@ test('CLI rejects invalid and cross-workspace targets without changing the layou
     const expectedGlow = await page.evaluate(() => {
       const probe = document.createElement('span')
       probe.style.boxShadow =
-        '0 0 0 1px color-mix(in oklch, var(--sidebar-selected) 80%, transparent), 0 0 10px color-mix(in oklch, var(--sidebar-selected) 42%, transparent)'
+        'inset 0 0 0 1px color-mix(in srgb, var(--sidebar-selected) 24%, transparent)'
       document.body.append(probe)
       const glow = getComputedStyle(probe).boxShadow
       probe.remove()

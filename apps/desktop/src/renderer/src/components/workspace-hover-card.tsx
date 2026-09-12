@@ -102,6 +102,7 @@ export function WorkspaceHoverCard({
 }): React.JSX.Element {
   const [open, setOpen] = useState(false)
   const trigger = useRef<HTMLElement | null>(null)
+  const dismissed = useRef(false)
   if (!workspace) return children
   const pr = workspace.pullRequest
   return (
@@ -109,7 +110,15 @@ export function WorkspaceHoverCard({
       open={open}
       onOpenChange={(next) => {
         // Menus and the click-open PR popover take priority over hover details.
-        if (next && trigger.current?.querySelector('[aria-expanded="true"][aria-haspopup]')) return
+        if (
+          next &&
+          (dismissed.current ||
+            trigger.current?.querySelector('[aria-expanded="true"][aria-haspopup]') ||
+            document.querySelector(
+              '[data-slot="dialog-content"][data-state="open"], [data-slot="dropdown-menu-content"][data-state="open"], [data-slot="popover-content"][data-state="open"]'
+            ))
+        )
+          return
         setOpen(next)
       }}
       openDelay={350}
@@ -120,8 +129,27 @@ export function WorkspaceHoverCard({
         ref={(node) => {
           trigger.current = node
         }}
-        onPointerDownCapture={() => setOpen(false)}
-        onKeyDownCapture={() => setOpen(false)}
+        onPointerEnter={() => {
+          dismissed.current = false
+        }}
+        onPointerDownCapture={() => {
+          // Closing controlled state alone does not cancel Radix's open timer.
+          dismissed.current = true
+          setOpen(false)
+        }}
+        onKeyDownCapture={() => {
+          dismissed.current = true
+          setOpen(false)
+        }}
+        onFocus={(event) => {
+          // Radix restores focus to menu/popover buttons on close. That focus
+          // bubbles through the row and must not schedule a new hover card.
+          if (event.target instanceof Element && event.target.closest('[aria-haspopup]')) {
+            event.preventDefault()
+          } else {
+            dismissed.current = false
+          }
+        }}
       >
         {children}
       </HoverCard.Trigger>

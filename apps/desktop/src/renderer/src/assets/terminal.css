@@ -17,14 +17,14 @@
 .terminal-host {
   height: 100%;
   width: 100%;
-  padding: 4px 8px 8px;
   overflow: hidden;
 }
 
 .terminal-host .xterm {
   height: 100%;
   width: 100%;
-  padding: 0;
+  /* FitAddon subtracts terminal padding, but not its parent's padding. */
+  padding: 4px 8px 8px;
 }
 
 /* xterm 6 owns scrolling through its scrollable element. Hide the slider

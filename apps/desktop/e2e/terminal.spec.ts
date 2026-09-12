@@ -994,7 +994,8 @@ test('keeps the sidebar trigger visible above the tab bar when collapsed', async
 
     await trigger.click()
     await expect(page.locator('[data-slot="sidebar"]')).toHaveAttribute('data-state', 'expanded')
-    await expect(page.getByTestId('sidebar-brain-mark')).toBeVisible()
+    await expect(page.getByTestId('sidebar-heading')).toHaveText('Projects')
+    await expect(page.getByTestId('sidebar-heading')).toBeVisible()
   } finally {
     await rm(sourcesRoot, { recursive: true, force: true })
   }
