@@ -757,6 +757,9 @@ test('multi-root repositories and sibling worktrees share PR queries and track l
       await expect(page.getByTestId(`workspace-pr-popover-${workspace.id}`)).toBeVisible()
       await page.keyboard.press('Escape')
       await expect(page.getByTestId(`workspace-pr-popover-${workspace.id}`)).toHaveCount(0)
+      // Popover dismissal suppresses hover details until the pointer re-enters
+      // the row; moving from its PR icon to its center stays inside the trigger.
+      await page.mouse.move(1000, 700)
       await row.hover()
       const card = page.getByTestId(`workspace-hover-${workspace.id}`)
       await expect(card).toContainText(workspace.branch)
