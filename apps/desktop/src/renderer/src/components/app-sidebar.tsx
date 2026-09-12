@@ -20,6 +20,7 @@ import type { Project, Workspace } from '@shared/types'
 import type { SettingsSectionId } from '@/lib/app-route'
 import { SETTINGS_SECTIONS } from '@/lib/settings-sections'
 import { Input } from '@/components/ui/input'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { WorkspaceHoverCard } from '@/components/workspace-hover-card'
 import { WorkspacePrPopover } from '@/components/workspace-pr-popover'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
@@ -549,10 +550,24 @@ function ProjectItem({
               className={cn('app-no-drag sidebar-project-button', githubLinked && 'pr-14')}
               data-testid={`project-row-${project.id}`}
               data-project-kind={project.kind}
-              data-project-icon={multiRoot ? 'folders' : 'folder'}
+              data-project-icon={multiRoot ? 'folders' : githubLinked ? 'avatar' : 'folder'}
               title={multiRoot ? `${project.name} (multi-root)` : project.name}
             >
-              {multiRoot ? <Folders /> : <Folder />}
+              {multiRoot ? (
+                <Folders />
+              ) : project.github ? (
+                <Avatar className="size-4" aria-hidden="true">
+                  <AvatarImage
+                    src={`https://avatars.githubusercontent.com/${encodeURIComponent(project.github.owner)}?s=40`}
+                    alt=""
+                  />
+                  <AvatarFallback className="text-[10px] font-medium">
+                    {Array.from(project.name.trim())[0]?.toLocaleUpperCase() ?? '?'}
+                  </AvatarFallback>
+                </Avatar>
+              ) : (
+                <Folder />
+              )}
               <span className="min-w-0 truncate">{project.name}</span>
               {multiRoot ? (
                 <span

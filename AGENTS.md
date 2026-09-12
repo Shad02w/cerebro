@@ -114,6 +114,8 @@ If a change spans several flows, list those specs together (`settings.spec.ts sm
 
 A screenshot or visit of the Vite page is not verification. If Playwright cannot run in this environment, say so — do not fall back to the Vite URL.
 
+For every completed desktop UI change, capture screenshots of the final result in the real Electron app and embed them in the final response as evidence of completion. Show the relevant changed states, including fallbacks when applicable. Use Markdown image embeds with absolute file paths (`![description](/absolute/path.png)`); do not provide only links or a written description. If screenshots cannot be captured, explicitly report the limitation instead of claiming visual verification is complete.
+
 If the task included screenshots, mockups, or other images of the required UI (bug, expected layout, or design), attach those same images in the final response so a human can verify the change against the original requirement. Embed them with markdown (`![description](path)`); do not only describe them.
 
 ## CLI (`apps/cli`)

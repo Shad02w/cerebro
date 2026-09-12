@@ -221,6 +221,43 @@ async function connectGitHub(page: Page, githubMock: MockGitHubServer): Promise<
   await page.getByRole('button', { name: 'Back' }).click()
 }
 
+for (const imageLoads of [true, false]) {
+  test(`GitHub project avatar ${imageLoads ? 'loads the owner image' : 'falls back to the uppercase project initial'}`, async ({
+    page
+  }) => {
+    await page.route('https://avatars.githubusercontent.com/**', async (route) => {
+      if (!imageLoads) {
+        await route.abort()
+        return
+      }
+      await route.fulfill({
+        contentType: 'image/svg+xml',
+        body: '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" fill="green"/></svg>'
+      })
+    })
+    const project = await cloneProject(page)
+    const row = page.getByTestId(`project-row-${project.id}`)
+    await expect(row).toHaveAttribute('data-project-icon', 'avatar')
+    const image = row.locator('[data-slot="avatar-image"]')
+    const fallback = row.locator('[data-slot="avatar-fallback"]')
+    if (imageLoads) {
+      await expect(image).toBeVisible()
+      await expect(image).toHaveAttribute(
+        'src',
+        'https://avatars.githubusercontent.com/octocat?s=40'
+      )
+      await expect(fallback).toHaveCount(0)
+    } else {
+      await expect(fallback).toHaveText('H')
+      await expect(image).toHaveCount(0)
+    }
+    await row.click()
+    await expect(page.getByTestId(`workspace-row-${project.workspaces[0].id}`)).toBeHidden()
+    await row.click()
+    await expect(page.getByTestId(`workspace-row-${project.workspaces[0].id}`)).toBeVisible()
+  })
+}
+
 test('GitHub-linked project shows PR state and can create worktree workspaces', async ({
   page,
   githubMock
