@@ -1168,6 +1168,49 @@ test('reorders content tabs by dragging', async ({ page }) => {
   }
 })
 
+test('empty workspace guide opens terminal and Changes tabs with shortcuts', async ({
+  page
+}, info) => {
+  const sourcesRoot = await mkdtemp(join(tmpdir(), 'cerebro-empty-guide-e2e-'))
+  try {
+    await initGitRepo(sourcesRoot, 'main', 'empty-guide')
+    await addProjectViaUi(page, `file://${sourcesRoot}`, sourcesRoot.split('/').pop()!)
+    await expect(page.getByTestId('workspace-empty-state')).toHaveCount(0)
+    await selectWorkspaceRow(page, 'main')
+    const guide = page.getByTestId('workspace-empty-state')
+    await expect(guide).toBeVisible()
+    await expect(guide.getByTestId('brain-mark')).toBeVisible()
+    await expect(contentTabs(page)).toHaveCount(0)
+    await expect(guide.locator('[data-hotkey="Mod+T"]')).toBeVisible()
+    await expect(guide.locator('[data-hotkey="Mod+Shift+G"]')).toBeVisible()
+    await page.mouse.move(1000, 700)
+    await expect(page.getByTestId(/^workspace-hover-/)).toBeHidden()
+    await page.screenshot({ path: info.outputPath('workspace-empty-guide.png') })
+
+    await guide.getByRole('button', { name: 'New terminal' }).click()
+    await expect(page.locator('.terminal-host .xterm')).toHaveCount(1)
+    await expect(guide).toHaveCount(0)
+    await page.getByTestId('terminal-tab-close').click()
+    await expect(guide).toBeVisible()
+
+    await guide.getByRole('button', { name: 'New Changes tab' }).click()
+    await expect(page.getByTestId('changes-tab')).toBeVisible()
+    await expect(guide).toHaveCount(0)
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+w' : 'Control+w')
+    await expect(guide).toBeVisible()
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Shift+g' : 'Control+Shift+g')
+    await expect(page.getByTestId('changes-tab')).toBeVisible()
+    await expect(guide).toHaveCount(0)
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+w' : 'Control+w')
+    await expect(guide).toBeVisible()
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+t' : 'Control+t')
+    await expect(page.locator('.terminal-host .xterm')).toHaveCount(1)
+    await expect(guide).toHaveCount(0)
+  } finally {
+    await rm(sourcesRoot, { recursive: true, force: true })
+  }
+})
+
 test('empty workspace stays black before opening and after closing themed tabs', async ({
   page
 }) => {

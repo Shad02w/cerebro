@@ -21,6 +21,7 @@ import { encodeExtendedKey } from '@/lib/terminal-keys'
 import { useKeybindHandler } from '@/keybinds'
 import { ChangesView } from '@/components/changes-view'
 import { TerminalTabBar } from '@/components/terminal-tab-bar'
+import { WorkspaceEmptyState } from '@/components/workspace-empty-state'
 
 type TerminalSessionProps = {
   workspaceId: number
@@ -654,6 +655,15 @@ export function TerminalStack({
               : (TERMINAL_PALETTES[themeId ?? DEFAULT_TERMINAL_THEME].background ?? '#000000')
         }}
       >
+        {visible &&
+        activeWorkspaceId != null &&
+        layoutQuery.isSuccess &&
+        !workspace?.tabs.length ? (
+          <WorkspaceEmptyState
+            onNewTerminal={() => addTab(activeWorkspaceId)}
+            onOpenChanges={() => openChanges(activeWorkspaceId)}
+          />
+        ) : null}
         {Object.entries(layout.workspaces).flatMap(([workspaceKey, workspace]) =>
           workspace.tabs.map((tab) => {
             const workspaceId = Number(workspaceKey)
