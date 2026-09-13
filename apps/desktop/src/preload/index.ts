@@ -9,6 +9,17 @@ import type {
 } from '../shared/types'
 
 const api: CerebroApi = {
+  chatCommand: (command) => ipcRenderer.invoke(IPC.chat.command, command),
+  agentCatalog: (refresh) => ipcRenderer.invoke(IPC.chat.catalog, refresh),
+  agentFavorite: (key, favorite) => ipcRenderer.invoke(IPC.chat.favorite, key, favorite),
+  onChatChanged: (listener) => {
+    const handler = (_event: IpcRendererEvent, data: { workspaceId?: number }): void =>
+      listener(data)
+    ipcRenderer.on(IPC.chat.changed, handler)
+    return () => {
+      ipcRenderer.removeListener(IPC.chat.changed, handler)
+    }
+  },
   listWorkspaceRepositories: () => ipcRenderer.invoke(IPC.repositories.workspaces),
   getRepositoryPullRequests: (owner, repo) =>
     ipcRenderer.invoke(IPC.repositories.pullRequests, owner, repo),

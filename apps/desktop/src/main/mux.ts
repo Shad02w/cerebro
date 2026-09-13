@@ -72,6 +72,7 @@ export function getMux(): Promise<MuxClient> {
           broadcast(IPC.layout.changed, cached)
         }
       )
+      client.on('chat', (event) => broadcast(IPC.chat.changed, event))
       client.on('projects', () => broadcast(IPC.projects.invalidate))
       client.on('focus', (workspaceId) => broadcast(IPC.layout.focusWorkspace, workspaceId))
       client.on('git', async ({ id, args, cwd }) => {
@@ -95,6 +96,7 @@ export function getMux(): Promise<MuxClient> {
       })
       cached = await client.request<LayoutState>('subscribe')
       broadcast(IPC.layout.changed, cached)
+      broadcast(IPC.chat.changed, {})
       return client
     })().catch((error) => {
       connection = undefined

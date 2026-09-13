@@ -28,12 +28,14 @@ export function electronAppArgs(userDataDir: string): string[] {
 }
 
 type Fixtures = {
+  agentEnvironment: Record<string, string>
   electronApp: ElectronApplication
   page: Page
 }
 
 export const test = base.extend<Fixtures>({
-  electronApp: async ({}, use) => {
+  agentEnvironment: [{}, { option: true }],
+  electronApp: async ({ agentEnvironment }, use) => {
     try {
       await access(mainEntry)
     } catch {
@@ -59,6 +61,7 @@ export const test = base.extend<Fixtures>({
       timeout: 60_000,
       env: {
         ...env,
+        ...agentEnvironment,
         NODE_ENV: 'test',
         CEREBRO_HOME: cerebroHome,
         CEREBRO_CLI_TEST_HOME: cliHome,

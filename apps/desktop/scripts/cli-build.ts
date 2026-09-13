@@ -108,11 +108,25 @@ export function cliBuildPlugin(): Plugin {
               },
               rollupOptions: {
                 external: (id) =>
-                  id.startsWith('node:') || builtinModules.includes(id) || id === 'node-pty'
+                  id.startsWith('node:') ||
+                  builtinModules.includes(id) ||
+                  id === 'node-pty' ||
+                  id === '@anthropic-ai/claude-agent-sdk'
               }
             }
           })
         }
+        // The SDK is self-contained ESM. It launches the user's installed Claude binary.
+        const sdkRoot = resolve(
+          createRequire(resolve(muxRoot, '../package.json')).resolve(
+            '@anthropic-ai/claude-agent-sdk'
+          ),
+          '..'
+        )
+        const sdkTarget = resolve('out/cli/node_modules/@anthropic-ai/claude-agent-sdk')
+        mkdirSync(sdkTarget, { recursive: true })
+        for (const file of ['package.json', 'sdk.mjs', 'README.md'])
+          copyFileSync(resolve(sdkRoot, file), resolve(sdkTarget, file))
         // node-pty prebuilds use Node-API; never copy an Electron-rebuilt build/ directory.
         const require = createRequire(import.meta.url)
         const ptyRoot = resolve(require.resolve('node-pty/package.json'), '..')
@@ -172,6 +186,8 @@ export function cliBuildPlugin(): Plugin {
             muxHash: createHash('sha256')
               .update(readFileSync(resolve('out/cli/mux.cjs')))
               .update(readFileSync(resolve('out/cli/mux-worker.cjs')))
+              .update(readFileSync(resolve(sdkTarget, 'sdk.mjs')))
+              .update(readFileSync(resolve(sdkTarget, 'README.md')))
               .digest('hex'),
             version
           })

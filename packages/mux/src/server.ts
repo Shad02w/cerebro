@@ -14,6 +14,8 @@ import {
 } from './protocol'
 import { muxDirectory, socketPath, databasePath } from './paths'
 import { StorageWorker } from './worker-client'
+import { AgentSessions } from './agents/service'
+import type { ChatCommand } from '@cerebro/core'
 import { Terminals } from './terminals'
 
 const leaves = (node: PaneNode): Pane[] =>
@@ -96,6 +98,9 @@ export async function startServer(): Promise<void> {
     for (const peer of peers)
       if (peer.authorized && peer.subscribed) peer.wire.send({ event, data })
   }
+  const agents = new AgentSessions(join(muxDirectory(), 'agents'), (workspaceId) =>
+    publish('chat', { workspaceId })
+  )
   const terminals = new Terminals(storage, (event) => {
     for (const peer of peers) {
       const attachment = peer.attachments.get(event.paneId)
@@ -198,6 +203,7 @@ export async function startServer(): Promise<void> {
       if (!project) throw new MuxError('not_found', 'Project not found.')
       removed = project.workspaces.map((workspace) => workspace.id)
     }
+    for (const workspaceId of removed) await agents.stopWorkspace(workspaceId)
     for (const workspaceId of removed)
       for (const tab of layout.workspaces[workspaceId]?.tabs ?? [])
         for (const pane of leaves(tab.root))
@@ -287,6 +293,29 @@ export async function startServer(): Promise<void> {
           case 'subscribe':
             peer.subscribed = true
             return layout
+          case 'chat.catalog':
+            return agents.models(Boolean((p as unknown as { refresh?: boolean }).refresh))
+          case 'chat.favorite': {
+            const favorite = p as unknown as { key: string; favorite: boolean }
+            if (typeof favorite.key !== 'string' || typeof favorite.favorite !== 'boolean')
+              throw new MuxError('usage', 'Invalid favorite.')
+            return agents.favorite(favorite.key, favorite.favorite)
+          }
+          case 'chat.command':
+            return exclusive(async () => {
+              const workspaceId = positive(p.workspaceId),
+                paneId = positive(p.paneId)
+              const { pane } = findPane(workspaceId, paneId)
+              if (pane.kind !== 'chat') throw new MuxError('conflict', 'Pane is not a chat.')
+              const context = await storage.call<{ cwd: string; repositoryId: number | null }>(
+                'context',
+                { workspaceId, repositoryId: pane.repositoryId ?? undefined }
+              )
+              return agents.command(
+                { ...context, workspaceId, paneId },
+                p as unknown as ChatCommand
+              )
+            })
           case 'layout.get':
             return layout
           case 'changes.list':
@@ -450,6 +479,7 @@ export async function startServer(): Promise<void> {
     server.close()
     try {
       await Promise.all([serial, registrySerial])
+      await agents.shutdown()
       await terminals.shutdown()
     } finally {
       await storage.worker.terminate()

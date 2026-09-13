@@ -1,6 +1,7 @@
 export const KEYBIND_ACTION_IDS = [
   'closeTab',
   'newTerminal',
+  'newChat',
   'openChanges',
   'toggleSidebar',
   'toggleDevTools'
@@ -38,6 +39,13 @@ export const KEYBIND_CATALOG: readonly KeybindAction[] = [
     description:
       'Open a terminal for the focused workspace row. Opens a new tab when a workspace is already selected.',
     defaultHotkey: 'Mod+T',
+    target: 'app'
+  },
+  {
+    id: 'newChat',
+    label: 'New Chat tab',
+    description: 'Open a new chat session in a tab for the focused or selected workspace.',
+    defaultHotkey: 'Mod+N',
     target: 'app'
   },
   {

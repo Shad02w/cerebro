@@ -105,6 +105,9 @@ export async function applyGitHubStatus(status: GitHubStatus): Promise<void> {
 
 /** Installed once at bootstrap; no component effects or duplicate timers. */
 export function connectQueryEvents(): () => void {
+  const unsubscribeChat = window.cerebro.onChatChanged(({ workspaceId }) => {
+    void queryClient.invalidateQueries({ queryKey: workspaceId ? ['chat', workspaceId] : ['chat'] })
+  })
   const unsubscribeLayout = window.cerebro.onLayoutChanged(acceptLayout)
   focusManager.setEventListener((handleFocus) => window.cerebro.onWindowFocus(handleFocus))
   const unsubscribeProjects = window.cerebro.onProjectsInvalidate(() => {
@@ -114,6 +117,7 @@ export function connectQueryEvents(): () => void {
     void applyGitHubStatus(status)
   })
   return () => {
+    unsubscribeChat()
     unsubscribeLayout()
     unsubscribeProjects()
     unsubscribeGitHub()

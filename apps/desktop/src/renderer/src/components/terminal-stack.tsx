@@ -1,3 +1,4 @@
+import { ChatView } from '@/components/chat/chat-view'
 import { TerminalOutput } from '../lib/terminal-output'
 import { restoreTerminalContinuation } from '@shared/terminal-state'
 import { forwardUserInputOnly } from '@/lib/terminal-input'
@@ -590,6 +591,14 @@ export function TerminalStack({
     addTab(target)
     return true
   })
+  useKeybindHandler('newChat', () => {
+    if (!visible || onStartupReady) return false
+    const target = focusedWorkspaceId() ?? activeWorkspaceId
+    if (target == null) return false
+    if (target !== activeWorkspaceId) onSelectWorkspace(target)
+    addTab(target, 'chat')
+    return true
+  })
   useKeybindHandler('openChanges', () => {
     if (!visible || onStartupReady) return false
     const target = focusedWorkspaceId() ?? activeWorkspaceId
@@ -636,6 +645,7 @@ export function TerminalStack({
             })
           }
           onNewTab={() => addTab(activeWorkspaceId)}
+          onOpenChat={() => addTab(activeWorkspaceId, 'chat')}
           onOpenChanges={() => openChanges(activeWorkspaceId)}
           onAddPane={addPane}
         />
@@ -661,6 +671,7 @@ export function TerminalStack({
         !workspace?.tabs.length ? (
           <WorkspaceEmptyState
             onNewTerminal={() => addTab(activeWorkspaceId)}
+            onOpenChat={() => addTab(activeWorkspaceId, 'chat')}
             onOpenChanges={() => openChanges(activeWorkspaceId)}
           />
         ) : null}
@@ -672,7 +683,7 @@ export function TerminalStack({
             const { panes, splits } = positionPanes(tab.root)
             // Keep Changes DOM and view state across tab switches. Terminal surfaces still
             // detach when hidden; their processes and output remain owned by the mux.
-            if (!shown && !panes.some(({ pane }) => pane.kind === 'changes')) return null
+            if (!shown && !panes.some(({ pane }) => pane.kind !== 'terminal')) return null
             return (
               <div
                 key={tab.id}
@@ -686,7 +697,7 @@ export function TerminalStack({
                 inert={!shown}
               >
                 {panes.map(({ pane, rect }) => {
-                  if (!shown && pane.kind !== 'changes') return null
+                  if (!shown && pane.kind === 'terminal') return null
                   const active = shown && tab.activePaneId === pane.id
                   const close = (): void =>
                     command({
@@ -728,6 +739,8 @@ export function TerminalStack({
                           themeId={themeId ?? DEFAULT_TERMINAL_THEME}
                           fontFamilyPreference={fontFamily ?? TERMINAL_FONT_FAMILY_AUTO}
                         />
+                      ) : pane.kind === 'chat' ? (
+                        <ChatView workspaceId={workspaceId} paneId={pane.id} />
                       ) : pane.kind === 'changes' ? (
                         <ChangesView
                           workspaceId={workspaceId}

@@ -1,3 +1,4 @@
+import type { ChatCommand, ChatView, AgentCatalog } from '@cerebro/core'
 import type { LayoutCommand, LayoutState, LayoutReply } from '@cerebro/core'
 import type { TerminalThemeId } from './terminal-themes'
 export type LinkedRepository = {
@@ -241,6 +242,11 @@ export type CliInstallStatus = {
 }
 
 export type CerebroApi = {
+  chatCommand: (command: ChatCommand) => Promise<ChatView>
+  agentCatalog: (refresh?: boolean) => Promise<AgentCatalog>
+  agentFavorite: (key: string, favorite: boolean) => Promise<AgentCatalog>
+  onChatChanged: (listener: (event: { workspaceId?: number }) => void) => () => void
+
   listWorkspaceRepositories: () => Promise<WorkspaceRepository[]>
   getRepositoryPullRequests: (owner: string, repo: string) => Promise<RepositoryPullRequests>
   onWindowFocus: (listener: (focused: boolean) => void) => () => void

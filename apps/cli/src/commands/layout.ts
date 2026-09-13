@@ -5,12 +5,12 @@ import { die, printJson } from '../output'
 
 const HELP = `Usage:
   cerebro tab list --workspace <id>
-  cerebro tab create --workspace <id> [--kind terminal|changes]
+  cerebro tab create --workspace <id> [--kind terminal|changes|chat]
   cerebro tab focus|close --workspace <id> --tab <id>
   cerebro tab reorder --workspace <id> --tab <id> --index <zero-based-index>
   cerebro pane list --workspace <id> [--tab <id>]
   cerebro pane split --workspace <id> [--tab <id>] [--pane <id>]
-                     [--kind terminal|changes] [--direction auto|right|down]
+                     [--kind terminal|changes|chat] [--direction auto|right|down]
   cerebro pane focus|close --workspace <id> --pane <id>
   cerebro pane resize --workspace <id> --tab <id> --split <id> --ratio <0.1-0.9>
 
@@ -107,8 +107,8 @@ export async function layoutCommand(target: 'tab' | 'pane', args: string[]): Pro
     if (!permitted.has(key)) die(`--${key} is not valid for ${target} ${action}.`, 'usage', 2)
   const workspaceId = numeric(values.workspace ?? process.env.CEREBRO_WORKSPACE_ID, 'workspace')
   if (!workspaceId) die('--workspace is required outside a workspace terminal.', 'usage', 2)
-  if (values.kind && !['terminal', 'changes'].includes(values.kind))
-    die('--kind must be terminal or changes.', 'usage', 2)
+  if (values.kind && !['terminal', 'changes', 'chat'].includes(values.kind))
+    die('--kind must be terminal, changes or chat.', 'usage', 2)
   if (values.direction && !['auto', 'right', 'down'].includes(values.direction))
     die('--direction must be auto, right or down.', 'usage', 2)
   if (['capture', 'send', 'restart'].includes(action)) {

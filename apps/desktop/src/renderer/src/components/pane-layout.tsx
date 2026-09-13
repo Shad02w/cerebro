@@ -41,7 +41,7 @@ export function PaneFrame({
       data-pane-kind={pane.kind}
       data-pane-active={active ? 'true' : 'false'}
       tabIndex={-1}
-      aria-label={`${pane.kind === 'terminal' ? 'Terminal' : 'Changes'} pane ${pane.id}`}
+      aria-label={`${pane.kind === 'terminal' ? 'Terminal' : pane.kind === 'chat' ? 'Chat' : 'Changes'} pane ${pane.id}`}
       className={`absolute outline-none ${multiple ? 'p-[3px]' : ''}`}
       style={{
         left: `${rect.x}%`,

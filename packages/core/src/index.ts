@@ -11,3 +11,18 @@ export * from './panes'
 export * from './terminal-state'
 
 export * from './terminal-palettes'
+export type {
+  AgentHarness,
+  AgentModel,
+  AgentCatalog,
+  AgentCapabilities,
+  AgentQuestion,
+  ChatItem,
+  AgentSession,
+  AgentSessionSummary,
+  ChatView,
+  ChatCommand,
+  AgentDelta,
+  AgentAnswer,
+  AgentRequest
+} from './chat'

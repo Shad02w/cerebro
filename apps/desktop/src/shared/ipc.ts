@@ -1,4 +1,10 @@
 export const IPC = {
+  chat: {
+    command: 'cerebro:chat:command',
+    catalog: 'cerebro:chat:catalog',
+    favorite: 'cerebro:chat:favorite',
+    changed: 'cerebro:chat:changed'
+  },
   cli: {
     status: 'cerebro:cli:status',
     install: 'cerebro:cli:install',

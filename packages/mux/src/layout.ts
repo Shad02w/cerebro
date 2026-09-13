@@ -172,8 +172,8 @@ function applyCommand(raw: unknown): LayoutReply {
   if (!actions.includes(command.action)) fail('usage', 'Unknown layout action.')
   for (const key of ['tabId', 'paneId', 'splitId'] as const)
     if (command[key] !== undefined) id(command[key], key)
-  if (command.kind !== undefined && !['terminal', 'changes'].includes(command.kind))
-    fail('usage', 'Kind must be terminal or changes.')
+  if (command.kind !== undefined && !['terminal', 'changes', 'chat'].includes(command.kind))
+    fail('usage', 'Kind must be terminal, changes or chat.')
   if (command.direction !== undefined && !['auto', 'right', 'down'].includes(command.direction))
     fail('usage', 'Direction must be auto, right or down.')
   try {
@@ -210,7 +210,12 @@ function applyCommand(raw: unknown): LayoutReply {
     const tab: WorkspaceTab = {
       id: nextId++,
       kind,
-      label: kind === 'terminal' ? `Terminal ${workspace.nextLabel++}` : 'Changes',
+      label:
+        kind === 'terminal'
+          ? `Terminal ${workspace.nextLabel++}`
+          : kind === 'chat'
+            ? 'Chat'
+            : 'Changes',
       root: pane,
       activePaneId: pane.id
     }

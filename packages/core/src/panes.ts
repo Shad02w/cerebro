@@ -1,5 +1,5 @@
 /** Live BSP layout shared by Electron and the CLI. IDs are persistent across mux restarts. */
-export type PaneKind = 'terminal' | 'changes'
+export type PaneKind = 'terminal' | 'changes' | 'chat'
 export type SplitDirection = 'auto' | 'right' | 'down'
 export type Pane = {
   type: 'pane'

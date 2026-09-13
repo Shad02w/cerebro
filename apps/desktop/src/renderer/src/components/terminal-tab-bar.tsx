@@ -18,7 +18,7 @@ import {
   useSortable
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { FileDiff, Plus, SquareTerminal, X } from 'lucide-react'
+import { FileDiff, MessageSquare, Plus, SquareTerminal, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -42,7 +42,7 @@ import {
 } from '@/lib/titlebar'
 import { cn } from '@/lib/utils'
 
-export type ContentTabKind = 'terminal' | 'changes'
+export type ContentTabKind = PaneKind
 
 export type ContentTab = {
   id: number
@@ -62,6 +62,7 @@ type TerminalTabBarProps = {
   onClose: (tabId: number) => void
   onReorder: (tabId: number, toIndex: number) => void
   onNewTab: () => void
+  onOpenChat: () => void
   onOpenChanges: () => void
   onAddPane: (kind: PaneKind, direction: SplitDirection) => void
 }
@@ -94,7 +95,6 @@ function SortableTab({
     disabled: !sortable,
     transition: prefersReducedMotion() ? null : TAB_SWAP_TRANSITION
   })
-  const isChanges = tab.kind === 'changes'
 
   return (
     <div
@@ -104,7 +104,7 @@ function SortableTab({
       aria-selected={selected}
       aria-roledescription={attributes['aria-roledescription']}
       aria-describedby={attributes['aria-describedby']}
-      data-testid={isChanges ? 'changes-tab' : 'terminal-tab'}
+      data-testid={`${tab.kind}-tab`}
       data-tab-kind={tab.kind}
       data-terminal-tab-id={tab.id}
       data-active={selected ? 'true' : 'false'}
@@ -167,11 +167,13 @@ export function TerminalTabBar({
   onSelect,
   onClose,
   onNewTab,
+  onOpenChat,
   onOpenChanges,
   onAddPane,
   onReorder
 }: TerminalTabBarProps): React.JSX.Element {
   const closeHotkey = useKeybindBinding('closeTab')
+  const chatHotkey = useKeybindBinding('newChat')
   const newHotkey = useKeybindBinding('newTerminal')
   const changesHotkey = useKeybindBinding('openChanges')
   const { state } = useSidebar()
@@ -279,6 +281,20 @@ export function TerminalTabBar({
                 <DropdownMenuLabel>New tab</DropdownMenuLabel>
                 <DropdownMenuItem
                   className="text-xs"
+                  data-testid="open-chat-tab"
+                  onSelect={() => {
+                    setAddOpen(false)
+                    onOpenChat()
+                  }}
+                >
+                  <MessageSquare />
+                  Chat
+                  <DropdownMenuShortcut className="flex items-center">
+                    <ShortcutKbd hotkey={chatHotkey} />
+                  </DropdownMenuShortcut>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="text-xs"
                   data-testid="open-terminal-tab"
                   onSelect={(): void => {
                     setAddOpen(false)
@@ -323,7 +339,7 @@ export function TerminalTabBar({
                           {label}
                         </DropdownMenuSubTrigger>
                         <DropdownMenuSubContent>
-                          {(['terminal', 'changes'] as const).map((kind) => (
+                          {(['chat', 'terminal', 'changes'] as const).map((kind) => (
                             <DropdownMenuItem
                               key={kind}
                               className="text-xs"
@@ -333,8 +349,18 @@ export function TerminalTabBar({
                                 onAddPane(kind, direction)
                               }}
                             >
-                              {kind === 'terminal' ? <SquareTerminal /> : <FileDiff />}
-                              {kind === 'terminal' ? 'Terminal' : 'Changes'}
+                              {kind === 'terminal' ? (
+                                <SquareTerminal />
+                              ) : kind === 'chat' ? (
+                                <MessageSquare />
+                              ) : (
+                                <FileDiff />
+                              )}
+                              {kind === 'terminal'
+                                ? 'Terminal'
+                                : kind === 'chat'
+                                  ? 'Chat'
+                                  : 'Changes'}
                             </DropdownMenuItem>
                           ))}
                         </DropdownMenuSubContent>

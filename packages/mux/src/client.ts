@@ -105,7 +105,8 @@ function runtimeComplete(path: string): boolean {
     'mux.cjs',
     'mux-worker.cjs',
     process.platform === 'win32' ? 'node.exe' : 'node',
-    'node_modules/node-pty/lib/index.js'
+    'node_modules/node-pty/lib/index.js',
+    'node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs'
   ].every((file) => existsSync(join(path, file)))
 }
 async function stageRuntime(source: string): Promise<string> {
