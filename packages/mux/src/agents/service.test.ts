@@ -141,3 +141,34 @@ test('crash recovery marks uncertain turn interrupted and retains favorites with
     rmSync(f.dir, { recursive: true, force: true })
   }
 })
+
+test('access defaults to full, persists across restart, changes between turns, and rejects invalid input', async () => {
+  const modes: Array<string | undefined> = []
+  const f = fixture(async ({ session }) => {
+    modes.push(session.accessMode)
+  })
+  let service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    await service.command(scope, send)
+    await service.shutdown()
+    service = new AgentSessions(f.dir, () => {}, f.drivers)
+    assert.equal(
+      (await service.command(scope, { ...send, action: 'get' })).session?.accessMode,
+      'full'
+    )
+    await service.command(scope, { ...send, commandId: 'read', accessMode: 'read' })
+    await service.shutdown()
+    service = new AgentSessions(f.dir, () => {}, f.drivers)
+    await service.command(scope, { ...send, commandId: 'retain' })
+    await service.shutdown()
+    service = new AgentSessions(f.dir, () => {}, f.drivers)
+    await assert.rejects(
+      service.command(scope, { ...send, commandId: 'invalid', accessMode: 'invalid' as 'full' }),
+      /Unsupported access mode/
+    )
+    assert.deepEqual(modes, ['full', 'read', 'read'])
+  } finally {
+    await service.shutdown()
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})

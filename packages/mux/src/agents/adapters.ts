@@ -146,12 +146,15 @@ export const codexAdapter: AgentAdapter = {
               frame.method
             )
           ) {
-            const answer = await ask({
-              id: String(frame.id),
-              kind: 'approval',
-              title: 'Codex requests permission',
-              text: describe(p.command ?? p.reason ?? p)
-            })
+            const answer =
+              session.accessMode === 'edit'
+                ? await ask({
+                    id: String(frame.id),
+                    kind: 'approval',
+                    title: 'Codex requests permission',
+                    text: describe(p.command ?? p.reason ?? p)
+                  })
+                : { allow: session.accessMode !== 'read' }
             rpc.send({ id: frame.id, result: { decision: answer.allow ? 'accept' : 'decline' } })
           } else {
             rpc.send({
@@ -256,8 +259,13 @@ export const codexAdapter: AgentAdapter = {
         ...(session.nativeId ? { threadId: session.nativeId } : {}),
         cwd: session.cwd,
         model: session.model.id || undefined,
-        approvalPolicy: 'on-request',
-        sandbox: 'workspace-write',
+        approvalPolicy: session.accessMode === 'edit' ? 'on-request' : 'never',
+        sandbox:
+          session.accessMode === 'read'
+            ? 'read-only'
+            : session.accessMode === 'edit'
+              ? 'workspace-write'
+              : 'danger-full-access',
         persistExtendedHistory: true
       })
       threadId = result.thread.id
@@ -311,7 +319,16 @@ export const piAdapter: AgentAdapter = {
     const { session, signal, emit, ask } = context
     const rpc = new JsonProcess(
       executable('pi'),
-      ['--mode', 'rpc', ...(session.nativeId ? ['--session', session.nativeId] : [])],
+      [
+        '--mode',
+        'rpc',
+        ...(session.accessMode === 'read'
+          ? ['--no-extensions', '--tools', 'read,grep,find,ls']
+          : session.accessMode === 'edit'
+            ? ['--no-extensions', '--tools', 'read,grep,find,ls,edit,write']
+            : ['--approve']),
+        ...(session.nativeId ? ['--session', session.nativeId] : [])
+      ],
       session.cwd,
       true
     )
@@ -505,7 +522,13 @@ export const claudeAdapter: AgentAdapter = {
         settingSources: ['user', 'project', 'local'],
         systemPrompt: { type: 'preset', preset: 'claude_code' },
         includePartialMessages: true,
-        permissionMode: 'default',
+        permissionMode:
+          session.accessMode === 'read'
+            ? 'plan'
+            : session.accessMode === 'edit'
+              ? 'acceptEdits'
+              : 'bypassPermissions',
+        allowDangerouslySkipPermissions: !session.accessMode || session.accessMode === 'full',
         canUseTool: async (name, input, options) => {
           const questions =
             name === 'AskUserQuestion' && Array.isArray(input.questions)
@@ -516,6 +539,10 @@ export const claudeAdapter: AgentAdapter = {
                   multiple: Boolean(question.multiSelect)
                 }))
               : undefined
+          if (!questions && session.accessMode === 'read')
+            return { behavior: 'deny', message: 'Read-only mode does not allow this operation.' }
+          if (!questions && (!session.accessMode || session.accessMode === 'full'))
+            return { behavior: 'allow', updatedInput: input }
           const answer = await ask({
             id: options.toolUseID,
             kind: questions ? 'question' : 'approval',

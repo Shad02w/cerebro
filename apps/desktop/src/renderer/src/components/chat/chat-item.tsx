@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm'
 import type { AgentAnswer, ChatItem as Item } from '@cerebro/core'
 import { Button } from '@/components/ui/button'
 import { ChatDiff } from './chat-diff'
+import { ChatUserMessage } from './chat-user-message'
 
 function RequestCard({
   item,
@@ -96,12 +97,7 @@ export const ChatItem = memo(function ChatItem({
   onReply: (id: string, answer: AgentAnswer) => void
 }): React.JSX.Element {
   if (item.kind === 'request') return <RequestCard item={item} onReply={onReply} />
-  if (item.kind === 'user')
-    return (
-      <div className="ml-auto max-w-[90%] rounded-2xl bg-muted px-4 py-3 text-sm whitespace-pre-wrap break-words">
-        {item.text}
-      </div>
-    )
+  if (item.kind === 'user') return <ChatUserMessage text={item.text} />
   if (item.kind === 'text')
     return (
       <div className="chat-markdown text-sm leading-7 break-words">

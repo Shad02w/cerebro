@@ -9,6 +9,7 @@ const mode = process.argv.includes('app-server')
 const send = (value) => process.stdout.write(JSON.stringify(value) + '\n')
 const notify = (method, params) => send({ method, params })
 let resume = false
+let accessSettings
 let finishApproval
 const text =
   '**Adapter connected.**\n\n- Native tools stay with the harness.\n- Cerebro renders the conversation.'
@@ -18,6 +19,13 @@ const codexDone = () =>
     turn: { id: 'turn-test', status: 'completed' }
   })
 function codexPrompt(prompt) {
+  if (prompt === 'access-settings') {
+    notify('item/completed', {
+      item: { type: 'agentMessage', id: 'access', text: JSON.stringify(accessSettings) }
+    })
+    codexDone()
+    return
+  }
   notify('turn/started', { threadId: 'thread-test', turn: { id: 'turn-test' } })
   notify('item/started', { item: { type: 'agentMessage', id: 'message-test', text: '' } })
   notify('item/agentMessage/delta', {
@@ -99,6 +107,10 @@ function codexPrompt(prompt) {
   codexDone()
 }
 function claudePrompt(prompt) {
+  if (prompt === 'access-settings') {
+    claudeFinish(JSON.stringify(process.argv.slice(2)))
+    return
+  }
   send({ type: 'system', subtype: 'init', session_id: 'claude-test', tools: [], model: 'test' })
   if (prompt.includes('slow')) return
   if (prompt.includes('approval')) {
@@ -169,10 +181,12 @@ createInterface({ input: process.stdin }).on('line', (line) => {
         })
         break
       case 'thread/resume':
+        accessSettings = frame.params
         resume = true
         reply({ thread: { id: 'thread-test' } })
         break
       case 'thread/start':
+        accessSettings = frame.params
         reply({ thread: { id: 'thread-test' } })
         break
       case 'turn/start':
@@ -203,19 +217,26 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       case 'abort':
         reply({})
         break
-      case 'prompt':
+      case 'prompt': {
+        const responseText =
+          frame.message === 'access-settings' ? JSON.stringify(process.argv.slice(2)) : text
         reply({})
         send({ type: 'message_start', message: { role: 'assistant' } })
         send({
           type: 'message_update',
-          assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: text }
+          assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: responseText }
         })
         send({
           type: 'message_end',
-          message: { role: 'assistant', content: [{ type: 'text', text }], stopReason: 'stop' }
+          message: {
+            role: 'assistant',
+            content: [{ type: 'text', text: responseText }],
+            stopReason: 'stop'
+          }
         })
         send({ type: 'agent_end' })
         break
+      }
     }
   } else {
     if (frame.type === 'control_request')

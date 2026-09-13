@@ -311,6 +311,8 @@ export class AgentSessions {
       throw new Error('Selected model is unavailable. Refresh models or choose another model.')
     if (command.reasoning && !selected.reasoning.includes(command.reasoning))
       throw new Error('Unsupported reasoning setting for this model.')
+    const accessMode = command.accessMode ?? session?.accessMode ?? 'full'
+    if (!['full', 'edit', 'read'].includes(accessMode)) throw new Error('Unsupported access mode.')
     // Recheck after model discovery, which can yield while another send is accepted.
     session = this.sessions.get(this.bindings[String(scope.paneId)])
     if (session?.commands.includes(command.commandId)) return this.view(scope)
@@ -347,6 +349,7 @@ export class AgentSessions {
       this.bindings = next
     }
     session.model = selected
+    session.accessMode = accessMode
     session.reasoning = command.reasoning
     session.cwd = scope.cwd
     session.status = 'running'

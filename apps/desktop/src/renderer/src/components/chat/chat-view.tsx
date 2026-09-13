@@ -1,12 +1,14 @@
-import { useCallback, useLayoutEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useLayoutEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowUp, MessageSquare, Square } from 'lucide-react'
-import type { AgentAnswer, AgentModel, ChatCommand } from '@cerebro/core'
+import type { AgentAccessMode, AgentAnswer, AgentModel, ChatCommand } from '@cerebro/core'
 import { Button } from '@/components/ui/button'
 import { ChatItem } from './chat-item'
 import { ModelPicker } from './model-picker'
 import { catalogOptions, harnessLabels } from './queries'
+import { observeChatLayout } from './chat-layout'
 import './chat-scrollbars.css'
+import './chat-status.css'
 
 export function ChatView({
   workspaceId,
@@ -28,11 +30,14 @@ export function ChatView({
   const [draft, setDraft] = useState(() => localStorage.getItem(draftKey) ?? '')
   const [selection, setSelection] = useState<AgentModel>()
   const [reasoning, setReasoning] = useState('')
+  const [accessSelection, setAccessSelection] = useState<AgentAccessMode>()
+  const accessMode = accessSelection ?? session?.accessMode ?? 'full'
   const selected = selection ?? session?.model ?? catalog.data?.models.find((m) => m.available)
   const [error, setError] = useState<string | null>(null)
   const inFlight = useRef(false)
   const pendingSend = useRef<{ id: string; text: string; key?: string } | null>(null)
   const scrolling = useRef<HTMLDivElement>(null)
+  const composer = useRef<HTMLDivElement>(null)
   const stick = useRef(true)
   const busy = session?.status === 'running' || session?.status === 'waiting'
   const { mutateAsync } = useMutation({
@@ -82,7 +87,11 @@ export function ChatView({
   useLayoutEffect(() => {
     if (stick.current && scrolling.current)
       scrolling.current.scrollTop = scrolling.current.scrollHeight
-  }, [session?.sequence])
+  }, [session?.sequence, session?.error, error, view.error])
+  useLayoutEffect(() => {
+    if (scrolling.current && composer.current)
+      return observeChatLayout(scrolling.current, composer.current, stick)
+  }, [])
   const send = async (): Promise<void> => {
     if (inFlight.current) return
     if (!draft.trim()) {
@@ -111,7 +120,8 @@ export function ChatView({
         sessionId: session?.id,
         text: draft,
         model: selected,
-        reasoning: reasoning || undefined
+        reasoning: reasoning || undefined,
+        accessMode
       })
     ) {
       updateDraft('')
@@ -120,7 +130,7 @@ export function ChatView({
   }
   return (
     <div
-      className="chat-scrollbars flex h-full min-w-0 flex-col bg-background text-foreground"
+      className="chat-scrollbars relative flex h-full min-w-0 flex-col bg-background text-foreground"
       data-testid="chat-view"
     >
       <div
@@ -129,7 +139,7 @@ export function ChatView({
           const node = scrolling.current
           if (node) stick.current = node.scrollHeight - node.scrollTop - node.clientHeight < 80
         }}
-        className="min-h-0 flex-1 overflow-y-auto px-5 py-5"
+        className="min-h-0 flex-1 overflow-y-auto px-5 pt-5 pb-40"
         data-testid="chat-transcript"
         aria-label="Conversation"
       >
@@ -143,110 +153,155 @@ export function ChatView({
               </p>
             </div>
           ) : (
-            session.items.map((item) => <ChatItem key={item.id} item={item} onReply={reply} />)
+            session.items.map((item, index) => (
+              <Fragment key={item.id}>
+                <ChatItem item={item} onReply={reply} />
+                {item.kind !== 'user' &&
+                session.items[index + 1]?.turnId !== item.turnId &&
+                (item.turnId !== session.turnId || !busy) ? (
+                  <div
+                    role="separator"
+                    aria-label="End of response"
+                    className="flex items-center gap-3 py-2 text-xs text-muted-foreground"
+                  >
+                    <span className="h-px flex-1 bg-border" />
+                    <span>End of response</span>
+                    <span className="h-px flex-1 bg-border" />
+                  </div>
+                ) : null}
+              </Fragment>
+            ))
           )}
+          {session?.status === 'running' ? (
+            <div role="status" className="text-sm text-muted-foreground">
+              <span className="chat-working">Working…</span>
+            </div>
+          ) : null}
+          {session && session.status !== 'running' ? (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground" role="status">
+              <span
+                className={
+                  busy
+                    ? 'size-1.5 animate-pulse rounded-full bg-foreground'
+                    : 'size-1.5 rounded-full bg-muted-foreground'
+                }
+              />
+              {session.status === 'idle'
+                ? 'Ready'
+                : session.status === 'waiting'
+                  ? 'Waiting for your response'
+                  : session.status}
+              {session.nativeId ? ' · Native session saved' : ''}
+            </div>
+          ) : null}
+          {session?.error || error || view.error ? (
+            <p role="alert" className="whitespace-pre-wrap break-words text-xs text-destructive">
+              {error ?? session?.error ?? String(view.error)}
+            </p>
+          ) : null}
         </div>
       </div>
-      <div className="mx-auto w-full max-w-3xl shrink-0 px-4 pt-2 pb-4">
-        {session?.error || error || view.error ? (
-          <p
-            role="alert"
-            className="mb-2 max-h-24 overflow-auto whitespace-pre-wrap break-words text-xs text-destructive"
-          >
-            {error ?? session?.error ?? String(view.error)}
-          </p>
-        ) : null}
-        {session ? (
-          <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground" role="status">
-            <span
-              className={
-                busy
-                  ? 'size-1.5 animate-pulse rounded-full bg-foreground'
-                  : 'size-1.5 rounded-full bg-muted-foreground'
-              }
-            />
-            {session.status === 'idle'
-              ? 'Ready'
-              : session.status === 'waiting'
-                ? 'Waiting for your response'
-                : session.status === 'running'
-                  ? 'Working…'
-                  : session.status}
-            {session.nativeId ? ' · Native session saved' : ''}
-          </div>
-        ) : null}
-        <form
-          className="rounded-2xl border bg-muted/20 p-2 shadow-sm"
-          onSubmit={(e) => {
-            e.preventDefault()
-            void send()
-          }}
-        >
-          <textarea
-            aria-label="Message agent"
-            placeholder="Ask your agent to work on something…"
-            value={draft}
-            onChange={(e) => updateDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                e.preventDefault()
-                void send()
-              }
+      <div
+        ref={composer}
+        data-testid="chat-composer"
+        className="pointer-events-none absolute inset-x-0 bottom-0"
+      >
+        <div
+          aria-hidden="true"
+          data-testid="chat-list-fade"
+          className="h-10 bg-gradient-to-t from-background via-background/80 to-transparent"
+        />
+        <div className="bg-background px-5 pb-4">
+          <form
+            className="pointer-events-auto mx-auto max-w-3xl rounded-2xl border bg-background p-2 shadow-lg"
+            onSubmit={(e) => {
+              e.preventDefault()
+              void send()
             }}
-            rows={3}
-            className="max-h-48 min-h-20 w-full resize-y bg-transparent px-2 py-2 text-sm outline-none"
-          />
-          <div className="flex flex-wrap items-center gap-1">
-            <div className="min-w-0 flex-1">
-              <ModelPicker
-                selected={selected}
-                onSelect={(model) => {
-                  if (session && session.model.harness !== model.harness) {
-                    setError(`Open a new Chat tab or pane to use ${harnessLabels[model.harness]}.`)
-                    return
-                  }
-                  setError(null)
-                  setSelection(model)
-                  setReasoning('')
-                }}
-              />
-            </div>
-            {selected?.reasoning.length ? (
+          >
+            <textarea
+              aria-label="Message agent"
+              placeholder="Ask your agent to work on something…"
+              value={draft}
+              onChange={(e) => updateDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  e.preventDefault()
+                  void send()
+                }
+              }}
+              rows={3}
+              className="max-h-48 min-h-20 w-full resize-y bg-transparent px-2 py-2 text-sm outline-none"
+            />
+            <div className="flex flex-wrap items-center gap-1">
+              <div className="min-w-0 flex-1">
+                <ModelPicker
+                  selected={selected}
+                  onSelect={(model) => {
+                    if (session && session.model.harness !== model.harness) {
+                      setError(
+                        `Open a new Chat tab or pane to use ${harnessLabels[model.harness]}.`
+                      )
+                      return
+                    }
+                    setError(null)
+                    setSelection(model)
+                    setReasoning('')
+                  }}
+                />
+              </div>
               <select
-                aria-label="Reasoning effort"
-                value={reasoning}
-                onChange={(e) => setReasoning(e.target.value)}
-                className="max-w-28 rounded bg-transparent p-1 text-xs text-muted-foreground"
+                aria-label="Access mode"
+                title={
+                  selected?.harness === 'pi'
+                    ? 'Pi: Edit and Read-only limit tools and disable extensions; shell commands require Full access. Changes apply to the next message.'
+                    : 'Access for the next message. Edit allows file changes; Read-only uses the harness read or plan mode.'
+                }
+                value={accessMode}
+                onChange={(event) => setAccessSelection(event.target.value as AgentAccessMode)}
+                className="max-w-36 rounded bg-transparent p-1 text-xs text-muted-foreground"
               >
-                <option value="">Default effort</option>
-                {selected.reasoning.map((effort) => (
-                  <option key={effort} value={effort}>
-                    {effort}
-                  </option>
-                ))}
+                <option value="full">Full access (YOLO)</option>
+                <option value="edit">Edit</option>
+                <option value="read">Read-only</option>
               </select>
-            ) : null}
-            {busy ? (
-              <Button
-                type="button"
-                size="icon-sm"
-                variant="outline"
-                aria-label="Stop agent"
-                onClick={() => {
-                  void execute({ action: 'stop', sessionId: session?.id })
-                }}
-              >
-                <Square className="size-3 fill-current" />
+              {selected?.reasoning.length ? (
+                <select
+                  aria-label="Reasoning effort"
+                  value={reasoning}
+                  onChange={(e) => setReasoning(e.target.value)}
+                  className="max-w-28 rounded bg-transparent p-1 text-xs text-muted-foreground"
+                >
+                  <option value="">Default effort</option>
+                  {selected.reasoning.map((effort) => (
+                    <option key={effort} value={effort}>
+                      {effort}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+              {busy ? (
+                <Button
+                  type="button"
+                  size="icon-sm"
+                  variant="outline"
+                  aria-label="Stop agent"
+                  onClick={() => {
+                    void execute({ action: 'stop', sessionId: session?.id })
+                  }}
+                >
+                  <Square className="size-3 fill-current" />
+                </Button>
+              ) : null}
+              <Button type="submit" size="icon-sm" aria-label="Send message">
+                <ArrowUp className="size-4" />
               </Button>
-            ) : null}
-            <Button type="submit" size="icon-sm" aria-label="Send message">
-              <ArrowUp className="size-4" />
-            </Button>
-          </div>
-        </form>
-        <p className="mt-2 px-2 text-[10px] text-muted-foreground">
-          Uses your native agent configuration and login. Shift+Enter for a new line.
-        </p>
+            </div>
+            <p className="mt-2 px-2 text-[10px] text-muted-foreground">
+              Uses your native agent configuration and login. Shift+Enter for a new line.
+            </p>
+          </form>
+        </div>
       </div>
     </div>
   )

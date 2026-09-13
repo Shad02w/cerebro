@@ -60,7 +60,8 @@ test(
       updatedAt: 0,
       items: [],
       commands: [],
-      nativeId: 'thread-test'
+      nativeId: 'thread-test',
+      accessMode: 'edit'
     } as AgentSession
     let asked = false
     await adapters.codex.run({
@@ -103,6 +104,7 @@ test(
         repositoryId: null,
         cwd: '/tmp',
         title: 'Approval',
+        accessMode: 'edit',
         model,
         status: 'running',
         generation: 'g',
@@ -124,3 +126,78 @@ test(
     assert(asked)
   }
 )
+
+for (const harness of ['claude', 'codex', 'pi'] as const) {
+  test(`${harness}: access settings reach native startup and resume`, async () => {
+    process.env[`CEREBRO_${harness.toUpperCase()}_PATH`] = fixture
+    const model = (await adapters[harness].models('/tmp'))[0]
+    for (const accessMode of [undefined, 'full', 'edit', 'read'] as const) {
+      for (const nativeId of [undefined, 'saved-session']) {
+        const events: AgentDelta[] = []
+        await adapters[harness].run({
+          session: {
+            version: 1,
+            id: 'access',
+            workspaceId: 1,
+            repositoryId: null,
+            cwd: '/tmp',
+            title: 'Access',
+            model,
+            status: 'running',
+            generation: 'g',
+            sequence: 0,
+            updatedAt: 0,
+            items: [],
+            commands: [],
+            accessMode,
+            nativeId
+          },
+          text: 'access-settings',
+          signal: new AbortController().signal,
+          emit: (event) => events.push(event),
+          ask: async () => {
+            throw new Error('Unexpected approval request')
+          }
+        })
+        const response = events.find(
+          (e) => e.type === 'item' && e.item.kind === 'text' && e.item.text.length > 0
+        )
+        assert(response?.type === 'item')
+        const settings = JSON.parse(response.item.text)
+        if (harness === 'codex') {
+          assert.equal(settings.approvalPolicy, accessMode === 'edit' ? 'on-request' : 'never')
+          assert.equal(
+            settings.sandbox,
+            accessMode === 'read'
+              ? 'read-only'
+              : accessMode === 'edit'
+                ? 'workspace-write'
+                : 'danger-full-access'
+          )
+        } else if (harness === 'claude') {
+          assert.equal(
+            settings[settings.indexOf('--permission-mode') + 1],
+            accessMode === 'read'
+              ? 'plan'
+              : accessMode === 'edit'
+                ? 'acceptEdits'
+                : 'bypassPermissions'
+          )
+          assert.equal(
+            settings.includes('--allow-dangerously-skip-permissions'),
+            !accessMode || accessMode === 'full'
+          )
+        } else if (accessMode === 'read' || accessMode === 'edit') {
+          assert(settings.includes('--no-extensions'))
+          assert.equal(
+            settings[settings.indexOf('--tools') + 1],
+            accessMode === 'read' ? 'read,grep,find,ls' : 'read,grep,find,ls,edit,write'
+          )
+        } else {
+          assert(settings.includes('--approve'))
+          assert(!settings.includes('--tools'))
+        }
+      }
+    }
+  })
+}

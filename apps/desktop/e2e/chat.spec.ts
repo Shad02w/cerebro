@@ -30,12 +30,17 @@ test('chat works through native adapters, survives reload, handles requests, and
     await expect(projectRow).toBeVisible()
     if ((await projectRow.getAttribute('aria-expanded')) === 'false') await projectRow.click()
     await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
-    await page.getByRole('button', { name: 'New Chat tab', exact: true }).click()
+    await page.getByRole('button', { name: /^New Chat tab/ }).click()
     await expect(page.getByTestId('chat-view')).toBeVisible()
+    await expect(page.getByRole('combobox', { name: 'Access mode' })).toHaveValue('full')
     await expect(page.getByRole('combobox', { name: 'Chat history' })).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'New chat', exact: true })).toHaveCount(0)
     await page.getByRole('button', { name: 'Send message', exact: true }).click()
     await expect(page.getByRole('alert')).toContainText('Write a message first')
+    await expect(page.getByTestId('chat-transcript').getByRole('alert')).toContainText(
+      'Write a message first'
+    )
+    await expect(page.getByTestId('chat-composer').getByRole('alert')).toHaveCount(0)
     await page.getByTestId('chat-model-picker').click()
     await expect(
       page.getByTestId('model-picker').getByRole('button', { name: 'All', exact: true })
@@ -68,31 +73,166 @@ test('chat works through native adapters, survives reload, handles requests, and
       .getByTestId('model-picker')
       .getByRole('button', { name: /^Test Model.*Codex/ })
       .click()
-    await page.getByRole('textbox', { name: 'Message agent' }).fill('Build a normalized agent chat')
+    const userText = 'Build a normalized agent chat\nPreserve spacing:  café 🚀'
+    await page.getByRole('textbox', { name: 'Message agent' }).fill(userText)
     await page.getByRole('button', { name: 'Send message', exact: true }).click()
     await expect(page.getByTestId('chat-transcript')).toContainText('Adapter connected.')
     await expect(page.getByTestId('chat-view').getByRole('status')).toContainText('Ready')
+    await expect(page.getByTestId('chat-transcript').getByRole('status')).toContainText(
+      'Ready · Native session saved'
+    )
+    await expect(page.getByRole('separator', { name: 'End of response' })).toHaveCount(1)
     await mkdir('/tmp/cerebro-chat-evidence', { recursive: true })
+    const userMessage = page.getByTestId('chat-user-message').first()
+    const copyButton = userMessage.getByRole('button', { name: 'Copy message', exact: true })
+    const previousClipboard = await electronApp.evaluate(({ clipboard }) => clipboard.readText())
+    try {
+      await copyButton.click()
+      await expect(page.getByTestId('chat-copy-toast')).toContainText(
+        'Message copied to clipboard.'
+      )
+      expect(await electronApp.evaluate(({ clipboard }) => clipboard.readText())).toBe(userText)
+      const bubbleBox = await userMessage.locator(':scope > div').first().boundingBox()
+      const copyBox = await copyButton.boundingBox()
+      expect(copyBox!.y).toBeGreaterThanOrEqual(bubbleBox!.y + bubbleBox!.height)
+      await page.screenshot({ path: '/tmp/cerebro-chat-evidence/user-copy-success.png' })
+      await page.getByRole('button', { name: 'Dismiss notification' }).click()
+      await expect(page.getByTestId('chat-copy-toast')).toHaveCount(0)
+      await copyButton.click()
+      await expect(page.getByTestId('chat-copy-toast')).toBeVisible()
+      await page.evaluate(() => {
+        Object.defineProperty(navigator.clipboard, 'writeText', {
+          configurable: true,
+          value: async () => {
+            throw new Error('Clipboard unavailable')
+          }
+        })
+      })
+      await copyButton.click()
+      await expect(userMessage.getByRole('alert')).toHaveText('Could not copy message.')
+      await expect(page.getByTestId('chat-copy-toast')).toHaveCount(0)
+      await page.screenshot({ path: '/tmp/cerebro-chat-evidence/user-copy-error.png' })
+    } finally {
+      await page.evaluate(() => Reflect.deleteProperty(navigator.clipboard, 'writeText'))
+      await electronApp.evaluate(
+        ({ clipboard }, text) => clipboard.writeText(text),
+        previousClipboard
+      )
+    }
+    await page.screenshot({ path: '/tmp/cerebro-chat-evidence/response-ended.png' })
     await page.screenshot({ path: '/tmp/cerebro-pane-session-evidence/chat.png' })
     await page.reload()
     await expect(page.getByTestId('chat-transcript')).toContainText('Adapter connected.')
+    await page.getByRole('combobox', { name: 'Access mode' }).selectOption('edit')
     await page.getByRole('textbox', { name: 'Message agent' }).fill('approval')
     await page.getByRole('button', { name: 'Send message', exact: true }).click()
     await expect(page.getByRole('button', { name: 'Allow once', exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'Decline', exact: true }).click()
     await expect(page.getByTestId('chat-transcript')).toContainText('Permission resolved.')
+    await page.reload()
+    await expect(page.getByRole('combobox', { name: 'Access mode' })).toHaveValue('edit')
+    await page.getByRole('combobox', { name: 'Access mode' }).selectOption('read')
     await page.getByRole('textbox', { name: 'Message agent' }).fill('question')
     await page.getByRole('button', { name: 'Send message', exact: true }).click()
     await page.getByRole('radio', { name: 'Blue', exact: true }).check()
     await page.getByRole('button', { name: 'Submit answer', exact: true }).click()
     await expect(page.getByTestId('chat-transcript')).toContainText('Answer received.')
+    await page.reload()
+    await expect(page.getByRole('combobox', { name: 'Access mode' })).toHaveValue('read')
+    await page.screenshot({ path: '/tmp/cerebro-chat-evidence/access-read.png' })
     await page.getByRole('textbox', { name: 'Message agent' }).fill('slow')
     await page.getByRole('button', { name: 'Send message', exact: true }).click()
     await expect(page.getByRole('button', { name: 'Stop agent' })).toBeVisible()
     await page.reload()
     await expect(page.getByRole('button', { name: 'Stop agent' })).toBeVisible()
+    const working = page.getByTestId('chat-transcript').getByRole('status')
+    await expect(working).toHaveText('Working…')
+    await expect(page.getByRole('separator', { name: 'End of response' })).toHaveCount(3)
+    await expect(page.getByTestId('chat-view').getByRole('status')).toHaveCount(1)
+    const workingText = working.locator('span')
+    await expect(workingText).toHaveCSS('animation-name', 'chat-working-shimmer')
+    await working.scrollIntoViewIfNeeded()
+    await page.screenshot({ path: '/tmp/cerebro-chat-evidence/working-shimmer.png' })
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await expect(workingText).toHaveCSS('animation-name', 'none')
+    await expect(workingText).not.toHaveCSS('color', 'rgba(0, 0, 0, 0)')
+    await page.screenshot({ path: '/tmp/cerebro-chat-evidence/working-reduced-motion.png' })
+    await page.emulateMedia({ reducedMotion: 'no-preference' })
     await page.getByRole('button', { name: 'Stop agent' }).click()
+    await expect(working).not.toContainText('Working…')
+    await expect(page.getByRole('separator', { name: 'End of response' })).toHaveCount(4)
+    await page.screenshot({ path: '/tmp/cerebro-chat-evidence/response-interrupted.png' })
     await expect(page.getByTestId('chat-view').getByRole('status')).toContainText('interrupted')
+    const chatTranscript = page.getByTestId('chat-transcript')
+    const composer = page.getByTestId('chat-composer')
+    await expect(chatTranscript.getByRole('alert')).toContainText('interrupted')
+    await expect(composer.getByRole('status')).toHaveCount(0)
+    await expect(composer.getByRole('alert')).toHaveCount(0)
+    const clearance = async (): Promise<number> => {
+      const errorBox = await chatTranscript.getByRole('alert').boundingBox()
+      const composerBox = await composer.boundingBox()
+      return composerBox!.y - (errorBox!.y + errorBox!.height)
+    }
+    await expect.poll(clearance).toBeGreaterThanOrEqual(23)
+    const expectAlignedComposer = async (): Promise<void> => {
+      const contentBox = await chatTranscript.locator(':scope > div').boundingBox()
+      const inputBox = await composer.locator('form').boundingBox()
+      expect(Math.abs(contentBox!.x - inputBox!.x)).toBeLessThan(1)
+      expect(Math.abs(contentBox!.width - inputBox!.width)).toBeLessThan(1)
+    }
+    await expectAlignedComposer()
+    await electronApp.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0].setSize(850, 900)
+    )
+    await expect(async () => expectAlignedComposer()).toPass()
+    await page.screenshot({ path: '/tmp/cerebro-chat-evidence/composer-width-narrow.png' })
+    await electronApp.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0].setSize(1250, 900)
+    )
+    await expect(async () => expectAlignedComposer()).toPass()
+    const transcriptBox = await chatTranscript.boundingBox()
+    const composerBox = await composer.boundingBox()
+    expect(transcriptBox!.y + transcriptBox!.height).toBeGreaterThan(
+      composerBox!.y + composerBox!.height - 1
+    )
+    await page.screenshot({ path: '/tmp/cerebro-chat-evidence/floating-composer-bottom.png' })
+    // Resizing the input must update the transcript's reserved space without hiding its end.
+    await page.getByRole('textbox', { name: 'Message agent' }).evaluate((element) => {
+      element.style.height = '190px'
+    })
+    await expect.poll(clearance).toBeGreaterThanOrEqual(23)
+    await page.screenshot({ path: '/tmp/cerebro-chat-evidence/floating-composer-resized.png' })
+    const floatingTop = (await composer.boundingBox())!.y
+    await chatTranscript.hover({ position: { x: 20, y: 60 } })
+    await page.mouse.wheel(0, -200)
+    await expect
+      .poll(() =>
+        chatTranscript.evaluate((node) => node.scrollHeight - node.clientHeight - node.scrollTop)
+      )
+      .toBeGreaterThan(100)
+    expect((await composer.boundingBox())!.y).toBe(floatingTop)
+    await expect(composer.locator('form')).toHaveCSS('backdrop-filter', 'none')
+    await expect(page.getByTestId('chat-list-blur')).toHaveCount(0)
+    const fade = page.getByTestId('chat-list-fade')
+    await expect(fade).toHaveCSS('pointer-events', 'none')
+    const fadeBox = await fade.boundingBox()
+    const formBox = await composer.locator('form').boundingBox()
+    expect(fadeBox!.height).toBeLessThanOrEqual(48)
+    expect(fadeBox!.y).toBe(floatingTop)
+    expect(fadeBox!.y + fadeBox!.height).toBeCloseTo(formBox!.y, 0)
+    // The dock spans the whole transcript so no text peeks out beside the form.
+    expect(fadeBox!.x).toBeLessThanOrEqual(transcriptBox!.x)
+    expect(fadeBox!.width).toBeGreaterThanOrEqual(formBox!.width + 40)
+    expect(fadeBox!.x + fadeBox!.width).toBeLessThanOrEqual(
+      transcriptBox!.x + transcriptBox!.width + 1
+    )
+    expect(formBox!.y + formBox!.height).toBeLessThanOrEqual(
+      transcriptBox!.y + transcriptBox!.height
+    )
+    await page.screenshot({ path: '/tmp/cerebro-chat-evidence/floating-composer-scrolled.png' })
+    await page.getByRole('textbox', { name: 'Message agent' }).evaluate((element) => {
+      element.style.removeProperty('height')
+    })
     const home = await electronApp.evaluate(() => process.env.CEREBRO_HOME!)
     const paneId = Number(
       await page.locator('[data-pane-kind="chat"]:visible').getAttribute('data-pane-id')

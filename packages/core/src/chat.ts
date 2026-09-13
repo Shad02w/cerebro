@@ -1,4 +1,5 @@
 /** Transport-independent local agent contract. Native wire frames never cross this boundary. */
+export type AgentAccessMode = 'full' | 'edit' | 'read'
 export type AgentHarness = 'claude' | 'codex' | 'pi'
 export type AgentModel = {
   key: string
@@ -56,6 +57,7 @@ export type AgentSession = {
   title: string
   model: AgentModel
   reasoning?: string
+  accessMode?: AgentAccessMode
   status: 'idle' | 'running' | 'waiting' | 'interrupted' | 'failed'
   generation: string
   turnId?: string
@@ -81,6 +83,7 @@ export type ChatCommand = {
   text?: string
   model?: AgentModel
   reasoning?: string
+  accessMode?: AgentAccessMode
   requestId?: string
   allow?: boolean
   answers?: Record<string, string[]>
