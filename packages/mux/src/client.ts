@@ -18,7 +18,9 @@ import { EventEmitter } from 'node:events'
 import { Wire, MuxError, VERSION, type Message } from './protocol'
 import { protectDirectory } from './permissions'
 import { muxDirectory, socketPath, databasePath } from './paths'
+import { readRuntimeManifest, runtimeOutdated, type RuntimeManifest } from './runtime-manifest'
 export * from './protocol'
+export { runtimeOutdated, type RuntimeManifest } from './runtime-manifest'
 export { socketPath } from './paths'
 
 export type ConnectOptions = { runtimeDir?: string; autoStart?: boolean }
@@ -151,18 +153,23 @@ export async function connectMux(options: ConnectOptions = {}): Promise<MuxClien
     }
   }
   const token = await readFile(tokenPath, 'utf8')
-  const open = async (): Promise<MuxClient> => {
+  const open = async (): Promise<{ client: MuxClient; runtime?: RuntimeManifest }> => {
     const client = await MuxClient.open()
     try {
-      await client.request('hello', { version: VERSION, token, database: databasePath() }, 2000)
-      return client
+      const reply = await client.request<{ runtime?: RuntimeManifest }>(
+        'hello',
+        { version: VERSION, token, database: databasePath() },
+        2000
+      )
+      return { client, runtime: reply?.runtime }
     } catch (error) {
       client.close()
       throw error
     }
   }
+  let running: { client: MuxClient; runtime?: RuntimeManifest } | undefined
   try {
-    return await open()
+    running = await open()
   } catch (error) {
     if (error instanceof MuxError && error.code !== 'unavailable') throw error
     if (options.autoStart === false) throw new MuxError('unavailable', 'Mux is not running.')
@@ -175,6 +182,26 @@ export async function connectMux(options: ConnectOptions = {}): Promise<MuxClien
       resolve(__dirname, '../../../desktop/out/cli'),
       resolve(__dirname, '../../../apps/desktop/out/cli')
     ].find((path) => existsSync(join(path, 'mux.cjs')))
+  if (running) {
+    const local =
+      source && options.autoStart !== false ? await readRuntimeManifest(source) : undefined
+    if (!runtimeOutdated(local, running.runtime)) return running.client
+    // This build is newer than the host: stop it and start the staged runtime. Terminals keep
+    // their output and start fresh shells on activation; other clients reconnect on their own.
+    await running.client.request('server.stop', {}, 5000).catch(() => {})
+    running.client.close()
+    let stopped = false
+    for (let attempt = 0; attempt < 1200 && !stopped; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      try {
+        ;(await MuxClient.open()).close()
+      } catch {
+        stopped = true
+      }
+    }
+    if (!stopped)
+      throw new MuxError('unavailable', 'The previous mux host is still stopping. Retry shortly.')
+  }
   if (!source)
     throw new MuxError(
       'unavailable',
@@ -208,7 +235,7 @@ export async function connectMux(options: ConnectOptions = {}): Promise<MuxClien
     await new Promise((resolve) => setTimeout(resolve, 50))
     if (startupError) throw startupError
     try {
-      return await open()
+      return (await open()).client
     } catch (error) {
       if (error instanceof MuxError && error.code !== 'unavailable') throw error
     }

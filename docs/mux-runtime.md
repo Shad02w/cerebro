@@ -21,7 +21,7 @@ cerebro server stop
 
 Use returned JSON IDs, replacing the angle-bracket placeholders. Workspace creation retains the existing GitHub-linked, single-root restriction. CLI Git operations use system credentials. Desktop Git operations keep the desktop provider through an operation-scoped callback.
 
-`server status` does not start a daemon. `server stop` checkpoints and terminates shells, retaining layouts and output. It waits for shutdown. An open desktop respects an explicit stop; it reconnects after `server start`, Restart, or another explicit workspace/tab action, rather than immediately restarting the daemon in the background. Protocol incompatibility requires this explicit restart; clients do not kill a running daemon during an upgrade.
+`server status` does not start a daemon. `server stop` checkpoints and terminates shells, retaining layouts and output. It waits for shutdown. An open desktop respects an explicit stop; it reconnects after `server start`, Restart, or another explicit workspace/tab action, rather than immediately restarting the daemon in the background. A client whose staged runtime is a different and newer build (`muxHash` differs and `builtAt` is later in `runtime.json`) replaces a same-protocol daemon automatically when it connects: it requests a stop, waits for the shutdown to finish, then starts the new runtime. Older clients and builds without that metadata never downgrade a running daemon. A protocol version change still requires an explicit restart.
 
 ## Identity and state
 

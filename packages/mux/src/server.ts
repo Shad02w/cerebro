@@ -13,6 +13,7 @@ import {
   type TerminalEvent
 } from './protocol'
 import { muxDirectory, socketPath, databasePath } from './paths'
+import { readRuntimeManifest } from './runtime-manifest'
 import { StorageWorker } from './worker-client'
 import { AgentSessions } from './agents/service'
 import type { ChatCommand } from '@cerebro/core'
@@ -272,7 +273,7 @@ export async function startServer(): Promise<void> {
             throw new MuxError('conflict', 'This CEREBRO_HOME already owns a different database.')
           peer.authorized = true
           clearTimeout(handshakeTimer)
-          return { epoch, version: VERSION, pid: process.pid }
+          return { epoch, version: VERSION, pid: process.pid, runtime }
         }
         if (stopping) throw new MuxError('unavailable', 'Mux is stopping.')
         if (!peer.authorized) throw new MuxError('unauthorized', 'Handshake required.')
@@ -283,6 +284,7 @@ export async function startServer(): Promise<void> {
               pid: process.pid,
               epoch,
               version: VERSION,
+              runtime,
               scrollback: terminals.scrollback,
               memory: process.memoryUsage(),
               cpu: process.cpuUsage()
@@ -301,6 +303,12 @@ export async function startServer(): Promise<void> {
               throw new MuxError('usage', 'Invalid favorite.')
             return agents.favorite(favorite.key, favorite.favorite)
           }
+          case 'chat.attachment':
+            return agents.attachment(
+              positive(p.workspaceId),
+              String(p.sessionId ?? ''),
+              String(p.attachmentId ?? '')
+            )
           case 'chat.command':
             return exclusive(async () => {
               const workspaceId = positive(p.workspaceId),
@@ -458,6 +466,8 @@ export async function startServer(): Promise<void> {
   })
   server.maxConnections = 64
   const SENT = Symbol('sent')
+  // Reported in the handshake so a newer staged build can replace this host.
+  const runtime = await readRuntimeManifest(__dirname)
   if (process.platform !== 'win32') await unlink(socketPath()).catch(() => {})
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject)
