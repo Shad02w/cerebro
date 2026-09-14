@@ -1,19 +1,26 @@
-import type {
-  AgentAnswer,
-  AgentDelta,
-  AgentHarness,
-  AgentModel,
-  AgentRequest,
-  AgentSession,
-  ChatItem
+import {
+  chatImageMarkerPattern,
+  type AgentAnswer,
+  type AgentDelta,
+  type AgentHarness,
+  type AgentModality,
+  type AgentModel,
+  type AgentRequest,
+  type AgentSession,
+  type ChatAttachment,
+  type ChatItem
 } from '@cerebro/core'
 import { randomUUID } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import { JsonProcess, executable, describe, type Frame } from './transport'
 
+/** A host-owned image file sent with the prompt. Bytes are read only when a harness needs them inline. */
+export type RunAttachment = ChatAttachment & { path: string }
 export type RunContext = {
   session: AgentSession
   text: string
+  attachments?: RunAttachment[]
   signal: AbortSignal
   emit: (event: AgentDelta) => void
   ask: (request: AgentRequest) => Promise<AgentAnswer>
@@ -22,12 +29,17 @@ export interface AgentAdapter {
   models(cwd: string): Promise<AgentModel[]>
   run(context: RunContext): Promise<void>
 }
+const modalities = (value: unknown): AgentModality[] =>
+  Array.isArray(value)
+    ? (value.filter((entry) => entry === 'text' || entry === 'image') as AgentModality[])
+    : ['text', 'image']
 const model = (
   harness: AgentHarness,
   provider: string,
   id: string,
   label: string,
-  reasoning: string[] = []
+  reasoning: string[] = [],
+  input: AgentModality[] = ['text', 'image']
 ): AgentModel => ({
   key: JSON.stringify([harness, 'local', provider, id]),
   instance: 'local',
@@ -37,8 +49,19 @@ const model = (
   label,
   reasoning,
   source: 'native',
-  available: true
+  available: true,
+  modalities: input
 })
+const inline = (attachment: RunAttachment): string =>
+  readFileSync(attachment.path).toString('base64')
+/** Byte spans of `[Image #N]` markers, the shape Codex clients use for UI-owned text elements. */
+const textElements = (
+  text: string
+): Array<{ byteRange: { start: number; end: number }; placeholder: string }> =>
+  [...text.matchAll(chatImageMarkerPattern)].map((match) => {
+    const start = Buffer.byteLength(text.slice(0, match.index))
+    return { byteRange: { start, end: start + Buffer.byteLength(match[0]) }, placeholder: match[0] }
+  })
 const item = (
   context: RunContext,
   id: string,
@@ -85,7 +108,8 @@ export const codexAdapter: AgentAdapter = {
                 entry.displayName,
                 (entry.supportedReasoningEfforts ?? []).map(
                   (effort: Frame) => effort.reasoningEffort
-                )
+                ),
+                modalities(entry.inputModalities)
               )
             )
         cursor = page.nextCursor ?? undefined
@@ -271,9 +295,15 @@ export const codexAdapter: AgentAdapter = {
       threadId = result.thread.id
       emit({ type: 'binding', nativeId: threadId! })
       if (signal.aborted) throw new Error('Turn interrupted.')
+      const attachments = context.attachments ?? []
       const turn = await rpc.request('turn/start', {
         threadId,
-        input: [{ type: 'text', text: context.text }],
+        input: [
+          attachments.length
+            ? { type: 'text', text: context.text, text_elements: textElements(context.text) }
+            : { type: 'text', text: context.text },
+          ...attachments.map((attachment) => ({ type: 'localImage', path: attachment.path }))
+        ],
         model: session.model.id || undefined,
         effort: session.reasoning
       })
@@ -308,7 +338,8 @@ export const piAdapter: AgentAdapter = {
           entry.provider,
           entry.id,
           entry.name ?? entry.id,
-          entry.reasoning ? ['off', 'minimal', 'low', 'medium', 'high'] : []
+          entry.reasoning ? ['off', 'minimal', 'low', 'medium', 'high'] : [],
+          modalities(entry.input)
         )
       )
     } finally {
@@ -447,7 +478,18 @@ export const piAdapter: AgentAdapter = {
       const state = await rpc.request('get_state')
       if (state.sessionFile) emit({ type: 'binding', nativeId: state.sessionFile })
       if (signal.aborted) throw new Error('Turn interrupted.')
-      await rpc.request('prompt', { message: context.text })
+      await rpc.request('prompt', {
+        message: context.text,
+        ...(context.attachments?.length
+          ? {
+              images: context.attachments.map((attachment) => ({
+                type: 'image',
+                data: inline(attachment),
+                mimeType: attachment.mimeType
+              }))
+            }
+          : {})
+      })
       await done
       const finalState = await rpc.request('get_state')
       if (finalState.sessionFile) emit({ type: 'binding', nativeId: finalState.sessionFile })
@@ -510,8 +552,32 @@ export const claudeAdapter: AgentAdapter = {
         blocks: Map<number, { id: string; kind: ChatItem['kind']; input: string }>
       }
     >()
+    // Image blocks need streaming input; the SDK closes stdin after the first result.
+    const attachments = context.attachments ?? []
+    const prompt: string | AsyncIterable<SDKUserMessage> = attachments.length
+      ? (async function* () {
+          yield {
+            type: 'user',
+            parent_tool_use_id: null,
+            message: {
+              role: 'user',
+              content: [
+                { type: 'text', text: context.text },
+                ...attachments.map((attachment) => ({
+                  type: 'image' as const,
+                  source: {
+                    type: 'base64' as const,
+                    media_type: attachment.mimeType,
+                    data: inline(attachment)
+                  }
+                }))
+              ]
+            }
+          } satisfies SDKUserMessage
+        })()
+      : context.text
     const q = query({
-      prompt: context.text,
+      prompt,
       options: {
         cwd: session.cwd,
         pathToClaudeCodeExecutable: executable('claude'),
@@ -567,6 +633,7 @@ export const claudeAdapter: AgentAdapter = {
     })
     try {
       let completed = false
+      let chainUuid: string | undefined
       for await (const raw of q) {
         const frame = raw as unknown as Frame
         if (frame.session_id && !frame.parent_tool_use_id)
@@ -601,6 +668,7 @@ export const claudeAdapter: AgentAdapter = {
               item(context, block.id, block.kind, e.delta.text ?? e.delta.thinking ?? '', {}, true)
           }
         } else if (frame.type === 'assistant') {
+          if (!frame.parent_tool_use_id) chainUuid = frame.uuid
           for (const [index, block] of (frame.message.content ?? []).entries()) {
             const id = block.id ?? `${frame.message.id}:${index}`
             if (block.type === 'tool_use')
@@ -628,6 +696,7 @@ export const claudeAdapter: AgentAdapter = {
           completed = true
           if (frame.is_error || frame.subtype !== 'success')
             throw new Error(describe(frame.errors ?? frame.result ?? frame.subtype))
+          if (chainUuid) emit({ type: 'checkpoint', turnId: session.turnId!, chainId: chainUuid })
         } else if (frame.type === 'system' && frame.subtype === 'compact_boundary')
           item(context, randomUUID(), 'notice', 'Native conversation compacted.')
       }

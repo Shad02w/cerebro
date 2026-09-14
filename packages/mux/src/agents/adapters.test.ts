@@ -1,6 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { resolve } from 'node:path'
+import { join, resolve } from 'node:path'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { adapters } from './adapters'
 import type { AgentDelta, AgentHarness, AgentSession } from '@cerebro/core'
 const fixture = resolve(__dirname, 'fixtures/fake-harness.cjs')
@@ -38,6 +40,14 @@ for (const harness of ['claude', 'codex', 'pi'] as AgentHarness[]) {
       assert(events.some((e) => e.type === 'binding' && e.nativeId))
       assert(events.some((e) => e.type === 'item' && e.item.text.includes('Adapter connected.')))
       assert(events.some((e) => e.type === 'item' && e.append === true))
+      const checkpoint = events.find((e) => e.type === 'checkpoint')
+      if (harness === 'claude')
+        assert.deepEqual(checkpoint, {
+          type: 'checkpoint',
+          turnId: undefined,
+          chainId: 'chain-test'
+        })
+      else assert.equal(checkpoint, undefined)
     }
   )
 }
@@ -198,6 +208,77 @@ for (const harness of ['claude', 'codex', 'pi'] as const) {
           assert(!settings.includes('--tools'))
         }
       }
+    }
+  })
+}
+
+const png = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+  'base64'
+)
+for (const harness of ['claude', 'codex', 'pi'] as const) {
+  test(`${harness}: image attachments reach the native prompt and models report modalities`, async () => {
+    process.env[`CEREBRO_${harness.toUpperCase()}_PATH`] = fixture
+    const models = await adapters[harness].models('/tmp')
+    assert.deepEqual(models[0].modalities, ['text', 'image'])
+    if (harness === 'codex') assert.deepEqual(models[1].modalities, ['text'])
+    const dir = mkdtempSync(join(tmpdir(), 'cerebro-attachments-'))
+    const path = join(dir, 'shot.png')
+    writeFileSync(path, png)
+    const events: AgentDelta[] = []
+    try {
+      await adapters[harness].run({
+        session: {
+          version: 1,
+          id: 'attachments',
+          workspaceId: 1,
+          repositoryId: null,
+          cwd: '/tmp',
+          title: 'Attachments',
+          model: models[0],
+          status: 'running',
+          generation: 'g',
+          sequence: 0,
+          updatedAt: 0,
+          items: [],
+          commands: []
+        },
+        text: 'attachments [Image #1] here',
+        attachments: [
+          { id: 'img-1', kind: 'image', name: 'shot.png', mimeType: 'image/png', bytes: 70, path }
+        ],
+        signal: new AbortController().signal,
+        emit: (event) => events.push(event),
+        ask: async () => ({ allow: false, answers: {} })
+      })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+    const response = events.find(
+      (e) =>
+        (e.type === 'item' && e.item.kind === 'text' && e.item.text.startsWith('[')) ||
+        (e.type === 'item' && e.item.kind === 'text' && e.item.text.startsWith('{'))
+    )
+    assert(response?.type === 'item')
+    const echoed = JSON.parse(response.item.text)
+    if (harness === 'codex') {
+      assert.equal(echoed[0].type, 'text')
+      assert.equal(echoed[0].text, 'attachments [Image #1] here')
+      assert.deepEqual(echoed[0].text_elements, [
+        { byteRange: { start: 12, end: 22 }, placeholder: '[Image #1]' }
+      ])
+      assert.deepEqual(echoed[1], { type: 'localImage', path })
+    } else if (harness === 'claude') {
+      assert.equal(echoed[0].text, 'attachments [Image #1] here')
+      assert.deepEqual(echoed[1], {
+        type: 'image',
+        source: { type: 'base64', media_type: 'image/png', data: png.toString('base64') }
+      })
+    } else {
+      assert.equal(echoed.message, 'attachments [Image #1] here')
+      assert.deepEqual(echoed.images, [
+        { type: 'image', data: png.toString('base64'), mimeType: 'image/png' }
+      ])
     }
   })
 }

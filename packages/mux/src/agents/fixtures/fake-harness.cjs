@@ -18,7 +18,14 @@ const codexDone = () =>
     threadId: 'thread-test',
     turn: { id: 'turn-test', status: 'completed' }
   })
-function codexPrompt(prompt) {
+function codexPrompt(prompt, input) {
+  if (prompt.includes('attachments')) {
+    notify('item/completed', {
+      item: { type: 'agentMessage', id: 'attachments', text: JSON.stringify(input) }
+    })
+    codexDone()
+    return
+  }
   if (prompt === 'access-settings') {
     notify('item/completed', {
       item: { type: 'agentMessage', id: 'access', text: JSON.stringify(accessSettings) }
@@ -106,7 +113,11 @@ function codexPrompt(prompt) {
   })
   codexDone()
 }
-function claudePrompt(prompt) {
+function claudePrompt(prompt, content) {
+  if (prompt.includes('attachments')) {
+    claudeFinish(JSON.stringify(content))
+    return
+  }
   if (prompt === 'access-settings') {
     claudeFinish(JSON.stringify(process.argv.slice(2)))
     return
@@ -148,6 +159,7 @@ function claudeFinish(value) {
   send({
     type: 'assistant',
     session_id: 'claude-test',
+    uuid: 'chain-test',
     message: { id: 'message-test', role: 'assistant', content: [{ type: 'text', text: value }] }
   })
   send({
@@ -175,7 +187,8 @@ createInterface({ input: process.stdin }).on('line', (line) => {
           data: ['test-model', 'second-model'].map((id) => ({
             model: id,
             displayName: id === 'test-model' ? 'Test Model' : 'Second Model',
-            supportedReasoningEfforts: [{ reasoningEffort: 'low' }]
+            supportedReasoningEfforts: [{ reasoningEffort: 'low' }],
+            inputModalities: id === 'test-model' ? ['text', 'image'] : ['text']
           })),
           nextCursor: null
         })
@@ -191,7 +204,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
         break
       case 'turn/start':
         reply({ turn: { id: 'turn-test' } })
-        setTimeout(() => codexPrompt(frame.params.input[0].text), 30)
+        setTimeout(() => codexPrompt(frame.params.input[0].text, frame.params.input), 30)
         break
       case 'turn/interrupt':
         reply({})
@@ -205,7 +218,13 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       case 'get_available_models':
         reply({
           models: [
-            { id: 'test-model', provider: 'test-provider', name: 'Test Model', reasoning: true }
+            {
+              id: 'test-model',
+              provider: 'test-provider',
+              name: 'Test Model',
+              reasoning: true,
+              input: ['text', 'image']
+            }
           ]
         })
         break
@@ -219,7 +238,11 @@ createInterface({ input: process.stdin }).on('line', (line) => {
         break
       case 'prompt': {
         const responseText =
-          frame.message === 'access-settings' ? JSON.stringify(process.argv.slice(2)) : text
+          frame.message === 'access-settings'
+            ? JSON.stringify(process.argv.slice(2))
+            : frame.message.includes('attachments')
+              ? JSON.stringify({ message: frame.message, images: frame.images })
+              : text
         reply({})
         send({ type: 'message_start', message: { role: 'assistant' } })
         send({
@@ -257,7 +280,8 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       claudePrompt(
         typeof frame.message.content === 'string'
           ? frame.message.content
-          : frame.message.content[0].text
+          : frame.message.content[0].text,
+        frame.message.content
       )
   }
 })

@@ -2,19 +2,24 @@ import { randomUUID } from 'node:crypto'
 import { mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
-import type {
-  AgentAnswer,
-  AgentCatalog,
-  AgentCapabilities,
-  AgentDelta,
-  AgentHarness,
-  AgentModel,
-  AgentRequest,
-  AgentSession,
-  ChatCommand,
-  ChatView
+import {
+  chatAttachmentLimits,
+  chatImageTypes,
+  type AgentAnswer,
+  type AgentCatalog,
+  type AgentCapabilities,
+  type AgentDelta,
+  type AgentHarness,
+  type AgentModel,
+  type AgentRequest,
+  type AgentSession,
+  type ChatAttachment,
+  type ChatAttachmentContent,
+  type ChatCommand,
+  type ChatImageType,
+  type ChatView
 } from '@cerebro/core'
-import { adapters, type AgentAdapter } from './adapters'
+import { adapters, type AgentAdapter, type RunAttachment } from './adapters'
 import { executable } from './transport'
 
 export type AgentScope = {
@@ -36,8 +41,9 @@ const capabilities: Record<AgentHarness, AgentCapabilities> = {
     approvals: 'tools',
     questions: true,
     modelSelection: 'between-turns',
-    imageInput: false,
-    steering: false
+    imageInput: true,
+    steering: false,
+    fork: 'native'
   },
   codex: {
     resume: true,
@@ -45,8 +51,9 @@ const capabilities: Record<AgentHarness, AgentCapabilities> = {
     approvals: 'commands-and-files',
     questions: true,
     modelSelection: 'between-turns',
-    imageInput: false,
-    steering: false
+    imageInput: true,
+    steering: false,
+    fork: 'emulated'
   },
   pi: {
     resume: true,
@@ -54,9 +61,80 @@ const capabilities: Record<AgentHarness, AgentCapabilities> = {
     approvals: 'none',
     questions: true,
     modelSelection: 'between-turns',
-    imageInput: false,
-    steering: false
+    imageInput: true,
+    steering: false,
+    fork: 'emulated'
   }
+}
+const attachmentId = /^[A-Za-z0-9-]{1,64}$/
+const extensions: Record<ChatImageType, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/gif': 'gif',
+  'image/webp': 'webp'
+}
+const signature = (mimeType: ChatImageType, bytes: Buffer): boolean =>
+  mimeType === 'image/png'
+    ? bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+    : mimeType === 'image/jpeg'
+      ? bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
+      : mimeType === 'image/gif'
+        ? bytes.subarray(0, 4).toString('latin1') === 'GIF8'
+        : bytes.subarray(0, 4).toString('latin1') === 'RIFF' &&
+          bytes.subarray(8, 12).toString('latin1') === 'WEBP'
+/** Validates uploads before anything is written. Bytes are returned separately from the persisted metadata. */
+function validateAttachments(
+  uploads: ChatCommand['attachments']
+): Array<{ meta: ChatAttachment; bytes: Buffer }> {
+  if (uploads === undefined) return []
+  if (!Array.isArray(uploads)) throw new Error('Invalid attachments.')
+  if (uploads.length > chatAttachmentLimits.maxCount)
+    throw new Error(`Attach at most ${chatAttachmentLimits.maxCount} images per message.`)
+  const seen = new Set<string>()
+  let total = 0
+  return uploads.map((upload) => {
+    if (
+      !upload ||
+      typeof upload !== 'object' ||
+      upload.kind !== 'image' ||
+      typeof upload.id !== 'string' ||
+      !attachmentId.test(upload.id) ||
+      typeof upload.name !== 'string' ||
+      typeof upload.data !== 'string' ||
+      !(chatImageTypes as readonly string[]).includes(upload.mimeType)
+    )
+      throw new Error('Invalid image attachment.')
+    if (seen.has(upload.id)) throw new Error('Duplicate image attachment.')
+    seen.add(upload.id)
+    const bytes = Buffer.from(upload.data, 'base64')
+    if (!bytes.length || bytes.length > chatAttachmentLimits.maxBytes)
+      throw new Error(
+        `Each image must be at most ${Math.round(chatAttachmentLimits.maxBytes / 1024 / 1024)} MB.`
+      )
+    if (!signature(upload.mimeType, bytes))
+      throw new Error(`${upload.name || 'Image'} is not a valid ${upload.mimeType} file.`)
+    total += bytes.length
+    if (total > chatAttachmentLimits.maxTotalBytes)
+      throw new Error(
+        `Images in one message must total at most ${Math.round(chatAttachmentLimits.maxTotalBytes / 1024 / 1024)} MB.`
+      )
+    const size = (value: unknown): number | undefined =>
+      typeof value === 'number' && Number.isFinite(value) && value > 0
+        ? Math.round(value)
+        : undefined
+    return {
+      bytes,
+      meta: {
+        id: upload.id,
+        kind: 'image',
+        name: upload.name.slice(0, 200) || 'Image',
+        mimeType: upload.mimeType,
+        bytes: bytes.length,
+        width: size(upload.width),
+        height: size(upload.height)
+      }
+    }
+  })
 }
 const busy = (session: AgentSession): boolean =>
   session.status === 'running' || session.status === 'waiting'
@@ -111,6 +189,28 @@ export class AgentSessions {
   }
   private persist(session: AgentSession): void {
     this.atomic(`session-${session.id}.json`, session)
+  }
+  private attachmentPath(session: AgentSession, attachment: ChatAttachment): string {
+    return join(
+      this.directory,
+      'attachments',
+      session.id,
+      `${attachment.id}.${extensions[attachment.mimeType]}`
+    )
+  }
+  /** Returns stored image bytes for a transcript item. Sessions are scoped by workspace. */
+  attachment(workspaceId: number, sessionId: string, attachmentId: string): ChatAttachmentContent {
+    const session = this.sessions.get(sessionId)
+    if (!session || session.workspaceId !== workspaceId)
+      throw new Error('Conversation not found in this workspace.')
+    const attachment = session.items
+      .flatMap((item) => item.attachments ?? [])
+      .find((entry) => entry.id === attachmentId)
+    if (!attachment) throw new Error('Image not found in this conversation.')
+    return {
+      mimeType: attachment.mimeType,
+      data: readFileSync(this.attachmentPath(session, attachment)).toString('base64')
+    }
   }
   private changed(session: AgentSession, immediate = false): void {
     session.sequence++
@@ -248,6 +348,7 @@ export class AgentSessions {
       this.publish(scope.workspaceId)
       return this.view(scope)
     }
+    if (command.action === 'fork') return this.fork(scope, command)
     let session = this.sessions.get(this.bindings[String(scope.paneId)])
     if (
       session &&
@@ -302,6 +403,7 @@ export class AgentSessions {
     if (typeof command.text !== 'string' || !command.text.trim())
       throw new Error('Write a message first.')
     if (command.text.length > 100_000) throw new Error('Message exceeds 100,000 characters.')
+    const attachments = validateAttachments(command.attachments)
     if (session && busy(session))
       throw new Error('The agent is still working. Stop it or wait before sending another message.')
     const catalog = await this.models()
@@ -311,6 +413,10 @@ export class AgentSessions {
       throw new Error('Selected model is unavailable. Refresh models or choose another model.')
     if (command.reasoning && !selected.reasoning.includes(command.reasoning))
       throw new Error('Unsupported reasoning setting for this model.')
+    if (attachments.length && selected.modalities && !selected.modalities.includes('image'))
+      throw new Error(
+        `${selected.label} does not accept images. Remove them or choose another model.`
+      )
     const accessMode = command.accessMode ?? session?.accessMode ?? 'full'
     if (!['full', 'edit', 'read'].includes(accessMode)) throw new Error('Unsupported access mode.')
     // Recheck after model discovery, which can yield while another send is accepted.
@@ -361,9 +467,21 @@ export class AgentSessions {
       id: randomUUID(),
       turnId: session.turnId,
       kind: 'user',
-      text: command.text
+      text: command.text,
+      ...(attachments.length ? { attachments: attachments.map((entry) => entry.meta) } : {})
     })
+    const stored: RunAttachment[] = []
     try {
+      if (attachments.length)
+        mkdirSync(join(this.directory, 'attachments', session.id), {
+          recursive: true,
+          mode: 0o700
+        })
+      for (const entry of attachments) {
+        const path = this.attachmentPath(session, entry.meta)
+        writeFileSync(path, entry.bytes, { mode: 0o600 })
+        stored.push({ ...entry.meta, path })
+      }
       this.changed(session, true)
     } catch (error) {
       session.status = 'failed'
@@ -377,16 +495,82 @@ export class AgentSessions {
       done: Promise.resolve()
     }
     this.running.set(session.id, runtime)
-    runtime.done = this.run(activeSession, command.text, runtime)
+    runtime.done = this.run(activeSession, command.text, stored, runtime)
     return this.view(scope)
   }
-  private async run(session: AgentSession, text: string, runtime: Running): Promise<void> {
+  /** Branches a completed section into a new, independent session. Native memory carries over only for adapters that support it (currently Claude). */
+  private async fork(scope: AgentScope, command: ChatCommand): Promise<ChatView> {
+    const source = this.sessions.get(command.sessionId ?? this.bindings[String(scope.paneId)])
+    if (
+      !source ||
+      source.workspaceId !== scope.workspaceId ||
+      source.repositoryId !== scope.repositoryId
+    )
+      throw new Error('Conversation not found in this repository.')
+    if (busy(source)) throw new Error('Stop the running turn before forking.')
+    if (!command.turnId) throw new Error('Choose a section to fork.')
+    const cut = source.items.map((item) => item.turnId).lastIndexOf(command.turnId)
+    if (cut === -1) throw new Error('That section is no longer part of this conversation.')
+    const next: AgentSession = {
+      ...structuredClone(source),
+      id: randomUUID(),
+      title: `${source.title} (fork)`,
+      status: 'idle',
+      generation: '',
+      turnId: undefined,
+      sequence: 0,
+      error: undefined,
+      updatedAt: Date.now(),
+      items: structuredClone(source.items.slice(0, cut + 1)),
+      commands: [],
+      forkedFrom: { sessionId: source.id, turnId: command.turnId },
+      nativeId: undefined,
+      checkpoints: undefined
+    }
+    const checkpoint = source.checkpoints?.[command.turnId]
+    if (source.model.harness === 'claude' && checkpoint && source.nativeId) {
+      try {
+        const { forkSession } = await import('@anthropic-ai/claude-agent-sdk')
+        const result = await forkSession(source.nativeId, {
+          upToMessageId: checkpoint,
+          title: next.title,
+          dir: source.cwd
+        })
+        next.nativeId = result.sessionId
+      } catch {
+        // Native fork failed (e.g. transcript missing); continue with an emulated fork (visible items only).
+      }
+    }
+    this.sessions.set(next.id, next)
+    this.persist(next)
+    this.publish(next.workspaceId)
+    return structuredClone({
+      session: next,
+      sessions: [...this.sessions.values()]
+        .filter((s) => s.workspaceId === next.workspaceId && s.repositoryId === next.repositoryId)
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+        .map(({ id, title, model, status, updatedAt }) => ({ id, title, model, status, updatedAt }))
+    })
+  }
+  private async run(
+    session: AgentSession,
+    text: string,
+    attachments: RunAttachment[],
+    runtime: Running
+  ): Promise<void> {
     const generation = session.generation
     const emit = (event: AgentDelta): void => {
       if (runtime.controller.signal.aborted || session.generation !== generation) return
       if (event.type === 'binding') {
         if (session.nativeId !== event.nativeId) {
           session.nativeId = event.nativeId
+          this.changed(session, true)
+        }
+        return
+      }
+      if (event.type === 'checkpoint') {
+        if (session.checkpoints?.[event.turnId] !== event.chainId) {
+          session.checkpoints = { ...session.checkpoints, [event.turnId]: event.chainId }
           this.changed(session, true)
         }
         return
@@ -441,6 +625,7 @@ export class AgentSessions {
       await this.drivers[session.model.harness].run({
         session: structuredClone(session),
         text,
+        attachments,
         signal: runtime.controller.signal,
         emit,
         ask

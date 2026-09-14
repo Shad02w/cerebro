@@ -1,6 +1,7 @@
 import { mkdtemp, mkdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import type { JSHandle } from '@playwright/test'
 import { test, expect, stopMux } from './fixtures'
 const executable = resolve(__dirname, '../../../packages/mux/src/agents/fixtures/fake-harness.cjs')
 test.use({
@@ -476,6 +477,250 @@ test('Mod+N opens independent Chat tabs from a workspace row, composer, and term
       'Terminal',
       'Changes'
     ])
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+const png =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+
+test('image attachments use atomic chips, reach the harness, render in the transcript, and respect model modalities', async ({
+  page,
+  electronApp
+}) => {
+  const directory = await mkdtemp(join(tmpdir(), 'cerebro-chat-images-'))
+  try {
+    await electronApp.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0].setSize(1250, 900)
+    )
+    const project = await page.evaluate(
+      (directory) => window.cerebro.createProjectFromDirectory(directory),
+      directory
+    )
+    const workspaceId = project.workspaces[0].id
+    await page.evaluate(
+      (workspaceId) =>
+        window.cerebro.layoutCommand({
+          target: 'tab',
+          action: 'create',
+          workspaceId,
+          kind: 'chat'
+        }),
+      workspaceId
+    )
+    await page.reload()
+    await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
+    const chat = page.locator('[data-pane-kind="chat"]:visible')
+    const textbox = chat.getByRole('textbox', { name: 'Message agent' })
+    const form = chat.getByTestId('chat-composer').locator('form')
+    const attachments = chat.getByTestId('chat-attachment')
+    const caret = (): Promise<number> =>
+      textbox.evaluate((element: HTMLTextAreaElement) => element.selectionStart)
+    const transfer = (name: string): Promise<JSHandle<DataTransfer>> =>
+      page.evaluateHandle(
+        ({ name, png }) => {
+          const bytes = Uint8Array.from(atob(png), (char) => char.charCodeAt(0))
+          const transfer = new DataTransfer()
+          transfer.items.add(new File([bytes], name, { type: 'image/png' }))
+          return transfer
+        },
+        { name, png }
+      )
+    const paste = async (name: string): Promise<void> => {
+      const clipboardData = await transfer(name)
+      await textbox.evaluate(
+        (element, clipboardData) =>
+          element.dispatchEvent(
+            new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true })
+          ),
+        clipboardData
+      )
+    }
+    await chat.getByTestId('chat-model-picker').click()
+    await page
+      .getByTestId('model-picker')
+      .getByRole('button', { name: 'Codex', exact: true })
+      .click()
+    await page
+      .getByTestId('model-picker')
+      .getByRole('button', { name: /^Test Model.*Codex/ })
+      .click()
+    await textbox.fill('attachments here')
+    await textbox.evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(11, 11))
+    const dropped = await transfer('first.png')
+    await form.dispatchEvent('dragover', { dataTransfer: dropped })
+    await expect(chat.getByTestId('chat-drop-overlay')).toBeVisible()
+    await form.dispatchEvent('drop', { dataTransfer: dropped })
+    await expect(chat.getByTestId('chat-drop-overlay')).toHaveCount(0)
+    await expect(attachments).toHaveCount(1)
+    await expect(attachments.first()).toContainText('first.png')
+    await expect(textbox).toHaveValue('attachments [Image #1] here')
+    expect(await caret()).toBe(22)
+    await paste('second.png')
+    await expect(attachments).toHaveCount(2)
+    await expect(textbox).toHaveValue('attachments [Image #1] [Image #2] here')
+    expect(await caret()).toBe(33)
+    await mkdir('/tmp/cerebro-chat-evidence', { recursive: true })
+    await page.screenshot({ path: '/tmp/cerebro-chat-evidence/attachments-composer.png' })
+    // The caret never rests inside a chip: one left arrow jumps over "[Image #2]".
+    await textbox.press('ArrowLeft')
+    expect(await caret()).toBe(23)
+    // Backspace at a chip edge removes the whole chip and its attachment.
+    await textbox.press('End')
+    for (let i = 0; i < 5; i++) await textbox.press('ArrowLeft')
+    expect(await caret()).toBe(33)
+    await textbox.press('Backspace')
+    await expect(attachments).toHaveCount(1)
+    await expect(textbox).toHaveValue('attachments [Image #1] here')
+    expect(await caret()).toBe(23)
+    // Typing over part of a chip removes it entirely.
+    await textbox.evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(12, 12))
+    await textbox.press('Shift+ArrowRight')
+    await textbox.press('Shift+ArrowRight')
+    await textbox.type('x')
+    await expect(attachments).toHaveCount(0)
+    await expect(textbox).toHaveValue('attachments xhere')
+    // A hand-typed marker is plain text, not a chip.
+    await textbox.fill('attachments here [Image #1]')
+    await expect(attachments).toHaveCount(0)
+    // The attach button adds a chip at the end and later removals renumber the rest.
+    await chat.getByTestId('chat-image-input').setInputFiles({
+      name: 'third.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from(png, 'base64')
+    })
+    await expect(attachments).toHaveCount(1)
+    await expect(textbox).toHaveValue('attachments here [Image #1] [Image #1] ')
+    await paste('fourth.png')
+    await expect(attachments).toHaveCount(2)
+    await expect(textbox).toHaveValue('attachments here [Image #1] [Image #1] [Image #2] ')
+    await chat.getByRole('button', { name: 'Remove image 1', exact: true }).click()
+    await expect(attachments).toHaveCount(1)
+    await expect(attachments.first()).toContainText('fourth.png')
+    await expect(attachments.first()).toContainText('#1')
+    await expect(textbox).toHaveValue('attachments here [Image #1] [Image #1] ')
+    // Reload keeps plain text and drops chips with their attachments.
+    await page.reload()
+    await expect(textbox).toHaveValue('attachments here [Image #1]')
+    await expect(attachments).toHaveCount(0)
+    await paste('sent.png')
+    await expect(textbox).toHaveValue('attachments here [Image #1] [Image #1] ')
+    // The reload reset the picker to the default harness; send through Codex again.
+    await chat.getByTestId('chat-model-picker').click()
+    await page
+      .getByTestId('model-picker')
+      .getByRole('button', { name: 'Codex', exact: true })
+      .click()
+    await page
+      .getByTestId('model-picker')
+      .getByRole('button', { name: /^Test Model.*Codex/ })
+      .click()
+    await chat.getByRole('button', { name: 'Send message', exact: true }).click()
+    const transcript = chat.getByTestId('chat-transcript')
+    await expect(transcript).toContainText('"type":"localImage"')
+    await expect(transcript).toContainText('"placeholder":"[Image #1]"')
+    await expect(chat.getByTestId('chat-view').getByRole('status')).toContainText('Ready')
+    await expect(textbox).toHaveValue('')
+    await expect(attachments).toHaveCount(0)
+    const message = chat.getByTestId('chat-user-message').first()
+    await expect(message.getByRole('img', { name: 'sent.png' })).toBeVisible()
+    // The transcript matches markers by text, so the hand-typed look-alike also opens image 1.
+    await expect(message.getByTestId('chat-image-chip')).toHaveCount(2)
+    await expect(message).toContainText('[Image #1] [Image #1]')
+    await message.getByTestId('chat-image-chip').first().click()
+    await expect(page.getByTestId('chat-image-preview')).toBeVisible()
+    await expect(
+      page.getByTestId('chat-image-preview').getByRole('img', { name: 'sent.png' })
+    ).toBeVisible()
+    await page.screenshot({ path: '/tmp/cerebro-chat-evidence/attachments-preview.png' })
+    await page.keyboard.press('Escape')
+    await expect(page.getByTestId('chat-image-preview')).toHaveCount(0)
+    await page.screenshot({ path: '/tmp/cerebro-chat-evidence/attachments-transcript.png' })
+    await page.reload()
+    await expect(
+      chat.getByTestId('chat-user-message').first().getByRole('img', { name: 'sent.png' })
+    ).toBeVisible()
+    // A text-only model refuses images with an actionable error instead of dropping them.
+    await chat.getByTestId('chat-model-picker').click()
+    await page
+      .getByTestId('model-picker')
+      .getByRole('button', { name: /^Second Model.*Codex/ })
+      .click()
+    await paste('refused.png')
+    await expect(chat.getByRole('alert')).toContainText('Second Model does not accept images')
+    await expect(attachments).toHaveCount(0)
+    await page.screenshot({ path: '/tmp/cerebro-chat-evidence/attachments-text-only.png' })
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('forking a completed response branches it into a new tab or a new pane, leaving the source untouched', async ({
+  page,
+  electronApp
+}) => {
+  const directory = await mkdtemp(join(tmpdir(), 'cerebro-chat-fork-'))
+  try {
+    const project = await page.evaluate(
+      (directory) => window.cerebro.createProjectFromDirectory(directory),
+      directory
+    )
+    const workspaceId = project.workspaces[0].id
+    await page.evaluate(
+      (workspaceId) =>
+        window.cerebro.layoutCommand({
+          target: 'tab',
+          action: 'create',
+          workspaceId,
+          kind: 'chat'
+        }),
+      workspaceId
+    )
+    await page.reload()
+    await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
+    const chat = page.locator('[data-pane-kind="chat"]:visible')
+    await chat.getByRole('textbox', { name: 'Message agent' }).fill('hello')
+    await chat.getByRole('button', { name: 'Send message', exact: true }).click()
+    await expect(chat.getByTestId('chat-transcript')).toContainText('Adapter connected.')
+    await expect(chat.getByTestId('chat-view').getByRole('status')).toContainText('Ready')
+
+    const actions = chat.getByTestId('chat-turn-actions')
+    const copyButton = actions.getByRole('button', { name: 'Copy response', exact: true })
+    const previousClipboard = await electronApp.evaluate(({ clipboard }) => clipboard.readText())
+    await copyButton.click()
+    await expect(page.getByTestId('chat-turn-copy-toast')).toContainText(
+      'Response copied to clipboard.'
+    )
+    expect(await electronApp.evaluate(({ clipboard }) => clipboard.readText())).toContain(
+      'Adapter connected.'
+    )
+    await electronApp.evaluate(
+      ({ clipboard }, text) => clipboard.writeText(text),
+      previousClipboard
+    )
+    await mkdir('/tmp/cerebro-chat-evidence', { recursive: true })
+    await page.screenshot({ path: '/tmp/cerebro-chat-evidence/turn-actions.png' })
+
+    await actions.getByTestId('chat-fork-trigger').click()
+    await page.getByTestId('chat-fork-new-tab').click()
+    await expect(page.getByTestId('chat-tab')).toHaveCount(2)
+    await expect(chat.getByTestId('chat-transcript')).toContainText('Adapter connected.')
+    await expect(chat.getByTestId('chat-transcript')).toContainText('hello')
+    await page.screenshot({ path: '/tmp/cerebro-chat-evidence/fork-new-tab.png' })
+
+    // The source conversation is untouched by the fork.
+    await page.getByTestId('chat-tab').first().click()
+    await expect(chat.getByTestId('chat-transcript')).toContainText('Adapter connected.')
+    await expect(chat.getByRole('status')).toContainText('Ready')
+
+    await actions.getByTestId('chat-fork-trigger').click()
+    await page.getByTestId('chat-fork-new-pane').click()
+    const panes = page.locator('[data-pane-kind="chat"]:visible')
+    await expect(panes).toHaveCount(2)
+    await expect(panes.nth(1).getByTestId('chat-transcript')).toContainText('Adapter connected.')
+    await expect(panes.nth(1).getByTestId('chat-transcript')).toContainText('hello')
+    await page.screenshot({ path: '/tmp/cerebro-chat-evidence/fork-new-pane.png' })
   } finally {
     await rm(directory, { recursive: true, force: true })
   }

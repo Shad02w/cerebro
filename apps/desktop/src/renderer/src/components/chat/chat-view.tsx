@@ -1,9 +1,12 @@
-import { Fragment, useCallback, useLayoutEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowUp, MessageSquare, Square } from 'lucide-react'
+import { ArrowUp, ImagePlus, MessageSquare, Square } from 'lucide-react'
 import type { AgentAccessMode, AgentAnswer, AgentModel, ChatCommand } from '@cerebro/core'
 import { Button } from '@/components/ui/button'
 import { ChatItem } from './chat-item'
+import { ChatTurnActions } from './chat-turn-actions'
+import { AttachmentStrip, DropOverlay } from './chat-composer-attachments'
+import { chatImageAccept, useComposerDraft } from './use-composer-draft'
 import { ModelPicker } from './model-picker'
 import { catalogOptions, harnessLabels } from './queries'
 import { observeChatLayout } from './chat-layout'
@@ -26,8 +29,15 @@ export function ChatView({
   })
   const catalog = useQuery(catalogOptions)
   const session = view.data?.session
+  const items = session?.items
+  const turnTexts = useMemo(() => {
+    const texts = new Map<string, string[]>()
+    for (const item of items ?? [])
+      if (item.kind === 'text')
+        texts.set(item.turnId, [...(texts.get(item.turnId) ?? []), item.text])
+    return new Map([...texts].map(([turnId, parts]) => [turnId, parts.join('\n\n')]))
+  }, [items])
   const draftKey = `chat-draft:${workspaceId}:${paneId}`
-  const [draft, setDraft] = useState(() => localStorage.getItem(draftKey) ?? '')
   const [selection, setSelection] = useState<AgentModel>()
   const [reasoning, setReasoning] = useState('')
   const [accessSelection, setAccessSelection] = useState<AgentAccessMode>()
@@ -38,6 +48,22 @@ export function ChatView({
   const pendingSend = useRef<{ id: string; text: string; key?: string } | null>(null)
   const scrolling = useRef<HTMLDivElement>(null)
   const composer = useRef<HTMLDivElement>(null)
+  const textarea = useRef<HTMLTextAreaElement>(null)
+  const fileInput = useRef<HTMLInputElement>(null)
+  const imageRejection = useCallback(
+    (): string | null =>
+      selected?.modalities && !selected.modalities.includes('image')
+        ? `${selected.label} does not accept images. Remove them or choose another model.`
+        : null,
+    [selected]
+  )
+  const { draft, dragging, attachFiles, remove, clear, textareaHandlers, dropHandlers } =
+    useComposerDraft({
+      storageKey: draftKey,
+      textarea,
+      canAttach: imageRejection,
+      onError: setError
+    })
   const stick = useRef(true)
   const busy = session?.status === 'running' || session?.status === 'waiting'
   const { mutateAsync } = useMutation({
@@ -57,10 +83,6 @@ export function ChatView({
       void client.invalidateQueries({ queryKey: ['chat', workspaceId] })
     }
   })
-  const updateDraft = (value: string): void => {
-    setDraft(value)
-    localStorage.setItem(draftKey, value)
-  }
   const execute = useCallback(
     async (command: Omit<ChatCommand, 'workspaceId' | 'paneId'>): Promise<boolean> => {
       if (inFlight.current) return false
@@ -91,11 +113,17 @@ export function ChatView({
   useLayoutEffect(() => {
     if (scrolling.current && composer.current)
       return observeChatLayout(scrolling.current, composer.current, stick)
+    return undefined
   }, [])
   const send = async (): Promise<void> => {
     if (inFlight.current) return
-    if (!draft.trim()) {
+    if (!draft.text.trim()) {
       setError('Write a message first.')
+      return
+    }
+    const rejection = draft.attachments.length ? imageRejection() : null
+    if (rejection) {
+      setError(rejection)
       return
     }
     if (busy) {
@@ -106,25 +134,27 @@ export function ChatView({
       setError('Choose an available model first.')
       return
     }
+    const fingerprint = [draft.text, ...draft.attachments.map((a) => a.id)].join('\u0000')
     if (
       !pendingSend.current ||
-      pendingSend.current.text !== draft ||
+      pendingSend.current.text !== fingerprint ||
       pendingSend.current.key !== selected.key
     )
-      pendingSend.current = { id: crypto.randomUUID(), text: draft, key: selected.key }
+      pendingSend.current = { id: crypto.randomUUID(), text: fingerprint, key: selected.key }
     stick.current = true
     if (
       await execute({
         action: 'send',
         commandId: pendingSend.current.id,
         sessionId: session?.id,
-        text: draft,
+        text: draft.text,
+        ...(draft.attachments.length ? { attachments: draft.attachments } : {}),
         model: selected,
         reasoning: reasoning || undefined,
         accessMode
       })
     ) {
-      updateDraft('')
+      clear()
       pendingSend.current = null
     }
   }
@@ -155,7 +185,12 @@ export function ChatView({
           ) : (
             session.items.map((item, index) => (
               <Fragment key={item.id}>
-                <ChatItem item={item} onReply={reply} />
+                <ChatItem
+                  item={item}
+                  onReply={reply}
+                  workspaceId={workspaceId}
+                  sessionId={session.id}
+                />
                 {item.kind !== 'user' &&
                 session.items[index + 1]?.turnId !== item.turnId &&
                 (item.turnId !== session.turnId || !busy) ? (
@@ -165,6 +200,15 @@ export function ChatView({
                     className="flex items-center gap-3 py-2 text-xs text-muted-foreground"
                   >
                     <span className="h-px flex-1 bg-border" />
+                    <ChatTurnActions
+                      workspaceId={workspaceId}
+                      paneId={paneId}
+                      repositoryId={session.repositoryId}
+                      sessionId={session.id}
+                      turnId={item.turnId}
+                      text={turnTexts.get(item.turnId) ?? ''}
+                      forkCapability={catalog.data?.capabilities[session.model.harness]?.fork}
+                    />
                     <span>End of response</span>
                     <span className="h-px flex-1 bg-border" />
                   </div>
@@ -213,18 +257,25 @@ export function ChatView({
         />
         <div className="bg-background px-5 pb-4">
           <form
-            className="pointer-events-auto mx-auto max-w-3xl rounded-2xl border bg-background p-2 shadow-lg"
+            className="pointer-events-auto relative mx-auto max-w-3xl rounded-2xl border bg-background p-2 shadow-lg"
+            data-dragging={dragging || undefined}
             onSubmit={(e) => {
               e.preventDefault()
               void send()
             }}
+            {...dropHandlers}
           >
+            <DropOverlay visible={dragging} />
+            <AttachmentStrip attachments={draft.attachments} onRemove={remove} />
             <textarea
+              ref={textarea}
               aria-label="Message agent"
               placeholder="Ask your agent to work on something…"
-              value={draft}
-              onChange={(e) => updateDraft(e.target.value)}
+              value={draft.text}
+              {...textareaHandlers}
               onKeyDown={(e) => {
+                textareaHandlers.onKeyDown(e)
+                if (e.defaultPrevented) return
                 if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                   e.preventDefault()
                   void send()
@@ -232,6 +283,19 @@ export function ChatView({
               }}
               rows={3}
               className="max-h-48 min-h-20 w-full resize-y bg-transparent px-2 py-2 text-sm outline-none"
+            />
+            <input
+              ref={fileInput}
+              type="file"
+              accept={chatImageAccept}
+              multiple
+              hidden
+              data-testid="chat-image-input"
+              onChange={(e) => {
+                const files = [...(e.target.files ?? [])]
+                e.target.value = ''
+                void attachFiles(files)
+              }}
             />
             <div className="flex flex-wrap items-center gap-1">
               <div className="min-w-0 flex-1">
@@ -280,6 +344,16 @@ export function ChatView({
                   ))}
                 </select>
               ) : null}
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                aria-label="Attach image"
+                title="Attach image (or drop / paste one)"
+                onClick={() => fileInput.current?.click()}
+              >
+                <ImagePlus className="size-4" />
+              </Button>
               {busy ? (
                 <Button
                   type="button"
@@ -297,9 +371,6 @@ export function ChatView({
                 <ArrowUp className="size-4" />
               </Button>
             </div>
-            <p className="mt-2 px-2 text-[10px] text-muted-foreground">
-              Uses your native agent configuration and login. Shift+Enter for a new line.
-            </p>
           </form>
         </div>
       </div>
