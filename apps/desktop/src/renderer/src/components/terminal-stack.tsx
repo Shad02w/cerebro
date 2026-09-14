@@ -740,7 +740,7 @@ export function TerminalStack({
                           fontFamilyPreference={fontFamily ?? TERMINAL_FONT_FAMILY_AUTO}
                         />
                       ) : pane.kind === 'chat' ? (
-                        <ChatView workspaceId={workspaceId} paneId={pane.id} />
+                        <ChatView workspaceId={workspaceId} paneId={pane.id} visible={shown} />
                       ) : pane.kind === 'changes' ? (
                         <ChangesView
                           workspaceId={workspaceId}

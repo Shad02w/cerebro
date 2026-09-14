@@ -17,10 +17,12 @@ import './chat-status.css'
 
 export function ChatView({
   workspaceId,
-  paneId
+  paneId,
+  visible = true
 }: {
   workspaceId: number
   paneId: number
+  visible?: boolean
 }): React.JSX.Element {
   const client = useQueryClient()
   const queryKey = ['chat', workspaceId, paneId]
@@ -267,12 +269,12 @@ export function ChatView({
         />
         <div className="bg-background px-5 pb-4">
           {session ? (
-            <div className="pointer-events-auto mx-auto max-w-3xl">
+            <div className={`mx-auto max-w-3xl ${visible ? 'pointer-events-auto' : ''}`}>
               <ChatQueue session={session} onSteer={steer} onDequeue={dequeue} />
             </div>
           ) : null}
           <form
-            className="pointer-events-auto relative mx-auto max-w-3xl rounded-2xl border bg-background p-2 shadow-lg"
+            className={`relative mx-auto max-w-3xl rounded-2xl border bg-background p-2 shadow-lg ${visible ? 'pointer-events-auto' : ''}`}
             data-dragging={dragging || undefined}
             onSubmit={(e) => {
               e.preventDefault()
