@@ -716,6 +716,11 @@ export class AgentSessions {
         if (session.items.length !== before) this.changed(session, true)
         return
       }
+      if (event.type === 'usage') {
+        session.contextUsage = event.usage
+        this.changed(session, true)
+        return
+      }
       const id = `${session.turnId}:${event.item.id}`
       const existing = session.items.find((item) => item.id === id)
       const next = {

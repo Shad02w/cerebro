@@ -9,6 +9,7 @@ import { ChatQueue } from './chat-queue'
 import { AttachmentStrip, DropOverlay } from './chat-composer-attachments'
 import { chatImageAccept, useComposerDraft } from './use-composer-draft'
 import { ModelPicker } from './model-picker'
+import { ContextUsageRing } from './context-usage-ring'
 import { catalogOptions, harnessLabels } from './queries'
 import { observeChatLayout } from './chat-layout'
 import './chat-scrollbars.css'
@@ -328,6 +329,7 @@ export function ChatView({
                   }}
                 />
               </div>
+              <ContextUsageRing usage={session?.contextUsage} effort={session?.reasoning} />
               <select
                 aria-label="Access mode"
                 title={

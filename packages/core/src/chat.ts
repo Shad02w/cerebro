@@ -86,6 +86,12 @@ export type QueuedMessage = {
   reasoning?: string
   accessMode?: AgentAccessMode
 }
+/** A harness-reported snapshot of how much of the model's context window is in use. */
+export type AgentContextUsage = {
+  usedTokens: number
+  contextWindow: number
+  percentage: number
+}
 export type AgentSession = {
   version: 1
   id: string
@@ -110,6 +116,7 @@ export type AgentSession = {
   /** Native chain-entry id at the end of each turn, keyed by turnId. Populated by adapters that support native forking. */
   checkpoints?: Record<string, string>
   queue?: QueuedMessage[]
+  contextUsage?: AgentContextUsage
 }
 export type AgentSessionSummary = Pick<
   AgentSession,
@@ -141,5 +148,6 @@ export type AgentDelta =
   | { type: 'checkpoint'; turnId: string; chainId: string }
   /** A refusal-fallback retry superseded these already-emitted items; remove them from the transcript. */
   | { type: 'evict'; ids: string[] }
+  | { type: 'usage'; usage: AgentContextUsage }
 export type AgentAnswer = { allow: boolean; answers: Record<string, string[]> }
 export type AgentRequest = NonNullable<ChatItem['request']> & { title: string; text: string }

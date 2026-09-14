@@ -74,6 +74,26 @@ test('accepted command is durable before dispatch; duplicate sends do not replay
     rmSync(f.dir, { recursive: true, force: true })
   }
 })
+test('a usage delta from the adapter is reflected on the session', async () => {
+  const f = fixture(async (context) => {
+    context.emit({
+      type: 'usage',
+      usage: { usedTokens: 12345, contextWindow: 200000, percentage: 6 }
+    })
+  })
+  try {
+    const service = new AgentSessions(f.dir, () => {}, f.drivers)
+    const state = await service.command(scope, send)
+    assert.deepEqual(state.session?.contextUsage, {
+      usedTokens: 12345,
+      contextWindow: 200000,
+      percentage: 6
+    })
+    await service.shutdown()
+  } finally {
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
 test('closing a view retains the run; reopen, scope isolation, pending reply correlation and cancellation', async () => {
   const f = fixture(async (context) => {
     const answer = await context.ask({

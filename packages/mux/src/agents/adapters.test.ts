@@ -47,6 +47,11 @@ for (const harness of ['claude', 'codex', 'pi'] as AgentHarness[]) {
       assert(events.some((e) => e.type === 'binding' && e.nativeId))
       assert(events.some((e) => e.type === 'item' && e.item.text.includes('Adapter connected.')))
       assert(events.some((e) => e.type === 'item' && e.append === true))
+      const usage = events.find((e) => e.type === 'usage')
+      assert(usage && usage.type === 'usage')
+      assert(usage.usage.contextWindow > 0)
+      assert(usage.usage.usedTokens > 0)
+      assert(usage.usage.percentage >= 0 && usage.usage.percentage <= 100)
       const checkpoint = events.find((e) => e.type === 'checkpoint')
       if (harness === 'claude')
         assert.deepEqual(checkpoint, {

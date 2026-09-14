@@ -83,6 +83,7 @@ test('chat works through native adapters, survives reload, handles requests, and
       'Ready · Native session saved'
     )
     await expect(page.getByRole('separator', { name: 'End of response' })).toHaveCount(1)
+    await expect(page.getByTitle(/tokens \(\d+% of context used\)/)).toContainText('6%')
     await mkdir('/tmp/cerebro-chat-evidence', { recursive: true })
     const userMessage = page.getByTestId('chat-user-message').first()
     const copyButton = userMessage.getByRole('button', { name: 'Copy message', exact: true })

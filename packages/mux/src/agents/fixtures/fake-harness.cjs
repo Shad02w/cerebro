@@ -13,11 +13,21 @@ let accessSettings
 let finishApproval
 const text =
   '**Adapter connected.**\n\n- Native tools stay with the harness.\n- Cerebro renders the conversation.'
-const codexDone = () =>
+const codexDone = () => {
+  notify('thread/tokenUsage/updated', {
+    threadId: 'thread-test',
+    turnId: 'turn-test',
+    tokenUsage: {
+      total: { totalTokens: 12345, inputTokens: 12000, outputTokens: 345 },
+      last: { totalTokens: 12345, inputTokens: 12000, outputTokens: 345 },
+      modelContextWindow: 200000
+    }
+  })
   notify('turn/completed', {
     threadId: 'thread-test',
     turn: { id: 'turn-test', status: 'completed' }
   })
+}
 function codexPrompt(prompt, input) {
   if (prompt.includes('attachments')) {
     notify('item/completed', {
@@ -320,6 +330,9 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       case 'get_state':
         reply({ sessionFile: '/tmp/pi-session-test.jsonl' })
         break
+      case 'get_session_stats':
+        reply({ contextUsage: { tokens: 6000, contextWindow: 200000, percent: 3 } })
+        break
       case 'set_model':
       case 'set_thinking_level':
       case 'abort':
@@ -364,7 +377,16 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       }
     }
   } else {
-    if (frame.type === 'control_request')
+    if (frame.type === 'control_request' && frame.request?.subtype === 'get_context_usage')
+      send({
+        type: 'control_response',
+        response: {
+          subtype: 'success',
+          request_id: frame.request_id,
+          response: { totalTokens: 12345, maxTokens: 200000, rawMaxTokens: 200000, percentage: 6 }
+        }
+      })
+    else if (frame.type === 'control_request')
       send({
         type: 'control_response',
         response: {

@@ -293,6 +293,22 @@ export const codexAdapter: AgentAdapter = {
             })
           break
         }
+        case 'thread/tokenUsage/updated': {
+          const usage: Frame = p.tokenUsage ?? {}
+          const contextWindow = usage.modelContextWindow
+          if (contextWindow) {
+            const usedTokens = usage.total?.totalTokens ?? 0
+            emit({
+              type: 'usage',
+              usage: {
+                usedTokens,
+                contextWindow,
+                percentage: Math.round((usedTokens / contextWindow) * 100)
+              }
+            })
+          }
+          break
+        }
         case 'turn/completed':
           settled = true
           if (p.turn?.status === 'failed')
@@ -548,6 +564,21 @@ export const piAdapter: AgentAdapter = {
       await done
       const finalState = await rpc.request('get_state')
       if (finalState.sessionFile) emit({ type: 'binding', nativeId: finalState.sessionFile })
+      try {
+        const stats = await rpc.request('get_session_stats')
+        const usage: Frame = stats.contextUsage ?? {}
+        if (usage.tokens != null && usage.contextWindow != null)
+          emit({
+            type: 'usage',
+            usage: {
+              usedTokens: usage.tokens,
+              contextWindow: usage.contextWindow,
+              percentage: usage.percent ?? Math.round((usage.tokens / usage.contextWindow) * 100)
+            }
+          })
+      } catch {
+        // Best-effort stats call; a turn's success does not depend on it.
+      }
     } finally {
       signal.removeEventListener('abort', abort)
       rpc.onExit = () => {}
@@ -768,6 +799,19 @@ export const claudeAdapter: AgentAdapter = {
           if (frame.is_error || frame.subtype !== 'success')
             throw new Error(describe(frame.errors ?? frame.result ?? frame.subtype))
           if (chainUuid) emit({ type: 'checkpoint', turnId: session.turnId!, chainId: chainUuid })
+          try {
+            const usage = await q.getContextUsage({ detail: 'summary' })
+            emit({
+              type: 'usage',
+              usage: {
+                usedTokens: usage.totalTokens,
+                contextWindow: usage.rawMaxTokens,
+                percentage: usage.percentage
+              }
+            })
+          } catch {
+            // Best-effort control-plane call; a turn's success does not depend on it.
+          }
           // The prompt queue stays open for steering, so nothing else closes stdin for us — stop explicitly once this turn's result lands.
           break
         } else if (frame.type === 'system' && frame.subtype === 'compact_boundary')
