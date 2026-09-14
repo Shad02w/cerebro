@@ -689,6 +689,13 @@ export const claudeAdapter: AgentAdapter = {
         }
       }
     })
+    // Ids emitted for each top-level assistant message, keyed by its own uuid — a refusal-fallback
+    // retry names the uuids it supersedes, and the client is responsible for evicting their items.
+    const idsByMessageUuid = new Map<string, string[]>()
+    const evictSuperseded = (uuids: string[] | undefined): void => {
+      const ids = (uuids ?? []).flatMap((uuid) => idsByMessageUuid.get(uuid) ?? [])
+      if (ids.length) emit({ type: 'evict', ids })
+    }
     try {
       let completed = false
       let chainUuid: string | undefined
@@ -726,9 +733,14 @@ export const claudeAdapter: AgentAdapter = {
               item(context, block.id, block.kind, e.delta.text ?? e.delta.thinking ?? '', {}, true)
           }
         } else if (frame.type === 'assistant') {
-          if (!frame.parent_tool_use_id) chainUuid = frame.uuid
+          if (!frame.parent_tool_use_id) {
+            chainUuid = frame.uuid
+            evictSuperseded(frame.supersedes)
+          }
+          const ids: string[] = []
           for (const [index, block] of (frame.message.content ?? []).entries()) {
             const id = block.id ?? `${frame.message.id}:${index}`
+            ids.push(id)
             if (block.type === 'tool_use')
               item(context, id, 'tool', '', {
                 title: block.name,
@@ -744,6 +756,7 @@ export const claudeAdapter: AgentAdapter = {
                 { status: 'completed' }
               )
           }
+          if (frame.uuid) idsByMessageUuid.set(frame.uuid, ids)
         } else if (frame.type === 'user') {
           for (const block of Array.isArray(frame.message?.content) ? frame.message.content : [])
             if (block.type === 'tool_result')
@@ -759,6 +772,8 @@ export const claudeAdapter: AgentAdapter = {
           break
         } else if (frame.type === 'system' && frame.subtype === 'compact_boundary')
           item(context, randomUUID(), 'notice', 'Native conversation compacted.')
+        else if (frame.type === 'system' && frame.subtype === 'model_refusal_fallback')
+          evictSuperseded(frame.retracted_message_uuids)
       }
       if (!completed) throw new Error('Claude ended without a turn result.')
     } finally {

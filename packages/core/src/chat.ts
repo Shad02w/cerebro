@@ -139,5 +139,7 @@ export type AgentDelta =
   | { type: 'item'; item: Omit<ChatItem, 'turnId'>; append?: boolean }
   | { type: 'binding'; nativeId: string }
   | { type: 'checkpoint'; turnId: string; chainId: string }
+  /** A refusal-fallback retry superseded these already-emitted items; remove them from the transcript. */
+  | { type: 'evict'; ids: string[] }
 export type AgentAnswer = { allow: boolean; answers: Record<string, string[]> }
 export type AgentRequest = NonNullable<ChatItem['request']> & { title: string; text: string }

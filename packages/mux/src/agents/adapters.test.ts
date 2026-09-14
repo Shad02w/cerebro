@@ -191,6 +191,51 @@ test(
   }
 )
 
+test(
+  'Claude evicts a refused draft superseded by a fallback-model retry',
+  { timeout: 15_000 },
+  async () => {
+    process.env.CEREBRO_CLAUDE_PATH = fixture
+    const model = (await adapters.claude.models('/tmp'))[0]
+    const events: AgentDelta[] = []
+    await adapters.claude.run({
+      session: {
+        version: 1,
+        id: 'logical',
+        workspaceId: 1,
+        repositoryId: null,
+        cwd: '/tmp',
+        title: 'Test',
+        model,
+        status: 'running',
+        generation: 'g',
+        sequence: 0,
+        updatedAt: 0,
+        items: [],
+        commands: []
+      },
+      text: 'refusal-fallback',
+      signal: new AbortController().signal,
+      emit: (e) => events.push(e),
+      ask: async () => ({ allow: false, answers: {} })
+    })
+    // The adapter emits the refused draft as it streams in — eviction is the service layer's job,
+    // driven by the `evict` event the adapter emits once the fallback names what it superseded.
+    assert(
+      events.some(
+        (e) => e.type === 'item' && e.item.kind === 'text' && e.item.text.includes('REFUSED DRAFT')
+      )
+    )
+    assert(
+      events.some(
+        (e) => e.type === 'item' && e.item.kind === 'text' && e.item.text === 'FINAL ANSWER'
+      )
+    )
+    const evictions = events.filter((e) => e.type === 'evict').flatMap((e) => e.ids)
+    assert(evictions.includes('refused-message:0'))
+  }
+)
+
 for (const harness of ['claude', 'codex', 'pi'] as const) {
   test(`${harness}: access settings reach native startup and resume`, async () => {
     process.env[`CEREBRO_${harness.toUpperCase()}_PATH`] = fixture

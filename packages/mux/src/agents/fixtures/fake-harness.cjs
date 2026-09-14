@@ -161,6 +161,65 @@ function claudePrompt(prompt, content) {
     })
     return
   }
+  if (prompt.includes('refusal-fallback')) {
+    // The primary model's draft gets refused, then silently retried on a fallback model. The SDK
+    // marks the replacement's `supersedes` and later confirms via a `model_refusal_fallback` notice.
+    send({
+      type: 'stream_event',
+      session_id: 'claude-test',
+      event: { type: 'message_start', message: { id: 'refused-message' } }
+    })
+    send({
+      type: 'stream_event',
+      session_id: 'claude-test',
+      event: { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }
+    })
+    send({
+      type: 'stream_event',
+      session_id: 'claude-test',
+      event: {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'text_delta', text: 'REFUSED DRAFT' }
+      }
+    })
+    send({
+      type: 'assistant',
+      session_id: 'claude-test',
+      uuid: 'refused-msg',
+      message: {
+        id: 'refused-message',
+        role: 'assistant',
+        content: [{ type: 'text', text: 'REFUSED DRAFT' }]
+      }
+    })
+    send({
+      type: 'system',
+      subtype: 'model_refusal_fallback',
+      session_id: 'claude-test',
+      uuid: 'refusal-notice',
+      retracted_message_uuids: ['refused-msg']
+    })
+    send({
+      type: 'assistant',
+      session_id: 'claude-test',
+      uuid: 'fallback-msg',
+      supersedes: ['refused-msg'],
+      message: {
+        id: 'fallback-message',
+        role: 'assistant',
+        content: [{ type: 'text', text: 'FINAL ANSWER' }]
+      }
+    })
+    send({
+      type: 'result',
+      subtype: 'success',
+      is_error: false,
+      result: 'FINAL ANSWER',
+      session_id: 'claude-test'
+    })
+    return
+  }
   claudeFinish(text)
 }
 function claudeFinish(value) {

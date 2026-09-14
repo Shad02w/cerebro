@@ -1,6 +1,14 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync
+} from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { AgentSessions } from './service'
@@ -173,6 +181,28 @@ test('access defaults to full, persists across restart, changes between turns, a
   }
 })
 
+test('an evicted item is removed from the persisted transcript, not just hidden from new events', async () => {
+  const f = fixture(async (context) => {
+    context.emit({
+      type: 'item',
+      item: { id: 'refused', kind: 'text', text: 'REFUSED DRAFT', status: 'completed' }
+    })
+    context.emit({
+      type: 'item',
+      item: { id: 'final', kind: 'text', text: 'FINAL ANSWER', status: 'completed' }
+    })
+    context.emit({ type: 'evict', ids: ['refused'] })
+  })
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    const view = await service.command(scope, send)
+    const texts = view.session!.items.filter((i) => i.kind === 'text').map((i) => i.text)
+    assert.deepEqual(texts, ['FINAL ANSWER'])
+  } finally {
+    await service.shutdown()
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
 test('fork copies a completed section into a new session, leaves the source untouched, and the fork is durable', async () => {
   const f = fixture(async (context) => {
     context.emit({
@@ -280,6 +310,60 @@ test('a Claude session with no recorded checkpoint forks without attempting a na
     rmSync(f.dir, { recursive: true, force: true })
   }
 })
+test('an image attachment stays readable from both the source session and a fork of it', async () => {
+  const png =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+  const f = fixture(async () => {})
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    const upload = {
+      id: 'img-fork',
+      kind: 'image' as const,
+      name: 'shot.png',
+      mimeType: 'image/png' as const,
+      bytes: 70,
+      width: 1,
+      height: 1,
+      data: png
+    }
+    const first = await service.command(scope, { ...send, attachments: [upload] })
+    const sourceId = first.session!.id
+    const turnId = first.session!.turnId!
+    const forked = await service.command(scope, {
+      ...send,
+      action: 'fork',
+      sessionId: sourceId,
+      turnId
+    })
+    const forkedId = forked.session!.id
+    assert.equal(service.attachment(1, sourceId, 'img-fork').data, png)
+    assert.equal(service.attachment(1, forkedId, 'img-fork').data, png)
+    // Only one copy on disk — the fork never had to touch the file.
+    assert.equal(
+      readdirSync(join(f.dir, 'attachments')).filter((name) => name.startsWith('img-fork')).length,
+      1
+    )
+  } finally {
+    await service.shutdown()
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
+test('a legacy per-session attachment layout is migrated into the flat store on startup', async () => {
+  const png =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+  const f = fixture(async () => {})
+  const legacyDir = join(f.dir, 'attachments', 'old-session-id')
+  mkdirSync(legacyDir, { recursive: true })
+  writeFileSync(join(legacyDir, 'img-legacy.png'), Buffer.from(png, 'base64'))
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    assert.equal(readFileSync(join(f.dir, 'attachments', 'img-legacy.png')).toString('base64'), png)
+    assert(!existsSync(legacyDir))
+  } finally {
+    await service.shutdown()
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
 test('image attachments are validated, stored outside the snapshot, passed to the adapter, and readable per workspace', async () => {
   const png =
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
@@ -348,7 +432,7 @@ test('image attachments are validated, stored outside the snapshot, passed to th
       }
     ])
     assert(!JSON.stringify(session).includes(png))
-    const stored = join(f.dir, 'attachments', session.id, 'img-1.png')
+    const stored = join(f.dir, 'attachments', 'img-1.png')
     assert.equal(readFileSync(stored).toString('base64'), png)
     assert.deepEqual(received, [[{ ...user.attachments![0], path: stored }]])
     assert.deepEqual(service.attachment(1, session.id, 'img-1'), {
@@ -493,7 +577,7 @@ test('dequeue removes a queued message without touching the running turn, and cl
       text: 'with image',
       attachments: [upload]
     })
-    const stored = join(f.dir, 'attachments', first.session!.id, 'img-q.png')
+    const stored = join(f.dir, 'attachments', 'img-q.png')
     assert.equal(readFileSync(stored).toString('base64'), png)
     const view = await service.command(scope, {
       ...send,

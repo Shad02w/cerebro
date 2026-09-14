@@ -4,8 +4,10 @@ import {
   readFileSync,
   readdirSync,
   renameSync,
+  rmdirSync,
   unlinkSync,
-  writeFileSync
+  writeFileSync,
+  type Dirent
 } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
@@ -174,6 +176,8 @@ export class AgentSessions {
     private drivers: Record<AgentHarness, AgentAdapter> = adapters
   ) {
     mkdirSync(directory, { recursive: true, mode: 0o700 })
+    mkdirSync(join(directory, 'attachments'), { recursive: true, mode: 0o700 })
+    this.migrateAttachmentLayout()
     this.bindings = readJson(join(directory, 'bindings.json'), {})
     this.favorites = readJson(join(directory, 'favorites.json'), [])
     for (const file of readdirSync(directory)) {
@@ -201,11 +205,39 @@ export class AgentSessions {
   private persist(session: AgentSession): void {
     this.atomic(`session-${session.id}.json`, session)
   }
-  private attachmentPath(session: AgentSession, attachment: ChatAttachment): string {
+  /** One-time upgrade from the old per-session layout. Attachment ids are already unique, so
+   *  every file can move straight into the flat root; a fork no longer needs to touch any of this. */
+  private migrateAttachmentLayout(): void {
+    const root = join(this.directory, 'attachments')
+    let entries: Dirent[]
+    try {
+      entries = readdirSync(root, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+      const sessionDir = join(root, entry.name)
+      for (const file of readdirSync(sessionDir)) {
+        const from = join(sessionDir, file)
+        const to = join(root, file)
+        try {
+          renameSync(from, to)
+        } catch {
+          // Leave the stray file in its old folder rather than losing it.
+        }
+      }
+      try {
+        rmdirSync(sessionDir)
+      } catch {
+        // Not empty (a rename above failed) — leave it for manual cleanup.
+      }
+    }
+  }
+  private attachmentPath(attachment: ChatAttachment): string {
     return join(
       this.directory,
       'attachments',
-      session.id,
       `${attachment.id}.${extensions[attachment.mimeType]}`
     )
   }
@@ -220,7 +252,7 @@ export class AgentSessions {
     if (!attachment) throw new Error('Image not found in this conversation.')
     return {
       mimeType: attachment.mimeType,
-      data: readFileSync(this.attachmentPath(session, attachment)).toString('base64')
+      data: readFileSync(this.attachmentPath(attachment)).toString('base64')
     }
   }
   private changed(session: AgentSession, immediate = false): void {
@@ -411,7 +443,7 @@ export class AgentSessions {
         )
       const attachments = (queued.attachments ?? []).map((meta) => ({
         ...meta,
-        path: this.attachmentPath(session!, meta)
+        path: this.attachmentPath(meta)
       }))
       // Native call first: on rejection the item stays queued untouched and the error just propagates, like any other action.
       await runtime.steer(queued.text, attachments)
@@ -431,7 +463,7 @@ export class AgentSessions {
         const queued = (session.queue ?? []).find((q) => q.id === command.commandId)
         for (const meta of queued?.attachments ?? [])
           try {
-            unlinkSync(this.attachmentPath(session, meta))
+            unlinkSync(this.attachmentPath(meta))
           } catch {
             // best effort — an already-missing file is not an error
           }
@@ -515,7 +547,7 @@ export class AgentSessions {
     session.commands.push(command.commandId)
     let stored: RunAttachment[]
     try {
-      stored = this.writeAttachments(session, attachments)
+      stored = this.writeAttachments(attachments)
     } catch (error) {
       session.status = 'failed'
       session.error = 'Could not persist the prompt. It was not sent.'
@@ -526,14 +558,11 @@ export class AgentSessions {
   }
   /** Writes attachment bytes to disk and returns their host-owned paths. Pure I/O — callers decide how to handle failure. */
   private writeAttachments(
-    session: AgentSession,
     attachments: Array<{ meta: ChatAttachment; bytes: Buffer }>
   ): RunAttachment[] {
     const stored: RunAttachment[] = []
-    if (attachments.length)
-      mkdirSync(join(this.directory, 'attachments', session.id), { recursive: true, mode: 0o700 })
     for (const entry of attachments) {
-      const path = this.attachmentPath(session, entry.meta)
+      const path = this.attachmentPath(entry.meta)
       writeFileSync(path, entry.bytes, { mode: 0o600 })
       stored.push({ ...entry.meta, path })
     }
@@ -548,7 +577,7 @@ export class AgentSessions {
     attachments: Array<{ meta: ChatAttachment; bytes: Buffer }>,
     accessMode: AgentAccessMode
   ): ChatView {
-    const stored = this.writeAttachments(session, attachments)
+    const stored = this.writeAttachments(attachments)
     session.commands.push(command.commandId!)
     const queued: QueuedMessage = {
       id: command.commandId!,
@@ -680,6 +709,13 @@ export class AgentSessions {
         }
         return
       }
+      if (event.type === 'evict') {
+        const ids = new Set(event.ids.map((id) => `${session.turnId}:${id}`))
+        const before = session.items.length
+        session.items = session.items.filter((item) => !ids.has(item.id))
+        if (session.items.length !== before) this.changed(session, true)
+        return
+      }
       const id = `${session.turnId}:${event.item.id}`
       const existing = session.items.find((item) => item.id === id)
       const next = {
@@ -764,7 +800,7 @@ export class AgentSessions {
         session.queue = rest
         const attachments = (next.attachments ?? []).map((meta) => ({
           ...meta,
-          path: this.attachmentPath(session, meta)
+          path: this.attachmentPath(meta)
         }))
         this.beginTurn(
           session,
