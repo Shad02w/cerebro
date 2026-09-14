@@ -77,6 +77,15 @@ export type ChatItem = {
     resolved?: boolean
   }
 }
+/** A message sent while a turn was running. Auto-sent as the next turn when the current one ends, or folded in early via 'steer'. */
+export type QueuedMessage = {
+  id: string
+  text: string
+  attachments?: ChatAttachment[]
+  model: AgentModel
+  reasoning?: string
+  accessMode?: AgentAccessMode
+}
 export type AgentSession = {
   version: 1
   id: string
@@ -100,6 +109,7 @@ export type AgentSession = {
   forkedFrom?: { sessionId: string; turnId: string }
   /** Native chain-entry id at the end of each turn, keyed by turnId. Populated by adapters that support native forking. */
   checkpoints?: Record<string, string>
+  queue?: QueuedMessage[]
 }
 export type AgentSessionSummary = Pick<
   AgentSession,
@@ -108,10 +118,11 @@ export type AgentSessionSummary = Pick<
 export type ChatView = { session: AgentSession | null; sessions: AgentSessionSummary[] }
 export type ChatAttachmentContent = { mimeType: ChatImageType; data: string }
 export type ChatCommand = {
-  action: 'get' | 'new' | 'open' | 'send' | 'stop' | 'reply' | 'fork'
+  action: 'get' | 'new' | 'open' | 'send' | 'stop' | 'reply' | 'fork' | 'steer' | 'dequeue'
   workspaceId: number
   paneId: number
   sessionId?: string
+  /** For 'send': idempotency key. For 'steer'/'dequeue': the QueuedMessage.id to act on. */
   commandId?: string
   text?: string
   attachments?: ChatAttachmentUpload[]

@@ -1,10 +1,18 @@
 import { randomUUID } from 'node:crypto'
-import { mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs'
+import {
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync
+} from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import {
   chatAttachmentLimits,
   chatImageTypes,
+  type AgentAccessMode,
   type AgentAnswer,
   type AgentCatalog,
   type AgentCapabilities,
@@ -17,7 +25,8 @@ import {
   type ChatAttachmentContent,
   type ChatCommand,
   type ChatImageType,
-  type ChatView
+  type ChatView,
+  type QueuedMessage
 } from '@cerebro/core'
 import { adapters, type AgentAdapter, type RunAttachment } from './adapters'
 import { executable } from './transport'
@@ -32,6 +41,8 @@ type Running = {
   controller: AbortController
   done: Promise<void>
   requests: Map<string, (answer: AgentAnswer) => void>
+  /** Registered by the adapter once it has a live handle into the running turn. Absent means this harness/run can't be steered right now. */
+  steer?: (text: string, attachments: RunAttachment[]) => Promise<void>
 }
 const harnesses: AgentHarness[] = ['claude', 'codex', 'pi']
 const capabilities: Record<AgentHarness, AgentCapabilities> = {
@@ -42,7 +53,7 @@ const capabilities: Record<AgentHarness, AgentCapabilities> = {
     questions: true,
     modelSelection: 'between-turns',
     imageInput: true,
-    steering: false,
+    steering: true,
     fork: 'native'
   },
   codex: {
@@ -52,7 +63,7 @@ const capabilities: Record<AgentHarness, AgentCapabilities> = {
     questions: true,
     modelSelection: 'between-turns',
     imageInput: true,
-    steering: false,
+    steering: true,
     fork: 'emulated'
   },
   pi: {
@@ -62,7 +73,7 @@ const capabilities: Record<AgentHarness, AgentCapabilities> = {
     questions: true,
     modelSelection: 'between-turns',
     imageInput: true,
-    steering: false,
+    steering: true,
     fork: 'emulated'
   }
 }
@@ -386,6 +397,49 @@ export class AgentSessions {
       resolve({ allow: command.allow !== false, answers: command.answers ?? {} })
       return this.view(scope)
     }
+    if (command.action === 'steer') {
+      const runtime = session && this.running.get(session.id)
+      if (!session || !runtime?.steer) throw new Error('No active turn to steer.')
+      const queued = (session.queue ?? []).find((q) => q.id === command.commandId)
+      if (!queued) return this.view(scope) // already steered/removed elsewhere — no-op
+      if (
+        queued.model.key !== session.model.key ||
+        (queued.accessMode ?? 'full') !== (session.accessMode ?? 'full')
+      )
+        throw new Error(
+          'This message was queued with different model or access settings. Remove it and resend, or let it send automatically after this response.'
+        )
+      const attachments = (queued.attachments ?? []).map((meta) => ({
+        ...meta,
+        path: this.attachmentPath(session!, meta)
+      }))
+      // Native call first: on rejection the item stays queued untouched and the error just propagates, like any other action.
+      await runtime.steer(queued.text, attachments)
+      session.queue = (session.queue ?? []).filter((q) => q.id !== command.commandId)
+      session.items.push({
+        id: randomUUID(),
+        turnId: session.turnId!,
+        kind: 'user',
+        text: queued.text,
+        ...(queued.attachments?.length ? { attachments: queued.attachments } : {})
+      })
+      this.changed(session, true)
+      return this.view(scope)
+    }
+    if (command.action === 'dequeue') {
+      if (session) {
+        const queued = (session.queue ?? []).find((q) => q.id === command.commandId)
+        for (const meta of queued?.attachments ?? [])
+          try {
+            unlinkSync(this.attachmentPath(session, meta))
+          } catch {
+            // best effort — an already-missing file is not an error
+          }
+        session.queue = (session.queue ?? []).filter((q) => q.id !== command.commandId)
+        this.changed(session, true)
+      }
+      return this.view(scope)
+    }
     if (command.action !== 'send') throw new Error('Unknown chat command.')
     if (
       !command.commandId ||
@@ -404,8 +458,6 @@ export class AgentSessions {
       throw new Error('Write a message first.')
     if (command.text.length > 100_000) throw new Error('Message exceeds 100,000 characters.')
     const attachments = validateAttachments(command.attachments)
-    if (session && busy(session))
-      throw new Error('The agent is still working. Stop it or wait before sending another message.')
     const catalog = await this.models()
     const selection = command.model ?? session?.model ?? catalog.models.find((m) => m.available)
     const selected = catalog.models.find((m) => m.key === selection?.key)
@@ -422,12 +474,17 @@ export class AgentSessions {
     // Recheck after model discovery, which can yield while another send is accepted.
     session = this.sessions.get(this.bindings[String(scope.paneId)])
     if (session?.commands.includes(command.commandId)) return this.view(scope)
-    if (session && busy(session)) throw new Error('The agent is already working.')
     if (
       session &&
       (session.model.harness !== selected.harness || session.model.instance !== selected.instance)
     )
       throw new Error('Changing harness starts a new native conversation. Use New chat first.')
+    // No await between here and the mutation below: this recheck-then-commit sequence must stay atomic,
+    // since nothing below the mux server's own request serialization guards against a concurrent command.
+    if (session && busy(session)) {
+      if (!capabilities[selected.harness].steering) throw new Error('The agent is already working.')
+      return this.enqueue(scope, session, command, selected, attachments, accessMode)
+    }
     if (session && session.items.length > 1500)
       throw new Error(
         'This conversation reached its display limit. Start a new chat; the saved transcript is retained.'
@@ -454,49 +511,97 @@ export class AgentSessions {
       this.atomic('bindings.json', next)
       this.bindings = next
     }
-    session.model = selected
-    session.accessMode = accessMode
-    session.reasoning = command.reasoning
     session.cwd = scope.cwd
-    session.status = 'running'
-    session.error = undefined
-    session.generation = randomUUID()
-    session.turnId = randomUUID()
     session.commands.push(command.commandId)
-    session.items.push({
-      id: randomUUID(),
-      turnId: session.turnId,
-      kind: 'user',
-      text: command.text,
-      ...(attachments.length ? { attachments: attachments.map((entry) => entry.meta) } : {})
-    })
-    const stored: RunAttachment[] = []
+    let stored: RunAttachment[]
     try {
-      if (attachments.length)
-        mkdirSync(join(this.directory, 'attachments', session.id), {
-          recursive: true,
-          mode: 0o700
-        })
-      for (const entry of attachments) {
-        const path = this.attachmentPath(session, entry.meta)
-        writeFileSync(path, entry.bytes, { mode: 0o600 })
-        stored.push({ ...entry.meta, path })
-      }
-      this.changed(session, true)
+      stored = this.writeAttachments(session, attachments)
     } catch (error) {
       session.status = 'failed'
       session.error = 'Could not persist the prompt. It was not sent.'
       throw error
     }
-    const activeSession = session
+    this.beginTurn(session, command.text, stored, selected, command.reasoning, accessMode)
+    return this.view(scope)
+  }
+  /** Writes attachment bytes to disk and returns their host-owned paths. Pure I/O — callers decide how to handle failure. */
+  private writeAttachments(
+    session: AgentSession,
+    attachments: Array<{ meta: ChatAttachment; bytes: Buffer }>
+  ): RunAttachment[] {
+    const stored: RunAttachment[] = []
+    if (attachments.length)
+      mkdirSync(join(this.directory, 'attachments', session.id), { recursive: true, mode: 0o700 })
+    for (const entry of attachments) {
+      const path = this.attachmentPath(session, entry.meta)
+      writeFileSync(path, entry.bytes, { mode: 0o600 })
+      stored.push({ ...entry.meta, path })
+    }
+    return stored
+  }
+  /** Queues a message instead of starting a turn, for a busy session on a harness that supports steering. */
+  private enqueue(
+    scope: AgentScope,
+    session: AgentSession,
+    command: ChatCommand,
+    selected: AgentModel,
+    attachments: Array<{ meta: ChatAttachment; bytes: Buffer }>,
+    accessMode: AgentAccessMode
+  ): ChatView {
+    const stored = this.writeAttachments(session, attachments)
+    session.commands.push(command.commandId!)
+    const queued: QueuedMessage = {
+      id: command.commandId!,
+      text: command.text!,
+      ...(stored.length ? { attachments: stored.map(({ path: _path, ...meta }) => meta) } : {}),
+      model: selected,
+      reasoning: command.reasoning,
+      accessMode
+    }
+    session.queue = [...(session.queue ?? []), queued]
+    this.changed(session, true)
+    return this.view(scope)
+  }
+  /** Starts a brand-new turn: sets turn/session fields, records the user item, and fires the adapter run. Used for both a live send and an auto-flushed queue item. */
+  private beginTurn(
+    session: AgentSession,
+    text: string,
+    attachments: RunAttachment[],
+    model: AgentModel,
+    reasoning: string | undefined,
+    accessMode: AgentAccessMode
+  ): void {
+    if (session.items.length > 1500) {
+      session.status = 'failed'
+      session.error =
+        'This conversation reached its display limit. Start a new chat; the saved transcript is retained.'
+      this.changed(session, true)
+      return
+    }
+    session.model = model
+    session.accessMode = accessMode
+    session.reasoning = reasoning
+    session.status = 'running'
+    session.error = undefined
+    session.generation = randomUUID()
+    session.turnId = randomUUID()
+    session.items.push({
+      id: randomUUID(),
+      turnId: session.turnId,
+      kind: 'user',
+      text,
+      ...(attachments.length
+        ? { attachments: attachments.map(({ path: _path, ...meta }) => meta) }
+        : {})
+    })
+    this.changed(session, true)
     const runtime: Running = {
       controller: new AbortController(),
       requests: new Map(),
       done: Promise.resolve()
     }
     this.running.set(session.id, runtime)
-    runtime.done = this.run(activeSession, command.text, stored, runtime)
-    return this.view(scope)
+    runtime.done = this.run(session, text, attachments, runtime)
   }
   /** Branches a completed section into a new, independent session. Native memory carries over only for adapters that support it (currently Claude). */
   private async fork(scope: AgentScope, command: ChatCommand): Promise<ChatView> {
@@ -628,7 +733,10 @@ export class AgentSessions {
         attachments,
         signal: runtime.controller.signal,
         emit,
-        ask
+        ask,
+        registerSteer: (fn) => {
+          runtime.steer = fn
+        }
       })
       session.status = runtime.controller.signal.aborted ? 'interrupted' : 'idle'
     } catch (error) {
@@ -649,20 +757,46 @@ export class AgentSessions {
         session.error = `Chat storage failed: ${String(error)}`
         this.publish(session.workspaceId)
       }
+      // A message queued while this turn ran becomes the next turn automatically, unless this one failed
+      // (left for the user to act on) or the host is tearing down (stopWorkspace/shutdown own the queue then).
+      if (!this.stopping && session.status !== 'failed' && session.queue?.length) {
+        const [next, ...rest] = session.queue
+        session.queue = rest
+        const attachments = (next.attachments ?? []).map((meta) => ({
+          ...meta,
+          path: this.attachmentPath(session, meta)
+        }))
+        this.beginTurn(
+          session,
+          next.text,
+          attachments,
+          next.model,
+          next.reasoning,
+          next.accessMode ?? 'full'
+        )
+      }
     }
   }
   async stopWorkspace(workspaceId: number): Promise<void> {
-    const active = [...this.running.entries()]
-      .filter(([id]) => this.sessions.get(id)?.workspaceId === workspaceId)
-      .map(([, runtime]) => runtime)
-    for (const runtime of active) runtime.controller.abort()
-    await Promise.all(active.map((runtime) => runtime.done))
+    // A queued message auto-starts a new run from inside the old one's `finally`, synchronously before
+    // its `done` resolves — re-snapshot after each round so an auto-flush spawned mid-teardown gets caught too.
+    for (;;) {
+      const active = [...this.running.entries()]
+        .filter(([id]) => this.sessions.get(id)?.workspaceId === workspaceId)
+        .map(([, runtime]) => runtime)
+      if (!active.length) break
+      for (const runtime of active) runtime.controller.abort()
+      await Promise.all(active.map((runtime) => runtime.done))
+    }
   }
   async shutdown(): Promise<void> {
     this.stopping = true
-    const active = [...this.running.values()]
-    for (const runtime of active) runtime.controller.abort()
-    await Promise.all(active.map((runtime) => runtime.done))
+    for (;;) {
+      const active = [...this.running.values()]
+      if (!active.length) break
+      for (const runtime of active) runtime.controller.abort()
+      await Promise.all(active.map((runtime) => runtime.done))
+    }
     for (const timer of this.timers.values()) clearTimeout(timer)
     this.timers.clear()
     for (const session of this.sessions.values()) this.persist(session)

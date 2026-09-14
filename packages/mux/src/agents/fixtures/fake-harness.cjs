@@ -124,6 +124,29 @@ function claudePrompt(prompt, content) {
   }
   send({ type: 'system', subtype: 'init', session_id: 'claude-test', tools: [], model: 'test' })
   if (prompt.includes('slow')) return
+  if (prompt.includes('steer')) {
+    // Folds into the turn without ending it, unlike claudeFinish's terminal `result` frame.
+    send({
+      type: 'stream_event',
+      session_id: 'claude-test',
+      event: { type: 'message_start', message: { id: 'message-test' } }
+    })
+    send({
+      type: 'stream_event',
+      session_id: 'claude-test',
+      event: { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }
+    })
+    send({
+      type: 'stream_event',
+      session_id: 'claude-test',
+      event: {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'text_delta', text: `[steered: ${prompt}]` }
+      }
+    })
+    return
+  }
   if (prompt.includes('approval')) {
     finishApproval = () => claudeFinish('Permission resolved.')
     send({
@@ -210,6 +233,13 @@ createInterface({ input: process.stdin }).on('line', (line) => {
         reply({})
         notify('turn/completed', { turn: { id: 'turn-test', status: 'interrupted' } })
         break
+      case 'turn/steer':
+        reply({})
+        notify('item/agentMessage/delta', {
+          itemId: 'message-test',
+          delta: `[steered: ${frame.params.input[0].text}]`
+        })
+        break
     }
   } else if (mode === 'pi') {
     const reply = (data) =>
@@ -237,6 +267,18 @@ createInterface({ input: process.stdin }).on('line', (line) => {
         reply({})
         break
       case 'prompt': {
+        if (frame.streamingBehavior === 'steer') {
+          reply({})
+          send({
+            type: 'message_update',
+            assistantMessageEvent: {
+              type: 'text_delta',
+              contentIndex: 0,
+              delta: `[steered: ${frame.message}]`
+            }
+          })
+          break
+        }
         const responseText =
           frame.message === 'access-settings'
             ? JSON.stringify(process.argv.slice(2))
@@ -245,6 +287,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
               : text
         reply({})
         send({ type: 'message_start', message: { role: 'assistant' } })
+        if (frame.message.includes('slow')) break
         send({
           type: 'message_update',
           assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: responseText }

@@ -366,3 +366,216 @@ test('image attachments are validated, stored outside the snapshot, passed to th
     rmSync(f.dir, { recursive: true, force: true })
   }
 })
+test('sending while busy enqueues instead of throwing, and leaves the running turn untouched', async () => {
+  const f = fixture(async (context) => {
+    await new Promise<void>((resolve) => context.signal.addEventListener('abort', () => resolve()))
+  })
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    const first = await service.command(scope, send)
+    const view = await service.command(scope, {
+      ...send,
+      commandId: 'second',
+      text: 'second message'
+    })
+    assert.equal(view.session?.status, 'running')
+    assert.equal(view.session?.turnId, first.session?.turnId)
+    assert.equal(view.session?.items.length, 1)
+    assert.equal(view.session?.queue?.length, 1)
+    assert.equal(view.session?.queue?.[0].id, 'second')
+    assert.equal(view.session?.queue?.[0].text, 'second message')
+    assert(view.session?.commands.includes('second'))
+    // A retry with the same commandId is deduped, not queued twice.
+    const repeat = await service.command(scope, {
+      ...send,
+      commandId: 'second',
+      text: 'second message'
+    })
+    assert.equal(repeat.session?.queue?.length, 1)
+  } finally {
+    await service.command(scope, { ...send, action: 'stop' })
+    await service.shutdown()
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
+test('steer folds a queued message into the running turn and removes it from the queue', async () => {
+  const steered: Array<{ text: string }> = []
+  const f = fixture(async (context) => {
+    context.registerSteer?.(async (text) => {
+      steered.push({ text })
+    })
+    await new Promise<void>((resolve) => context.signal.addEventListener('abort', () => resolve()))
+  })
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    const first = await service.command(scope, send)
+    await service.command(scope, { ...send, commandId: 'second', text: 'steer me' })
+    const view = await service.command(scope, {
+      ...send,
+      action: 'steer',
+      sessionId: first.session!.id,
+      commandId: 'second'
+    })
+    assert.deepEqual(steered, [{ text: 'steer me' }])
+    assert.equal(view.session?.queue?.length, 0)
+    assert.equal(view.session?.items.length, 2)
+    const steeredItem = view.session!.items[1]
+    assert.equal(steeredItem.kind, 'user')
+    assert.equal(steeredItem.text, 'steer me')
+    assert.equal(steeredItem.turnId, first.session?.turnId)
+    // Steering an already-steered/removed id is a no-op, not an error.
+    const again = await service.command(scope, {
+      ...send,
+      action: 'steer',
+      sessionId: first.session!.id,
+      commandId: 'second'
+    })
+    assert.equal(again.session?.items.length, 2)
+  } finally {
+    await service.command(scope, { ...send, action: 'stop' })
+    await service.shutdown()
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
+test('steer rejects a queued message whose model or access mode differs from the running turn', async () => {
+  const f = fixture(async (context) => {
+    context.registerSteer?.(async () => {})
+    await new Promise<void>((resolve) => context.signal.addEventListener('abort', () => resolve()))
+  })
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    const first = await service.command(scope, send)
+    await service.command(scope, {
+      ...send,
+      commandId: 'second',
+      text: 'different mode',
+      accessMode: 'read'
+    })
+    await assert.rejects(
+      service.command(scope, {
+        ...send,
+        action: 'steer',
+        sessionId: first.session!.id,
+        commandId: 'second'
+      }),
+      /different model or access/
+    )
+    const view = await service.command(scope, { ...send, action: 'get' })
+    assert.equal(view.session?.queue?.length, 1)
+  } finally {
+    await service.command(scope, { ...send, action: 'stop' })
+    await service.shutdown()
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
+test('dequeue removes a queued message without touching the running turn, and cleans up its attachment file', async () => {
+  const png =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+  const f = fixture(async (context) => {
+    await new Promise<void>((resolve) => context.signal.addEventListener('abort', () => resolve()))
+  })
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    const first = await service.command(scope, send)
+    const upload = {
+      id: 'img-q',
+      kind: 'image' as const,
+      name: 'shot.png',
+      mimeType: 'image/png' as const,
+      bytes: 70,
+      width: 1,
+      height: 1,
+      data: png
+    }
+    await service.command(scope, {
+      ...send,
+      commandId: 'second',
+      text: 'with image',
+      attachments: [upload]
+    })
+    const stored = join(f.dir, 'attachments', first.session!.id, 'img-q.png')
+    assert.equal(readFileSync(stored).toString('base64'), png)
+    const view = await service.command(scope, {
+      ...send,
+      action: 'dequeue',
+      sessionId: first.session!.id,
+      commandId: 'second'
+    })
+    assert.equal(view.session?.queue?.length, 0)
+    assert.equal(view.session?.status, 'running')
+    assert.equal(view.session?.items.length, 1)
+    assert.throws(() => readFileSync(stored))
+    // Removing an already-gone id is a no-op.
+    const again = await service.command(scope, {
+      ...send,
+      action: 'dequeue',
+      sessionId: first.session!.id,
+      commandId: 'second'
+    })
+    assert.equal(again.session?.queue?.length, 0)
+  } finally {
+    await service.command(scope, { ...send, action: 'stop' })
+    await service.shutdown()
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
+test('a queued message auto-fires as the next turn once the running turn finishes', async () => {
+  let started = 0
+  const releases: Array<() => void> = []
+  const startedResolvers: Array<() => void> = []
+  const startedPromises: Promise<void>[] = []
+  for (let i = 0; i < 2; i++) {
+    let resolve: () => void = () => {}
+    startedPromises.push(new Promise((r) => (resolve = r)))
+    startedResolvers.push(resolve)
+  }
+  const runs: string[] = []
+  const f = fixture(async (context) => {
+    const index = started++
+    runs.push(context.text)
+    startedResolvers[index]()
+    await new Promise<void>((resolve) => releases.push(resolve))
+  })
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    const first = await service.command(scope, send)
+    await startedPromises[0]
+    await service.command(scope, { ...send, commandId: 'second', text: 'follow-up' })
+    releases[0]()
+    await startedPromises[1]
+    assert.deepEqual(runs, ['hello', 'follow-up'])
+    const view = await service.command(scope, { ...send, action: 'get' })
+    assert.equal(view.session?.status, 'running')
+    assert.notEqual(view.session?.turnId, first.session?.turnId)
+    assert.equal(view.session?.queue?.length, 0)
+    assert.equal(view.session?.items.length, 2)
+    assert.equal(view.session?.items[1].text, 'follow-up')
+  } finally {
+    releases.forEach((release) => release())
+    await service.command(scope, { ...send, action: 'stop' })
+    await service.shutdown()
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
+test('stopWorkspace converges through an auto-flushed queue instead of leaving an orphaned run', async () => {
+  const seen: string[] = []
+  const f = fixture(async (context) => {
+    seen.push(context.text)
+    await new Promise<void>((resolve) => context.signal.addEventListener('abort', () => resolve()))
+  })
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    await service.command(scope, send)
+    await service.command(scope, { ...send, commandId: 'second', text: 'second' })
+    const queued = await service.command(scope, { ...send, action: 'get' })
+    assert.equal(queued.session?.queue?.length, 1)
+    await service.stopWorkspace(scope.workspaceId)
+    const after = await service.command(scope, { ...send, action: 'get' })
+    assert.equal(after.session?.status, 'interrupted')
+    assert.deepEqual(seen, ['hello', 'second'])
+    assert.equal(after.session?.queue?.length, 0)
+  } finally {
+    await service.shutdown()
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})

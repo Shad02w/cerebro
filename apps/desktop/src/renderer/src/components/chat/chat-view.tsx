@@ -5,6 +5,7 @@ import type { AgentAccessMode, AgentAnswer, AgentModel, ChatCommand } from '@cer
 import { Button } from '@/components/ui/button'
 import { ChatItem } from './chat-item'
 import { ChatTurnActions } from './chat-turn-actions'
+import { ChatQueue } from './chat-queue'
 import { AttachmentStrip, DropOverlay } from './chat-composer-attachments'
 import { chatImageAccept, useComposerDraft } from './use-composer-draft'
 import { ModelPicker } from './model-picker'
@@ -106,6 +107,18 @@ export function ChatView({
     },
     [execute, session?.id]
   )
+  const steer = useCallback(
+    (commandId: string): void => {
+      void execute({ action: 'steer', sessionId: session?.id, commandId })
+    },
+    [execute, session?.id]
+  )
+  const dequeue = useCallback(
+    (commandId: string): void => {
+      void execute({ action: 'dequeue', sessionId: session?.id, commandId })
+    },
+    [execute, session?.id]
+  )
   useLayoutEffect(() => {
     if (stick.current && scrolling.current)
       scrolling.current.scrollTop = scrolling.current.scrollHeight
@@ -124,10 +137,6 @@ export function ChatView({
     const rejection = draft.attachments.length ? imageRejection() : null
     if (rejection) {
       setError(rejection)
-      return
-    }
-    if (busy) {
-      setError('The agent is working. Stop it or wait before sending another message.')
       return
     }
     if (!selected) {
@@ -256,6 +265,11 @@ export function ChatView({
           className="h-10 bg-gradient-to-t from-background via-background/80 to-transparent"
         />
         <div className="bg-background px-5 pb-4">
+          {session ? (
+            <div className="pointer-events-auto mx-auto max-w-3xl">
+              <ChatQueue session={session} onSteer={steer} onDequeue={dequeue} />
+            </div>
+          ) : null}
           <form
             className="pointer-events-auto relative mx-auto max-w-3xl rounded-2xl border bg-background p-2 shadow-lg"
             data-dragging={dragging || undefined}

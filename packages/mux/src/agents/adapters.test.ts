@@ -3,9 +3,16 @@ import assert from 'node:assert/strict'
 import { join, resolve } from 'node:path'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { adapters } from './adapters'
+import { adapters, type RunAttachment } from './adapters'
 import type { AgentDelta, AgentHarness, AgentSession } from '@cerebro/core'
 const fixture = resolve(__dirname, 'fixtures/fake-harness.cjs')
+async function waitFor(condition: () => boolean, timeoutMs = 5000): Promise<void> {
+  const start = Date.now()
+  while (!condition()) {
+    if (Date.now() - start > timeoutMs) throw new Error('Timed out waiting for condition.')
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  }
+}
 for (const harness of ['claude', 'codex', 'pi'] as AgentHarness[]) {
   test(
     `${harness}: native model discovery, streamed response, resume binding and teardown`,
@@ -99,6 +106,53 @@ test(
     await assert.rejects(running, /interrupted/)
   }
 )
+
+for (const harness of ['claude', 'codex', 'pi'] as AgentHarness[]) {
+  test(
+    `${harness}: registerSteer folds a message into the running turn`,
+    { timeout: 15_000 },
+    async () => {
+      process.env[`CEREBRO_${harness.toUpperCase()}_PATH`] = fixture
+      const model = (await adapters[harness].models('/tmp'))[0]
+      const session: AgentSession = {
+        version: 1,
+        id: 'steer',
+        workspaceId: 1,
+        repositoryId: null,
+        cwd: '/tmp',
+        title: 'Steer',
+        model,
+        status: 'running',
+        generation: 'g',
+        sequence: 0,
+        updatedAt: 0,
+        items: [],
+        commands: []
+      }
+      const controller = new AbortController()
+      const events: AgentDelta[] = []
+      let steer: ((text: string, attachments: RunAttachment[]) => Promise<void>) | undefined
+      const running = adapters[harness].run({
+        session,
+        text: 'slow',
+        signal: controller.signal,
+        emit: (e) => events.push(e),
+        ask: async () => ({ allow: false, answers: {} }),
+        registerSteer: (fn) => {
+          steer = fn
+        }
+      })
+      await waitFor(() => steer !== undefined)
+      await steer!('steer me', [])
+      await waitFor(() => events.some((e) => e.type === 'item' && e.item.text.includes('steer me')))
+      controller.abort()
+      // Codex/Pi construct a "Turn interrupted." error explicitly; Claude surfaces whatever the
+      // SDK throws when its own AbortController fires. The service layer classifies both as
+      // 'interrupted' from signal.aborted, not by matching this message — only assert it rejects.
+      await assert.rejects(running)
+    }
+  )
+}
 
 test(
   'Claude SDK permission callbacks round-trip through native control messages',

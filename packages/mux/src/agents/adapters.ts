@@ -24,6 +24,8 @@ export type RunContext = {
   signal: AbortSignal
   emit: (event: AgentDelta) => void
   ask: (request: AgentRequest) => Promise<AgentAnswer>
+  /** Called by an adapter once it has a live handle to fold another message into this turn. Absent/unset means steering isn't available yet (or ever) for this run. */
+  registerSteer?: (steer: (text: string, attachments: RunAttachment[]) => Promise<void>) => void
 }
 export interface AgentAdapter {
   models(cwd: string): Promise<AgentModel[]>
@@ -70,6 +72,32 @@ const item = (
   extra: Partial<ChatItem> = {},
   append = false
 ): void => context.emit({ type: 'item', item: { id, kind, text, ...extra }, append })
+/** A long-lived AsyncIterable kept open for a turn's duration, so a steered message can be pushed in mid-turn. */
+class PushableQueue<T> implements AsyncIterable<T> {
+  private buffered: T[] = []
+  private waiting: Array<(result: IteratorResult<T>) => void> = []
+  private ended = false
+  push(value: T): void {
+    if (this.ended) throw new Error('Turn already ending; message was not delivered.')
+    const waiter = this.waiting.shift()
+    if (waiter) waiter({ value, done: false })
+    else this.buffered.push(value)
+  }
+  end(): void {
+    this.ended = true
+    for (const waiter of this.waiting.splice(0)) waiter({ value: undefined, done: true })
+  }
+  [Symbol.asyncIterator](): AsyncIterator<T> {
+    return {
+      next: (): Promise<IteratorResult<T>> => {
+        if (this.buffered.length)
+          return Promise.resolve({ value: this.buffered.shift()!, done: false })
+        if (this.ended) return Promise.resolve({ value: undefined, done: true })
+        return new Promise((resolve) => this.waiting.push(resolve))
+      }
+    }
+  }
+}
 
 async function startCodex(cwd: string, signal?: AbortSignal): Promise<JsonProcess> {
   const rpc = new JsonProcess(executable('codex'), ['app-server'], cwd)
@@ -308,6 +336,18 @@ export const codexAdapter: AgentAdapter = {
         effort: session.reasoning
       })
       turnId = turn.turn.id
+      context.registerSteer?.(async (text, steerAttachments) => {
+        await rpc.request('turn/steer', {
+          threadId,
+          expectedTurnId: turnId,
+          input: [
+            steerAttachments.length
+              ? { type: 'text', text, text_elements: textElements(text) }
+              : { type: 'text', text },
+            ...steerAttachments.map((attachment) => ({ type: 'localImage', path: attachment.path }))
+          ]
+        })
+      })
       if (signal.aborted) abort()
       await done
     } catch (error) {
@@ -490,6 +530,21 @@ export const piAdapter: AgentAdapter = {
             }
           : {})
       })
+      context.registerSteer?.(async (text, steerAttachments) => {
+        await rpc.request('prompt', {
+          message: text,
+          streamingBehavior: 'steer',
+          ...(steerAttachments.length
+            ? {
+                images: steerAttachments.map((attachment) => ({
+                  type: 'image',
+                  data: inline(attachment),
+                  mimeType: attachment.mimeType
+                }))
+              }
+            : {})
+        })
+      })
       await done
       const finalState = await rpc.request('get_state')
       if (finalState.sessionFile) emit({ type: 'binding', nativeId: finalState.sessionFile })
@@ -552,17 +607,16 @@ export const claudeAdapter: AgentAdapter = {
         blocks: Map<number, { id: string; kind: ChatItem['kind']; input: string }>
       }
     >()
-    // Image blocks need streaming input; the SDK closes stdin after the first result.
-    const attachments = context.attachments ?? []
-    const prompt: string | AsyncIterable<SDKUserMessage> = attachments.length
-      ? (async function* () {
-          yield {
-            type: 'user',
-            parent_tool_use_id: null,
-            message: {
-              role: 'user',
-              content: [
-                { type: 'text', text: context.text },
+    // Kept open for the whole turn (never a plain string) so a steered message can be pushed in mid-turn.
+    const userMessage = (text: string, attachments: RunAttachment[]): SDKUserMessage =>
+      ({
+        type: 'user',
+        parent_tool_use_id: null,
+        message: {
+          role: 'user',
+          content: attachments.length
+            ? [
+                { type: 'text', text },
                 ...attachments.map((attachment) => ({
                   type: 'image' as const,
                   source: {
@@ -572,10 +626,14 @@ export const claudeAdapter: AgentAdapter = {
                   }
                 }))
               ]
-            }
-          } satisfies SDKUserMessage
-        })()
-      : context.text
+            : text
+        }
+      }) satisfies SDKUserMessage
+    const prompt = new PushableQueue<SDKUserMessage>()
+    prompt.push(userMessage(context.text, context.attachments ?? []))
+    context.registerSteer?.(async (text, attachments) => {
+      prompt.push(userMessage(text, attachments))
+    })
     const q = query({
       prompt,
       options: {
@@ -697,12 +755,15 @@ export const claudeAdapter: AgentAdapter = {
           if (frame.is_error || frame.subtype !== 'success')
             throw new Error(describe(frame.errors ?? frame.result ?? frame.subtype))
           if (chainUuid) emit({ type: 'checkpoint', turnId: session.turnId!, chainId: chainUuid })
+          // The prompt queue stays open for steering, so nothing else closes stdin for us — stop explicitly once this turn's result lands.
+          break
         } else if (frame.type === 'system' && frame.subtype === 'compact_boundary')
           item(context, randomUUID(), 'notice', 'Native conversation compacted.')
       }
       if (!completed) throw new Error('Claude ended without a turn result.')
     } finally {
       signal.removeEventListener('abort', abort)
+      prompt.end()
       q.close()
     }
   }

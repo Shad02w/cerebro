@@ -375,6 +375,65 @@ test('Claude and Pi keep separate chat sessions, with a mixed Terminal pane', as
   }
 })
 
+test('queued messages during a running turn can be steered in immediately or sent automatically', async ({
+  page
+}) => {
+  const directory = await mkdtemp(join(tmpdir(), 'cerebro-chat-steer-'))
+  try {
+    const project = await page.evaluate(
+      (directory) => window.cerebro.createProjectFromDirectory(directory),
+      directory
+    )
+    const workspaceId = project.workspaces[0].id
+    await page.reload()
+    const projectRow = page.getByTestId(/project-row-/).first()
+    await expect(projectRow).toBeVisible()
+    if ((await projectRow.getAttribute('aria-expanded')) === 'false') await projectRow.click()
+    await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
+    await page.getByRole('button', { name: /^New Chat tab/ }).click()
+    await expect(page.getByTestId('chat-model-picker')).toContainText('Claude Code')
+    const message = page.getByRole('textbox', { name: 'Message agent' })
+    const send = page.getByRole('button', { name: 'Send message', exact: true })
+    await message.fill('slow')
+    await send.click()
+    await expect(page.getByRole('button', { name: 'Stop agent' })).toBeVisible()
+
+    // Sending while busy queues instead of erroring.
+    await message.fill('please steer this in')
+    await send.click()
+    await expect(page.getByTestId('chat-transcript').getByRole('alert')).toHaveCount(0)
+    await expect(page.getByTestId('chat-queue-item')).toHaveCount(1)
+    await expect(page.getByTestId('chat-queue-item').first()).toContainText('please steer this in')
+    await message.fill('follow-up message')
+    await send.click()
+    await expect(page.getByTestId('chat-queue-item')).toHaveCount(2)
+
+    // Steering one queued message folds it into the running turn without disturbing the other.
+    await page
+      .getByTestId('chat-queue-item')
+      .filter({ hasText: 'please steer this in' })
+      .getByRole('button', { name: 'Steer' })
+      .click()
+    await expect(page.getByTestId('chat-queue-item')).toHaveCount(1)
+    await expect(page.getByTestId('chat-queue-item').first()).toContainText('follow-up message')
+    await expect(page.getByTestId('chat-transcript')).toContainText(
+      '[steered: please steer this in]'
+    )
+    await expect(page.getByRole('button', { name: 'Stop agent' })).toBeVisible()
+
+    // Stopping leaves the queue intact; it becomes the next turn automatically.
+    await page.getByRole('button', { name: 'Stop agent' }).click()
+    await expect(page.getByTestId('chat-view').getByRole('status')).toContainText('Ready', {
+      timeout: 15_000
+    })
+    await expect(page.getByTestId('chat-queue')).toHaveCount(0)
+    await expect(page.getByTestId('chat-transcript')).toContainText('follow-up message')
+    await expect(page.getByTestId('chat-transcript')).toContainText('Adapter connected.')
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test.describe('unavailable native installations', () => {
   test.use({
     agentEnvironment: {
