@@ -691,6 +691,10 @@ export function TerminalStack({
                 data-testid="tab-panes"
                 data-tab-id={tab.id}
                 style={{
+                  // display:none is the authoritative guard against a hidden tab's identically-positioned
+                  // controls intercepting clicks meant for the active tab; visibility/pointerEvents/inert
+                  // are kept as defense in depth for any browser edge case in hit-testing.
+                  display: shown ? undefined : 'none',
                   visibility: shown ? 'visible' : 'hidden',
                   pointerEvents: shown ? 'auto' : 'none'
                 }}
