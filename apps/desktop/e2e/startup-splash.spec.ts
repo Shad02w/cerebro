@@ -28,7 +28,7 @@ test('ships a colorable brain-sparkle icon pair', () => {
   }
 })
 
-test('paints the splash before the renderer JavaScript loads', async ({ page }, info) => {
+test('paints the splash before the renderer JavaScript loads', async ({ page }) => {
   await expect(page.getByText('Create your first project')).toBeVisible()
   let release = (): void => {}
   const barrier = new Promise<void>((resolve) => {
@@ -51,7 +51,6 @@ test('paints the splash before the renderer JavaScript loads', async ({ page }, 
     expect(await mark.locator('path').evaluate((element) => getComputedStyle(element).fill)).toBe(
       'rgb(250, 250, 250)'
     )
-    await page.screenshot({ path: info.outputPath('startup-splash-prerender.png') })
     await expect(page.getByRole('heading', { name: 'Cerebro', exact: true })).toBeVisible()
     await expect(page.getByTestId('startup-app')).toHaveCount(0)
     release()
