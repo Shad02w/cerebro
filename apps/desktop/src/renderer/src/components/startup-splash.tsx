@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react'
-import { BrainSparkleIcon } from '@/components/brain-sparkle-icon'
 
 export function StartupGate({
   complete,
@@ -35,7 +34,7 @@ export function StartupSplash({ error }: { error?: string | null }): React.JSX.E
     <div className="startup-splash" data-testid="startup-splash">
       <div className="startup-drag-region" />
       <div className="startup-content">
-        <BrainSparkleIcon className="startup-mark" testId="startup-mark" />
+        <div className="startup-mark" data-testid="startup-mark" aria-hidden="true" />
         <h1 className="startup-title">Cerebro</h1>
         {error ? (
           <div className="startup-error" role="alert">

@@ -4,7 +4,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import type { ElectronApplication } from '@playwright/test'
+import type { ElectronApplication, Page } from '@playwright/test'
 import { test, expect, stopMux } from './fixtures'
 
 const PROJECTS = 'cerebro:projects:list'
@@ -17,6 +17,25 @@ function sparklePath(file: string): string {
   const match = svg.match(/\sd="([^"]+)"/)
   if (!match) throw new Error(`Missing path in ${file}`)
   return match[1]
+}
+
+async function expectSplashIcon(page: Page): Promise<void> {
+  const mark = page.getByTestId('startup-mark')
+  await expect(mark).toBeVisible()
+  const box = await mark.boundingBox()
+  expect(box!.width).toBeCloseTo(128 * 0.7, 0)
+  expect(box!.height).toBeCloseTo(128 * 0.7, 0)
+  const paint = await mark.evaluate((element) => {
+    const style = getComputedStyle(element)
+    return {
+      backgroundImage: style.backgroundImage,
+      maskImage: style.maskImage || style.getPropertyValue('-webkit-mask-image'),
+      animationName: style.animationName
+    }
+  })
+  expect(paint.backgroundImage).toContain('linear-gradient')
+  expect(paint.maskImage).toContain('brain-sparkle-16-filled')
+  expect(paint.animationName).toContain('startup-icon-shine')
 }
 
 test('ships a colorable brain-sparkle icon pair', () => {
@@ -44,13 +63,7 @@ test('paints the splash before the renderer JavaScript loads', async ({ page }) 
     await page.reload({ waitUntil: 'commit' })
     await expect.poll(() => requested).toBe(true)
     await expect(page.getByTestId('startup-splash')).toBeVisible()
-    const mark = page.getByTestId('startup-mark')
-    await expect(mark).toBeVisible()
-    await expect(mark.locator('path')).toHaveAttribute('fill', 'currentColor')
-    await expect(mark.locator('path')).toHaveAttribute('d', sparklePath(FILLED_SPARKLE))
-    expect(await mark.locator('path').evaluate((element) => getComputedStyle(element).fill)).toBe(
-      'rgb(250, 250, 250)'
-    )
+    await expectSplashIcon(page)
     await expect(page.getByRole('heading', { name: 'Cerebro', exact: true })).toBeVisible()
     await expect(page.getByTestId('startup-app')).toHaveCount(0)
     release()
@@ -148,10 +161,7 @@ test('reveals all projects and restored panes together after startup barriers co
     await holdIpc(electronApp, [PROJECTS, LAYOUT, TERMINALS])
     await page.reload()
     await expect(page.getByTestId('startup-splash')).toBeVisible()
-    await expect(page.getByTestId('startup-mark').locator('path')).toHaveAttribute(
-      'd',
-      sparklePath(FILLED_SPARKLE)
-    )
+    await expectSplashIcon(page)
     await expect(page.getByRole('status')).toHaveText('Opening your workspaces…')
     await expect(page.getByTestId('startup-app')).toHaveCount(0)
     expect(
