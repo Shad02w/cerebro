@@ -174,7 +174,7 @@ test('loads the supplied brain artwork and native app icon', async ({
   await expect(mark.locator('path')).toHaveAttribute('d', /^M6\.25 1c\.463/)
   const box = await mark.boundingBox()
   expect(box!.width / box!.height).toBeCloseTo(1, 1)
-  expect(box!.width).toBeCloseTo(64 * 0.3, 0)
+  expect(box!.width).toBeCloseTo(128 * 0.2, 0)
   const heading = page.getByRole('heading', { name: 'Create your first project' })
   const headingBox = await heading.boundingBox()
   expect(headingBox!.y - (box!.y + box!.height)).toBeGreaterThan(28)
