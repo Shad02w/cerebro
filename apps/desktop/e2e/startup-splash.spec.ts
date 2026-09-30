@@ -34,7 +34,7 @@ async function expectSplashIcon(page: Page): Promise<void> {
     }
   })
   expect(paint.backgroundImage).toContain('linear-gradient')
-  expect(paint.maskImage).toContain('brain-sparkle-16-filled')
+  expect(decodeURIComponent(paint.maskImage)).toContain(sparklePath(FILLED_SPARKLE).slice(0, 24))
   expect(paint.animationName).toContain('startup-icon-shine')
 }
 

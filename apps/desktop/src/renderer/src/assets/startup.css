@@ -44,7 +44,7 @@ body {
       transparent 60%,
       transparent 100%
     ),
-    linear-gradient(160deg, #fff 0%, #d4d4d4 46%, #8a8a8a 100%);
+    linear-gradient(115deg, #6e6e6e 0%, #d6d6d6 34%, #fff 48%, #fff 58%, #bdbdbd 74%, #6a6a6a 100%);
   background-size:
     240% 100%,
     100% 100%;
