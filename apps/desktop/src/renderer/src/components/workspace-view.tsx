@@ -46,7 +46,7 @@ export function WorkspaceView({
     <div className="relative flex min-h-0 flex-1 flex-col">
       {!workspace ? (
         <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-background px-8 text-center">
-          <BrainMark className="mb-8 size-[25.6px]" />
+          <BrainMark className="mb-8 size-[38.4px]" />
           {hasProjects ? null : (
             <div className="space-y-1">
               <h2 className="text-lg font-semibold">Create your first project</h2>
