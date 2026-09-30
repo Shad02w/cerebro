@@ -32,6 +32,8 @@ body {
 
 .startup-mark {
   display: block;
+  width: 128px;
+  height: 128px;
   margin-bottom: 24px;
 }
 

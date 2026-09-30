@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
@@ -9,8 +10,25 @@ import { test, expect, stopMux } from './fixtures'
 const PROJECTS = 'cerebro:projects:list'
 const LAYOUT = 'cerebro:layout:get'
 const TERMINALS = 'cerebro:pty:open'
+const FILLED_SPARKLE = 'brain-sparkle-16-filled.svg'
 
-test('paints the splash before the renderer JavaScript loads', async ({ page }) => {
+function sparklePath(file: string): string {
+  const svg = readFileSync(join(__dirname, '../src/renderer/src/assets', file), 'utf8')
+  const match = svg.match(/\sd="([^"]+)"/)
+  if (!match) throw new Error(`Missing path in ${file}`)
+  return match[1]
+}
+
+test('ships a colorable brain-sparkle icon pair', () => {
+  for (const file of [FILLED_SPARKLE, 'brain-sparkle-16-regular.svg']) {
+    const svg = readFileSync(join(__dirname, '../src/renderer/src/assets', file), 'utf8')
+    expect(svg).toContain('fill="currentColor"')
+    expect(svg).not.toMatch(/fill="#[0-9A-Fa-f]{3,8}"/)
+    expect(sparklePath(file).length).toBeGreaterThan(20)
+  }
+})
+
+test('paints the splash before the renderer JavaScript loads', async ({ page }, info) => {
   await expect(page.getByText('Create your first project')).toBeVisible()
   let release = (): void => {}
   const barrier = new Promise<void>((resolve) => {
@@ -26,6 +44,14 @@ test('paints the splash before the renderer JavaScript loads', async ({ page }) 
     await page.reload({ waitUntil: 'commit' })
     await expect.poll(() => requested).toBe(true)
     await expect(page.getByTestId('startup-splash')).toBeVisible()
+    const mark = page.getByTestId('startup-mark')
+    await expect(mark).toBeVisible()
+    await expect(mark.locator('path')).toHaveAttribute('fill', 'currentColor')
+    await expect(mark.locator('path')).toHaveAttribute('d', sparklePath(FILLED_SPARKLE))
+    expect(await mark.locator('path').evaluate((element) => getComputedStyle(element).fill)).toBe(
+      'rgb(250, 250, 250)'
+    )
+    await page.screenshot({ path: info.outputPath('startup-splash-prerender.png') })
     await expect(page.getByRole('heading', { name: 'Cerebro', exact: true })).toBeVisible()
     await expect(page.getByTestId('startup-app')).toHaveCount(0)
     release()
@@ -123,6 +149,10 @@ test('reveals all projects and restored panes together after startup barriers co
     await holdIpc(electronApp, [PROJECTS, LAYOUT, TERMINALS])
     await page.reload()
     await expect(page.getByTestId('startup-splash')).toBeVisible()
+    await expect(page.getByTestId('startup-mark').locator('path')).toHaveAttribute(
+      'd',
+      sparklePath(FILLED_SPARKLE)
+    )
     await expect(page.getByRole('status')).toHaveText('Opening your workspaces…')
     await expect(page.getByTestId('startup-app')).toHaveCount(0)
     expect(
