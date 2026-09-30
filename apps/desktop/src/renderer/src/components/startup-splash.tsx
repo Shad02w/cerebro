@@ -1,4 +1,3 @@
-import brainMark from '@/assets/brain.svg'
 import type { ReactNode } from 'react'
 
 export function StartupGate({
@@ -35,7 +34,7 @@ export function StartupSplash({ error }: { error?: string | null }): React.JSX.E
     <div className="startup-splash" data-testid="startup-splash">
       <div className="startup-drag-region" />
       <div className="startup-content">
-        <img className="startup-mark" src={brainMark} alt="" width="140" height="122" />
+        <div className="startup-mark" data-testid="startup-mark" aria-hidden="true" />
         <h1 className="startup-title">Cerebro</h1>
         {error ? (
           <div className="startup-error" role="alert">

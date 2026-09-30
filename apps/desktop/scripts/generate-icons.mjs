@@ -8,7 +8,8 @@ import { fileURLToPath } from 'node:url'
 const root = fileURLToPath(new URL('../', import.meta.url))
 const path = (name) => join(root, name)
 const run = (args) => execFileSync('magick', args, { stdio: 'inherit' })
-// Trim the supplied transparent canvas for legible in-app marks; retain every dot.
+// Original dot-matrix artwork. The splash and in-app mark use the Iconify
+// brain-sparkle pair, not this file. Packaged OS icons below come from icon.svg.
 const brain = readFileSync(path('resources/branding/brain.svg'), 'utf8').replace(
   'width="1024" height="1024" viewBox="0 0 1024 1024"',
   'width="650" height="565" viewBox="187 229.5 650 565"'

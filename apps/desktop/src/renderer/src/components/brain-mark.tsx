@@ -1,4 +1,4 @@
-import brainMark from '@/assets/brain.svg'
+import { BrainSparkleIcon } from '@/components/brain-sparkle-icon'
 import { cn } from '@/lib/utils'
 
 type BrainMarkProps = {
@@ -15,13 +15,11 @@ export function BrainMark({
   testId = 'brain-mark'
 }: BrainMarkProps): React.JSX.Element {
   return (
-    <img
-      src={brainMark}
-      alt="Brain"
-      data-testid={testId}
-      width={size === 'sm' ? 28 : 140}
-      height={size === 'sm' ? 24 : 122}
-      className={cn('inline-block shrink-0 object-contain', pulse && 'animate-pulse', className)}
+    <BrainSparkleIcon
+      size={size === 'sm' ? 28 : 128}
+      testId={testId}
+      label="Brain"
+      className={cn(pulse && 'animate-pulse', className)}
     />
   )
 }
