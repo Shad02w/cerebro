@@ -1,4 +1,5 @@
 /** Live BSP layout shared by Electron and the CLI. IDs are persistent across mux restarts. */
+export const TAB_LABEL_MAX_LENGTH = 500
 export type PaneKind = 'terminal' | 'changes' | 'chat'
 export type SplitDirection = 'auto' | 'right' | 'down'
 export type Pane = {
@@ -32,7 +33,16 @@ export type LayoutState = {
 }
 export type LayoutCommand = {
   target: 'tab' | 'pane'
-  action: 'list' | 'create' | 'split' | 'focus' | 'close' | 'resize' | 'reorder' | 'open-changes'
+  action:
+    | 'list'
+    | 'create'
+    | 'split'
+    | 'focus'
+    | 'close'
+    | 'resize'
+    | 'reorder'
+    | 'open-changes'
+    | 'rename'
   workspaceId: number
   tabId?: number
   paneId?: number
@@ -42,5 +52,6 @@ export type LayoutCommand = {
   ratio?: number
   repositoryId?: number
   toIndex?: number
+  label?: string
 }
 export type LayoutReply = { state: LayoutState; result: unknown }

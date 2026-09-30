@@ -153,6 +153,8 @@ export function ChatView({
       pendingSend.current.key !== selected.key
     )
       pendingSend.current = { id: crypto.randomUUID(), text: fingerprint, key: selected.key }
+    const isFirstMessage = !session
+    const promptLabel = draft.text.trim()
     stick.current = true
     if (
       await execute({
@@ -166,6 +168,14 @@ export function ChatView({
         accessMode
       })
     ) {
+      if (isFirstMessage)
+        void window.cerebro.layoutCommand({
+          target: 'tab',
+          action: 'rename',
+          workspaceId,
+          paneId,
+          label: promptLabel
+        })
       clear()
       pendingSend.current = null
     }

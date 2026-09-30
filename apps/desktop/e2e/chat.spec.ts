@@ -77,6 +77,7 @@ test('chat works through native adapters, survives reload, handles requests, and
     const userText = 'Build a normalized agent chat\nPreserve spacing:  café 🚀'
     await page.getByRole('textbox', { name: 'Message agent' }).fill(userText)
     await page.getByRole('button', { name: 'Send message', exact: true }).click()
+    await expect(page.getByTestId('chat-tab').first()).toHaveText(userText)
     await expect(page.getByTestId('chat-transcript')).toContainText('Adapter connected.')
     await expect(page.getByTestId('chat-view').getByRole('status')).toContainText('Ready')
     await expect(page.getByTestId('chat-transcript').getByRole('status')).toContainText(

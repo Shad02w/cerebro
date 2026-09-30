@@ -627,6 +627,7 @@ export function TerminalStack({
     <div data-testid="terminal-stack" className="flex min-h-0 flex-1 flex-col">
       {activeWorkspaceId != null ? (
         <TerminalTabBar
+          workspaceId={activeWorkspaceId}
           tabs={workspace?.tabs ?? []}
           activeTabId={activeTabId}
           onSelect={(tabId) =>
