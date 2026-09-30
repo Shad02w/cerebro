@@ -32,8 +32,8 @@ body {
 
 .startup-mark {
   display: block;
-  width: calc(128px * 0.7);
-  height: calc(128px * 0.7);
+  width: calc(128px * 0.7 * 0.5);
+  height: calc(128px * 0.7 * 0.5);
   margin-bottom: 24px;
   background-image:
     linear-gradient(
