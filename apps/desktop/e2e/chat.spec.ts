@@ -31,7 +31,7 @@ test('chat works through native adapters, survives reload, handles requests, and
     await expect(projectRow).toBeVisible()
     if ((await projectRow.getAttribute('aria-expanded')) === 'false') await projectRow.click()
     await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
-    await page.getByRole('button', { name: /^New Chat tab/ }).click()
+    await page.getByRole('button', { name: /^New Agent tab/ }).click()
     await expect(page.getByTestId('chat-view')).toBeVisible()
     await expect(page.getByRole('combobox', { name: 'Access mode' })).toHaveValue('full')
     await expect(page.getByRole('combobox', { name: 'Chat history' })).toHaveCount(0)
@@ -353,7 +353,7 @@ test('Claude and Pi keep separate chat sessions, with a mixed Terminal pane', as
       .getByTestId('model-picker')
       .getByRole('button', { name: /^Test Model.*Pi/ })
       .click()
-    await expect(page.getByRole('alert')).toContainText('Open a new Chat tab or pane to use Pi.')
+    await expect(page.getByRole('alert')).toContainText('Open a new Agent tab or pane to use Pi.')
     await expect(chat.getByTestId('chat-model-picker')).toContainText('Claude Code')
     await expect(chat.getByTestId('chat-transcript')).toContainText('hello Claude')
     await page.getByTestId('new-terminal-tab').click()
@@ -395,7 +395,7 @@ test('queued messages during a running turn can be steered in immediately or sen
     await expect(projectRow).toBeVisible()
     if ((await projectRow.getAttribute('aria-expanded')) === 'false') await projectRow.click()
     await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
-    await page.getByRole('button', { name: /^New Chat tab/ }).click()
+    await page.getByRole('button', { name: /^New Agent tab/ }).click()
     await expect(page.getByTestId('chat-model-picker')).toContainText('Claude Code')
     const message = page.getByRole('textbox', { name: 'Message agent' })
     const send = page.getByRole('button', { name: 'Send message', exact: true })
@@ -485,7 +485,7 @@ test.describe('unavailable native installations', () => {
   })
 })
 
-test('Mod+N opens independent Chat tabs from a workspace row, composer, and terminal', async ({
+test('Mod+N opens independent Agent tabs from a workspace row, composer, and terminal', async ({
   page
 }) => {
   const directory = await mkdtemp(join(tmpdir(), 'cerebro-chat-shortcut-'))
@@ -529,7 +529,7 @@ test('Mod+N opens independent Chat tabs from a workspace row, composer, and term
     await expect(page.getByTestId('open-chat-tab').locator('[data-hotkey="Mod+N"]')).toBeVisible()
     await mkdir('/tmp/cerebro-pane-session-evidence', { recursive: true })
     await expect(page.getByTestId('add-tab-menu').locator('[data-testid^="open-"]')).toHaveText([
-      /Chat/,
+      /Agent/,
       /Terminal/,
       /Changes/
     ])
@@ -537,7 +537,7 @@ test('Mod+N opens independent Chat tabs from a workspace row, composer, and term
     await page.screenshot({ path: '/tmp/cerebro-pane-session-evidence/chat-first.png' })
     await page.getByTestId('pane-menu-right').hover()
     await expect(page.locator('[data-testid^="add-pane-right-"]')).toHaveText([
-      'Chat',
+      'Agent',
       'Terminal',
       'Changes'
     ])

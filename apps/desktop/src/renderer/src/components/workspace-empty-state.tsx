@@ -27,13 +27,13 @@ export function WorkspaceEmptyState({
       <div className="space-y-1">
         <h2 className="text-lg font-medium">Start in this workspace</h2>
         <p className="text-sm text-muted-foreground">
-          Chat with an agent, open a terminal, or review your changes.
+          Start an Agent, open a terminal, or review your changes.
         </p>
       </div>
       <div className="flex w-full max-w-xs flex-col gap-2">
         <Button variant="ghost" className="h-10 justify-start gap-3" onClick={onOpenChat}>
           <MessageSquare />
-          New Chat tab
+          New Agent tab
           <ShortcutKbd hotkey={chatHotkey} className="ml-auto" />
         </Button>
         <Button variant="ghost" className="h-10 justify-start gap-3" onClick={onNewTerminal}>

@@ -331,7 +331,7 @@ export function ChatView({
                   onSelect={(model) => {
                     if (session && session.model.harness !== model.harness) {
                       setError(
-                        `Open a new Chat tab or pane to use ${harnessLabels[model.harness]}.`
+                        `Open a new Agent tab or pane to use ${harnessLabels[model.harness]}.`
                       )
                       return
                     }

@@ -271,7 +271,7 @@ export class AgentSessions {
           try {
             this.persist(session)
           } catch (error) {
-            session.error = `Chat storage failed: ${String(error)}`
+            session.error = `Agent storage failed: ${String(error)}`
             this.running.get(session.id)?.controller.abort()
           }
           this.publish(session.workspaceId)
@@ -397,7 +397,7 @@ export class AgentSessions {
       session &&
       (session.workspaceId !== scope.workspaceId || session.repositoryId !== scope.repositoryId)
     )
-      throw new Error('Conversation scope changed. Start a new chat.')
+      throw new Error('Conversation scope changed. Start a new Agent.')
     if (command.sessionId && session?.id !== command.sessionId)
       throw new Error('The selected conversation changed. Try again.')
     if (command.action === 'stop') {
@@ -510,7 +510,7 @@ export class AgentSessions {
       session &&
       (session.model.harness !== selected.harness || session.model.instance !== selected.instance)
     )
-      throw new Error('Changing harness starts a new native conversation. Use New chat first.')
+      throw new Error('Changing harness starts a new native conversation. Use New Agent first.')
     // No await between here and the mutation below: this recheck-then-commit sequence must stay atomic,
     // since nothing below the mux server's own request serialization guards against a concurrent command.
     if (session && busy(session)) {
@@ -519,7 +519,7 @@ export class AgentSessions {
     }
     if (session && session.items.length > 1500)
       throw new Error(
-        'This conversation reached its display limit. Start a new chat; the saved transcript is retained.'
+        'This conversation reached its display limit. Start a new Agent; the saved transcript is retained.'
       )
     if (!session) {
       session = {
@@ -603,7 +603,7 @@ export class AgentSessions {
     if (session.items.length > 1500) {
       session.status = 'failed'
       session.error =
-        'This conversation reached its display limit. Start a new chat; the saved transcript is retained.'
+        'This conversation reached its display limit. Start a new Agent; the saved transcript is retained.'
       this.changed(session, true)
       return
     }
@@ -736,7 +736,7 @@ export class AgentSessions {
         (existing ? JSON.stringify(existing).length : 0)
       if (projectedSize > 2_000_000 || (!existing && session.items.length >= 2000))
         throw new Error(
-          'Conversation display limit reached. Start a new chat; native history is retained.'
+          'Conversation display limit reached. Start a new Agent; native history is retained.'
         )
       if (existing) Object.assign(existing, next)
       else session.items.push(next)
@@ -795,7 +795,7 @@ export class AgentSessions {
       try {
         this.changed(session, true)
       } catch (error) {
-        session.error = `Chat storage failed: ${String(error)}`
+        session.error = `Agent storage failed: ${String(error)}`
         this.publish(session.workspaceId)
       }
       // A message queued while this turn ran becomes the next turn automatically, unless this one failed

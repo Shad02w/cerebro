@@ -215,7 +215,7 @@ function applyCommand(raw: unknown): LayoutReply {
         kind === 'terminal'
           ? `Terminal ${workspace.nextLabel++}`
           : kind === 'chat'
-            ? 'Chat'
+            ? 'Agent'
             : 'Changes',
       root: pane,
       activePaneId: pane.id
