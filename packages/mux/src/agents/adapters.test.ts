@@ -52,6 +52,12 @@ for (const harness of ['claude', 'codex', 'pi'] as AgentHarness[]) {
       assert(usage.usage.contextWindow > 0)
       assert(usage.usage.usedTokens > 0)
       assert(usage.usage.percentage >= 0 && usage.usage.percentage <= 100)
+      if (harness === 'codex')
+        assert.deepEqual(usage.usage, {
+          usedTokens: 43759,
+          contextWindow: 258400,
+          percentage: 17
+        })
       const checkpoint = events.find((e) => e.type === 'checkpoint')
       if (harness === 'claude')
         assert.deepEqual(checkpoint, {
@@ -63,6 +69,43 @@ for (const harness of ['claude', 'codex', 'pi'] as AgentHarness[]) {
     }
   )
 }
+test(
+  'Codex context usage uses the latest call and skips events that omit it or the window',
+  { timeout: 15_000 },
+  async () => {
+    process.env.CEREBRO_CODEX_PATH = fixture
+    const model = (await adapters.codex.models('/tmp'))[0]
+    const session: AgentSession = {
+      version: 1,
+      id: 'logical',
+      workspaceId: 1,
+      repositoryId: null,
+      cwd: '/tmp',
+      title: 'Test',
+      model,
+      status: 'running',
+      generation: 'generation',
+      sequence: 0,
+      updatedAt: 0,
+      items: [],
+      commands: []
+    }
+    for (const text of ['usage-without-last', 'usage-without-window']) {
+      const events: AgentDelta[] = []
+      await adapters.codex.run({
+        session,
+        text,
+        signal: new AbortController().signal,
+        emit: (event) => events.push(event),
+        ask: async () => ({ allow: false, answers: {} })
+      })
+      assert.equal(
+        events.some((event) => event.type === 'usage'),
+        false
+      )
+    }
+  }
+)
 test(
   'Codex: request correlation, approval decision, interrupt, and native resume',
   { timeout: 15_000 },
