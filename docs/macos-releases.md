@@ -2,7 +2,9 @@
 
 Cerebro currently distributes macOS builds only. Each release includes a DMG and
 ZIP for Apple Silicon (`arm64`) and Intel (`x64`). Build each architecture on its
-native runner: the app bundles the build host's Node runtime and native PTY.
+native runner (`macos-26` / `macos-26-intel`): the app bundles the build host's
+Node runtime and native PTY. macOS 15 hosts crash Xcode 26 `actool` while
+compiling the Icon Composer `.icon`.
 
 | Mode                | Default home    | SQLite database                |
 | ------------------- | --------------- | ------------------------------ |
