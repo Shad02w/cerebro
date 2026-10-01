@@ -295,9 +295,15 @@ export const codexAdapter: AgentAdapter = {
         }
         case 'thread/tokenUsage/updated': {
           const usage: Frame = p.tokenUsage ?? {}
+          const usedTokens = usage.last?.totalTokens
           const contextWindow = usage.modelContextWindow
-          if (contextWindow) {
-            const usedTokens = usage.total?.totalTokens ?? 0
+          // `last` is the occupied context of the latest model call. `total` is Codex's
+          // lifetime sum and must not be treated as the current window.
+          if (
+            typeof usedTokens === 'number' &&
+            typeof contextWindow === 'number' &&
+            contextWindow > 0
+          ) {
             emit({
               type: 'usage',
               usage: {

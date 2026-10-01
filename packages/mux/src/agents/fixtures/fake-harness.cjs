@@ -18,9 +18,10 @@ const codexDone = () => {
     threadId: 'thread-test',
     turnId: 'turn-test',
     tokenUsage: {
-      total: { totalTokens: 12345, inputTokens: 12000, outputTokens: 345 },
-      last: { totalTokens: 12345, inputTokens: 12000, outputTokens: 345 },
-      modelContextWindow: 200000
+      // Lifetime sum is intentionally larger than the latest call so a reader of `total` fails.
+      total: { totalTokens: 295697, inputTokens: 280000, outputTokens: 15697 },
+      last: { totalTokens: 43759, inputTokens: 42000, outputTokens: 1759 },
+      modelContextWindow: 258400
     }
   })
   notify('turn/completed', {
@@ -41,6 +42,27 @@ function codexPrompt(prompt, input) {
       item: { type: 'agentMessage', id: 'access', text: JSON.stringify(accessSettings) }
     })
     codexDone()
+    return
+  }
+  if (prompt === 'usage-without-last' || prompt === 'usage-without-window') {
+    notify('thread/tokenUsage/updated', {
+      threadId: 'thread-test',
+      turnId: 'turn-test',
+      tokenUsage:
+        prompt === 'usage-without-last'
+          ? {
+              total: { totalTokens: 295697, inputTokens: 280000, outputTokens: 15697 },
+              modelContextWindow: 258400
+            }
+          : {
+              total: { totalTokens: 295697, inputTokens: 280000, outputTokens: 15697 },
+              last: { totalTokens: 43759, inputTokens: 42000, outputTokens: 1759 }
+            }
+    })
+    notify('turn/completed', {
+      threadId: 'thread-test',
+      turn: { id: 'turn-test', status: 'completed' }
+    })
     return
   }
   notify('turn/started', { threadId: 'thread-test', turn: { id: 'turn-test' } })
