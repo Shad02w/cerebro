@@ -8,11 +8,11 @@ import { _electron as electron, expect } from '@playwright/test'
 async function main(): Promise<void> {
   const output = resolve('dist/production')
   const appDirectory = process.arch === 'x64' ? 'mac' : `mac-${process.arch}`
-  assert.ok(existsSync(join(output, appDirectory)), 'Missing packaged macOS app')
   const bundle = join(output, appDirectory, 'Cerebro.app')
+  assert.ok(existsSync(bundle), `Missing packaged macOS app at ${bundle}`)
   // Direct Electron launches do not exercise Gatekeeper's bundle validation.
   execFileSync('/usr/bin/codesign', ['--verify', '--deep', '--strict', '--verbose=2', bundle], {
-    stdio: 'pipe'
+    stdio: ['pipe', 'inherit', 'inherit']
   })
   const bundleId = execFileSync(
     '/usr/libexec/PlistBuddy',

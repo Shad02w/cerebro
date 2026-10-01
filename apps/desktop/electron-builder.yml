@@ -10,6 +10,8 @@ extraResources:
     to: cli
   - from: out/cli/node_modules/node-pty
     to: cli/node_modules/node-pty
+  - from: out/cli/node_modules/@anthropic-ai/claude-agent-sdk
+    to: cli/node_modules/@anthropic-ai/claude-agent-sdk
 files:
   - '!out/cli/**'
   - '!**/.vscode/*'
