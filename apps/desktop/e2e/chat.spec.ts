@@ -505,6 +505,10 @@ test('Mod+N opens independent Agent tabs from a workspace row, composer, and ter
     await expect(
       page.getByTestId('workspace-empty-state').locator('[data-hotkey="Mod+N"]')
     ).toBeVisible()
+    await expect(page.getByRole('button', { name: /^New Agent tab/ })).toBeVisible()
+    await expect(page.getByTestId('workspace-empty-state')).toContainText('Start an Agent')
+    await mkdir('/tmp/cerebro-pane-session-evidence', { recursive: true })
+    await page.screenshot({ path: '/tmp/cerebro-pane-session-evidence/agent-empty-state.png' })
     await row.focus()
     await page.keyboard.press(chord)
     await expect(page.getByTestId('chat-tab')).toHaveCount(1)
@@ -534,13 +538,14 @@ test('Mod+N opens independent Agent tabs from a workspace row, composer, and ter
       /Changes/
     ])
     await expect(page.getByTestId('add-tab-menu')).toHaveCSS('opacity', '1')
-    await page.screenshot({ path: '/tmp/cerebro-pane-session-evidence/chat-first.png' })
+    await page.screenshot({ path: '/tmp/cerebro-pane-session-evidence/agent-new-tab-menu.png' })
     await page.getByTestId('pane-menu-right').hover()
     await expect(page.locator('[data-testid^="add-pane-right-"]')).toHaveText([
       'Agent',
       'Terminal',
       'Changes'
     ])
+    await page.screenshot({ path: '/tmp/cerebro-pane-session-evidence/agent-split-pane-menu.png' })
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
