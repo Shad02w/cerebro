@@ -12,7 +12,12 @@ module.exports = async function checkMuxRuntime(context) {
         )
       : join(context.appOutDir, 'resources')
   const runtime = join(resources, 'cli')
-  for (const file of ['mux.cjs', 'mux-worker.cjs', 'node_modules/node-pty/lib/index.js']) {
+  for (const file of [
+    'mux.cjs',
+    'mux-worker.cjs',
+    'node_modules/node-pty/lib/index.js',
+    'node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs'
+  ]) {
     if (!existsSync(join(runtime, file))) throw new Error(`Packaged mux asset missing: ${file}`)
   }
   // extraResources excludes node_modules by default; audit the actual package,
