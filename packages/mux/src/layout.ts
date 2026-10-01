@@ -1,5 +1,6 @@
 import {
   getWorkspaceLocalPath,
+  TAB_LABEL_MAX_LENGTH,
   type LayoutCommand,
   type LayoutState,
   type Pane,
@@ -167,7 +168,7 @@ function applyCommand(raw: unknown): LayoutReply {
   if (!['tab', 'pane'].includes(command.target)) fail('usage', 'Unknown layout target.')
   const actions =
     command.target === 'tab'
-      ? ['list', 'create', 'focus', 'close', 'reorder', 'open-changes']
+      ? ['list', 'create', 'focus', 'close', 'reorder', 'open-changes', 'rename']
       : ['list', 'split', 'focus', 'close', 'resize']
   if (!actions.includes(command.action)) fail('usage', 'Unknown layout action.')
   for (const key of ['tabId', 'paneId', 'splitId'] as const)
@@ -254,6 +255,10 @@ function applyCommand(raw: unknown): LayoutReply {
         fail('usage', 'Tab index is out of range.')
       workspace.tabs.splice(workspace.tabs.indexOf(tab), 1)
       workspace.tabs.splice(command.toIndex!, 0, tab)
+    } else if (command.action === 'rename') {
+      const label = command.label?.trim()
+      if (!label) fail('usage', 'Label is required.')
+      tab.label = label.slice(0, TAB_LABEL_MAX_LENGTH)
     }
   } else {
     if (command.action === 'list')

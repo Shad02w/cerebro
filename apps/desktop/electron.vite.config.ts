@@ -7,6 +7,7 @@ import { cliBuildPlugin } from './scripts/cli-build'
 const shared = resolve('src/shared')
 const rendererSrc = resolve('src/renderer/src')
 const coreSrc = resolve('../../packages/core/src/index.ts')
+const coreBrowserSrc = resolve('../../packages/core/src/browser.ts')
 
 export default defineConfig({
   main: {
@@ -38,7 +39,9 @@ export default defineConfig({
       alias: {
         '@': rendererSrc,
         '@renderer': rendererSrc,
-        '@shared': shared
+        '@shared': shared,
+        // Bundle browser-safe core source; the CommonJS build cannot expose named re-exports here.
+        '@cerebro/core': coreBrowserSrc
       }
     },
     plugins: [react(), tailwindcss()]

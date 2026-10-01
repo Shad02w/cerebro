@@ -77,13 +77,17 @@ test('chat works through native adapters, survives reload, handles requests, and
     const userText = 'Build a normalized agent chat\nPreserve spacing:  café 🚀'
     await page.getByRole('textbox', { name: 'Message agent' }).fill(userText)
     await page.getByRole('button', { name: 'Send message', exact: true }).click()
+    await expect(page.getByTestId('chat-tab').first()).toHaveText(userText)
     await expect(page.getByTestId('chat-transcript')).toContainText('Adapter connected.')
     await expect(page.getByTestId('chat-view').getByRole('status')).toContainText('Ready')
     await expect(page.getByTestId('chat-transcript').getByRole('status')).toContainText(
       'Ready · Native session saved'
     )
     await expect(page.getByRole('separator', { name: 'End of response' })).toHaveCount(1)
-    await expect(page.getByTitle(/tokens \(\d+% of context used\)/)).toContainText('6%')
+    await expect(page.getByTestId('context-usage-ring')).toContainText('6%')
+    await page.getByTestId('context-usage-ring').hover()
+    await expect(page.getByText('6% of context used')).toBeVisible()
+    await expect(page.getByText('12,345 / 200,000 tokens')).toBeVisible()
     await mkdir('/tmp/cerebro-chat-evidence', { recursive: true })
     const userMessage = page.getByTestId('chat-user-message').first()
     const copyButton = userMessage.getByRole('button', { name: 'Copy message', exact: true })

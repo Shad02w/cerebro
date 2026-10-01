@@ -91,13 +91,25 @@ function RequestCard({
 
 export const ChatItem = memo(function ChatItem({
   item,
-  onReply
+  onReply,
+  workspaceId,
+  sessionId
 }: {
   item: Item
   onReply: (id: string, answer: AgentAnswer) => void
+  workspaceId: number
+  sessionId: string
 }): React.JSX.Element {
   if (item.kind === 'request') return <RequestCard item={item} onReply={onReply} />
-  if (item.kind === 'user') return <ChatUserMessage text={item.text} />
+  if (item.kind === 'user')
+    return (
+      <ChatUserMessage
+        text={item.text}
+        attachments={item.attachments}
+        workspaceId={workspaceId}
+        sessionId={sessionId}
+      />
+    )
   if (item.kind === 'text')
     return (
       <div className="chat-markdown text-sm leading-7 break-words">

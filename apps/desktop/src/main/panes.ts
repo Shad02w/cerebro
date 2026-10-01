@@ -9,6 +9,11 @@ export function registerLayoutIpc(): void {
   ipcMain.handle(IPC.chat.favorite, (_event, key: string, favorite: boolean) =>
     muxCall('chat.favorite', { key, favorite })
   )
+  ipcMain.handle(
+    IPC.chat.attachment,
+    (_event, workspaceId: number, sessionId: string, attachmentId: string) =>
+      muxCall('chat.attachment', { workspaceId, sessionId, attachmentId })
+  )
   ipcMain.handle(IPC.layout.get, () => muxCall('layout.get'))
   ipcMain.handle(IPC.layout.command, (_event, command: unknown) =>
     muxCall('layout.command', command)

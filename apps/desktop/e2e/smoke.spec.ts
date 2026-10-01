@@ -168,18 +168,17 @@ test('loads the supplied brain artwork and native app icon', async ({
   electronApp,
   page
 }, info) => {
-  for (const testId of ['brain-mark']) {
-    const mark = page.getByTestId(testId)
-    await expect(mark).toBeVisible()
-    await expect(mark).toHaveAttribute('src', /brain.*\.svg/)
-    expect(
-      await mark.evaluate(
-        (element: HTMLImageElement) => element.complete && element.naturalWidth > 0
-      )
-    ).toBe(true)
-    const box = await mark.boundingBox()
-    expect(box!.width / box!.height).toBeCloseTo(650 / 565, 1)
-  }
+  const mark = page.getByTestId('brain-mark')
+  await expect(mark).toBeVisible()
+  await expect(mark.locator('path')).toHaveAttribute('fill', 'currentColor')
+  await expect(mark.locator('path')).toHaveAttribute('d', /^M6\.25 1c\.463/)
+  const box = await mark.boundingBox()
+  expect(box!.width / box!.height).toBeCloseTo(1, 1)
+  expect(box!.width).toBeCloseTo(38.4 * 1.6, 0)
+  const heading = page.getByRole('heading', { name: 'Create your first project' })
+  const headingBox = await heading.boundingBox()
+  expect(headingBox!.y - (box!.y + box!.height)).toBeGreaterThan(28)
+  expect(await mark.evaluate((element) => getComputedStyle(element).color)).not.toBe('rgb(0, 0, 0)')
   const icon = await electronApp.evaluate(({ app, nativeImage }) => {
     const image = nativeImage.createFromPath(`${app.getAppPath()}/resources/icon.png`)
     const bitmap = image.toBitmap()

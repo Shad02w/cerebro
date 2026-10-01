@@ -627,6 +627,7 @@ export function TerminalStack({
     <div data-testid="terminal-stack" className="flex min-h-0 flex-1 flex-col">
       {activeWorkspaceId != null ? (
         <TerminalTabBar
+          workspaceId={activeWorkspaceId}
           tabs={workspace?.tabs ?? []}
           activeTabId={activeTabId}
           onSelect={(tabId) =>
@@ -691,6 +692,10 @@ export function TerminalStack({
                 data-testid="tab-panes"
                 data-tab-id={tab.id}
                 style={{
+                  // display:none is the authoritative guard against a hidden tab's identically-positioned
+                  // controls intercepting clicks meant for the active tab; visibility/pointerEvents/inert
+                  // are kept as defense in depth for any browser edge case in hit-testing.
+                  display: shown ? undefined : 'none',
                   visibility: shown ? 'visible' : 'hidden',
                   pointerEvents: shown ? 'auto' : 'none'
                 }}
@@ -740,7 +745,7 @@ export function TerminalStack({
                           fontFamilyPreference={fontFamily ?? TERMINAL_FONT_FAMILY_AUTO}
                         />
                       ) : pane.kind === 'chat' ? (
-                        <ChatView workspaceId={workspaceId} paneId={pane.id} />
+                        <ChatView workspaceId={workspaceId} paneId={pane.id} visible={shown} />
                       ) : pane.kind === 'changes' ? (
                         <ChangesView
                           workspaceId={workspaceId}

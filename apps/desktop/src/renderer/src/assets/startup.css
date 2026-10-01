@@ -32,7 +32,29 @@ body {
 
 .startup-mark {
   display: block;
+  width: calc(38.4px * 1.6);
+  height: calc(38.4px * 1.6);
   margin-bottom: 24px;
+  background-image:
+    linear-gradient(
+      110deg,
+      transparent 0%,
+      transparent 40%,
+      #fff 50%,
+      transparent 60%,
+      transparent 100%
+    ),
+    linear-gradient(115deg, #6e6e6e 0%, #d6d6d6 34%, #fff 48%, #fff 58%, #bdbdbd 74%, #6a6a6a 100%);
+  background-size:
+    240% 100%,
+    100% 100%;
+  background-repeat: no-repeat;
+  background-position:
+    40% 0,
+    0 0;
+  animation: startup-icon-shine 2.2s linear infinite;
+  -webkit-mask: url('./brain-sparkle-16-filled.svg') center / contain no-repeat;
+  mask: url('./brain-sparkle-16-filled.svg') center / contain no-repeat;
 }
 
 .startup-title {
@@ -101,8 +123,22 @@ body {
   }
 }
 
+@keyframes startup-icon-shine {
+  from {
+    background-position:
+      130% 0,
+      0 0;
+  }
+  to {
+    background-position:
+      -30% 0,
+      0 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .startup-spinner {
+  .startup-spinner,
+  .startup-mark {
     animation: none;
   }
 }

@@ -189,6 +189,7 @@ export function cliBuildPlugin(): Plugin {
               .update(readFileSync(resolve(sdkTarget, 'sdk.mjs')))
               .update(readFileSync(resolve(sdkTarget, 'README.md')))
               .digest('hex'),
+            builtAt: Date.now(),
             version
           })
         )

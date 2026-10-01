@@ -1,4 +1,5 @@
-import type { PaneKind, SplitDirection } from '@cerebro/core'
+import type { PaneKind, SplitDirection, WorkspaceTab } from '@cerebro/core'
+import { ChatTabIcon } from '@/components/chat/chat-tab-icon'
 import { useRef, useState } from 'react'
 import {
   DndContext,
@@ -44,11 +45,7 @@ import { cn } from '@/lib/utils'
 
 export type ContentTabKind = PaneKind
 
-export type ContentTab = {
-  id: number
-  kind: ContentTabKind
-  label: string
-}
+export type ContentTab = WorkspaceTab
 
 export type TerminalTab = ContentTab
 
@@ -56,6 +53,7 @@ const TAB_DRAG_THRESHOLD_PX = 6
 const TAB_SWAP_TRANSITION = { duration: 200, easing: 'cubic-bezier(0.2, 0, 0, 1)' } as const
 
 type TerminalTabBarProps = {
+  workspaceId: number
   tabs: ContentTab[]
   activeTabId: number | null
   onSelect: (tabId: number) => void
@@ -72,6 +70,7 @@ function prefersReducedMotion(): boolean {
 }
 
 type SortableTabProps = {
+  workspaceId: number
   tab: ContentTab
   selected: boolean
   sortable: boolean
@@ -82,6 +81,7 @@ type SortableTabProps = {
 }
 
 function SortableTab({
+  workspaceId,
   tab,
   selected,
   sortable,
@@ -99,18 +99,13 @@ function SortableTab({
   return (
     <div
       ref={setNodeRef}
-      role="tab"
-      tabIndex={0}
-      aria-selected={selected}
-      aria-roledescription={attributes['aria-roledescription']}
-      aria-describedby={attributes['aria-describedby']}
       data-testid={`${tab.kind}-tab`}
       data-tab-kind={tab.kind}
       data-terminal-tab-id={tab.id}
       data-active={selected ? 'true' : 'false'}
       data-dragging={isDragging ? 'true' : undefined}
       className={cn(
-        'app-no-drag flex h-full max-w-48 min-w-0 shrink-0 cursor-grab touch-none items-center gap-1 px-2.5 text-xs select-none',
+        'group/tab app-no-drag flex h-full max-w-48 min-w-0 shrink-0 cursor-grab touch-none items-center gap-1 px-2.5 text-xs select-none',
         selected
           ? 'border-b-2 border-b-foreground bg-muted text-foreground'
           : 'border-b-2 border-b-transparent text-muted-foreground hover:bg-muted/60 hover:text-foreground',
@@ -120,36 +115,58 @@ function SortableTab({
         transform: CSS.Transform.toString(transform),
         transition
       }}
-      onPointerDown={(event): void => {
-        listeners?.onPointerDown?.(event)
-        if (event.button !== 0) return
-        if (event.target instanceof Element && event.target.closest('button')) return
-        onSelect(tab.id)
-      }}
-      onKeyDown={(event): void => {
-        listeners?.onKeyDown?.(event)
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault()
-          onSelect(tab.id)
-        }
-      }}
-      onClick={(event): void => onClick(event, tab.id)}
     >
-      <span className="truncate">{tab.label}</span>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={selected}
+        aria-roledescription={attributes['aria-roledescription']}
+        aria-describedby={attributes['aria-describedby']}
+        data-terminal-tab-id={tab.id}
+        className="flex h-full min-w-0 flex-1 cursor-inherit items-center gap-1 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+        onPointerDown={(event): void => {
+          listeners?.onPointerDown?.(event)
+          if (event.button === 0) onSelect(tab.id)
+        }}
+        onKeyDown={(event): void => listeners?.onKeyDown?.(event)}
+        onClick={(event): void => onClick(event, tab.id)}
+      >
+        <ChatTabIcon workspaceId={workspaceId} tab={tab} />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="min-w-0 flex-1 truncate">{tab.label}</span>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" sideOffset={4} className="max-w-64 text-wrap">
+            {tab.label}
+          </TooltipContent>
+        </Tooltip>
+      </button>
       <Tooltip>
         <TooltipTrigger asChild>
           <button
             type="button"
-            className="inline-flex size-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-background hover:text-foreground"
+            className="pointer-events-none inline-flex size-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground opacity-0 group-hover/tab:pointer-events-auto group-hover/tab:opacity-100 group-focus-within/tab:pointer-events-auto group-focus-within/tab:opacity-100 hover:bg-background hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
             aria-label={`Close ${tab.label} (${closeHotkey})`}
             data-testid="terminal-tab-close"
             onPointerDown={(event): void => event.stopPropagation()}
             onClick={(event): void => {
               event.stopPropagation()
+              const tablist = event.currentTarget.closest('[role="tablist"]')
+              const tabButtons = Array.from(
+                tablist?.querySelectorAll<HTMLButtonElement>('[role="tab"]') ?? []
+              )
+              const index = tabButtons.findIndex(
+                (button) => button.dataset.terminalTabId === String(tab.id)
+              )
+              const nextFocus =
+                tabButtons[index + 1] ??
+                tabButtons[index - 1] ??
+                tablist?.querySelector<HTMLButtonElement>('[data-testid="new-terminal-tab"]')
+              nextFocus?.focus()
               onClose(tab.id)
             }}
           >
-            <X className="size-3" />
+            <X aria-hidden="true" className="size-3" />
           </button>
         </TooltipTrigger>
         <TooltipContent side="bottom" sideOffset={4} className="flex items-center gap-2">
@@ -162,6 +179,7 @@ function SortableTab({
 }
 
 export function TerminalTabBar({
+  workspaceId,
   tabs,
   activeTabId,
   onSelect,
@@ -249,6 +267,7 @@ export function TerminalTabBar({
             {tabs.map((tab) => (
               <SortableTab
                 key={tab.id}
+                workspaceId={workspaceId}
                 tab={tab}
                 selected={tab.id === activeTabId}
                 sortable={sortable}

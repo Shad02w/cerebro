@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import { DatabaseSync } from 'node:sqlite'
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, rm, readFile, writeFile } from 'node:fs/promises'
+import { cp, mkdtemp, mkdir, rm, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { execFile } from 'node:child_process'
@@ -305,6 +305,60 @@ test(
         if (value === undefined) delete process.env[key]
         else process.env[key] = value
       }
+    }
+  }
+)
+
+test(
+  'a newer staged build replaces a running host; older builds never downgrade it',
+  { timeout: 120000, skip: process.platform === 'win32' },
+  async () => {
+    const home = await mkdtemp(join(tmpdir(), 'cerebro-mux-upgrade-'))
+    const previous = process.env.CEREBRO_HOME
+    process.env.CEREBRO_HOME = home
+    const older = join(home, 'older-runtime')
+    await cp(runtimeDir, older, { recursive: true })
+    const manifest = JSON.parse(await readFile(join(runtimeDir, 'runtime.json'), 'utf8')) as {
+      muxHash: string
+      builtAt: number
+    }
+    await writeFile(
+      join(older, 'runtime.json'),
+      JSON.stringify({ ...manifest, muxHash: 'older', builtAt: manifest.builtAt - 1000 })
+    )
+    type Status = { pid: number; runtime?: { muxHash?: string; builtAt?: number } }
+    const stopped = (client: MuxClient): Promise<void> =>
+      new Promise((resolve) => client.once('disconnected', () => resolve()))
+    let last: MuxClient | undefined
+    try {
+      const first = await connectMux({ runtimeDir: older })
+      const gone = stopped(first)
+      const before = await first.request<Status>('server.status')
+      assert.equal(before.runtime?.muxHash, 'older')
+      const same = await connectMux({ runtimeDir: older })
+      assert.equal((await same.request<Status>('server.status')).pid, before.pid)
+      same.close()
+      const upgraded = await connectMux({ runtimeDir })
+      last = upgraded
+      const after = await upgraded.request<Status>('server.status')
+      assert.notEqual(after.pid, before.pid)
+      assert.equal(after.runtime?.muxHash, manifest.muxHash)
+      await gone
+      const stale = await connectMux({ runtimeDir: older })
+      assert.equal((await stale.request<Status>('server.status')).pid, after.pid)
+      stale.close()
+      const statusOnly = await connectMux({ runtimeDir: older, autoStart: false })
+      assert.equal((await statusOnly.request<Status>('server.status')).pid, after.pid)
+      statusOnly.close()
+    } finally {
+      if (last) {
+        const done = stopped(last)
+        await last.request('server.stop').catch(() => {})
+        await done
+        last.close()
+      }
+      process.env.CEREBRO_HOME = previous
+      await rm(home, { recursive: true, force: true })
     }
   }
 )
