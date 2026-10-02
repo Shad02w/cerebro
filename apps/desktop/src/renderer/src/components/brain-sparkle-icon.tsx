@@ -31,7 +31,7 @@ type BrainSparkleIconProps = {
 
 export function BrainSparkleIcon({
   variant = 'filled',
-  size = 128,
+  size = 38.4 * 1.6,
   className,
   testId,
   label
