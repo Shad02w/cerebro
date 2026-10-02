@@ -13,14 +13,15 @@ async function waitFor(condition: () => boolean, timeoutMs = 5000): Promise<void
     await new Promise((resolve) => setTimeout(resolve, 10))
   }
 }
-test('claudeModelLabel prefers versioned description tips and resolvedModel', () => {
+test('claudeModelLabel keeps model names across Claude Code catalog shapes', () => {
+  // Older/current shape: description tip is the versioned name.
   assert.equal(
     claudeModelLabel({
       displayName: 'Sonnet',
-      description: 'Sonnet 5 · Efficient for routine tasks · $2/$10 per Mtok',
-      resolvedModel: 'claude-sonnet-5'
+      description: 'Sonnet 5.5 · Efficient for routine tasks · $2/$10 per Mtok',
+      resolvedModel: 'claude-sonnet-5-5'
     }),
-    'Sonnet 5'
+    'Sonnet 5.5'
   )
   assert.equal(
     claudeModelLabel({
@@ -30,13 +31,50 @@ test('claudeModelLabel prefers versioned description tips and resolvedModel', ()
     }),
     'Haiku 4.5'
   )
+  // Newer shape: description tip is a capability blurb — recover name + version.
+  assert.equal(
+    claudeModelLabel({
+      value: 'claude-opus-5',
+      displayName: 'Opus',
+      description: 'Best for everyday, complex tasks · $4/$20 per Mtok',
+      resolvedModel: 'claude-opus-5'
+    }),
+    'Opus 5'
+  )
+  assert.equal(
+    claudeModelLabel({
+      value: 'claude-opus-4-8',
+      displayName: 'Opus',
+      description: 'Best for everyday, complex tasks · $15/$75 per Mtok',
+      resolvedModel: 'claude-opus-4-8'
+    }),
+    'Opus 4.8'
+  )
+  assert.equal(
+    claudeModelLabel({
+      value: 'claude-sonnet-5',
+      displayName: 'Sonnet',
+      description: 'Efficient for routine tasks · $2/$10 per Mtok',
+      resolvedModel: 'claude-sonnet-5'
+    }),
+    'Sonnet 5'
+  )
+  assert.equal(
+    claudeModelLabel({
+      value: 'claude-fable-5',
+      displayName: 'Fable 5',
+      description: 'Most capable for your hardest and longest-running tasks · $10/$50 per Mtok',
+      resolvedModel: 'claude-fable-5'
+    }),
+    'Fable 5'
+  )
   assert.equal(
     claudeModelLabel({
       displayName: 'Default (recommended)',
-      description: 'Use the default model (currently Opus 5 (1M context)) · $5/$25 per Mtok',
-      resolvedModel: 'claude-opus-5[1m]'
+      description: 'Use the default model (currently Opus 5.5) · $4/$20 per Mtok',
+      resolvedModel: 'claude-opus-5-5'
     }),
-    'Default (recommended) · claude-opus-5[1m]'
+    'Default (recommended) · claude-opus-5-5'
   )
   assert.equal(claudeModelLabel({ displayName: 'Fable' }), 'Fable')
 })
