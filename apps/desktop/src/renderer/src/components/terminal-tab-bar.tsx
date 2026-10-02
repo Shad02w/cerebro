@@ -307,7 +307,7 @@ export function TerminalTabBar({
                   }}
                 >
                   <MessageSquare />
-                  Chat
+                  Agent
                   <DropdownMenuShortcut className="flex items-center">
                     <ShortcutKbd hotkey={chatHotkey} />
                   </DropdownMenuShortcut>
@@ -378,7 +378,7 @@ export function TerminalTabBar({
                               {kind === 'terminal'
                                 ? 'Terminal'
                                 : kind === 'chat'
-                                  ? 'Chat'
+                                  ? 'Agent'
                                   : 'Changes'}
                             </DropdownMenuItem>
                           ))}

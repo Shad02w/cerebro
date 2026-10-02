@@ -43,8 +43,8 @@ export const KEYBIND_CATALOG: readonly KeybindAction[] = [
   },
   {
     id: 'newChat',
-    label: 'New Chat tab',
-    description: 'Open a new chat session in a tab for the focused or selected workspace.',
+    label: 'New Agent tab',
+    description: 'Open a new Agent session in a tab for the focused or selected workspace.',
     defaultHotkey: 'Mod+N',
     target: 'app'
   },

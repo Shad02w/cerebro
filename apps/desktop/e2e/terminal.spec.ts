@@ -1181,6 +1181,8 @@ test('empty workspace guide opens terminal and Changes tabs with shortcuts', asy
     await expect(guide).toBeVisible()
     await expect(guide.getByTestId('brain-mark')).toBeVisible()
     await expect(contentTabs(page)).toHaveCount(0)
+    await expect(guide.getByRole('button', { name: /^New Agent tab/ })).toBeVisible()
+    await expect(guide).toContainText('Start an Agent')
     await expect(guide.locator('[data-hotkey="Mod+T"]')).toBeVisible()
     await expect(guide.locator('[data-hotkey="Mod+Shift+G"]')).toBeVisible()
     await page.mouse.move(1000, 700)

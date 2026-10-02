@@ -99,7 +99,7 @@ for (const harness of ['Claude Code', 'Codex', 'Pi']) {
       await page.screenshot({
         path: `/tmp/cerebro-tab-width-evidence/${harness}-empty-chat-narrow.png`
       })
-      const close = tabs.first().getByRole('button', { name: /^Close Chat/ })
+      const close = tabs.first().getByRole('button', { name: /^Close Agent/ })
       await chat.getByRole('textbox', { name: 'Message agent' }).focus()
       await page.mouse.move(700, 400)
       await expect(close).toHaveCSS('opacity', '0')
