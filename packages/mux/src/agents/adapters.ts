@@ -54,6 +54,22 @@ const model = (
   available: true,
   modalities: input
 })
+/**
+ * Claude Code's `displayName` is often a bare family alias ("Sonnet", "Opus").
+ * Prefer the short versioned tip from `description` ("Sonnet 5", "Haiku 4.5"),
+ * otherwise append `resolvedModel` so the picker shows the wire id.
+ */
+const claudeModelLabel = (entry: {
+  displayName: string
+  description?: string
+  resolvedModel?: string
+}): string => {
+  const tip = entry.description?.split(' · ')[0]?.trim()
+  if (tip && tip.length <= 48 && !/^use the default model/i.test(tip)) return tip
+  if (entry.resolvedModel && !entry.displayName.includes(entry.resolvedModel))
+    return `${entry.displayName} · ${entry.resolvedModel}`
+  return entry.displayName
+}
 const inline = (attachment: RunAttachment): string =>
   readFileSync(attachment.path).toString('base64')
 /** Byte spans of `[Image #N]` markers, the shape Codex clients use for UI-owned text elements. */
@@ -623,7 +639,15 @@ export const claudeAdapter: AgentAdapter = {
     })
     try {
       const entries = await q.supportedModels()
-      return entries.map((entry) => model('claude', 'configured', entry.value, entry.displayName))
+      return entries.map((entry) =>
+        model(
+          'claude',
+          'configured',
+          entry.value,
+          claudeModelLabel(entry),
+          entry.supportedEffortLevels ?? []
+        )
+      )
     } finally {
       clearTimeout(timeout)
       release()
@@ -671,6 +695,7 @@ export const claudeAdapter: AgentAdapter = {
     context.registerSteer?.(async (text, attachments) => {
       prompt.push(userMessage(text, attachments))
     })
+    const effort = session.reasoning as 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined
     const q = query({
       prompt,
       options: {
@@ -678,6 +703,7 @@ export const claudeAdapter: AgentAdapter = {
         pathToClaudeCodeExecutable: executable('claude'),
         env: { ...process.env },
         model: session.model.id || undefined,
+        ...(effort ? { effort } : {}),
         resume: session.nativeId,
         abortController,
         settingSources: ['user', 'project', 'local'],

@@ -21,6 +21,13 @@ for (const harness of ['claude', 'codex', 'pi'] as AgentHarness[]) {
       process.env[`CEREBRO_${harness.toUpperCase()}_PATH`] = fixture
       const models = await adapters[harness].models('/tmp')
       assert.equal(models[0].label, 'Test Model')
+      if (harness === 'claude') {
+        assert.equal(models[1].label, 'Sonnet 5')
+        assert.equal(models[1].id, 'sonnet')
+        assert.deepEqual(models[1].reasoning, ['low', 'medium', 'high', 'xhigh', 'max'])
+        assert.equal(models[2].label, 'Default (recommended) · claude-opus-5[1m]')
+        assert.equal(models[2].id, 'default')
+      }
       const events: AgentDelta[] = []
       const session: AgentSession = {
         version: 1,

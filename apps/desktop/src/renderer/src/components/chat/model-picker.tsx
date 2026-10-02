@@ -154,7 +154,7 @@ export function ModelPicker({
                     </span>
                     <span className="block truncate text-xs text-muted-foreground">
                       {harnessLabels[m.harness]} ·{' '}
-                      {m.provider === 'configured' ? 'Native configuration' : m.provider}
+                      {m.provider === 'configured' ? m.id || 'Native configuration' : m.provider}
                       {m.source === 'fallback' ? ' · Fallback' : ''}
                       {!m.available ? ' · Unavailable' : ''}
                     </span>
