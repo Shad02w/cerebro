@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { join, resolve } from 'node:path'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { adapters, type RunAttachment } from './adapters'
+import { adapters, claudeModelLabel, type RunAttachment } from './adapters'
 import type { AgentDelta, AgentHarness, AgentSession } from '@cerebro/core'
 const fixture = resolve(__dirname, 'fixtures/fake-harness.cjs')
 async function waitFor(condition: () => boolean, timeoutMs = 5000): Promise<void> {
@@ -13,6 +13,33 @@ async function waitFor(condition: () => boolean, timeoutMs = 5000): Promise<void
     await new Promise((resolve) => setTimeout(resolve, 10))
   }
 }
+test('claudeModelLabel prefers versioned description tips and resolvedModel', () => {
+  assert.equal(
+    claudeModelLabel({
+      displayName: 'Sonnet',
+      description: 'Sonnet 5 · Efficient for routine tasks · $2/$10 per Mtok',
+      resolvedModel: 'claude-sonnet-5'
+    }),
+    'Sonnet 5'
+  )
+  assert.equal(
+    claudeModelLabel({
+      displayName: 'Haiku',
+      description: 'Haiku 4.5 · Fastest for quick answers · $1/$5 per Mtok',
+      resolvedModel: 'claude-haiku-4-5-20251001'
+    }),
+    'Haiku 4.5'
+  )
+  assert.equal(
+    claudeModelLabel({
+      displayName: 'Default (recommended)',
+      description: 'Use the default model (currently Opus 5 (1M context)) · $5/$25 per Mtok',
+      resolvedModel: 'claude-opus-5[1m]'
+    }),
+    'Default (recommended) · claude-opus-5[1m]'
+  )
+  assert.equal(claudeModelLabel({ displayName: 'Fable' }), 'Fable')
+})
 for (const harness of ['claude', 'codex', 'pi'] as AgentHarness[]) {
   test(
     `${harness}: native model discovery, streamed response, resume binding and teardown`,
@@ -21,6 +48,12 @@ for (const harness of ['claude', 'codex', 'pi'] as AgentHarness[]) {
       process.env[`CEREBRO_${harness.toUpperCase()}_PATH`] = fixture
       const models = await adapters[harness].models('/tmp')
       assert.equal(models[0].label, 'Test Model')
+      if (harness === 'claude') {
+        assert.deepEqual(models[0].reasoning, ['low', 'medium', 'high'])
+        assert.equal(models[1].label, 'Test Sonnet 5')
+        assert.equal(models[1].id, 'sonnet')
+        assert.deepEqual(models[1].reasoning, ['low', 'medium', 'high', 'xhigh', 'max'])
+      }
       const events: AgentDelta[] = []
       const session: AgentSession = {
         version: 1,

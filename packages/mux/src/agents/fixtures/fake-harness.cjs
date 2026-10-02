@@ -415,7 +415,24 @@ createInterface({ input: process.stdin }).on('line', (line) => {
           subtype: 'success',
           request_id: frame.request_id,
           response: {
-            models: [{ value: 'test-model', displayName: 'Test Model' }],
+            models: [
+              {
+                value: 'test-model',
+                displayName: 'Test Model',
+                description: 'Test Model · fixture',
+                resolvedModel: 'test-model-id',
+                supportsEffort: true,
+                supportedEffortLevels: ['low', 'medium', 'high']
+              },
+              {
+                value: 'sonnet',
+                displayName: 'Test Sonnet',
+                description: 'Test Sonnet 5 · Efficient for routine tasks · $2/$10 per Mtok',
+                resolvedModel: 'claude-sonnet-5',
+                supportsEffort: true,
+                supportedEffortLevels: ['low', 'medium', 'high', 'xhigh', 'max']
+              }
+            ],
             commands: [],
             agents: []
           }

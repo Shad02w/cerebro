@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import { existsSync } from 'node:fs'
 import { access, mkdtemp, rm } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
@@ -66,7 +67,7 @@ export const test = base.extend<Fixtures>({
         CEREBRO_HOME: cerebroHome,
         CEREBRO_CLI_TEST_HOME: cliHome,
         ...(packagedApp ? { HOME: cliHome, ZDOTDIR: cliHome } : {}),
-        SHELL: '/bin/zsh'
+        SHELL: existsSync('/bin/zsh') ? '/bin/zsh' : '/bin/bash'
       }
     })
 

@@ -47,6 +47,16 @@ test('chat works through native adapters, survives reload, handles requests, and
       page.getByTestId('model-picker').getByRole('button', { name: 'All', exact: true })
     ).toHaveCount(0)
     await expect(page.getByTestId('model-picker').getByRole('combobox')).toHaveCount(0)
+    await expect(
+      page.getByTestId('model-picker').getByRole('button', { name: /^Test Sonnet 5.*Claude Code/ })
+    ).toBeVisible()
+    await expect(
+      page.getByTestId('model-picker').getByRole('button', { name: /^Test Sonnet 5.*sonnet/ })
+    ).toBeVisible()
+    await mkdir('/opt/cursor/artifacts', { recursive: true })
+    await page.screenshot({
+      path: '/opt/cursor/artifacts/claude-model-picker-versions.png'
+    })
     for (const [name, harness] of [
       ['Claude Code', 'claude'],
       ['Codex', 'codex'],
@@ -84,10 +94,10 @@ test('chat works through native adapters, survives reload, handles requests, and
       'Ready · Native session saved'
     )
     await expect(page.getByRole('separator', { name: 'End of response' })).toHaveCount(1)
-    await expect(page.getByTestId('context-usage-ring')).toContainText('6%')
+    await expect(page.getByTestId('context-usage-ring')).toContainText('17%')
     await page.getByTestId('context-usage-ring').hover()
-    await expect(page.getByText('6% of context used')).toBeVisible()
-    await expect(page.getByText('12,345 / 200,000 tokens')).toBeVisible()
+    await expect(page.getByText('17% of context used')).toBeVisible()
+    await expect(page.getByText('43,759 / 258,400 tokens')).toBeVisible()
     await mkdir('/tmp/cerebro-chat-evidence', { recursive: true })
     const userMessage = page.getByTestId('chat-user-message').first()
     const copyButton = userMessage.getByRole('button', { name: 'Copy message', exact: true })
@@ -358,17 +368,21 @@ test('Claude and Pi keep separate chat sessions, with a mixed Terminal pane', as
     await expect(chat.getByTestId('chat-transcript')).toContainText('hello Claude')
     await page.getByTestId('new-terminal-tab').click()
     await page.getByTestId('open-chat-tab').click()
-    await chat.getByTestId('chat-model-picker').click()
+    // Tab switches keep prior chat panes mounted under display:none; re-query the active pane.
+    const nextChat = page.locator('[data-pane-kind="chat"]:visible')
+    await expect(nextChat.getByText('What would you like to build?')).toBeVisible()
+    await expect(nextChat.getByTestId('chat-model-picker')).toBeVisible()
+    await nextChat.getByTestId('chat-model-picker').click()
     await page.getByTestId('model-picker').getByRole('button', { name: 'Pi', exact: true }).click()
     await page
       .getByTestId('model-picker')
       .getByRole('button', { name: /^Test Model.*Pi/ })
       .click()
-    await expect(chat.getByTestId('chat-model-picker')).toContainText('Pi')
-    await chat.getByRole('textbox', { name: 'Message agent' }).fill('hello Pi')
-    await chat.getByRole('button', { name: 'Send message', exact: true }).click()
-    await expect(chat.getByTestId('chat-transcript')).toContainText('Adapter connected.')
-    await expect(chat.getByTestId('chat-view').getByRole('status')).toContainText('Ready')
+    await expect(nextChat.getByTestId('chat-model-picker')).toContainText('Pi')
+    await nextChat.getByRole('textbox', { name: 'Message agent' }).fill('hello Pi')
+    await nextChat.getByRole('button', { name: 'Send message', exact: true }).click()
+    await expect(nextChat.getByTestId('chat-transcript')).toContainText('Adapter connected.')
+    await expect(nextChat.getByTestId('chat-view').getByRole('status')).toContainText('Ready')
     await page.getByTestId('new-terminal-tab').click()
     await page.getByTestId('pane-menu-right').hover()
     await page.getByTestId('add-pane-right-terminal').press('Enter')
