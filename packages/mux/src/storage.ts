@@ -153,11 +153,14 @@ export class TerminalFiles {
       if (name === 'manifest.json' || /^\d+\.(snapshot|journal)$/.test(name)) {
         const target = join(temporary, name)
         copyFileSync(join(dir, name), target)
-        const fd = openSync(target, 'r')
-        try {
-          fsyncSync(fd)
-        } finally {
-          closeSync(fd)
+        // Windows often denies fsync on freshly copied files (EPERM); durability still holds via rename.
+        if (process.platform !== 'win32') {
+          const fd = openSync(target, 'r')
+          try {
+            fsyncSync(fd)
+          } finally {
+            closeSync(fd)
+          }
         }
       }
     }
