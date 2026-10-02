@@ -59,7 +59,7 @@ const model = (
  * Prefer the short versioned tip from `description` ("Sonnet 5", "Haiku 4.5"),
  * otherwise append `resolvedModel` so the picker shows the wire id.
  */
-const claudeModelLabel = (entry: {
+export const claudeModelLabel = (entry: {
   displayName: string
   description?: string
   resolvedModel?: string

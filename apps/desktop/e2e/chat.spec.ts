@@ -47,6 +47,16 @@ test('chat works through native adapters, survives reload, handles requests, and
       page.getByTestId('model-picker').getByRole('button', { name: 'All', exact: true })
     ).toHaveCount(0)
     await expect(page.getByTestId('model-picker').getByRole('combobox')).toHaveCount(0)
+    await expect(
+      page.getByTestId('model-picker').getByRole('button', { name: /^Test Sonnet 5.*Claude Code/ })
+    ).toBeVisible()
+    await expect(
+      page.getByTestId('model-picker').getByRole('button', { name: /^Test Sonnet 5.*sonnet/ })
+    ).toBeVisible()
+    await mkdir('/opt/cursor/artifacts', { recursive: true })
+    await page.screenshot({
+      path: '/opt/cursor/artifacts/claude-model-picker-versions.png'
+    })
     for (const [name, harness] of [
       ['Claude Code', 'claude'],
       ['Codex', 'codex'],
@@ -84,10 +94,10 @@ test('chat works through native adapters, survives reload, handles requests, and
       'Ready · Native session saved'
     )
     await expect(page.getByRole('separator', { name: 'End of response' })).toHaveCount(1)
-    await expect(page.getByTestId('context-usage-ring')).toContainText('6%')
+    await expect(page.getByTestId('context-usage-ring')).toContainText('17%')
     await page.getByTestId('context-usage-ring').hover()
-    await expect(page.getByText('6% of context used')).toBeVisible()
-    await expect(page.getByText('12,345 / 200,000 tokens')).toBeVisible()
+    await expect(page.getByText('17% of context used')).toBeVisible()
+    await expect(page.getByText('43,759 / 258,400 tokens')).toBeVisible()
     await mkdir('/tmp/cerebro-chat-evidence', { recursive: true })
     const userMessage = page.getByTestId('chat-user-message').first()
     const copyButton = userMessage.getByRole('button', { name: 'Copy message', exact: true })
