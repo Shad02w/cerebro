@@ -53,10 +53,6 @@ test('chat works through native adapters, survives reload, handles requests, and
     await expect(
       page.getByTestId('model-picker').getByRole('button', { name: /^Test Sonnet 5.*sonnet/ })
     ).toBeVisible()
-    await mkdir('/opt/cursor/artifacts', { recursive: true })
-    await page.screenshot({
-      path: '/opt/cursor/artifacts/claude-model-picker-versions.png'
-    })
     for (const [name, harness] of [
       ['Claude Code', 'claude'],
       ['Codex', 'codex'],
