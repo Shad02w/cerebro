@@ -54,21 +54,42 @@ const model = (
   available: true,
   modalities: input
 })
+/** Capability blurbs Claude sometimes puts first in `description` — never use these as titles. */
+const claudeCapabilityBlurb =
+  /^(best for|efficient for|fastest for|most capable|use the default model)\b/i
+/** Family-shaped tip like "Opus 5.5", "Sonnet 5", "Haiku 4.5", "Fable 5.1". */
+const claudeVersionedName = /^(Opus|Sonnet|Haiku|Fable|Claude)\b.*\d/i
+/** Short version from a wire id: claude-opus-5-5 → 5.5, claude-fable-5-1 → 5.1. */
+const shortClaudeVersion = (id?: string): string | undefined => {
+  if (!id) return
+  const match = id.match(/^claude-(?:opus|sonnet|haiku|fable)-(\d+(?:-\d+)?)(?:-|$|\[)/i)
+  return match?.[1]?.replace(/-/g, '.')
+}
 /**
- * Claude Code's `displayName` is often a bare family alias ("Sonnet", "Opus").
- * Prefer the short versioned tip from `description` ("Sonnet 5", "Haiku 4.5"),
- * otherwise append `resolvedModel` so the picker shows the wire id.
+ * Build a picker title that keeps the model name visible across Claude Code catalog shapes.
+ * Newer builds put capability blurbs first in `description`; older ones put "Opus 5.5" first.
  */
 export const claudeModelLabel = (entry: {
+  value?: string
   displayName: string
   description?: string
   resolvedModel?: string
 }): string => {
   const tip = entry.description?.split(' · ')[0]?.trim()
-  if (tip && tip.length <= 48 && !/^use the default model/i.test(tip)) return tip
-  if (entry.resolvedModel && !entry.displayName.includes(entry.resolvedModel))
-    return `${entry.displayName} · ${entry.resolvedModel}`
-  return entry.displayName
+  if (tip && tip.length <= 48 && claudeVersionedName.test(tip) && !claudeCapabilityBlurb.test(tip))
+    return tip
+  const wire = entry.resolvedModel || entry.value
+  if (/^Default\b/i.test(entry.displayName) && wire) return `${entry.displayName} · ${wire}`
+  const version = shortClaudeVersion(wire)
+  if (
+    version &&
+    entry.displayName &&
+    !/\d/.test(entry.displayName) &&
+    !claudeCapabilityBlurb.test(entry.displayName)
+  )
+    return `${entry.displayName} ${version}`
+  if (entry.displayName && !claudeCapabilityBlurb.test(entry.displayName)) return entry.displayName
+  return wire || entry.displayName
 }
 const inline = (attachment: RunAttachment): string =>
   readFileSync(attachment.path).toString('base64')

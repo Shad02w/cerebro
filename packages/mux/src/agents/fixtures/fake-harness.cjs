@@ -427,7 +427,8 @@ createInterface({ input: process.stdin }).on('line', (line) => {
               {
                 value: 'sonnet',
                 displayName: 'Test Sonnet',
-                description: 'Test Sonnet 5 · Efficient for routine tasks · $2/$10 per Mtok',
+                // Blurb-first description (newer Claude Code) — label must still be the model name.
+                description: 'Efficient for routine tasks · $2/$10 per Mtok',
                 resolvedModel: 'claude-sonnet-5',
                 supportsEffort: true,
                 supportedEffortLevels: ['low', 'medium', 'high', 'xhigh', 'max']
