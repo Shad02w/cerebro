@@ -66,7 +66,8 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   nativeTheme.themeSource = 'dark'
-  if (process.platform === 'darwin') app.dock?.setIcon(icon)
+  // Packaged macOS apps use the Icon Composer catalog from the bundle.
+  if (is.dev && process.platform === 'darwin') app.dock?.setIcon(icon)
   electronApp.setAppUserModelId('com.cerebro.app')
   setAppMenu()
   ensureCerebroHome()

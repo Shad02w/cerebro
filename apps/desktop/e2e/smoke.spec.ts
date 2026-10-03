@@ -164,14 +164,14 @@ test('macOS application menu omits Developer Tools in production builds', async 
   expect(viewRoles.map((role) => role?.toLowerCase())).not.toContain('toggledevtools')
 })
 
-test('loads the supplied brain artwork and native app icon', async ({
+test('loads the supplied neurology artwork and native app icon', async ({
   electronApp,
   page
 }, info) => {
   const mark = page.getByTestId('brain-mark')
   await expect(mark).toBeVisible()
   await expect(mark.locator('path')).toHaveAttribute('fill', 'currentColor')
-  await expect(mark.locator('path')).toHaveAttribute('d', /^M6\.25 1c\.463/)
+  await expect(mark.locator('path')).toHaveAttribute('d', /^M14\.25 21q/)
   const box = await mark.boundingBox()
   expect(box!.width / box!.height).toBeCloseTo(1, 1)
   expect(box!.width).toBeCloseTo(38.4 * 1.6, 0)
@@ -183,16 +183,26 @@ test('loads the supplied brain artwork and native app icon', async ({
     const image = nativeImage.createFromPath(`${app.getAppPath()}/resources/icon.png`)
     const bitmap = image.toBitmap()
     const alpha = (x: number, y: number): number => bitmap[(y * 1024 + x) * 4 + 3]
+    const pixel = (x: number, y: number): number[] =>
+      Array.from(bitmap.subarray((y * 1024 + x) * 4, (y * 1024 + x) * 4 + 4))
     return {
       empty: image.isEmpty(),
       size: image.getSize(),
-      alpha: [alpha(0, 0), alpha(64, 64), alpha(512, 32), alpha(512, 80)]
+      alpha: [alpha(0, 0), alpha(64, 64), alpha(512, 32), alpha(512, 80)],
+      colors: {
+        foreground: pixel(400, 512),
+        background: pixel(512, 512)
+      }
     }
   })
   expect(icon).toEqual({
     empty: false,
     size: { width: 1024, height: 1024 },
-    alpha: [0, 0, 0, 255]
+    alpha: [0, 0, 0, 255],
+    colors: {
+      foreground: [255, 255, 255, 255],
+      background: [0, 0, 0, 255]
+    }
   })
   await page.screenshot({ path: info.outputPath('cerebro-branding.png') })
 })

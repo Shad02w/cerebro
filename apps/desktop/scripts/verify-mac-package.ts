@@ -14,12 +14,21 @@ async function main(): Promise<void> {
   execFileSync('/usr/bin/codesign', ['--verify', '--deep', '--strict', '--verbose=2', bundle], {
     stdio: 'pipe'
   })
+  const infoPlist = join(bundle, 'Contents/Info.plist')
   const bundleId = execFileSync(
     '/usr/libexec/PlistBuddy',
-    ['-c', 'Print :CFBundleIdentifier', join(bundle, 'Contents/Info.plist')],
+    ['-c', 'Print :CFBundleIdentifier', infoPlist],
     { encoding: 'utf8' }
   ).trim()
   assert.equal(bundleId, 'com.cerebro.app')
+  const bundleIconName = execFileSync(
+    '/usr/libexec/PlistBuddy',
+    ['-c', 'Print :CFBundleIconName', infoPlist],
+    { encoding: 'utf8' }
+  ).trim()
+  assert.equal(bundleIconName, 'Icon')
+  assert.ok(existsSync(join(bundle, 'Contents/Resources/Assets.car')), 'Missing icon catalog')
+  assert.ok(existsSync(join(bundle, 'Contents/Resources/icon.icns')), 'Missing fallback icon')
   const home = mkdtempSync(join(tmpdir(), 'cerebro-package-'))
   const env: NodeJS.ProcessEnv = {
     ...process.env,

@@ -10,9 +10,9 @@ import { test, expect, stopMux } from './fixtures'
 const PROJECTS = 'cerebro:projects:list'
 const LAYOUT = 'cerebro:layout:get'
 const TERMINALS = 'cerebro:pty:open'
-const FILLED_SPARKLE = 'brain-sparkle-16-filled.svg'
+const NEUROLOGY_MARK = 'neurology.svg'
 
-function sparklePath(file: string): string {
+function markPath(file: string): string {
   const svg = readFileSync(join(__dirname, '../src/renderer/src/assets', file), 'utf8')
   const match = svg.match(/\sd="([^"]+)"/)
   if (!match) throw new Error(`Missing path in ${file}`)
@@ -34,17 +34,15 @@ async function expectSplashIcon(page: Page): Promise<void> {
     }
   })
   expect(paint.backgroundImage).toContain('linear-gradient')
-  expect(decodeURIComponent(paint.maskImage)).toContain(sparklePath(FILLED_SPARKLE).slice(0, 24))
+  expect(decodeURIComponent(paint.maskImage)).toContain(markPath(NEUROLOGY_MARK).slice(0, 24))
   expect(paint.animationName).toContain('startup-icon-shine')
 }
 
-test('ships a colorable brain-sparkle icon pair', () => {
-  for (const file of [FILLED_SPARKLE, 'brain-sparkle-16-regular.svg']) {
-    const svg = readFileSync(join(__dirname, '../src/renderer/src/assets', file), 'utf8')
-    expect(svg).toContain('fill="currentColor"')
-    expect(svg).not.toMatch(/fill="#[0-9A-Fa-f]{3,8}"/)
-    expect(sparklePath(file).length).toBeGreaterThan(20)
-  }
+test('ships a colorable neurology mark', () => {
+  const svg = readFileSync(join(__dirname, '../src/renderer/src/assets', NEUROLOGY_MARK), 'utf8')
+  expect(svg).toContain('fill="currentColor"')
+  expect(svg).not.toMatch(/fill="#[0-9A-Fa-f]{3,8}"/)
+  expect(markPath(NEUROLOGY_MARK).length).toBeGreaterThan(20)
 })
 
 test('paints the splash before the renderer JavaScript loads', async ({ page }) => {
