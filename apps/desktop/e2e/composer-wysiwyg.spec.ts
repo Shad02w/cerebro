@@ -94,7 +94,9 @@ test('agent composer renders bullets, inline code, a code block, and Add tags', 
     await expect(sent.locator('h1, h2, h3')).toHaveCount(0)
     await expect(composer).toHaveAttribute('data-composer-text', '')
     await expect(page.getByTestId('model-picker')).toBeHidden()
+    await sent.scrollIntoViewIfNeeded()
     await page.screenshot({ path: join(evidence, 'composer-sent.png') })
+    await sent.screenshot({ path: join(evidence, 'composer-sent-message.png') })
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
