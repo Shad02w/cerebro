@@ -165,7 +165,7 @@ function WorkspaceAgents({
       {agents.map((agent) => {
         const title = agentTabTitle(agent, layout)
         return (
-          <Tooltip key={agent.sessionId}>
+          <Tooltip key={agent.sessionId} disableHoverableContent>
             <TooltipTrigger asChild>
               <button
                 type="button"
@@ -188,7 +188,11 @@ function WorkspaceAgents({
                 />
               </button>
             </TooltipTrigger>
-            <TooltipContent side="right" sideOffset={6} className="max-w-64 text-wrap break-words">
+            <TooltipContent
+              side="right"
+              sideOffset={6}
+              className="pointer-events-none max-w-64 text-wrap break-words"
+            >
               {title}
             </TooltipContent>
           </Tooltip>

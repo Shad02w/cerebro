@@ -208,6 +208,8 @@ test('chat works through native adapters, survives reload, handles requests, and
     await projectStatus.getByTestId('workspace-agent-open').click()
     await expect(projectRow).toHaveAttribute('aria-expanded', 'false')
     await expect(page.getByTestId('chat-tab').first()).toHaveAttribute('data-active', 'true')
+    await page.mouse.move(8, 8)
+    await expect(page.getByRole('tooltip')).toHaveCount(0)
     await projectRow.click()
     await expect(waitingRow).toBeVisible()
     await page.getByRole('button', { name: 'Decline', exact: true }).click()
