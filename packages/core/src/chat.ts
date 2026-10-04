@@ -123,6 +123,16 @@ export type AgentSessionSummary = Pick<
   'id' | 'title' | 'model' | 'status' | 'updatedAt'
 >
 export type ChatView = { session: AgentSession | null; sessions: AgentSessionSummary[] }
+/** A session status the sidebar and chat tab actually draw. Idle sessions are omitted. */
+export type AgentActivityStatus = Exclude<AgentSession['status'], 'idle'>
+export type ChatWorkspaceActivity = {
+  workspaceId: number
+  status: AgentActivityStatus
+}
+/** Workspaces that currently have a visible agent activity status. */
+export type ChatActivityOverview = {
+  workspaces: ChatWorkspaceActivity[]
+}
 export type ChatAttachmentContent = { mimeType: ChatImageType; data: string }
 export type ChatCommand = {
   action: 'get' | 'new' | 'open' | 'send' | 'stop' | 'reply' | 'fork' | 'steer' | 'dequeue'

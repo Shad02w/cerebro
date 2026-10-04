@@ -107,6 +107,8 @@ export async function applyGitHubStatus(status: GitHubStatus): Promise<void> {
 export function connectQueryEvents(): () => void {
   const unsubscribeChat = window.cerebro.onChatChanged(({ workspaceId }) => {
     void queryClient.invalidateQueries({ queryKey: workspaceId ? ['chat', workspaceId] : ['chat'] })
+    // ['chat', workspaceId] does not match the sidebar aggregate at ['chat', 'overview'].
+    void queryClient.invalidateQueries({ queryKey: ['chat', 'overview'] })
   })
   const unsubscribeLayout = window.cerebro.onLayoutChanged(acceptLayout)
   focusManager.setEventListener((handleFocus) => window.cerebro.onWindowFocus(handleFocus))

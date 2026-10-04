@@ -1,0 +1,30 @@
+.agent-status-spin {
+  animation: agent-status-spin 2.4s linear infinite;
+}
+
+.agent-status-pulse {
+  animation: agent-status-pulse 2.2s ease-in-out infinite;
+}
+
+@keyframes agent-status-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes agent-status-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce), (forced-colors: active) {
+  .agent-status-spin,
+  .agent-status-pulse {
+    animation: none;
+  }
+}

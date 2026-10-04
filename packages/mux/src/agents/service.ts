@@ -27,6 +27,8 @@ import {
   type ChatAttachmentContent,
   type ChatCommand,
   type ChatImageType,
+  type AgentActivityStatus,
+  type ChatActivityOverview,
   type ChatView,
   type QueuedMessage
 } from '@cerebro/core'
@@ -151,6 +153,15 @@ function validateAttachments(
 }
 const busy = (session: AgentSession): boolean =>
   session.status === 'running' || session.status === 'waiting'
+/** waiting beats running. Otherwise only the newest session counts, and only when it failed or was interrupted. */
+function activityStatus(sessions: AgentSession[]): AgentActivityStatus | null {
+  if (sessions.some((session) => session.status === 'waiting')) return 'waiting'
+  if (sessions.some((session) => session.status === 'running')) return 'running'
+  const newest = sessions.reduce((best, session) =>
+    session.updatedAt > best.updatedAt ? session : best
+  )
+  return newest.status === 'failed' || newest.status === 'interrupted' ? newest.status : null
+}
 const readJson = <T>(path: string, fallback: T): T => {
   try {
     return JSON.parse(readFileSync(path, 'utf8')) as T
@@ -365,6 +376,21 @@ export class AgentSessions {
         .sort((a, b) => b.updatedAt - a.updatedAt)
         .map(({ id, title, model, status, updatedAt }) => ({ id, title, model, status, updatedAt }))
     })
+  }
+  /** Workspaces with a non-idle activity status. Unselected workspaces are included; idle ones are not. */
+  overview(): ChatActivityOverview {
+    const grouped = new Map<number, AgentSession[]>()
+    for (const session of this.sessions.values()) {
+      const list = grouped.get(session.workspaceId)
+      if (list) list.push(session)
+      else grouped.set(session.workspaceId, [session])
+    }
+    const workspaces = [...grouped.entries()].flatMap(([workspaceId, sessions]) => {
+      const status = activityStatus(sessions)
+      return status ? [{ workspaceId, status }] : []
+    })
+    workspaces.sort((a, b) => a.workspaceId - b.workspaceId)
+    return { workspaces }
   }
   async command(scope: AgentScope, command: ChatCommand): Promise<ChatView> {
     if (this.stopping) throw new Error('Agent host is stopping.')

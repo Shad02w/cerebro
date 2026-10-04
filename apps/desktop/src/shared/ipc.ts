@@ -1,6 +1,7 @@
 export const IPC = {
   chat: {
     command: 'cerebro:chat:command',
+    overview: 'cerebro:chat:overview',
     catalog: 'cerebro:chat:catalog',
     favorite: 'cerebro:chat:favorite',
     attachment: 'cerebro:chat:attachment',

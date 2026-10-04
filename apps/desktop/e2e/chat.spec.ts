@@ -89,12 +89,15 @@ test('chat works through native adapters, survives reload, handles requests, and
     await expect(page.getByTestId('chat-transcript').getByRole('status')).toContainText(
       'Ready · Native session saved'
     )
+    await expect(page.locator('[data-workspace-agent-status]')).toHaveCount(0)
+    await expect(page.locator('[data-chat-agent-status]')).toHaveCount(0)
     await expect(page.getByRole('separator', { name: 'End of response' })).toHaveCount(1)
     await expect(page.getByTestId('context-usage-ring')).toContainText('17%')
     await page.getByTestId('context-usage-ring').hover()
     await expect(page.getByText('17% of context used')).toBeVisible()
     await expect(page.getByText('43,759 / 258,400 tokens')).toBeVisible()
     await mkdir('/tmp/cerebro-chat-evidence', { recursive: true })
+    await mkdir('/opt/cursor/artifacts', { recursive: true })
     const userMessage = page.getByTestId('chat-user-message').first()
     const copyButton = userMessage.getByRole('button', { name: 'Copy message', exact: true })
     const previousClipboard = await electronApp.evaluate(({ clipboard }) => clipboard.readText())
@@ -139,6 +142,31 @@ test('chat works through native adapters, survives reload, handles requests, and
     await page.getByRole('textbox', { name: 'Message agent' }).fill('approval')
     await page.getByRole('button', { name: 'Send message', exact: true }).click()
     await expect(page.getByRole('button', { name: 'Allow once', exact: true })).toBeVisible()
+    const waitingRow = page.locator(
+      `[data-sidebar="menu-row"][data-workspace-id="${workspaceId}"] [data-workspace-agent-status]`
+    )
+    await expect(waitingRow).toHaveAttribute('data-workspace-agent-status', 'waiting')
+    await expect(waitingRow).toHaveAttribute('aria-label', 'Agent needs your action')
+    await expect(waitingRow).toHaveClass(/text-amber-500/)
+    await expect(waitingRow).toHaveCSS('opacity', '1')
+    await expect(page.locator('[data-chat-agent-status="waiting"]')).toBeVisible()
+    await expect(page.locator('[data-chat-agent-status="waiting"]')).toHaveAttribute(
+      'aria-label',
+      'Agent needs your action'
+    )
+    await expect(page.locator('[data-chat-agent-status="waiting"] svg')).not.toHaveClass(
+      /agent-status-spin/
+    )
+    await expect(page.getByTestId(`project-agent-status-${project.id}`)).toHaveCount(0)
+    await expect(page.getByTestId('chat-tab').first()).toHaveText(userText)
+    await page.screenshot({ path: '/opt/cursor/artifacts/agent-status-blocked.png' })
+    await page.screenshot({ path: '/tmp/cerebro-chat-evidence/agent-status-blocked.png' })
+    await projectRow.click()
+    const projectStatus = page.getByTestId(`project-agent-status-${project.id}`)
+    await expect(projectStatus).toHaveAttribute('data-workspace-agent-status', 'waiting')
+    await expect(projectStatus).toHaveCSS('opacity', '0.6')
+    await projectRow.click()
+    await expect(waitingRow).toBeVisible()
     await page.getByRole('button', { name: 'Decline', exact: true }).click()
     await expect(page.getByTestId('chat-transcript')).toContainText('Permission resolved.')
     await page.reload()
@@ -163,17 +191,51 @@ test('chat works through native adapters, survives reload, handles requests, and
     await expect(page.getByTestId('chat-view').getByRole('status')).toHaveCount(1)
     const workingText = working.locator('span')
     await expect(workingText).toHaveCSS('animation-name', 'chat-working-shimmer')
+    const runningRow = page.locator(
+      `[data-sidebar="menu-row"][data-workspace-id="${workspaceId}"] [data-workspace-agent-status="running"]`
+    )
+    await expect(runningRow).toBeVisible()
+    await expect(runningRow).toHaveClass(/text-sky-500/)
+    await expect(runningRow.locator('svg')).toHaveClass(/agent-status-spin/)
+    await expect(runningRow.locator('svg')).toHaveCSS('animation-name', 'agent-status-spin')
+    const runningTab = page.locator('[data-chat-agent-status="running"]')
+    await expect(runningTab).toBeVisible()
+    await expect(runningTab.locator('svg')).not.toHaveClass(/agent-status-spin/)
+    await expect(runningTab.locator('svg')).toHaveCSS('animation-name', 'none')
+    await expect(page.getByTestId('chat-tab-agent-icon')).toHaveAttribute(
+      'data-harness-icon',
+      'codex'
+    )
+    await expect(page.getByTestId('chat-tab').first()).toHaveText(userText)
     await working.scrollIntoViewIfNeeded()
     await page.screenshot({ path: '/tmp/cerebro-chat-evidence/working-shimmer.png' })
+    await page.screenshot({ path: '/opt/cursor/artifacts/agent-status-working.png' })
+    await page.screenshot({ path: '/tmp/cerebro-chat-evidence/agent-status-working.png' })
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await expect(workingText).toHaveCSS('animation-name', 'none')
     await expect(workingText).not.toHaveCSS('color', 'rgba(0, 0, 0, 0)')
+    await expect(runningRow.locator('svg')).toHaveCSS('animation-name', 'none')
+    await expect(runningRow).toHaveClass(/text-sky-500/)
     await page.screenshot({ path: '/tmp/cerebro-chat-evidence/working-reduced-motion.png' })
     await page.emulateMedia({ reducedMotion: 'no-preference' })
+    await expect(runningRow.locator('svg')).toHaveCSS('animation-name', 'agent-status-spin')
     await page.getByRole('button', { name: 'Stop agent' }).click()
     await expect(working).not.toContainText('Working…')
     await expect(page.getByRole('separator', { name: 'End of response' })).toHaveCount(4)
     await page.screenshot({ path: '/tmp/cerebro-chat-evidence/response-interrupted.png' })
+    const interruptedRow = page.locator(
+      `[data-sidebar="menu-row"][data-workspace-id="${workspaceId}"] [data-workspace-agent-status="interrupted"]`
+    )
+    await expect(interruptedRow).toBeVisible()
+    await expect(interruptedRow).toHaveAttribute('aria-label', 'Agent interrupted')
+    await expect(interruptedRow).toHaveClass(/text-orange-500/)
+    await expect(interruptedRow.locator('svg')).not.toHaveClass(/agent-status-spin/)
+    await expect(page.locator('[data-chat-agent-status="interrupted"]')).toHaveAttribute(
+      'aria-label',
+      'Agent interrupted'
+    )
+    await expect(page.getByTestId('chat-tab').first()).toHaveText(userText)
+    await page.screenshot({ path: '/opt/cursor/artifacts/agent-status-interrupted.png' })
     await expect(page.getByTestId('chat-view').getByRole('status')).toContainText('interrupted')
     const chatTranscript = page.getByTestId('chat-transcript')
     const composer = page.getByTestId('chat-composer')

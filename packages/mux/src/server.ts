@@ -295,6 +295,8 @@ export async function startServer(): Promise<void> {
           case 'subscribe':
             peer.subscribed = true
             return layout
+          case 'chat.overview':
+            return agents.overview()
           case 'chat.catalog':
             return agents.models(Boolean((p as unknown as { refresh?: boolean }).refresh))
           case 'chat.favorite': {
