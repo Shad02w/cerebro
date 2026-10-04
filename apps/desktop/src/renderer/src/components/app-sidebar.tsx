@@ -19,9 +19,8 @@ import {
 import type { ChatAgentActivity } from '@cerebro/core'
 import type { Project, Workspace } from '@shared/types'
 import type { SettingsSectionId } from '@/lib/app-route'
-import { AgentStatusMark } from '@/components/agent-status-icon'
-import { harnessLabels } from '@/components/chat/queries'
-import { agentStatusPresentation, sortAgentActivity, useAgentActivity } from '@/lib/agent-activity'
+import { HarnessStatusIcon } from '@/components/harness-icon'
+import { sortAgentActivity, useAgentActivity } from '@/lib/agent-activity'
 import { SETTINGS_SECTIONS } from '@/lib/settings-sections'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -138,26 +137,20 @@ function WorkspaceAgents({
 }): React.JSX.Element | null {
   if (!agents.length) return null
   return (
-    <span
+    <div
       data-testid={testId}
-      className={cn('mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5', className)}
+      className={cn('mt-1 flex min-w-0 flex-wrap items-center gap-2', className)}
     >
       {agents.map((agent) => (
-        <span
+        <HarnessStatusIcon
           key={agent.sessionId}
-          data-workspace-agent-status={agent.status}
-          data-agent-harness={agent.harness}
-          aria-label={agentStatusPresentation[agent.status].label}
-          className={cn(
-            'inline-flex min-w-0 items-center gap-1 text-[10px] leading-3',
-            agentStatusPresentation[agent.status].color
-          )}
-        >
-          <AgentStatusMark status={agent.status} />
-          <span className="truncate">{harnessLabels[agent.harness]}</span>
-        </span>
+          harness={agent.harness}
+          status={agent.status}
+          surface="sidebar"
+          plateClassName="bg-sidebar"
+        />
       ))}
-    </span>
+    </div>
   )
 }
 

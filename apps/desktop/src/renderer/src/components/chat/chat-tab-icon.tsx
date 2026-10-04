@@ -1,16 +1,6 @@
 import { useQueries } from '@tanstack/react-query'
 import type { AgentHarness, AgentSession, PaneNode, WorkspaceTab } from '@cerebro/core'
-import claudeIcon from '@/assets/agents/claude.svg'
-import codexIcon from '@/assets/agents/codex.svg'
-import piIcon from '@/assets/agents/pi.svg'
-import { AgentStatusIcon } from '@/components/agent-status-icon'
-import { harnessLabels } from './queries'
-
-const icons: Record<AgentHarness, string> = {
-  claude: claudeIcon,
-  codex: codexIcon,
-  pi: piIcon
-}
+import { HarnessIcon, HarnessStatusIcon } from '@/components/harness-icon'
 
 function chatPaneIds(node: PaneNode): number[] {
   if (node.type === 'pane') return node.kind === 'chat' ? [node.id] : []
@@ -39,23 +29,16 @@ export function ChatTabIcon({
   const session =
     sessions[paneIds.indexOf(tab.activePaneId)]?.data ?? sessions.find((entry) => entry.data)?.data
   if (!session) return null
+  if (session.status === 'idle') {
+    return <HarnessIcon harness={session.harness} testId="chat-tab-agent-icon" />
+  }
   return (
-    <span className="relative inline-flex size-4 shrink-0">
-      <span
-        role="img"
-        aria-label={harnessLabels[session.harness]}
-        data-testid="chat-tab-agent-icon"
-        data-harness-icon={session.harness}
-        className={`size-4 bg-current [mask-repeat:no-repeat] [mask-position:center] [mask-size:contain] ${session.harness === 'claude' ? 'text-[#D97757]' : ''}`}
-        style={{ maskImage: `url("${icons[session.harness]}")` }}
-      />
-      {session.status === 'idle' ? null : (
-        <AgentStatusIcon
-          status={session.status}
-          surface="tab"
-          className="absolute -right-1 -bottom-1 rounded-[3px] bg-background p-px"
-        />
-      )}
-    </span>
+    <HarnessStatusIcon
+      harness={session.harness}
+      status={session.status}
+      surface="tab"
+      testId="chat-tab-agent-icon"
+      plateClassName="bg-background"
+    />
   )
 }

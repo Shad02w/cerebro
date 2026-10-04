@@ -142,20 +142,34 @@ test('chat works through native adapters, survives reload, handles requests, and
     await page.getByRole('textbox', { name: 'Message agent' }).fill('approval')
     await page.getByRole('button', { name: 'Send message', exact: true }).click()
     await expect(page.getByRole('button', { name: 'Allow once', exact: true })).toBeVisible()
-    const waitingRow = page.locator(
-      `[data-sidebar="menu-row"][data-workspace-id="${workspaceId}"] [data-workspace-agent-status]`
+    const waitingIcon = page.locator(
+      `[data-sidebar="menu-row"][data-workspace-id="${workspaceId}"] [data-agent-harness="codex"]`
+    )
+    const waitingRow = waitingIcon.locator('[data-workspace-agent-status]')
+    await expect(waitingIcon).toHaveAttribute('data-agent-harness', 'codex')
+    await expect(waitingIcon.getByRole('img', { name: 'Codex' })).toHaveAttribute(
+      'data-harness-icon',
+      'codex'
     )
     await expect(waitingRow).toHaveAttribute('data-workspace-agent-status', 'waiting')
-    await expect(waitingRow).toHaveAttribute('data-agent-harness', 'codex')
     await expect(waitingRow).toHaveAttribute('aria-label', 'Agent needs your action')
-    await expect(waitingRow).toContainText('Codex')
     await expect(waitingRow).toHaveClass(/text-amber-500/)
     await expect(waitingRow.locator('.agent-status-dot')).toBeVisible()
+    await expect(waitingIcon).not.toContainText('Codex')
     const waitingTitle = page.locator(`[data-testid="workspace-row-${workspaceId}"] span`).first()
     const waitingTitleBox = await waitingTitle.boundingBox()
-    const waitingBox = await waitingRow.boundingBox()
-    expect(waitingBox!.y).toBeGreaterThan(waitingTitleBox!.y)
-    expect(Math.abs(waitingBox!.x - waitingTitleBox!.x)).toBeLessThan(12)
+    const waitingIconBox = await waitingIcon.boundingBox()
+    const waitingBadgeBox = await waitingRow.boundingBox()
+    expect(waitingIconBox!.y).toBeGreaterThan(waitingTitleBox!.y)
+    expect(Math.abs(waitingIconBox!.x - waitingTitleBox!.x)).toBeLessThan(12)
+    expect(waitingBadgeBox!.x).toBeGreaterThan(waitingIconBox!.x + waitingIconBox!.width / 2)
+    expect(waitingBadgeBox!.y).toBeGreaterThan(waitingIconBox!.y + waitingIconBox!.height / 2)
+    expect(waitingBadgeBox!.x + waitingBadgeBox!.width).toBeGreaterThan(
+      waitingIconBox!.x + waitingIconBox!.width - 1
+    )
+    expect(waitingBadgeBox!.y + waitingBadgeBox!.height).toBeGreaterThan(
+      waitingIconBox!.y + waitingIconBox!.height - 1
+    )
     await expect(page.locator('[data-chat-agent-status="waiting"]')).toBeVisible()
     await expect(page.locator('[data-chat-agent-status="waiting"]')).toHaveAttribute(
       'aria-label',
@@ -170,8 +184,9 @@ test('chat works through native adapters, survives reload, handles requests, and
     await page.screenshot({ path: '/tmp/cerebro-chat-evidence/agent-status-blocked.png' })
     await projectRow.click()
     const projectStatus = page.getByTestId(`project-agent-status-${project.id}`)
+    await expect(projectStatus.locator('[data-harness-icon="codex"]')).toBeVisible()
     await expect(projectStatus.locator('[data-workspace-agent-status="waiting"]')).toBeVisible()
-    await expect(projectStatus).toContainText('Codex')
+    await expect(projectStatus).not.toContainText('Codex')
     await expect(projectStatus).toHaveCSS('opacity', '0.6')
     await projectRow.click()
     await expect(waitingRow).toBeVisible()
@@ -200,10 +215,10 @@ test('chat works through native adapters, survives reload, handles requests, and
     const workingText = working.locator('span')
     await expect(workingText).toHaveCSS('animation-name', 'chat-working-shimmer')
     const runningRow = page.locator(
-      `[data-sidebar="menu-row"][data-workspace-id="${workspaceId}"] [data-workspace-agent-status="running"]`
+      `[data-sidebar="menu-row"][data-workspace-id="${workspaceId}"] [data-agent-harness="codex"] [data-workspace-agent-status="running"]`
     )
     await expect(runningRow).toBeVisible()
-    await expect(runningRow).toContainText('Codex')
+    await expect(runningRow.locator('xpath=..')).not.toContainText('Codex')
     await expect(runningRow).toHaveClass(/text-sky-500/)
     await expect(runningRow.locator('.agent-status-dots > span')).toHaveCount(4)
     await expect(runningRow.locator('.agent-status-dots > span').first()).toHaveCSS(
@@ -244,10 +259,10 @@ test('chat works through native adapters, survives reload, handles requests, and
     await expect(page.getByRole('separator', { name: 'End of response' })).toHaveCount(4)
     await page.screenshot({ path: '/tmp/cerebro-chat-evidence/response-interrupted.png' })
     const interruptedRow = page.locator(
-      `[data-sidebar="menu-row"][data-workspace-id="${workspaceId}"] [data-workspace-agent-status="interrupted"]`
+      `[data-sidebar="menu-row"][data-workspace-id="${workspaceId}"] [data-agent-harness="codex"] [data-workspace-agent-status="interrupted"]`
     )
     await expect(interruptedRow).toBeVisible()
-    await expect(interruptedRow).toContainText('Codex')
+    await expect(interruptedRow.locator('xpath=..')).not.toContainText('Codex')
     await expect(interruptedRow).toHaveAttribute('aria-label', 'Agent interrupted')
     await expect(interruptedRow).toHaveClass(/text-orange-500/)
     await expect(interruptedRow.locator('.agent-status-dots')).toHaveCount(0)
