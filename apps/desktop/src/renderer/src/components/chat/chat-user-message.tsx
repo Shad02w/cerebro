@@ -1,35 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Copy } from 'lucide-react'
-import { chatImageMarkerPattern, type ChatAttachment } from '@cerebro/core'
+import type { ChatAttachment } from '@cerebro/core'
 import { Button } from '@/components/ui/button'
 import { SuccessToast } from '@/components/success-toast'
 import { useClipboard } from '@/hooks/use-clipboard'
 import { dataUrl } from './chat-attachments'
+import { ComposerMessage } from './composer-editor'
 
-type Part =
-  | { kind: 'text'; key: string; value: string }
-  | { kind: 'chip'; key: string; index: number; attachment: ChatAttachment }
 const noAttachments: ChatAttachment[] = []
-
-/** Splits message text so tracked `[Image #N]` markers render as chips. Unmatched markers stay text. */
-function splitMarkers(text: string, attachments: ChatAttachment[]): Part[] {
-  const parts: Part[] = []
-  let cursor = 0
-  for (const match of text.matchAll(chatImageMarkerPattern)) {
-    const index = Number(match[1])
-    const attachment = attachments[index - 1]
-    if (!attachment || match.index === undefined) continue
-    if (match.index > cursor)
-      parts.push({ kind: 'text', key: `t${cursor}`, value: text.slice(cursor, match.index) })
-    parts.push({ kind: 'chip', key: `c${match.index}`, index, attachment })
-    cursor = match.index + match[0].length
-  }
-  if (cursor < text.length)
-    parts.push({ kind: 'text', key: `t${cursor}`, value: text.slice(cursor) })
-  return parts
-}
 
 function AttachmentImage({
   workspaceId,
@@ -74,7 +54,6 @@ export function ChatUserMessage({
   const [error, setError] = useState(false)
   const [preview, setPreview] = useState<ChatAttachment | null>(null)
   const toastId = useRef(0)
-  const parts = useMemo(() => splitMarkers(text, attachments), [text, attachments])
   useEffect(() => {
     if (!preview) return
     const close = (event: KeyboardEvent): void => {
@@ -95,7 +74,7 @@ export function ChatUserMessage({
       className="ml-auto flex max-w-[90%] flex-col items-end gap-1"
       data-testid="chat-user-message"
     >
-      <div className="max-w-full rounded-2xl bg-muted px-4 py-3 text-sm whitespace-pre-wrap break-words">
+      <div className="max-w-full rounded-2xl bg-muted px-4 py-3 text-sm break-words">
         {attachments.length ? (
           <ul className="mb-2 flex flex-wrap gap-2" aria-label="Attached images">
             {attachments.map((attachment, index) => (
@@ -120,22 +99,16 @@ export function ChatUserMessage({
             ))}
           </ul>
         ) : null}
-        {parts.map((part) =>
-          part.kind === 'text' ? (
-            <span key={part.key}>{part.value}</span>
-          ) : (
-            <button
-              key={part.key}
-              type="button"
-              className="mx-0.5 inline-flex items-center rounded-md border bg-background px-1.5 align-baseline font-mono text-xs leading-5"
-              data-testid="chat-image-chip"
-              aria-label={`Image ${part.index}: ${part.attachment.name}`}
-              onClick={() => setPreview(part.attachment)}
-            >
-              [Image #{part.index}]
-            </button>
-          )
-        )}
+        {text ? (
+          <ComposerMessage
+            text={text}
+            attachments={attachments}
+            onImageChip={(attachmentId) => {
+              const attachment = attachments.find((item) => item.id === attachmentId)
+              if (attachment) setPreview(attachment)
+            }}
+          />
+        ) : null}
       </div>
       <Button
         type="button"

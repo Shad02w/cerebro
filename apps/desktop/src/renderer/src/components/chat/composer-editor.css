@@ -1,0 +1,130 @@
+.composer-editor {
+  white-space: pre-wrap;
+}
+
+.composer-editor:focus {
+  outline: none;
+}
+
+.composer-editor p.is-editor-empty:first-child::before {
+  float: left;
+  height: 0;
+  color: var(--muted-foreground);
+  content: attr(data-placeholder);
+  pointer-events: none;
+}
+
+.composer-editor-readonly {
+  min-height: 0;
+  max-height: none;
+  padding: 0;
+}
+
+.composer-editor p,
+.composer-editor ul {
+  margin: 0;
+}
+
+.composer-editor ul {
+  list-style: disc;
+  padding-left: 1.15rem;
+}
+
+.composer-editor ul ul {
+  list-style: circle;
+}
+
+.composer-editor p code {
+  border-radius: 0.25rem;
+  background: color-mix(in srgb, var(--muted) 80%, transparent);
+  padding: 0 0.25rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+}
+
+.composer-editor-readonly p code {
+  background: var(--background);
+}
+
+.composer-editor-readonly .composer-image-chip,
+.composer-editor-readonly .composer-code-block {
+  background: var(--background);
+}
+
+.composer-editor .composer-tag {
+  color: var(--sidebar-selected);
+  font-weight: 600;
+}
+
+.composer-editor .composer-image-chip {
+  display: inline-flex;
+  border: 0;
+  border-radius: 0.25rem;
+  background: var(--muted);
+  padding: 0 0.25rem;
+  color: inherit;
+  font: inherit;
+  font-size: 0.75rem;
+}
+
+.composer-code-block {
+  margin: 0.35rem 0;
+  overflow: hidden;
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--muted) 70%, transparent);
+}
+
+.composer-code-block pre {
+  margin: 0;
+  overflow-x: auto;
+  padding: 0.45rem 0.7rem 0.55rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.composer-editor .hljs-keyword,
+.composer-editor .hljs-selector-tag,
+.composer-editor .hljs-built_in {
+  color: #7c3aed;
+}
+
+.composer-editor .hljs-string,
+.composer-editor .hljs-attr {
+  color: #047857;
+}
+
+.composer-editor .hljs-number,
+.composer-editor .hljs-literal {
+  color: #b45309;
+}
+
+.composer-editor .hljs-comment {
+  color: var(--muted-foreground);
+}
+
+.composer-editor .hljs-title,
+.composer-editor .hljs-function {
+  color: #1d4ed8;
+}
+
+.dark .composer-editor .hljs-keyword,
+.dark .composer-editor .hljs-selector-tag,
+.dark .composer-editor .hljs-built_in {
+  color: #c4b5fd;
+}
+
+.dark .composer-editor .hljs-string,
+.dark .composer-editor .hljs-attr {
+  color: #6ee7b7;
+}
+
+.dark .composer-editor .hljs-number,
+.dark .composer-editor .hljs-literal {
+  color: #fdba74;
+}
+
+.dark .composer-editor .hljs-title,
+.dark .composer-editor .hljs-function {
+  color: #93c5fd;
+}
