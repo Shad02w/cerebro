@@ -155,7 +155,14 @@ export function ChatView({
         transcript.style.paddingBottom = ''
         transcript.style.scrollPaddingBottom = ''
         input.style.right = ''
-        const offset = Math.max(0, (view.clientHeight - input.offsetHeight) / 2)
+        // Center on the input shell — empty hero is absolutely positioned above it.
+        const shell = input.querySelector('[data-testid="chat-composer-shell"]')
+        const shellHeight = shell instanceof HTMLElement ? shell.offsetHeight : input.offsetHeight
+        const padBottom =
+          shell instanceof HTMLElement
+            ? Number.parseFloat(getComputedStyle(shell.parentElement!).paddingBottom) || 0
+            : 0
+        const offset = Math.max(0, view.clientHeight / 2 - shellHeight / 2 - padBottom)
         input.style.transform = `translateY(-${offset}px)`
         return
       }
@@ -166,6 +173,8 @@ export function ChatView({
       const observer = new ResizeObserver(syncDock)
       observer.observe(view)
       observer.observe(input)
+      const shell = input.querySelector('[data-testid="chat-composer-shell"]')
+      if (shell instanceof HTMLElement) observer.observe(shell)
       return () => observer.disconnect()
     }
     const stopLayout = observeChatLayout(transcript, input, stick)
@@ -319,27 +328,27 @@ export function ChatView({
             className="h-10 bg-gradient-to-t from-background via-background/80 to-transparent"
           />
         ) : null}
-        <div className={cn('px-5', empty ? 'pb-4' : 'bg-background pb-4')}>
-          <div
-            className="chat-composer-empty"
-            data-testid="chat-empty-hero"
-            aria-hidden={empty ? undefined : true}
-          >
-            <MessageSquare className="size-7 text-muted-foreground" />
-            <h2 className="text-lg font-medium">What would you like to build?</h2>
-            <p className="max-w-sm text-sm text-muted-foreground">
-              Work with Claude Code, Codex, or Pi in this workspace.
-            </p>
-          </div>
+        <div className={cn('relative px-5', empty ? 'pb-0' : 'bg-background pb-4')}>
           {session ? (
             <div className={`mx-auto max-w-3xl ${visible ? 'pointer-events-auto' : ''}`}>
               <ChatQueue session={session} onSteer={steer} onDequeue={dequeue} />
             </div>
           ) : null}
           <div
-            className={`chat-composer-glow-wrap mx-auto max-w-3xl ${visible ? 'pointer-events-auto' : ''}`}
+            className={`chat-composer-glow-wrap relative mx-auto max-w-3xl ${visible ? 'pointer-events-auto' : ''}`}
             data-testid="chat-composer-shell"
           >
+            <div
+              className="chat-composer-empty"
+              data-testid="chat-empty-hero"
+              aria-hidden={empty ? undefined : true}
+            >
+              <MessageSquare className="size-7 text-muted-foreground" />
+              <h2 className="text-lg font-medium">What would you like to build?</h2>
+              <p className="max-w-sm text-sm text-muted-foreground">
+                Work with Claude Code, Codex, or Pi in this workspace.
+              </p>
+            </div>
             <div
               className="chat-composer-glow"
               aria-hidden="true"

@@ -97,14 +97,15 @@ test('agent composer renders bullets, inline code, a code block, and Add tags', 
     expect(glow.filter === 'none' || glow.filter === '').toBeTruthy()
     expect(glow.opacity).toBe('1')
     expect(formZ).toBeGreaterThan(glow.zIndex)
+    // Center the shell/form itself — hero copy is absolutely positioned above it.
     await expect
       .poll(async () => {
-        const dockBox = await dock.boundingBox()
+        const formBox = await form.boundingBox()
         const viewBox = await page.getByTestId('chat-view').boundingBox()
-        if (!dockBox || !viewBox) return Number.POSITIVE_INFINITY
-        return Math.abs(dockBox.y + dockBox.height / 2 - (viewBox.y + viewBox.height / 2))
+        if (!formBox || !viewBox) return Number.POSITIVE_INFINITY
+        return Math.abs(formBox.y + formBox.height / 2 - (viewBox.y + viewBox.height / 2))
       })
-      .toBeLessThan(100)
+      .toBeLessThan(24)
     await mkdir(evidence, { recursive: true })
     await page.screenshot({ path: join(evidence, 'composer-glow.png') })
     await shell.screenshot({ path: join(evidence, 'composer-glow-shell.png') })
