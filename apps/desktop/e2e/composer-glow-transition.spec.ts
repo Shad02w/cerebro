@@ -19,9 +19,9 @@ test.use({
 })
 
 test('empty glowing composer centers, then docks after send', async ({ page, electronApp }) => {
+  test.setTimeout(90_000)
   const directory = await mkdtemp(join(tmpdir(), 'cerebro-composer-glow-transition-'))
   const framesDir = await mkdtemp(join(tmpdir(), 'cerebro-composer-glow-frames-'))
-  const frames: Buffer[] = []
   try {
     await electronApp.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0].setSize(1250, 900)
@@ -43,6 +43,15 @@ test('empty glowing composer centers, then docks after send', async ({ page, ele
     const glow = page.getByTestId('chat-composer-glow')
     await expect(dock).toHaveAttribute('data-dock', 'center')
     await expect(glow).toHaveCSS('opacity', '1')
+    const hero = page.getByTestId('chat-empty-hero')
+    await expect(hero).toBeVisible()
+    await expect(hero).toHaveCSS('position', 'absolute')
+    // Hero sits above the form in paint order but must not change form geometry.
+    const heroBox = await hero.boundingBox()
+    const formBoxBefore = await form.boundingBox()
+    expect(heroBox).toBeTruthy()
+    expect(formBoxBefore).toBeTruthy()
+    expect(heroBox!.y + heroBox!.height).toBeLessThanOrEqual(formBoxBefore!.y + 1)
     await expect
       .poll(async () => {
         const formBox = await form.boundingBox()
@@ -50,49 +59,71 @@ test('empty glowing composer centers, then docks after send', async ({ page, ele
         if (!formBox || !viewBox) return Number.POSITIVE_INFINITY
         return Math.abs(formBox.y + formBox.height / 2 - (viewBox.y + viewBox.height / 2))
       })
-      .toBeLessThan(24)
+      .toBeLessThan(16)
 
     await mkdir(evidence, { recursive: true })
     await mkdir(mediaDir, { recursive: true })
-    await page.screenshot({ path: join(evidence, 'composer-glow-centered-v5.png') })
-    await page.screenshot({ path: join(mediaDir, 'composer-glow-centered-v5.png') })
+    await page.screenshot({ path: join(evidence, 'composer-glow-centered-v6.png') })
+    await page.screenshot({ path: join(mediaDir, 'composer-glow-centered-empty.png') })
 
-    const session = await page.context().newCDPSession(page)
-    session.on('Page.screencastFrame', async (frame) => {
-      frames.push(Buffer.from(frame.data, 'base64'))
-      await session.send('Page.screencastFrameAck', { sessionId: frame.sessionId })
-    })
-    await session.send('Page.startScreencast', {
+    const frames: Buffer[] = []
+    const cdp = await page.context().newCDPSession(page)
+    const onFrame = (payload: { data: string; sessionId: number }): void => {
+      frames.push(Buffer.from(payload.data, 'base64'))
+      void cdp.send('Page.screencastFrameAck', { sessionId: payload.sessionId })
+    }
+    cdp.on('Page.screencastFrame', onFrame)
+    await cdp.send('Page.startScreencast', {
       format: 'jpeg',
-      quality: 80,
+      quality: 72,
       everyNthFrame: 1,
       maxWidth: 1250,
       maxHeight: 900
     })
 
-    await page.waitForTimeout(600)
+    // Hold the empty centered+glow state so the video reads clearly.
+    await page.waitForTimeout(900)
+
     const composer = page.getByRole('textbox', { name: 'Message agent' })
     await composer.click()
-    await page.keyboard.type('Ship a soft glow on the empty agent composer', { delay: 35 })
+    await page.keyboard.type('Ship a soft glow on the empty agent composer', { delay: 28 })
     await page.waitForTimeout(350)
+
+    const beforeSend = await dock.evaluate((el) => getComputedStyle(el).transform)
+    expect(beforeSend).not.toBe('none')
+    expect(beforeSend).not.toBe('matrix(1, 0, 0, 1, 0, 0)')
     await page.getByRole('button', { name: 'Send message', exact: true }).click()
     await expect(dock).toHaveAttribute('data-dock', 'bottom')
     await expect(dock).toHaveAttribute('data-motion', 'on')
-    // Capture the in-flight dock motion, then settle.
-    await page.waitForTimeout(280)
     await expect
-      .poll(async () => dock.evaluate((el) => getComputedStyle(el).transform))
-      .not.toBe('none')
-    await page.waitForTimeout(450)
+      .poll(async () => dock.evaluate((el) => el.getAnimations().length))
+      .toBeGreaterThan(0)
+
+    const pathYs: number[] = []
+    const started = Date.now()
+    while (Date.now() - started < 900) {
+      const box = await form.boundingBox()
+      if (box) pathYs.push(box.y)
+      await page.waitForTimeout(16)
+    }
+    const uniqueBands = new Set(pathYs.map((y) => Math.round(y / 8)))
+    expect(
+      uniqueBands.size,
+      `expected multiple vertical samples during dock, got ${JSON.stringify(pathYs)}`
+    ).toBeGreaterThan(2)
+
     await expect(glow).toHaveCSS('opacity', '0')
     await expect(page.getByTestId('chat-empty-hero')).toHaveCSS('visibility', 'hidden')
-    await page.waitForTimeout(200)
+    await page.waitForTimeout(500)
 
-    await session.send('Page.stopScreencast')
-    await page.screenshot({ path: join(evidence, 'composer-glow-docked-v5.png') })
-    await page.screenshot({ path: join(mediaDir, 'composer-glow-docked-v5.png') })
+    await cdp.send('Page.stopScreencast')
+    cdp.off('Page.screencastFrame', onFrame)
+    await cdp.detach().catch(() => undefined)
 
-    expect(frames.length).toBeGreaterThan(10)
+    await page.screenshot({ path: join(evidence, 'composer-glow-docked-v6.png') })
+    await page.screenshot({ path: join(mediaDir, 'composer-glow-docked-v6.png') })
+
+    expect(frames.length).toBeGreaterThan(30)
     for (const [index, frame] of frames.entries()) {
       await writeFile(join(framesDir, `frame-${String(index).padStart(4, '0')}.jpg`), frame)
     }
@@ -100,7 +131,7 @@ test('empty glowing composer centers, then docks after send', async ({ page, ele
     await execFileAsync('ffmpeg', [
       '-y',
       '-framerate',
-      '20',
+      '30',
       '-i',
       join(framesDir, 'frame-%04d.jpg'),
       '-vf',

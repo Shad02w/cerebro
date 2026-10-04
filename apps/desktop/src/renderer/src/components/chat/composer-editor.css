@@ -14,7 +14,7 @@
 }
 
 .chat-composer-dock[data-motion='on'] {
-  transition: transform 500ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: transform 700ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /* Off-flow above the shell so centering uses the input height only. */
