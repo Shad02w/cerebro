@@ -12,11 +12,11 @@
   inset: 0;
   border-radius: 1rem; /* match rounded-2xl */
   background: transparent;
+  /* Wide, low-opacity shadows only — avoid tight/high-opacity layers that read as a hard band. */
   box-shadow:
-    0 14px 42px 6px
-      color-mix(in oklch, color-mix(in oklch, var(--sidebar-selected) 70%, white) 34%, transparent),
-    0 22px 72px 18px color-mix(in oklch, var(--sidebar-selected) 16%, transparent),
-    0 8px 28px 2px color-mix(in oklch, var(--sidebar-selected) 10%, transparent);
+    0 18px 96px 32px
+      color-mix(in oklch, color-mix(in oklch, var(--sidebar-selected) 68%, white) 11%, transparent),
+    0 28px 140px 56px color-mix(in oklch, var(--sidebar-selected) 6%, transparent);
   pointer-events: none;
 }
 
