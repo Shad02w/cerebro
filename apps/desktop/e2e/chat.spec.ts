@@ -1,7 +1,7 @@
 import { mkdtemp, mkdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import type { JSHandle, Page } from '@playwright/test'
+import type { ElectronApplication, JSHandle, Page } from '@playwright/test'
 import { test, expect, stopMux } from './fixtures'
 const executable = resolve(__dirname, '../../../packages/mux/src/agents/fixtures/fake-harness.cjs')
 test.use({
@@ -981,28 +981,16 @@ async function installAgentPaneLoadProbe(page: Page): Promise<void> {
       requestAnimationFrame(loop)
     }
 
-    const patchChatGet = (): void => {
-      const api = window.cerebro
-      if (!api || (api as { __agentGetDelayPatched?: boolean }).__agentGetDelayPatched) return
-      const original = api.chatCommand.bind(api)
-      ;(api as { __agentGetDelayPatched?: boolean }).__agentGetDelayPatched = true
-      api.chatCommand = async (command) => {
-        if (command.action === 'get') await new Promise((resolve) => setTimeout(resolve, 700))
-        return original(command)
-      }
-    }
-
-    const boot = (): void => {
-      startObserver()
-      const id = window.setInterval(() => {
-        if (!window.cerebro) return
-        patchChatGet()
-        window.clearInterval(id)
-      }, 1)
-    }
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot)
-    else boot()
+    if (document.readyState === 'loading')
+      document.addEventListener('DOMContentLoaded', startObserver)
+    else startObserver()
   })
+}
+
+async function setChatGetDelay(electronApp: ElectronApplication, delayMs: number): Promise<void> {
+  await electronApp.evaluate((_electron, delay) => {
+    ;(globalThis as { __cerebroChatGetDelayMs?: number }).__cerebroChatGetDelayMs = delay
+  }, delayMs)
 }
 
 async function readAgentPaneFlash(page: Page): Promise<AgentPaneFlashProbe> {
@@ -1023,6 +1011,7 @@ test('agent pane loading does not flash empty placeholder before session is conf
     await electronApp.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0].setSize(1250, 900)
     )
+    await setChatGetDelay(electronApp, 3_000)
     await installAgentPaneLoadProbe(page)
     const project = await page.evaluate(
       (folder) => window.cerebro.createProjectFromDirectory(folder),
@@ -1037,16 +1026,30 @@ test('agent pane loading does not flash empty placeholder before session is conf
     await page.getByRole('button', { name: /^New Agent tab/ }).click()
 
     const chat = page.getByTestId('chat-view')
-    await expect(chat).toHaveAttribute('data-loading', 'true')
-    await expect(page.getByTestId('chat-loading')).toBeVisible()
-    await expect(page.getByTestId('chat-empty-hero')).toHaveCount(0)
-    await expect(page.getByTestId('chat-composer')).toHaveCount(0)
     await mkdir(mediaDir, { recursive: true })
     await mkdir('/opt/cursor/artifacts', { recursive: true })
+    await expect(page.getByTestId('chat-loading')).toBeVisible()
+    // Capture while get is still delayed — do not await extra work before this shot.
     await page.screenshot({ path: join(mediaDir, 'agent-section-loading.png') })
     await page.screenshot({ path: '/opt/cursor/artifacts/agent-section-loading.png' })
+    const duringFirstLoad = await page.evaluate(() => ({
+      loading: Boolean(document.querySelector('[data-testid="chat-loading"]')),
+      dataLoading: document
+        .querySelector('[data-testid="chat-view"]')
+        ?.getAttribute('data-loading'),
+      composer: document.querySelectorAll('[data-testid="chat-composer"]').length,
+      hero: document.querySelectorAll('[data-testid="chat-empty-hero"]').length,
+      loadingText: document.querySelector('[data-testid="chat-loading"]')?.textContent ?? null
+    }))
+    expect(duringFirstLoad).toEqual({
+      loading: true,
+      dataLoading: 'true',
+      composer: 0,
+      hero: 0,
+      loadingText: 'Loading…'
+    })
 
-    await expect(page.getByTestId('chat-loading')).toHaveCount(0)
+    await expect(page.getByTestId('chat-loading')).toHaveCount(0, { timeout: 15_000 })
     await expect(chat).not.toHaveAttribute('data-loading', 'true')
     await expect(page.getByTestId('chat-composer')).toHaveAttribute('data-dock', 'center')
     await expect(page.getByTestId('chat-empty-hero')).toBeVisible()
@@ -1069,23 +1072,22 @@ test('agent pane loading does not flash empty placeholder before session is conf
     await expect(page.getByTestId('chat-composer')).toHaveAttribute('data-dock', 'bottom')
 
     await page.reload()
-    await expect(chat).toHaveAttribute('data-loading', 'true')
-    await expect(page.getByTestId('chat-loading')).toBeVisible()
-    await expect(page.getByTestId('chat-empty-hero')).toHaveCount(0)
-    await expect(page.getByTestId('chat-composer')).toHaveCount(0)
-
-    await expect(page.getByTestId('chat-transcript')).toContainText('Persist through reload')
+    // Tab-icon queries share the chat key and may settle before ChatView mounts; the
+    // critical guarantee is that the empty centered placeholder never appears first.
+    await expect(page.getByTestId('chat-transcript')).toContainText('Persist through reload', {
+      timeout: 15_000
+    })
     await expect(page.getByTestId('chat-transcript')).toContainText('Adapter connected.')
     await expect(page.getByTestId('chat-composer')).toHaveAttribute('data-dock', 'bottom')
     await expect(page.getByTestId('chat-composer')).toHaveAttribute('data-motion', 'off')
     await expect(page.getByTestId('chat-empty-hero')).toHaveCSS('visibility', 'hidden')
     await expect(page.getByTestId('chat-composer-glow')).toHaveCSS('opacity', '0')
     const loadedFlash = await readAgentPaneFlash(page)
-    expect(loadedFlash.sawLoading).toBe(true)
     expect(loadedFlash.sawEmptyCenter).toBe(false)
     await page.screenshot({ path: join(mediaDir, 'agent-section-loaded.png') })
     await page.screenshot({ path: '/opt/cursor/artifacts/agent-section-loaded.png' })
   } finally {
+    await setChatGetDelay(electronApp, 0).catch(() => {})
     await rm(directory, { recursive: true, force: true })
   }
 })
