@@ -1,9 +1,50 @@
 import { mkdtemp, mkdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import type { Locator } from '@playwright/test'
 import { test, expect } from './fixtures'
 
 const executable = resolve(__dirname, '../../../packages/mux/src/agents/fixtures/fake-harness.cjs')
+
+/** Ink boxes for @, its label, and the previous letter. A lifted @ sits above the label. */
+async function tagInk(tag: Locator): Promise<{
+  atTop: number
+  atBottom: number
+  labelTop: number
+  labelBottom: number
+  neighborBottom: number
+}> {
+  return tag.evaluate((element) => {
+    const box = (node: Text, index: number): DOMRect => {
+      const range = document.createRange()
+      range.setStart(node, index)
+      range.setEnd(node, index + 1)
+      return range.getBoundingClientRect()
+    }
+    const text = [...element.childNodes].find(
+      (node): node is Text =>
+        node.nodeType === Node.TEXT_NODE && Boolean(node.textContent?.includes('@'))
+    )
+    if (!text?.textContent) throw new Error('tag has no text')
+    const atIndex = text.textContent.indexOf('@')
+    const at = box(text, atIndex)
+    const label = box(text, atIndex + 1)
+    const previous = element.previousSibling
+    if (previous?.nodeType !== Node.TEXT_NODE || !previous.textContent)
+      throw new Error('tag has no neighboring text')
+    let neighborIndex = previous.textContent.length - 1
+    while (neighborIndex >= 0 && /\s/.test(previous.textContent[neighborIndex] ?? ''))
+      neighborIndex -= 1
+    if (neighborIndex < 0) throw new Error('tag neighbor is blank')
+    return {
+      atTop: at.top,
+      atBottom: at.bottom,
+      labelTop: label.top,
+      labelBottom: label.bottom,
+      neighborBottom: box(previous, neighborIndex).bottom
+    }
+  })
+}
 test.use({
   agentEnvironment: {
     CEREBRO_CODEX_PATH: executable,
@@ -89,7 +130,25 @@ test('agent composer renders bullets, inline code, a code block, and Add tags', 
     await expect(addMenu).toBeVisible()
     await addMenu.getByTestId('composer-add-option-B').click()
     await expect(composer.getByTestId('composer-tag')).toHaveText('@B')
+    await page.keyboard.type(' pin @A')
+    await expect(composer.getByTestId('composer-tag')).toHaveText(['@B', '@A'])
+    await page.keyboard.type('x')
+    await expect(composer.getByTestId('composer-tag')).toHaveText('@B')
+    expect(await composer.getAttribute('data-composer-text')).toContain('@Ax')
+    await page.keyboard.press('Backspace')
+    await expect(composer.getByTestId('composer-tag')).toHaveText(['@B', '@A'])
+    await page.keyboard.type(' @ZZ')
+    await expect(composer.getByTestId('composer-tag')).toHaveText(['@B', '@A'])
+    expect(await composer.getAttribute('data-composer-text')).toContain('@ZZ')
+    expect(await composer.getAttribute('data-composer-text')).not.toContain('@Ax')
+    await expect(composer.locator('.composer-tag-at')).toHaveCount(0)
+    const composerInk = await tagInk(composer.getByTestId('composer-tag').nth(1))
+    expect(composerInk.atTop).toBeGreaterThanOrEqual(composerInk.labelTop - 1)
+    expect(composerInk.atBottom).toBeGreaterThanOrEqual(composerInk.labelBottom - 0.5)
+    expect(Math.abs(composerInk.labelBottom - composerInk.neighborBottom)).toBeLessThan(1.5)
 
+    await page.keyboard.press('Escape')
+    await expect(addMenu).toBeHidden()
     await page.getByTestId('chat-model-picker').click()
     await page
       .getByTestId('model-picker')
@@ -105,13 +164,19 @@ test('agent composer renders bullets, inline code, a code block, and Add tags', 
     await expect(sent.locator('p code')).toHaveText('notes')
     await expect(sent.locator('.hljs-keyword')).toHaveText('const')
     await expect(sent.getByTestId('composer-code-language')).toHaveText('JavaScript')
-    await expect(sent.getByTestId('composer-tag')).toHaveText('@B')
+    await expect(sent.getByTestId('composer-tag')).toHaveText(['@B', '@A'])
     await expect(sent.locator('h1, h2, h3')).toHaveCount(0)
     await expect(composer).toHaveAttribute('data-composer-text', '')
     await expect(page.getByTestId('model-picker')).toBeHidden()
     await sent.scrollIntoViewIfNeeded()
     const sentDocument = sent.getByRole('document', { name: 'Your message' })
-    await expect(sentDocument.getByTestId('composer-tag')).toHaveCSS('color', tagColor)
+    await expect(sentDocument.getByTestId('composer-tag').first()).toHaveCSS('color', tagColor)
+    await expect(sentDocument.locator('.composer-tag-at')).toHaveCount(0)
+    const sentInk = await tagInk(sentDocument.getByTestId('composer-tag').nth(1))
+    expect(sentInk.atTop).toBeGreaterThanOrEqual(sentInk.labelTop - 1)
+    expect(sentInk.atBottom).toBeGreaterThanOrEqual(sentInk.labelBottom - 0.5)
+    expect(Math.abs(sentInk.labelBottom - sentInk.neighborBottom)).toBeLessThan(1.5)
+    await expect(sentDocument).toContainText('@ZZ')
     await page.screenshot({ path: join(evidence, 'composer-sent.png') })
     await sentDocument.screenshot({ path: join(evidence, 'composer-sent-document.png') })
   } finally {

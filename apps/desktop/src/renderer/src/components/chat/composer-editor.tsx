@@ -13,10 +13,9 @@ import StarterKit from '@tiptap/starter-kit'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 import Mention from '@tiptap/extension-mention'
 import Placeholder from '@tiptap/extension-placeholder'
-import { Node, mergeAttributes, type Editor, type Extensions } from '@tiptap/core'
-import { PluginKey } from '@tiptap/pm/state'
-import { NodeSelection, TextSelection } from '@tiptap/pm/state'
-import type { EditorView } from '@tiptap/pm/view'
+import { Extension, Node, mergeAttributes, type Editor, type Extensions } from '@tiptap/core'
+import { Plugin, PluginKey, NodeSelection, TextSelection } from '@tiptap/pm/state'
+import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view'
 import { common, createLowlight } from 'lowlight'
 import { chatImageMarker, type ChatAttachmentUpload } from '@cerebro/core'
 import { cn } from '@/lib/utils'
@@ -24,15 +23,56 @@ import { imageFiles, type Chip } from './chat-attachments'
 import {
   addTags,
   codeLanguages,
+  promoteAddTagTransaction,
   serializeDocument,
   serializedOffset,
   textToContent,
+  visitAddTagText,
   type TagOption
 } from './composer-document'
 import './composer-editor.css'
 
 const lowlight = createLowlight(common)
 const addTagKey = new PluginKey('addTag')
+const addTagHighlightKey = new PluginKey('addTagHighlight')
+
+const AddTagHighlight = Extension.create({
+  name: 'addTagHighlight',
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        key: addTagHighlightKey,
+        appendTransaction(transactions, _oldState, state) {
+          if (
+            !transactions.some((transaction) => transaction.docChanged || transaction.selectionSet)
+          )
+            return null
+          if (transactions.some((transaction) => transaction.getMeta('addTagPromotion')))
+            return null
+          if (transactions.some((transaction) => transaction.getMeta('composition'))) return null
+          const tr = promoteAddTagTransaction(state)
+          if (!tr) return null
+          tr.setMeta('addTagPromotion', true)
+          return tr
+        },
+        props: {
+          decorations(state) {
+            const decorations: Decoration[] = []
+            visitAddTagText(state, (_match, from, to) => {
+              decorations.push(
+                Decoration.inline(from, to, {
+                  class: 'composer-tag',
+                  'data-testid': 'composer-tag'
+                })
+              )
+            })
+            return DecorationSet.create(state.doc, decorations)
+          }
+        }
+      })
+    ]
+  }
+})
 
 export type ComposerEditorHandle = {
   insertAttachment: (attachmentId: string) => void
@@ -304,7 +344,10 @@ const extensionsFor = (menuOpen: { current: boolean }, interactive: boolean): Ex
     CodeBlock,
     ImageChip,
     ...(interactive
-      ? [Placeholder.configure({ placeholder: 'Ask your agent to work on something…' })]
+      ? [
+          AddTagHighlight,
+          Placeholder.configure({ placeholder: 'Ask your agent to work on something…' })
+        ]
       : []),
     Mention.extend({
       addKeyboardShortcuts() {
@@ -334,8 +377,7 @@ const extensionsFor = (menuOpen: { current: boolean }, interactive: boolean): Ex
           'data-testid': 'composer-tag',
           'data-id': node.attrs.id
         },
-        ['span', { class: 'composer-tag-at' }, '@'],
-        String(node.attrs.label ?? node.attrs.id ?? '')
+        `@${node.attrs.label ?? node.attrs.id ?? ''}`
       ],
       suggestion: {
         char: '@',
