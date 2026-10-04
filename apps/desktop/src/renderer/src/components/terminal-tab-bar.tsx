@@ -125,7 +125,7 @@ function SortableTab({
       data-variant="pill"
       data-dragging={isDragging ? 'true' : undefined}
       className={cn(
-        'group/tab app-no-drag flex h-full max-w-48 min-w-0 shrink-0 cursor-grab touch-none items-center select-none',
+        'group app-no-drag flex h-full max-w-48 min-w-0 shrink-0 cursor-grab touch-none items-center bg-transparent select-none',
         isDragging && 'relative z-10 cursor-grabbing opacity-60'
       )}
       style={{
@@ -168,7 +168,7 @@ function SortableTab({
           <TooltipTrigger asChild>
             <button
               type="button"
-              className="inline-flex size-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground opacity-0 transition-opacity group-hover/tab:opacity-100 group-focus-within/tab:opacity-100 hover:bg-background/80 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
+              className="inline-flex size-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground opacity-0 transition-opacity [.group:hover_&]:opacity-100 [.group:focus-within_&]:opacity-100 hover:bg-background/80 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
               aria-label={`Close ${tab.label} (${closeHotkey})`}
               data-testid="terminal-tab-close"
               onPointerDown={(event): void => event.stopPropagation()}
