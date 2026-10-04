@@ -74,6 +74,9 @@ test('agent composer renders bullets, inline code, a code block, and Add tags', 
     expect(markdown).toContain('@B')
     expect(markdown).not.toMatch(/^#{1,3} /m)
     await page.screenshot({ path: join(evidence, 'composer-tag.png') })
+    await composer.getByTestId('composer-tag').screenshot({
+      path: join(evidence, 'composer-tag-close.png')
+    })
     await page.keyboard.press('Backspace')
     await expect(composer.getByTestId('composer-tag')).toHaveText('@B')
     await page.keyboard.press('Backspace')
@@ -106,6 +109,9 @@ test('agent composer renders bullets, inline code, a code block, and Add tags', 
     await sent.scrollIntoViewIfNeeded()
     await page.screenshot({ path: join(evidence, 'composer-sent.png') })
     await sent.screenshot({ path: join(evidence, 'composer-sent-message.png') })
+    await sent.getByTestId('composer-tag').screenshot({
+      path: join(evidence, 'composer-sent-tag.png')
+    })
   } finally {
     await rm(directory, { recursive: true, force: true })
   }

@@ -334,7 +334,8 @@ const extensionsFor = (menuOpen: { current: boolean }, interactive: boolean): Ex
           'data-testid': 'composer-tag',
           'data-id': node.attrs.id
         },
-        `@${node.attrs.label ?? node.attrs.id ?? ''}`
+        ['span', { class: 'composer-tag-at' }, '@'],
+        String(node.attrs.label ?? node.attrs.id ?? '')
       ],
       suggestion: {
         char: '@',
