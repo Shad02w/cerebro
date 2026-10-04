@@ -125,8 +125,7 @@ function SortableTab({
       data-variant="pill"
       data-dragging={isDragging ? 'true' : undefined}
       className={cn(
-        'group/tab app-no-drag cursor-grab touch-none select-none',
-        tabsTriggerVariants({ variant: 'pill' }),
+        'group/tab app-no-drag flex h-full max-w-48 min-w-0 shrink-0 cursor-grab touch-none items-center select-none',
         isDragging && 'relative z-10 cursor-grabbing opacity-60'
       )}
       style={{
@@ -134,64 +133,71 @@ function SortableTab({
         transition
       }}
     >
-      <button
-        type="button"
-        role="tab"
-        aria-selected={selected}
-        aria-roledescription={attributes['aria-roledescription']}
-        aria-describedby={attributes['aria-describedby']}
-        data-terminal-tab-id={tab.id}
-        className="flex h-full min-w-0 flex-1 cursor-inherit items-center gap-1.5 text-left outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-        onPointerDown={(event): void => {
-          listeners?.onPointerDown?.(event)
-          if (event.button === 0) onSelect(tab.id)
-        }}
-        onKeyDown={(event): void => listeners?.onKeyDown?.(event)}
-        onClick={(event): void => onClick(event, tab.id)}
+      <div
+        data-slot="content-tab-pill"
+        data-state={state}
+        data-variant="pill"
+        className={cn(tabsTriggerVariants({ variant: 'pill' }), 'pointer-events-none w-full')}
       >
-        <ContentTabMark workspaceId={workspaceId} tab={tab} />
+        <button
+          type="button"
+          role="tab"
+          aria-selected={selected}
+          aria-roledescription={attributes['aria-roledescription']}
+          aria-describedby={attributes['aria-describedby']}
+          data-terminal-tab-id={tab.id}
+          className="pointer-events-auto flex h-full min-w-0 flex-1 cursor-inherit items-center gap-1.5 text-left outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          onPointerDown={(event): void => {
+            listeners?.onPointerDown?.(event)
+            if (event.button === 0) onSelect(tab.id)
+          }}
+          onKeyDown={(event): void => listeners?.onKeyDown?.(event)}
+          onClick={(event): void => onClick(event, tab.id)}
+        >
+          <ContentTabMark workspaceId={workspaceId} tab={tab} />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="min-w-0 flex-1 truncate">{tab.label}</span>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" sideOffset={4} className="max-w-64 text-wrap">
+              {tab.label}
+            </TooltipContent>
+          </Tooltip>
+        </button>
         <Tooltip>
           <TooltipTrigger asChild>
-            <span className="min-w-0 flex-1 truncate">{tab.label}</span>
+            <button
+              type="button"
+              className="pointer-events-auto inline-flex size-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground opacity-0 transition-opacity group-hover/tab:opacity-100 group-focus-within/tab:opacity-100 hover:bg-background/80 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
+              aria-label={`Close ${tab.label} (${closeHotkey})`}
+              data-testid="terminal-tab-close"
+              onPointerDown={(event): void => event.stopPropagation()}
+              onClick={(event): void => {
+                event.stopPropagation()
+                const tablist = event.currentTarget.closest('[role="tablist"]')
+                const tabButtons = Array.from(
+                  tablist?.querySelectorAll<HTMLButtonElement>('[role="tab"]') ?? []
+                )
+                const index = tabButtons.findIndex(
+                  (button) => button.dataset.terminalTabId === String(tab.id)
+                )
+                const nextFocus =
+                  tabButtons[index + 1] ??
+                  tabButtons[index - 1] ??
+                  tablist?.querySelector<HTMLButtonElement>('[data-testid="new-terminal-tab"]')
+                nextFocus?.focus()
+                onClose(tab.id)
+              }}
+            >
+              <X aria-hidden="true" className="size-3" />
+            </button>
           </TooltipTrigger>
-          <TooltipContent side="bottom" sideOffset={4} className="max-w-64 text-wrap">
-            {tab.label}
+          <TooltipContent side="bottom" sideOffset={4} className="flex items-center gap-2">
+            <span>Close</span>
+            <ShortcutKbd hotkey={closeHotkey} inverted />
           </TooltipContent>
         </Tooltip>
-      </button>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            className="pointer-events-none inline-flex size-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground opacity-0 group-hover/tab:pointer-events-auto group-hover/tab:opacity-100 group-focus-within/tab:pointer-events-auto group-focus-within/tab:opacity-100 hover:bg-background/80 hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
-            aria-label={`Close ${tab.label} (${closeHotkey})`}
-            data-testid="terminal-tab-close"
-            onPointerDown={(event): void => event.stopPropagation()}
-            onClick={(event): void => {
-              event.stopPropagation()
-              const tablist = event.currentTarget.closest('[role="tablist"]')
-              const tabButtons = Array.from(
-                tablist?.querySelectorAll<HTMLButtonElement>('[role="tab"]') ?? []
-              )
-              const index = tabButtons.findIndex(
-                (button) => button.dataset.terminalTabId === String(tab.id)
-              )
-              const nextFocus =
-                tabButtons[index + 1] ??
-                tabButtons[index - 1] ??
-                tablist?.querySelector<HTMLButtonElement>('[data-testid="new-terminal-tab"]')
-              nextFocus?.focus()
-              onClose(tab.id)
-            }}
-          >
-            <X aria-hidden="true" className="size-3" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom" sideOffset={4} className="flex items-center gap-2">
-          <span>Close</span>
-          <ShortcutKbd hotkey={closeHotkey} inverted />
-        </TooltipContent>
-      </Tooltip>
+      </div>
     </div>
   )
 }

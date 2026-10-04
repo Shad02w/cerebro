@@ -104,7 +104,7 @@ async function dragTabTo(
         reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches
       }
       const observe = (): void => {
-        for (const el of bar.querySelectorAll('[role="tab"]')) {
+        for (const el of bar.querySelectorAll('[data-testid$="-tab"]')) {
           try {
             if (Math.abs(new DOMMatrix(getComputedStyle(el).transform).m41) > 0.5) {
               seen.seenTransform = true
@@ -138,7 +138,7 @@ async function dragTabTo(
   }
   await expect
     .poll(async () =>
-      contentTabs(page).evaluateAll((tabs) =>
+      page.locator('[data-testid="terminal-tab-bar"] [data-testid$="-tab"]').evaluateAll((tabs) =>
         tabs.every((tab) => {
           const transform = getComputedStyle(tab).transform
           return (
@@ -597,31 +597,28 @@ test('content tabs use pill selection and reveal close on hover or keyboard focu
     await expect(active).toHaveAttribute('data-variant', 'pill')
     await expect(inactive).toHaveAttribute('data-state', 'inactive')
 
-    const activeStyles = await active.evaluate((el) => {
+    const activeStyles = await active.locator('[data-slot="content-tab-pill"]').evaluate((el) => {
       const style = getComputedStyle(el)
       return {
         borderRadius: style.borderRadius,
         background: style.backgroundColor,
-        borderBottomWidth: style.borderBottomWidth,
-        borderBottomStyle: style.borderBottomStyle
+        borderBottomColor: style.borderBottomColor
       }
     })
-    const inactiveStyles = await inactive.evaluate((el) => {
-      const style = getComputedStyle(el)
-      return {
-        background: style.backgroundColor,
-        borderBottomWidth: style.borderBottomWidth
-      }
-    })
+    const inactiveStyles = await inactive
+      .locator('[data-slot="content-tab-pill"]')
+      .evaluate((el) => {
+        const style = getComputedStyle(el)
+        return {
+          background: style.backgroundColor,
+          borderBottomColor: style.borderBottomColor
+        }
+      })
     expect(Number.parseFloat(activeStyles.borderRadius)).toBeGreaterThan(0)
     expect(activeStyles.background).not.toBe('rgba(0, 0, 0, 0)')
     expect(activeStyles.background).not.toBe(inactiveStyles.background)
-    expect(
-      activeStyles.borderBottomStyle === 'none' || activeStyles.borderBottomWidth === '0px'
-    ).toBe(true)
-    expect(
-      inactiveStyles.borderBottomWidth === '0px' || inactiveStyles.background === 'rgba(0, 0, 0, 0)'
-    ).toBe(true)
+    expect(activeStyles.borderBottomColor).toMatch(/rgba?\(0,\s*0,\s*0,\s*0\)|transparent/)
+    expect(inactiveStyles.background).toBe('rgba(0, 0, 0, 0)')
 
     await expect(active.locator('svg').first()).toBeVisible()
     await expect(inactive.locator('svg').first()).toBeVisible()
@@ -1055,9 +1052,9 @@ test('keeps the sidebar trigger visible above the tab bar when collapsed', async
 
     expect(layout.tabLeft).toBeLessThanOrEqual(1)
     expect(layout.tabRight).toBeGreaterThanOrEqual(layout.windowWidth - 1)
-    expect(layout.tabHeight).toBe(44)
-    expect(layout.tabButtonHeight).toBe(44)
-    expect(layout.tabButtonTop).toBe(0)
+    expect(Math.round(layout.tabHeight)).toBe(44)
+    expect(Math.round(layout.tabButtonHeight)).toBe(44)
+    expect(Math.round(layout.tabButtonTop)).toBe(0)
     expect(layout.triggerHostContainsButton).toBe(true)
     expect(layout.triggerHostRegion).toBe('no-drag')
     expect(Math.round(layout.triggerLeft)).toBe(78)
