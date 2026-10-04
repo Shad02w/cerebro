@@ -153,44 +153,35 @@ function WorkspaceAgentIcon({
   title: string
   onOpenAgent: (agent: ChatAgentActivity) => void
 }): React.JSX.Element {
-  const [open, setOpen] = useState(false)
   return (
-    <Tooltip open={open} onOpenChange={setOpen} disableHoverableContent>
-      <button
-        type="button"
-        data-testid="workspace-agent-open"
-        data-agent-title={title}
-        aria-label={title}
-        className="relative inline-flex shrink-0 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sidebar-selected"
-        onPointerEnter={(): void => setOpen(true)}
-        onPointerLeave={(): void => setOpen(false)}
-        onFocus={(): void => setOpen(true)}
-        onBlur={(): void => setOpen(false)}
-        onPointerDown={(event): void => event.stopPropagation()}
-        onClick={(event): void => {
-          event.preventDefault()
-          event.stopPropagation()
-          onOpenAgent(agent)
-        }}
-      >
-        <HarnessStatusIcon
-          harness={agent.harness}
-          status={agent.status}
-          surface="sidebar"
-          plateClassName="bg-sidebar"
-        />
-        <TooltipTrigger asChild>
-          <span
-            aria-hidden
-            data-testid="workspace-agent-anchor"
-            className="pointer-events-none absolute bottom-0 left-0 size-px"
+    <Tooltip disableHoverableContent>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          data-testid="workspace-agent-open"
+          data-agent-title={title}
+          aria-label={title}
+          className="relative inline-flex shrink-0 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sidebar-selected"
+          onPointerDown={(event): void => event.stopPropagation()}
+          onClick={(event): void => {
+            event.preventDefault()
+            event.stopPropagation()
+            onOpenAgent(agent)
+          }}
+        >
+          <HarnessStatusIcon
+            harness={agent.harness}
+            status={agent.status}
+            surface="sidebar"
+            plateClassName="bg-sidebar"
           />
-        </TooltipTrigger>
-      </button>
+        </button>
+      </TooltipTrigger>
       <TooltipContent
-        side="right"
+        side="bottom"
         align="start"
         sideOffset={4}
+        avoidCollisions={false}
         className="pointer-events-none max-w-64 text-wrap break-words"
       >
         {title}
