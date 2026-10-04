@@ -14,9 +14,9 @@
   background: transparent;
   /* Wide, low-opacity shadows only — avoid tight/high-opacity layers that read as a hard band. */
   box-shadow:
-    0 18px 96px 32px
-      color-mix(in oklch, color-mix(in oklch, var(--sidebar-selected) 68%, white) 11%, transparent),
-    0 28px 140px 56px color-mix(in oklch, var(--sidebar-selected) 6%, transparent);
+    0 20px 110px 40px
+      color-mix(in oklch, color-mix(in oklch, var(--sidebar-selected) 60%, white) 6%, transparent),
+    0 32px 160px 72px color-mix(in oklch, var(--sidebar-selected) 3.5%, transparent);
   pointer-events: none;
 }
 
