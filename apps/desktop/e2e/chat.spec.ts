@@ -175,9 +175,14 @@ test('chat works through native adapters, survives reload, handles requests, and
     )
     await expect(agentButton).toHaveAttribute('data-agent-title', userText)
     await agentButton.hover()
-    await expect(page.getByRole('tooltip')).toHaveText(
-      /Build a normalized agent chat\s+Preserve spacing/
-    )
+    const tooltip = page.getByRole('tooltip')
+    await expect(tooltip).toHaveText(/Build a normalized agent chat\s+Preserve spacing/)
+    const anchorBox = await agentButton.getByTestId('workspace-agent-anchor').boundingBox()
+    const tooltipBox = await tooltip.boundingBox()
+    expect(tooltipBox!.x).toBeGreaterThan(anchorBox!.x)
+    expect(
+      Math.abs(tooltipBox!.y + tooltipBox!.height - (anchorBox!.y + anchorBox!.height))
+    ).toBeLessThan(16)
     await page.screenshot({ path: '/opt/cursor/artifacts/agent-status-tooltip.png' })
     await page.screenshot({ path: '/tmp/cerebro-chat-evidence/agent-status-tooltip.png' })
     await page.getByTestId('new-terminal-tab').click()

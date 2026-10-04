@@ -144,6 +144,61 @@ function agentTabTitle(agent: ChatAgentActivity, layout: LayoutState | undefined
   return label || fallback
 }
 
+function WorkspaceAgentIcon({
+  agent,
+  title,
+  onOpenAgent
+}: {
+  agent: ChatAgentActivity
+  title: string
+  onOpenAgent: (agent: ChatAgentActivity) => void
+}): React.JSX.Element {
+  const [open, setOpen] = useState(false)
+  return (
+    <Tooltip open={open} onOpenChange={setOpen} disableHoverableContent>
+      <button
+        type="button"
+        data-testid="workspace-agent-open"
+        data-agent-title={title}
+        aria-label={title}
+        className="relative inline-flex shrink-0 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sidebar-selected"
+        onPointerEnter={(): void => setOpen(true)}
+        onPointerLeave={(): void => setOpen(false)}
+        onFocus={(): void => setOpen(true)}
+        onBlur={(): void => setOpen(false)}
+        onPointerDown={(event): void => event.stopPropagation()}
+        onClick={(event): void => {
+          event.preventDefault()
+          event.stopPropagation()
+          onOpenAgent(agent)
+        }}
+      >
+        <HarnessStatusIcon
+          harness={agent.harness}
+          status={agent.status}
+          surface="sidebar"
+          plateClassName="bg-sidebar"
+        />
+        <TooltipTrigger asChild>
+          <span
+            aria-hidden
+            data-testid="workspace-agent-anchor"
+            className="pointer-events-none absolute -right-1 -bottom-1 size-1"
+          />
+        </TooltipTrigger>
+      </button>
+      <TooltipContent
+        side="right"
+        align="end"
+        sideOffset={2}
+        className="pointer-events-none max-w-64 text-wrap break-words"
+      >
+        {title}
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
 function WorkspaceAgents({
   agents,
   testId,
@@ -162,42 +217,14 @@ function WorkspaceAgents({
       data-testid={testId}
       className={cn('mt-1 flex min-w-0 flex-wrap items-center gap-2', className)}
     >
-      {agents.map((agent) => {
-        const title = agentTabTitle(agent, layout)
-        return (
-          <Tooltip key={agent.sessionId} disableHoverableContent>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                data-testid="workspace-agent-open"
-                data-agent-title={title}
-                aria-label={title}
-                className="relative inline-flex shrink-0 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sidebar-selected"
-                onPointerDown={(event): void => event.stopPropagation()}
-                onClick={(event): void => {
-                  event.preventDefault()
-                  event.stopPropagation()
-                  onOpenAgent(agent)
-                }}
-              >
-                <HarnessStatusIcon
-                  harness={agent.harness}
-                  status={agent.status}
-                  surface="sidebar"
-                  plateClassName="bg-sidebar"
-                />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent
-              side="right"
-              sideOffset={6}
-              className="pointer-events-none max-w-64 text-wrap break-words"
-            >
-              {title}
-            </TooltipContent>
-          </Tooltip>
-        )
-      })}
+      {agents.map((agent) => (
+        <WorkspaceAgentIcon
+          key={agent.sessionId}
+          agent={agent}
+          title={agentTabTitle(agent, layout)}
+          onOpenAgent={onOpenAgent}
+        />
+      ))}
     </div>
   )
 }
