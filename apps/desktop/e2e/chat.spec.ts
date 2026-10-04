@@ -178,6 +178,8 @@ test('chat works through native adapters, survives reload, handles requests, and
     await expect(page.getByRole('tooltip')).toHaveText(
       /Build a normalized agent chat\s+Preserve spacing/
     )
+    await page.screenshot({ path: '/opt/cursor/artifacts/agent-status-tooltip.png' })
+    await page.screenshot({ path: '/tmp/cerebro-chat-evidence/agent-status-tooltip.png' })
     await page.getByTestId('new-terminal-tab').click()
     await page.getByTestId('open-terminal-tab').click()
     await expect(page.getByTestId('terminal-tab')).toHaveAttribute('data-active', 'true')
