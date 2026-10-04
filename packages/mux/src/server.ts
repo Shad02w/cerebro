@@ -205,10 +205,14 @@ export async function startServer(): Promise<void> {
       removed = project.workspaces.map((workspace) => workspace.id)
     }
     for (const workspaceId of removed) await agents.stopWorkspace(workspaceId)
+    const removedPanes: number[] = []
     for (const workspaceId of removed)
       for (const tab of layout.workspaces[workspaceId]?.tabs ?? [])
-        for (const pane of leaves(tab.root))
+        for (const pane of leaves(tab.root)) {
+          removedPanes.push(pane.id)
           if (pane.kind === 'terminal') await terminals.stop(pane.id)
+        }
+    if (removedPanes.length) agents.releasePanes(removedPanes)
     if (p.provider) providers.set(operationId, peer)
     try {
       const result = await storage.call('registry', { ...p, operationId })
@@ -295,8 +299,14 @@ export async function startServer(): Promise<void> {
           case 'subscribe':
             peer.subscribed = true
             return layout
-          case 'chat.overview':
-            return agents.overview()
+          case 'chat.overview': {
+            const liveChatPanes: number[] = []
+            for (const workspace of Object.values(layout.workspaces))
+              for (const tab of workspace.tabs)
+                for (const pane of leaves(tab.root))
+                  if (pane.kind === 'chat') liveChatPanes.push(pane.id)
+            return agents.overview(liveChatPanes)
+          }
           case 'chat.catalog':
             return agents.models(Boolean((p as unknown as { refresh?: boolean }).refresh))
           case 'chat.favorite': {
@@ -368,6 +378,7 @@ export async function startServer(): Promise<void> {
                   owners.delete(id)
                   for (const peer of peers) peer.attachments.delete(id)
                 }
+                if (before.size) agents.releasePanes(before)
                 if (p.action === 'focus') {
                   await storage.call('registry', { action: 'select', workspaceId: p.workspaceId })
                   publish('focus', p.workspaceId)

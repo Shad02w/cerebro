@@ -1,8 +1,21 @@
 import { ipcMain } from 'electron'
 import { IPC } from '../shared/ipc'
 import { muxCall } from './mux'
+
 export function registerLayoutIpc(): void {
-  ipcMain.handle(IPC.chat.command, (_event, command: unknown) => muxCall('chat.command', command))
+  ipcMain.handle(IPC.chat.command, async (_event, command: unknown) => {
+    const delayMs = (globalThis as { __cerebroChatGetDelayMs?: number }).__cerebroChatGetDelayMs
+    if (
+      delayMs &&
+      delayMs > 0 &&
+      command != null &&
+      typeof command === 'object' &&
+      'action' in command &&
+      (command as { action?: string }).action === 'get'
+    )
+      await new Promise((resolve) => setTimeout(resolve, delayMs))
+    return muxCall('chat.command', command)
+  })
   ipcMain.handle(IPC.chat.overview, () => muxCall('chat.overview'))
   ipcMain.handle(IPC.chat.catalog, (_event, refresh: boolean) =>
     muxCall('chat.catalog', { refresh })

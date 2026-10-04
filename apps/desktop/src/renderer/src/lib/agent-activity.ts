@@ -6,14 +6,18 @@ const rank: Record<AgentActivityStatus, number> = {
   waiting: 0,
   running: 1,
   failed: 2,
-  interrupted: 3
+  interrupted: 3,
+  finished: 4,
+  idle: 5
 }
 
 export const agentStatusPresentation = {
   running: { label: 'Agent running', color: 'text-sky-500' },
   waiting: { label: 'Agent needs your action', color: 'text-amber-500' },
+  finished: { label: 'Agent finished', color: 'text-emerald-500' },
   failed: { label: 'Agent failed', color: 'text-red-500' },
-  interrupted: { label: 'Agent interrupted', color: 'text-orange-500' }
+  interrupted: { label: 'Agent interrupted', color: 'text-orange-500' },
+  idle: { label: 'Agent tab open', color: 'text-sidebar-foreground/70' }
 } as const
 
 export function sortAgentActivity(agents: ChatAgentActivity[]): ChatAgentActivity[] {

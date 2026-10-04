@@ -117,29 +117,42 @@ export type AgentSession = {
   checkpoints?: Record<string, string>
   queue?: QueuedMessage[]
   contextUsage?: AgentContextUsage
+  /**
+   * Last settled turn outcome while idle. Sticky until the next turn starts —
+   * viewing the tab does not clear it.
+   */
+  attention?: { kind: 'finished'; at: number }
 }
 export type AgentSessionSummary = Pick<
   AgentSession,
   'id' | 'title' | 'model' | 'status' | 'updatedAt'
 >
 export type ChatView = { session: AgentSession | null; sessions: AgentSessionSummary[] }
-/** A session status the sidebar and agent tab actually draw. Idle sessions are omitted. */
-export type AgentActivityStatus = Exclude<AgentSession['status'], 'idle'>
-/** One non-idle session, so a workspace can show every agent that is working. */
+/** Session status drawn on sidebar rows and agent tabs for an open pane. */
+export type AgentActivityStatus = AgentSession['status'] | 'finished'
+/** Map persisted session fields onto the status mark shown in the UI. */
+export function agentActivityStatus(session: {
+  status: AgentSession['status']
+  attention?: AgentSession['attention']
+}): AgentActivityStatus {
+  if (session.status === 'idle' && session.attention?.kind === 'finished') return 'finished'
+  return session.status
+}
+/** One open agent pane in a workspace (bound tab), including idle. */
 export type ChatAgentActivity = {
   sessionId: string
   workspaceId: number
   harness: AgentHarness
   status: AgentActivityStatus
   title: string
-  /** Pane currently showing this session, when one is bound. */
+  /** Open chat pane bound to this session. */
   paneId: number | null
 }
 export type ChatWorkspaceActivity = {
   workspaceId: number
   agents: ChatAgentActivity[]
 }
-/** Workspaces that currently have at least one visible agent. */
+/** Workspaces that currently have at least one open agent tab. */
 export type ChatActivityOverview = {
   workspaces: ChatWorkspaceActivity[]
 }
