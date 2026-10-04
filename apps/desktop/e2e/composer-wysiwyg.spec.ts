@@ -85,16 +85,31 @@ test('agent composer renders bullets, inline code, a code block, and Add tags', 
     await expect(form).toBeVisible()
     const glow = await glowLayer.evaluate((element) => {
       const style = getComputedStyle(element)
+      const before = getComputedStyle(element, '::before')
+      const after = getComputedStyle(element, '::after')
       return {
         zIndex: Number(style.zIndex),
         boxShadow: style.boxShadow,
         filter: style.filter,
-        opacity: style.opacity
+        opacity: style.opacity,
+        beforeContent: before.content,
+        beforeFilter: before.filter,
+        beforeBackgroundImage: before.backgroundImage,
+        afterContent: after.content,
+        afterOpacity: after.opacity,
+        afterBackgroundImage: after.backgroundImage
       }
     })
     const formZ = await form.evaluate((element) => Number(getComputedStyle(element).zIndex))
-    expect(glow.boxShadow).not.toBe('none')
+    // Host stays filter-free so blur cannot composite over the opaque shell; aura is ::before.
     expect(glow.filter === 'none' || glow.filter === '').toBeTruthy()
+    expect(glow.boxShadow === 'none' || glow.boxShadow === '').toBeTruthy()
+    expect(glow.beforeContent).not.toBe('none')
+    expect(glow.beforeFilter).toMatch(/blur\(/)
+    expect(glow.beforeBackgroundImage).toMatch(/radial-gradient/)
+    expect(glow.afterContent).not.toBe('none')
+    expect(Number(glow.afterOpacity)).toBeGreaterThan(0)
+    expect(glow.afterBackgroundImage).toMatch(/url\(/)
     expect(glow.opacity).toBe('1')
     expect(formZ).toBeGreaterThan(glow.zIndex)
     // Center the shell/form itself — hero copy is absolutely positioned above it.

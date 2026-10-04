@@ -65,6 +65,11 @@ test('empty glowing composer centers, then docks after send', async ({ page, ele
     await mkdir(mediaDir, { recursive: true })
     await page.screenshot({ path: join(evidence, 'composer-glow-centered-v6.png') })
     await page.screenshot({ path: join(mediaDir, 'composer-glow-centered-empty.png') })
+    await page.screenshot({ path: join(mediaDir, 'composer-glow-banding-after.png') })
+    await page.screenshot({
+      path: join(mediaDir, 'composer-glow-banding-after-crop.png'),
+      clip: { x: 380, y: 280, width: 520, height: 320 }
+    })
 
     const frames: Buffer[] = []
     const cdp = await page.context().newCDPSession(page)
