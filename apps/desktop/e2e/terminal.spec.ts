@@ -627,7 +627,7 @@ test('content tabs use pill selection and reveal close on hover or keyboard focu
     await expect(close).toHaveAttribute('aria-label', /Close Terminal 1/)
     await page.mouse.move(20, 400)
     await expect(close).toHaveCSS('opacity', '0')
-    await inactive.hover()
+    await inactive.getByRole('tab').hover()
     await expect(close).toHaveCSS('opacity', '1')
     await page.mouse.move(20, 400)
     await expect(close).toHaveCSS('opacity', '0')

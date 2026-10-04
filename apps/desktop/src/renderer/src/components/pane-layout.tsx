@@ -31,7 +31,11 @@ export function PaneFrame({
     return () => observer.disconnect()
   }, [pane.id, visible])
   useEffect(() => {
-    if (active && visible && pane.kind === 'changes') ref.current?.focus({ preventScroll: true })
+    if (!(active && visible && pane.kind === 'changes')) return
+    // Keep keyboard focus in the content tab bar when a tab close leaves another
+    // tab selected; only move into the Changes pane when focus is elsewhere.
+    if (document.activeElement?.closest('[role="tablist"]')) return
+    ref.current?.focus({ preventScroll: true })
   }, [active, visible, pane.kind])
   return (
     <div

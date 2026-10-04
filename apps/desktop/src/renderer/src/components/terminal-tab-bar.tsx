@@ -181,18 +181,12 @@ function SortableTab({
                 const index = tabButtons.findIndex(
                   (button) => button.dataset.terminalTabId === String(tab.id)
                 )
-                const nextTabId =
-                  tabButtons[index + 1]?.dataset.terminalTabId ??
-                  tabButtons[index - 1]?.dataset.terminalTabId
+                const nextFocus =
+                  tabButtons[index + 1] ??
+                  tabButtons[index - 1] ??
+                  tablist?.querySelector<HTMLButtonElement>('[data-testid="new-terminal-tab"]')
+                nextFocus?.focus()
                 onClose(tab.id)
-                requestAnimationFrame(() => {
-                  const nextFocus = nextTabId
-                    ? tablist?.querySelector<HTMLButtonElement>(
-                        `[role="tab"][data-terminal-tab-id="${nextTabId}"]`
-                      )
-                    : tablist?.querySelector<HTMLButtonElement>('[data-testid="new-terminal-tab"]')
-                  nextFocus?.focus()
-                })
               }}
             >
               <X aria-hidden="true" className="size-3" />
