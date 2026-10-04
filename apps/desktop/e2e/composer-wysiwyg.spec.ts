@@ -74,10 +74,13 @@ test('agent composer renders bullets, inline code, a code block, and Add tags', 
     if ((await projectRow.getAttribute('aria-expanded')) === 'false') await projectRow.click()
     await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
     await page.getByRole('button', { name: /^New Agent tab/ }).click()
+    const dock = page.getByTestId('chat-composer')
     const shell = page.getByTestId('chat-composer-shell')
     const glowLayer = page.getByTestId('chat-composer-glow')
     const form = shell.locator('form.chat-composer-shell')
     await expect(shell).toBeVisible()
+    await expect(dock).toHaveAttribute('data-dock', 'center')
+    await expect(page.getByTestId('chat-empty-hero')).toBeVisible()
     await expect(glowLayer).toBeAttached()
     await expect(form).toBeVisible()
     const glow = await glowLayer.evaluate((element) => {
@@ -86,13 +89,21 @@ test('agent composer renders bullets, inline code, a code block, and Add tags', 
         zIndex: Number(style.zIndex),
         boxShadow: style.boxShadow,
         filter: style.filter,
-        backgroundColor: style.backgroundColor
+        opacity: style.opacity
       }
     })
     const formZ = await form.evaluate((element) => Number(getComputedStyle(element).zIndex))
     expect(glow.boxShadow).not.toBe('none')
     expect(glow.filter === 'none' || glow.filter === '').toBeTruthy()
+    expect(glow.opacity).toBe('1')
     expect(formZ).toBeGreaterThan(glow.zIndex)
+    const dockBox = await dock.boundingBox()
+    const viewBox = await page.getByTestId('chat-view').boundingBox()
+    expect(dockBox).toBeTruthy()
+    expect(viewBox).toBeTruthy()
+    const dockMid = dockBox!.y + dockBox!.height / 2
+    const viewMid = viewBox!.y + viewBox!.height / 2
+    expect(Math.abs(dockMid - viewMid)).toBeLessThan(80)
     await mkdir(evidence, { recursive: true })
     await page.screenshot({ path: join(evidence, 'composer-glow.png') })
     await shell.screenshot({ path: join(evidence, 'composer-glow-shell.png') })
@@ -180,6 +191,8 @@ test('agent composer renders bullets, inline code, a code block, and Add tags', 
       .getByRole('button', { name: /^Test Model.*Codex/ })
       .click()
     await page.getByRole('button', { name: 'Send message', exact: true }).click()
+    await expect(dock).toHaveAttribute('data-dock', 'bottom')
+    await expect(glowLayer).toHaveCSS('opacity', '0')
     const sent = page.getByTestId('chat-user-message').first()
     await expect(sent.locator('li p').first()).toHaveText('Ship the notes')
     await expect(sent.locator('p code')).toHaveText('notes')

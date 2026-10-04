@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowUp, ImagePlus, MessageSquare, Square } from 'lucide-react'
 import type { AgentAccessMode, AgentAnswer, AgentModel, ChatCommand } from '@cerebro/core'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import { ChatItem } from './chat-item'
 import { ChatTurnActions } from './chat-turn-actions'
 import { ChatQueue } from './chat-queue'
@@ -51,10 +52,12 @@ export function ChatView({
   const [error, setError] = useState<string | null>(null)
   const inFlight = useRef(false)
   const pendingSend = useRef<{ id: string; text: string; key?: string } | null>(null)
+  const viewRef = useRef<HTMLDivElement>(null)
   const scrolling = useRef<HTMLDivElement>(null)
   const composer = useRef<HTMLDivElement>(null)
   const editorRef = useRef<ComposerEditorHandle>(null)
   const fileInput = useRef<HTMLInputElement>(null)
+  const empty = !session?.items.length
   const imageRejection = useCallback(
     (): string | null =>
       selected?.modalities && !selected.modalities.includes('image')
@@ -137,10 +140,34 @@ export function ChatView({
       scrolling.current.scrollTop = scrolling.current.scrollHeight
   }, [session?.sequence, session?.error, error, view.error])
   useLayoutEffect(() => {
-    if (scrolling.current && composer.current)
-      return observeChatLayout(scrolling.current, composer.current, stick)
-    return undefined
-  }, [])
+    const view = viewRef.current
+    const transcript = scrolling.current
+    const input = composer.current
+    if (!view || !transcript || !input) return
+    const syncDock = (): void => {
+      if (empty) {
+        transcript.style.paddingBottom = ''
+        transcript.style.scrollPaddingBottom = ''
+        input.style.right = ''
+        const offset = Math.max(0, (view.clientHeight - input.offsetHeight) / 2)
+        input.style.transform = `translateY(-${offset}px)`
+        return
+      }
+      input.style.transform = 'translateY(0)'
+    }
+    syncDock()
+    if (empty) {
+      const observer = new ResizeObserver(syncDock)
+      observer.observe(view)
+      observer.observe(input)
+      return () => observer.disconnect()
+    }
+    const stopLayout = observeChatLayout(transcript, input, stick)
+    return () => {
+      stopLayout()
+      input.style.transform = ''
+    }
+  }, [empty])
   const send = async (): Promise<void> => {
     if (inFlight.current) return
     const message = readDraft()
@@ -191,8 +218,10 @@ export function ChatView({
       pendingSend.current = null
     }
   }
+  const alertText = error ?? session?.error ?? (view.error ? String(view.error) : null)
   return (
     <div
+      ref={viewRef}
       className="chat-scrollbars relative flex h-full min-w-0 flex-col bg-background text-foreground"
       data-testid="chat-view"
     >
@@ -202,53 +231,45 @@ export function ChatView({
           const node = scrolling.current
           if (node) stick.current = node.scrollHeight - node.scrollTop - node.clientHeight < 80
         }}
-        className="min-h-0 flex-1 overflow-y-auto px-5 pt-5 pb-40"
+        className={cn('min-h-0 flex-1 overflow-y-auto px-5 pt-5', empty ? 'pb-5' : 'pb-40')}
         data-testid="chat-transcript"
         aria-label="Conversation"
       >
         <div className="mx-auto flex max-w-3xl flex-col gap-4">
-          {!session?.items.length ? (
-            <div className="flex min-h-52 flex-col items-center justify-center gap-3 text-center">
-              <MessageSquare className="size-7 text-muted-foreground" />
-              <h2 className="text-lg font-medium">What would you like to build?</h2>
-              <p className="max-w-sm text-sm text-muted-foreground">
-                Work with Claude Code, Codex, or Pi in this workspace.
-              </p>
-            </div>
-          ) : (
-            session.items.map((item, index) => (
-              <Fragment key={item.id}>
-                <ChatItem
-                  item={item}
-                  onReply={reply}
-                  workspaceId={workspaceId}
-                  sessionId={session.id}
-                />
-                {item.kind !== 'user' &&
-                session.items[index + 1]?.turnId !== item.turnId &&
-                (item.turnId !== session.turnId || !busy) ? (
-                  <div
-                    role="separator"
-                    aria-label="End of response"
-                    className="flex items-center gap-3 py-2 text-xs text-muted-foreground"
-                  >
-                    <span className="h-px flex-1 bg-border" />
-                    <ChatTurnActions
-                      workspaceId={workspaceId}
-                      paneId={paneId}
-                      repositoryId={session.repositoryId}
-                      sessionId={session.id}
-                      turnId={item.turnId}
-                      text={turnTexts.get(item.turnId) ?? ''}
-                      forkCapability={catalog.data?.capabilities[session.model.harness]?.fork}
-                    />
-                    <span>End of response</span>
-                    <span className="h-px flex-1 bg-border" />
-                  </div>
-                ) : null}
-              </Fragment>
-            ))
-          )}
+          {session?.items.length
+            ? session.items.map((item, index) => (
+                <Fragment key={item.id}>
+                  <ChatItem
+                    item={item}
+                    onReply={reply}
+                    workspaceId={workspaceId}
+                    sessionId={session.id}
+                  />
+                  {item.kind !== 'user' &&
+                  session.items[index + 1]?.turnId !== item.turnId &&
+                  (item.turnId !== session.turnId || !busy) ? (
+                    <div
+                      role="separator"
+                      aria-label="End of response"
+                      className="flex items-center gap-3 py-2 text-xs text-muted-foreground"
+                    >
+                      <span className="h-px flex-1 bg-border" />
+                      <ChatTurnActions
+                        workspaceId={workspaceId}
+                        paneId={paneId}
+                        repositoryId={session.repositoryId}
+                        sessionId={session.id}
+                        turnId={item.turnId}
+                        text={turnTexts.get(item.turnId) ?? ''}
+                        forkCapability={catalog.data?.capabilities[session.model.harness]?.fork}
+                      />
+                      <span>End of response</span>
+                      <span className="h-px flex-1 bg-border" />
+                    </div>
+                  ) : null}
+                </Fragment>
+              ))
+            : null}
           {session?.status === 'running' ? (
             <div role="status" className="text-sm text-muted-foreground">
               <span className="chat-working">Working…</span>
@@ -271,9 +292,9 @@ export function ChatView({
               {session.nativeId ? ' · Native session saved' : ''}
             </div>
           ) : null}
-          {session?.error || error || view.error ? (
+          {!empty && alertText ? (
             <p role="alert" className="whitespace-pre-wrap break-words text-xs text-destructive">
-              {error ?? session?.error ?? String(view.error)}
+              {alertText}
             </p>
           ) : null}
         </div>
@@ -281,14 +302,28 @@ export function ChatView({
       <div
         ref={composer}
         data-testid="chat-composer"
-        className="pointer-events-none absolute inset-x-0 bottom-0"
+        data-dock={empty ? 'center' : 'bottom'}
+        className="chat-composer-dock pointer-events-none"
       >
-        <div
-          aria-hidden="true"
-          data-testid="chat-list-fade"
-          className="h-10 bg-gradient-to-t from-background via-background/80 to-transparent"
-        />
-        <div className="bg-background px-5 pb-4">
+        {!empty ? (
+          <div
+            aria-hidden="true"
+            data-testid="chat-list-fade"
+            className="h-10 bg-gradient-to-t from-background via-background/80 to-transparent"
+          />
+        ) : null}
+        <div className={cn('px-5', empty ? 'pb-4' : 'bg-background pb-4')}>
+          <div
+            className="chat-composer-empty"
+            data-testid="chat-empty-hero"
+            aria-hidden={empty ? undefined : true}
+          >
+            <MessageSquare className="size-7 text-muted-foreground" />
+            <h2 className="text-lg font-medium">What would you like to build?</h2>
+            <p className="max-w-sm text-sm text-muted-foreground">
+              Work with Claude Code, Codex, or Pi in this workspace.
+            </p>
+          </div>
           {session ? (
             <div className={`mx-auto max-w-3xl ${visible ? 'pointer-events-auto' : ''}`}>
               <ChatQueue session={session} onSteer={steer} onDequeue={dequeue} />
@@ -417,6 +452,14 @@ export function ChatView({
               </div>
             </form>
           </div>
+          {empty && alertText ? (
+            <p
+              role="alert"
+              className="mx-auto mt-3 max-w-3xl whitespace-pre-wrap break-words text-xs text-destructive"
+            >
+              {alertText}
+            </p>
+          ) : null}
         </div>
       </div>
     </div>

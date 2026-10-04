@@ -93,7 +93,7 @@ for (const harness of ['Claude Code', 'Codex', 'Pi']) {
       expect((await changesTab.boundingBox())!.width).toBe(changesWidth)
       await expect(tabs.nth(1)).toHaveCSS('width', '192px')
       await tabs.first().click()
-      await expect(chat.getByTestId('chat-transcript')).toContainText(
+      await expect(chat.getByTestId('chat-empty-hero')).toContainText(
         'What would you like to build?'
       )
       await page.screenshot({
