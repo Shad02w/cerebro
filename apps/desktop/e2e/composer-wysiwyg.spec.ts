@@ -6,30 +6,29 @@ import { test, expect } from './fixtures'
 
 const executable = resolve(__dirname, '../../../packages/mux/src/agents/fixtures/fake-harness.cjs')
 
-/** Alphabetic baseline of one character, so a shifted @ fails even when its ink box is tall. */
-async function glyphBaseline(
-  tag: Locator
-): Promise<{ at: number; label: number; neighbor: number }> {
+/** Ink boxes for @, its label, and the previous letter. A lifted @ sits above the label. */
+async function tagInk(tag: Locator): Promise<{
+  atTop: number
+  atBottom: number
+  labelTop: number
+  labelBottom: number
+  neighborBottom: number
+}> {
   return tag.evaluate((element) => {
+    const box = (node: Text, index: number): DOMRect => {
+      const range = document.createRange()
+      range.setStart(node, index)
+      range.setEnd(node, index + 1)
+      return range.getBoundingClientRect()
+    }
     const text = [...element.childNodes].find(
       (node): node is Text =>
         node.nodeType === Node.TEXT_NODE && Boolean(node.textContent?.includes('@'))
     )
     if (!text?.textContent) throw new Error('tag has no text')
-    const baseline = (node: Text, index: number, fontFrom: Element): number => {
-      const range = document.createRange()
-      range.setStart(node, index)
-      range.setEnd(node, index + 1)
-      const rect = range.getBoundingClientRect()
-      const style = getComputedStyle(fontFrom)
-      const canvas = document.createElement('canvas')
-      const context = canvas.getContext('2d')
-      if (!context) return rect.bottom
-      context.font = style.font
-      const metrics = context.measureText(node.textContent?.[index] ?? '')
-      return rect.bottom - metrics.actualBoundingBoxDescent
-    }
     const atIndex = text.textContent.indexOf('@')
+    const at = box(text, atIndex)
+    const label = box(text, atIndex + 1)
     const previous = element.previousSibling
     if (previous?.nodeType !== Node.TEXT_NODE || !previous.textContent)
       throw new Error('tag has no neighboring text')
@@ -38,9 +37,11 @@ async function glyphBaseline(
       neighborIndex -= 1
     if (neighborIndex < 0) throw new Error('tag neighbor is blank')
     return {
-      at: baseline(text, atIndex, element),
-      label: baseline(text, atIndex + 1, element),
-      neighbor: baseline(previous, neighborIndex, previous.parentElement ?? element)
+      atTop: at.top,
+      atBottom: at.bottom,
+      labelTop: label.top,
+      labelBottom: label.bottom,
+      neighborBottom: box(previous, neighborIndex).bottom
     }
   })
 }
@@ -140,10 +141,14 @@ test('agent composer renders bullets, inline code, a code block, and Add tags', 
     await expect(composer.getByTestId('composer-tag')).toHaveText(['@B', '@A'])
     expect(await composer.getAttribute('data-composer-text')).toContain('@ZZ')
     expect(await composer.getAttribute('data-composer-text')).not.toContain('@Ax')
-    const composerBaseline = await glyphBaseline(composer.getByTestId('composer-tag').nth(1))
-    expect(Math.abs(composerBaseline.at - composerBaseline.label)).toBeLessThan(1.5)
-    expect(Math.abs(composerBaseline.at - composerBaseline.neighbor)).toBeLessThan(1.5)
+    await expect(composer.locator('.composer-tag-at')).toHaveCount(0)
+    const composerInk = await tagInk(composer.getByTestId('composer-tag').nth(1))
+    expect(composerInk.atTop).toBeGreaterThanOrEqual(composerInk.labelTop - 1)
+    expect(composerInk.atBottom).toBeGreaterThanOrEqual(composerInk.labelBottom - 0.5)
+    expect(Math.abs(composerInk.labelBottom - composerInk.neighborBottom)).toBeLessThan(1.5)
 
+    await page.keyboard.press('Escape')
+    await expect(addMenu).toBeHidden()
     await page.getByTestId('chat-model-picker').click()
     await page
       .getByTestId('model-picker')
@@ -165,10 +170,12 @@ test('agent composer renders bullets, inline code, a code block, and Add tags', 
     await expect(page.getByTestId('model-picker')).toBeHidden()
     await sent.scrollIntoViewIfNeeded()
     const sentDocument = sent.getByRole('document', { name: 'Your message' })
-    await expect(sentDocument.getByTestId('composer-tag')).toHaveCSS('color', tagColor)
-    const sentBaseline = await glyphBaseline(sentDocument.getByTestId('composer-tag').nth(1))
-    expect(Math.abs(sentBaseline.at - sentBaseline.label)).toBeLessThan(1.5)
-    expect(Math.abs(sentBaseline.at - sentBaseline.neighbor)).toBeLessThan(1.5)
+    await expect(sentDocument.getByTestId('composer-tag').first()).toHaveCSS('color', tagColor)
+    await expect(sentDocument.locator('.composer-tag-at')).toHaveCount(0)
+    const sentInk = await tagInk(sentDocument.getByTestId('composer-tag').nth(1))
+    expect(sentInk.atTop).toBeGreaterThanOrEqual(sentInk.labelTop - 1)
+    expect(sentInk.atBottom).toBeGreaterThanOrEqual(sentInk.labelBottom - 0.5)
+    expect(Math.abs(sentInk.labelBottom - sentInk.neighborBottom)).toBeLessThan(1.5)
     await expect(sentDocument).toContainText('@ZZ')
     await page.screenshot({ path: join(evidence, 'composer-sent.png') })
     await sentDocument.screenshot({ path: join(evidence, 'composer-sent-document.png') })
