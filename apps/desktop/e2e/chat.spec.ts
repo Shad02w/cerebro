@@ -1,7 +1,7 @@
 import { mkdtemp, mkdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import type { JSHandle } from '@playwright/test'
+import type { JSHandle, Page } from '@playwright/test'
 import { test, expect, stopMux } from './fixtures'
 const executable = resolve(__dirname, '../../../packages/mux/src/agents/fixtures/fake-harness.cjs')
 test.use({
@@ -943,6 +943,148 @@ test('forking a completed response branches it into a new tab or a new pane, lea
     await expect(panes.nth(1).getByTestId('chat-transcript')).toContainText('Adapter connected.')
     await expect(panes.nth(1).getByTestId('chat-transcript')).toContainText('hello')
     await page.screenshot({ path: '/tmp/cerebro-chat-evidence/fork-new-pane.png' })
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+type AgentPaneFlashProbe = {
+  sawLoading: boolean
+  sawEmptyCenter: boolean
+}
+
+async function installAgentPaneLoadProbe(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    type Flash = { sawLoading: boolean; sawEmptyCenter: boolean }
+    const flash: Flash = { sawLoading: false, sawEmptyCenter: false }
+    ;(window as unknown as { __agentPaneFlash: Flash }).__agentPaneFlash = flash
+
+    const sample = (): void => {
+      if (document.querySelector('[data-testid="chat-loading"]')) flash.sawLoading = true
+      const dock = document.querySelector('[data-testid="chat-composer"]')
+      const hero = document.querySelector('[data-testid="chat-empty-hero"]')
+      if (dock?.getAttribute('data-dock') !== 'center' || !(hero instanceof HTMLElement)) return
+      const style = getComputedStyle(hero)
+      if (style.visibility !== 'hidden' && Number(style.opacity) > 0) flash.sawEmptyCenter = true
+    }
+
+    const startObserver = (): void => {
+      new MutationObserver(sample).observe(document.documentElement, {
+        subtree: true,
+        childList: true,
+        attributes: true
+      })
+      const loop = (): void => {
+        sample()
+        requestAnimationFrame(loop)
+      }
+      requestAnimationFrame(loop)
+    }
+
+    const patchChatGet = (): void => {
+      const api = window.cerebro
+      if (!api || (api as { __agentGetDelayPatched?: boolean }).__agentGetDelayPatched) return
+      const original = api.chatCommand.bind(api)
+      ;(api as { __agentGetDelayPatched?: boolean }).__agentGetDelayPatched = true
+      api.chatCommand = async (command) => {
+        if (command.action === 'get') await new Promise((resolve) => setTimeout(resolve, 700))
+        return original(command)
+      }
+    }
+
+    const boot = (): void => {
+      startObserver()
+      const id = window.setInterval(() => {
+        if (!window.cerebro) return
+        patchChatGet()
+        window.clearInterval(id)
+      }, 1)
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot)
+    else boot()
+  })
+}
+
+async function readAgentPaneFlash(page: Page): Promise<AgentPaneFlashProbe> {
+  return page.evaluate(() => {
+    const flash = (window as unknown as { __agentPaneFlash?: AgentPaneFlashProbe }).__agentPaneFlash
+    return flash ?? { sawLoading: false, sawEmptyCenter: false }
+  })
+}
+
+test('agent pane loading does not flash empty placeholder before session is confirmed', async ({
+  page,
+  electronApp
+}) => {
+  test.setTimeout(90_000)
+  const directory = await mkdtemp(join(tmpdir(), 'cerebro-chat-loading-'))
+  const mediaDir = '/cursor/stores/bc-ece937fc-5124-4a69-b19a-e93de51a8c0f/media'
+  try {
+    await electronApp.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0].setSize(1250, 900)
+    )
+    await installAgentPaneLoadProbe(page)
+    const project = await page.evaluate(
+      (folder) => window.cerebro.createProjectFromDirectory(folder),
+      directory
+    )
+    const workspaceId = project.workspaces[0].id
+    await page.reload()
+    const projectRow = page.getByTestId(/project-row-/).first()
+    await expect(projectRow).toBeVisible()
+    if ((await projectRow.getAttribute('aria-expanded')) === 'false') await projectRow.click()
+    await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
+    await page.getByRole('button', { name: /^New Agent tab/ }).click()
+
+    const chat = page.getByTestId('chat-view')
+    await expect(chat).toHaveAttribute('data-loading', 'true')
+    await expect(page.getByTestId('chat-loading')).toBeVisible()
+    await expect(page.getByTestId('chat-empty-hero')).toHaveCount(0)
+    await expect(page.getByTestId('chat-composer')).toHaveCount(0)
+    await mkdir(mediaDir, { recursive: true })
+    await mkdir('/opt/cursor/artifacts', { recursive: true })
+    await page.screenshot({ path: join(mediaDir, 'agent-section-loading.png') })
+    await page.screenshot({ path: '/opt/cursor/artifacts/agent-section-loading.png' })
+
+    await expect(page.getByTestId('chat-loading')).toHaveCount(0)
+    await expect(chat).not.toHaveAttribute('data-loading', 'true')
+    await expect(page.getByTestId('chat-composer')).toHaveAttribute('data-dock', 'center')
+    await expect(page.getByTestId('chat-empty-hero')).toBeVisible()
+    await expect(page.getByTestId('chat-empty-hero')).toContainText('What would you like to build?')
+    await expect(page.getByTestId('chat-composer-glow')).toHaveCSS('opacity', '1')
+    const emptyFlash = await readAgentPaneFlash(page)
+    expect(emptyFlash.sawLoading).toBe(true)
+    await page.screenshot({ path: join(mediaDir, 'agent-section-empty.png') })
+    await page.screenshot({ path: '/opt/cursor/artifacts/agent-section-empty.png' })
+
+    await page.getByTestId('chat-model-picker').click()
+    await page.getByRole('button', { name: 'Codex', exact: true }).click()
+    await page
+      .getByTestId('model-picker')
+      .getByRole('button', { name: /^Test Model.*Codex/ })
+      .click()
+    await page.getByRole('textbox', { name: 'Message agent' }).fill('Persist through reload')
+    await page.getByRole('button', { name: 'Send message', exact: true }).click()
+    await expect(page.getByTestId('chat-transcript')).toContainText('Adapter connected.')
+    await expect(page.getByTestId('chat-composer')).toHaveAttribute('data-dock', 'bottom')
+
+    await page.reload()
+    await expect(chat).toHaveAttribute('data-loading', 'true')
+    await expect(page.getByTestId('chat-loading')).toBeVisible()
+    await expect(page.getByTestId('chat-empty-hero')).toHaveCount(0)
+    await expect(page.getByTestId('chat-composer')).toHaveCount(0)
+
+    await expect(page.getByTestId('chat-transcript')).toContainText('Persist through reload')
+    await expect(page.getByTestId('chat-transcript')).toContainText('Adapter connected.')
+    await expect(page.getByTestId('chat-composer')).toHaveAttribute('data-dock', 'bottom')
+    await expect(page.getByTestId('chat-composer')).toHaveAttribute('data-motion', 'off')
+    await expect(page.getByTestId('chat-empty-hero')).toHaveCSS('visibility', 'hidden')
+    await expect(page.getByTestId('chat-composer-glow')).toHaveCSS('opacity', '0')
+    const loadedFlash = await readAgentPaneFlash(page)
+    expect(loadedFlash.sawLoading).toBe(true)
+    expect(loadedFlash.sawEmptyCenter).toBe(false)
+    await page.screenshot({ path: join(mediaDir, 'agent-section-loaded.png') })
+    await page.screenshot({ path: '/opt/cursor/artifacts/agent-section-loaded.png' })
   } finally {
     await rm(directory, { recursive: true, force: true })
   }

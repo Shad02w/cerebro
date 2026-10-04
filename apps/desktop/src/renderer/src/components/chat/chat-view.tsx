@@ -34,6 +34,8 @@ export function ChatView({
     staleTime: Infinity
   })
   const catalog = useQuery(catalogOptions)
+  // Pending with no data is "not confirmed yet" — never treat it as empty.
+  const loading = !view.data && view.isPending
   const session = view.data?.session
   const items = session?.items
   const turnTexts = useMemo(() => {
@@ -57,7 +59,8 @@ export function ChatView({
   const composer = useRef<HTMLDivElement>(null)
   const editorRef = useRef<ComposerEditorHandle>(null)
   const fileInput = useRef<HTMLInputElement>(null)
-  const empty = !session?.items.length
+  // Confirmed empty only after the section/session query has resolved.
+  const empty = !loading && !session?.items.length
   const wasEmpty = useRef(empty)
   const dockHydrated = useRef(false)
   const imageRejection = useCallback(
@@ -142,6 +145,8 @@ export function ChatView({
       scrolling.current.scrollTop = scrolling.current.scrollHeight
   }, [session?.sequence, session?.error, error, view.error])
   useLayoutEffect(() => {
+    // Wait until the query confirms empty vs conversation — never center or animate on load.
+    if (loading) return
     const view = viewRef.current
     const transcript = scrolling.current
     const input = composer.current
@@ -196,7 +201,7 @@ export function ChatView({
       anim?.cancel()
       stopLayout()
     }
-  }, [empty])
+  }, [empty, loading])
   const send = async (): Promise<void> => {
     if (inFlight.current) return
     const message = readDraft()
@@ -253,244 +258,265 @@ export function ChatView({
       ref={viewRef}
       className="chat-scrollbars relative flex h-full min-w-0 flex-col bg-background text-foreground"
       data-testid="chat-view"
+      data-loading={loading || undefined}
     >
-      <div
-        ref={scrolling}
-        onScroll={() => {
-          const node = scrolling.current
-          if (node) stick.current = node.scrollHeight - node.scrollTop - node.clientHeight < 80
-        }}
-        className={cn('min-h-0 flex-1 overflow-y-auto px-5 pt-5', empty ? 'pb-5' : 'pb-40')}
-        data-testid="chat-transcript"
-        aria-label="Conversation"
-      >
-        <div className="mx-auto flex max-w-3xl flex-col gap-4">
-          {session?.items.length
-            ? session.items.map((item, index) => (
-                <Fragment key={item.id}>
-                  <ChatItem
-                    item={item}
-                    onReply={reply}
-                    workspaceId={workspaceId}
-                    sessionId={session.id}
-                  />
-                  {item.kind !== 'user' &&
-                  session.items[index + 1]?.turnId !== item.turnId &&
-                  (item.turnId !== session.turnId || !busy) ? (
-                    <div
-                      role="separator"
-                      aria-label="End of response"
-                      className="flex items-center gap-3 py-2 text-xs text-muted-foreground"
-                    >
-                      <span className="h-px flex-1 bg-border" />
-                      <ChatTurnActions
-                        workspaceId={workspaceId}
-                        paneId={paneId}
-                        repositoryId={session.repositoryId}
-                        sessionId={session.id}
-                        turnId={item.turnId}
-                        text={turnTexts.get(item.turnId) ?? ''}
-                        forkCapability={catalog.data?.capabilities[session.model.harness]?.fork}
-                      />
-                      <span>End of response</span>
-                      <span className="h-px flex-1 bg-border" />
-                    </div>
-                  ) : null}
-                </Fragment>
-              ))
-            : null}
-          {session?.status === 'running' ? (
-            <div role="status" className="text-sm text-muted-foreground">
-              <span className="chat-working">Working…</span>
-            </div>
-          ) : null}
-          {session && session.status !== 'running' ? (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground" role="status">
-              <span
-                className={
-                  busy
-                    ? 'size-1.5 animate-pulse rounded-full bg-foreground'
-                    : 'size-1.5 rounded-full bg-muted-foreground'
-                }
-              />
-              {session.status === 'idle'
-                ? 'Ready'
-                : session.status === 'waiting'
-                  ? 'Waiting for your response'
-                  : session.status}
-              {session.nativeId ? ' · Native session saved' : ''}
-            </div>
-          ) : null}
-          {!empty && alertText ? (
-            <p role="alert" className="whitespace-pre-wrap break-words text-xs text-destructive">
-              {alertText}
-            </p>
-          ) : null}
+      {loading ? (
+        <div
+          data-testid="chat-loading"
+          role="status"
+          className="flex min-h-0 flex-1 items-center justify-center text-sm text-muted-foreground"
+        >
+          Loading…
         </div>
-      </div>
-      <div
-        ref={composer}
-        data-testid="chat-composer"
-        data-dock={empty ? 'center' : 'bottom'}
-        className="chat-composer-dock pointer-events-none"
-      >
-        {!empty ? (
+      ) : (
+        <>
           <div
-            aria-hidden="true"
-            data-testid="chat-list-fade"
-            className="h-10 bg-gradient-to-t from-background via-background/80 to-transparent"
-          />
-        ) : null}
-        <div className={cn('relative px-5', empty ? 'pb-0' : 'bg-background pb-4')}>
-          {session ? (
-            <div className={`mx-auto max-w-3xl ${visible ? 'pointer-events-auto' : ''}`}>
-              <ChatQueue session={session} onSteer={steer} onDequeue={dequeue} />
-            </div>
-          ) : null}
-          <div
-            className={`chat-composer-glow-wrap relative mx-auto max-w-3xl ${visible ? 'pointer-events-auto' : ''}`}
-            data-testid="chat-composer-shell"
+            ref={scrolling}
+            onScroll={() => {
+              const node = scrolling.current
+              if (node) stick.current = node.scrollHeight - node.scrollTop - node.clientHeight < 80
+            }}
+            className={cn('min-h-0 flex-1 overflow-y-auto px-5 pt-5', empty ? 'pb-5' : 'pb-40')}
+            data-testid="chat-transcript"
+            aria-label="Conversation"
           >
-            <div
-              className="chat-composer-empty"
-              data-testid="chat-empty-hero"
-              aria-hidden={empty ? undefined : true}
-            >
-              <MessageSquare className="size-7 text-muted-foreground" />
-              <h2 className="text-lg font-medium">What would you like to build?</h2>
-              <p className="max-w-sm text-sm text-muted-foreground">
-                Work with Claude Code, Codex, or Pi in this workspace.
-              </p>
+            <div className="mx-auto flex max-w-3xl flex-col gap-4">
+              {session?.items.length
+                ? session.items.map((item, index) => (
+                    <Fragment key={item.id}>
+                      <ChatItem
+                        item={item}
+                        onReply={reply}
+                        workspaceId={workspaceId}
+                        sessionId={session.id}
+                      />
+                      {item.kind !== 'user' &&
+                      session.items[index + 1]?.turnId !== item.turnId &&
+                      (item.turnId !== session.turnId || !busy) ? (
+                        <div
+                          role="separator"
+                          aria-label="End of response"
+                          className="flex items-center gap-3 py-2 text-xs text-muted-foreground"
+                        >
+                          <span className="h-px flex-1 bg-border" />
+                          <ChatTurnActions
+                            workspaceId={workspaceId}
+                            paneId={paneId}
+                            repositoryId={session.repositoryId}
+                            sessionId={session.id}
+                            turnId={item.turnId}
+                            text={turnTexts.get(item.turnId) ?? ''}
+                            forkCapability={catalog.data?.capabilities[session.model.harness]?.fork}
+                          />
+                          <span>End of response</span>
+                          <span className="h-px flex-1 bg-border" />
+                        </div>
+                      ) : null}
+                    </Fragment>
+                  ))
+                : null}
+              {session?.status === 'running' ? (
+                <div role="status" className="text-sm text-muted-foreground">
+                  <span className="chat-working">Working…</span>
+                </div>
+              ) : null}
+              {session && session.status !== 'running' ? (
+                <div
+                  className="flex items-center gap-2 text-xs text-muted-foreground"
+                  role="status"
+                >
+                  <span
+                    className={
+                      busy
+                        ? 'size-1.5 animate-pulse rounded-full bg-foreground'
+                        : 'size-1.5 rounded-full bg-muted-foreground'
+                    }
+                  />
+                  {session.status === 'idle'
+                    ? 'Ready'
+                    : session.status === 'waiting'
+                      ? 'Waiting for your response'
+                      : session.status}
+                  {session.nativeId ? ' · Native session saved' : ''}
+                </div>
+              ) : null}
+              {!empty && alertText ? (
+                <p
+                  role="alert"
+                  className="whitespace-pre-wrap break-words text-xs text-destructive"
+                >
+                  {alertText}
+                </p>
+              ) : null}
             </div>
-            <div
-              className="chat-composer-glow"
-              aria-hidden="true"
-              data-testid="chat-composer-glow"
-            />
-            <form
-              className="chat-composer-shell relative rounded-2xl border bg-background p-2 shadow-lg"
-              data-dragging={dragging || undefined}
-              onSubmit={(e) => {
-                e.preventDefault()
-                void send()
-              }}
-              {...dropHandlers}
-            >
-              <DropOverlay visible={dragging} />
-              <AttachmentStrip attachments={draft.attachments} onRemove={remove} />
-              <ComposerEditor
-                ref={editorRef}
-                defaultText={initialText}
-                attachments={draft.attachments}
-                getAttachments={() => readDraft().attachments}
-                onDocument={onDocument}
-                onAttachFiles={(files) => {
-                  void attachFiles(files)
-                }}
-                onSubmit={() => {
-                  void send()
-                }}
+          </div>
+          <div
+            ref={composer}
+            data-testid="chat-composer"
+            data-dock={empty ? 'center' : 'bottom'}
+            className="chat-composer-dock pointer-events-none"
+          >
+            {!empty ? (
+              <div
+                aria-hidden="true"
+                data-testid="chat-list-fade"
+                className="h-10 bg-gradient-to-t from-background via-background/80 to-transparent"
               />
-              <input
-                ref={fileInput}
-                type="file"
-                accept={chatImageAccept}
-                multiple
-                hidden
-                data-testid="chat-image-input"
-                onChange={(e) => {
-                  const files = [...(e.target.files ?? [])]
-                  e.target.value = ''
-                  void attachFiles(files)
-                }}
-              />
-              <div className="flex flex-wrap items-center gap-1">
-                <div className="min-w-0 flex-1">
-                  <ModelPicker
-                    selected={selected}
-                    onSelect={(model) => {
-                      if (session && session.model.harness !== model.harness) {
-                        setError(
-                          `Open a new Agent tab or pane to use ${harnessLabels[model.harness]}.`
-                        )
-                        return
-                      }
-                      setError(null)
-                      setSelection(model)
-                      setReasoning('')
+            ) : null}
+            <div className={cn('relative px-5', empty ? 'pb-0' : 'bg-background pb-4')}>
+              {session ? (
+                <div className={`mx-auto max-w-3xl ${visible ? 'pointer-events-auto' : ''}`}>
+                  <ChatQueue session={session} onSteer={steer} onDequeue={dequeue} />
+                </div>
+              ) : null}
+              <div
+                className={`chat-composer-glow-wrap relative mx-auto max-w-3xl ${visible ? 'pointer-events-auto' : ''}`}
+                data-testid="chat-composer-shell"
+              >
+                <div
+                  className="chat-composer-empty"
+                  data-testid="chat-empty-hero"
+                  aria-hidden={empty ? undefined : true}
+                >
+                  <MessageSquare className="size-7 text-muted-foreground" />
+                  <h2 className="text-lg font-medium">What would you like to build?</h2>
+                  <p className="max-w-sm text-sm text-muted-foreground">
+                    Work with Claude Code, Codex, or Pi in this workspace.
+                  </p>
+                </div>
+                <div
+                  className="chat-composer-glow"
+                  aria-hidden="true"
+                  data-testid="chat-composer-glow"
+                />
+                <form
+                  className="chat-composer-shell relative rounded-2xl border bg-background p-2 shadow-lg"
+                  data-dragging={dragging || undefined}
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    void send()
+                  }}
+                  {...dropHandlers}
+                >
+                  <DropOverlay visible={dragging} />
+                  <AttachmentStrip attachments={draft.attachments} onRemove={remove} />
+                  <ComposerEditor
+                    ref={editorRef}
+                    defaultText={initialText}
+                    attachments={draft.attachments}
+                    getAttachments={() => readDraft().attachments}
+                    onDocument={onDocument}
+                    onAttachFiles={(files) => {
+                      void attachFiles(files)
+                    }}
+                    onSubmit={() => {
+                      void send()
                     }}
                   />
-                </div>
-                <ContextUsageRing usage={session?.contextUsage} effort={session?.reasoning} />
-                <select
-                  aria-label="Access mode"
-                  title={
-                    selected?.harness === 'pi'
-                      ? 'Pi: Edit and Read-only limit tools and disable extensions; shell commands require Full access. Changes apply to the next message.'
-                      : 'Access for the next message. Edit allows file changes; Read-only uses the harness read or plan mode.'
-                  }
-                  value={accessMode}
-                  onChange={(event) => setAccessSelection(event.target.value as AgentAccessMode)}
-                  className="max-w-36 rounded bg-transparent p-1 text-xs text-muted-foreground"
-                >
-                  <option value="full">Full access (YOLO)</option>
-                  <option value="edit">Edit</option>
-                  <option value="read">Read-only</option>
-                </select>
-                {selected?.reasoning.length ? (
-                  <select
-                    aria-label="Reasoning effort"
-                    value={reasoning}
-                    onChange={(e) => setReasoning(e.target.value)}
-                    className="max-w-28 rounded bg-transparent p-1 text-xs text-muted-foreground"
-                  >
-                    <option value="">Default effort</option>
-                    {selected.reasoning.map((effort) => (
-                      <option key={effort} value={effort}>
-                        {effort}
-                      </option>
-                    ))}
-                  </select>
-                ) : null}
-                <Button
-                  type="button"
-                  size="icon-sm"
-                  variant="ghost"
-                  aria-label="Attach image"
-                  title="Attach image (or drop / paste one)"
-                  onClick={() => fileInput.current?.click()}
-                >
-                  <ImagePlus className="size-4" />
-                </Button>
-                {busy ? (
-                  <Button
-                    type="button"
-                    size="icon-sm"
-                    variant="outline"
-                    aria-label="Stop agent"
-                    onClick={() => {
-                      void execute({ action: 'stop', sessionId: session?.id })
+                  <input
+                    ref={fileInput}
+                    type="file"
+                    accept={chatImageAccept}
+                    multiple
+                    hidden
+                    data-testid="chat-image-input"
+                    onChange={(e) => {
+                      const files = [...(e.target.files ?? [])]
+                      e.target.value = ''
+                      void attachFiles(files)
                     }}
-                  >
-                    <Square className="size-3 fill-current" />
-                  </Button>
-                ) : null}
-                <Button type="submit" size="icon-sm" aria-label="Send message">
-                  <ArrowUp className="size-4" />
-                </Button>
+                  />
+                  <div className="flex flex-wrap items-center gap-1">
+                    <div className="min-w-0 flex-1">
+                      <ModelPicker
+                        selected={selected}
+                        onSelect={(model) => {
+                          if (session && session.model.harness !== model.harness) {
+                            setError(
+                              `Open a new Agent tab or pane to use ${harnessLabels[model.harness]}.`
+                            )
+                            return
+                          }
+                          setError(null)
+                          setSelection(model)
+                          setReasoning('')
+                        }}
+                      />
+                    </div>
+                    <ContextUsageRing usage={session?.contextUsage} effort={session?.reasoning} />
+                    <select
+                      aria-label="Access mode"
+                      title={
+                        selected?.harness === 'pi'
+                          ? 'Pi: Edit and Read-only limit tools and disable extensions; shell commands require Full access. Changes apply to the next message.'
+                          : 'Access for the next message. Edit allows file changes; Read-only uses the harness read or plan mode.'
+                      }
+                      value={accessMode}
+                      onChange={(event) =>
+                        setAccessSelection(event.target.value as AgentAccessMode)
+                      }
+                      className="max-w-36 rounded bg-transparent p-1 text-xs text-muted-foreground"
+                    >
+                      <option value="full">Full access (YOLO)</option>
+                      <option value="edit">Edit</option>
+                      <option value="read">Read-only</option>
+                    </select>
+                    {selected?.reasoning.length ? (
+                      <select
+                        aria-label="Reasoning effort"
+                        value={reasoning}
+                        onChange={(e) => setReasoning(e.target.value)}
+                        className="max-w-28 rounded bg-transparent p-1 text-xs text-muted-foreground"
+                      >
+                        <option value="">Default effort</option>
+                        {selected.reasoning.map((effort) => (
+                          <option key={effort} value={effort}>
+                            {effort}
+                          </option>
+                        ))}
+                      </select>
+                    ) : null}
+                    <Button
+                      type="button"
+                      size="icon-sm"
+                      variant="ghost"
+                      aria-label="Attach image"
+                      title="Attach image (or drop / paste one)"
+                      onClick={() => fileInput.current?.click()}
+                    >
+                      <ImagePlus className="size-4" />
+                    </Button>
+                    {busy ? (
+                      <Button
+                        type="button"
+                        size="icon-sm"
+                        variant="outline"
+                        aria-label="Stop agent"
+                        onClick={() => {
+                          void execute({ action: 'stop', sessionId: session?.id })
+                        }}
+                      >
+                        <Square className="size-3 fill-current" />
+                      </Button>
+                    ) : null}
+                    <Button type="submit" size="icon-sm" aria-label="Send message">
+                      <ArrowUp className="size-4" />
+                    </Button>
+                  </div>
+                </form>
               </div>
-            </form>
+              {empty && alertText ? (
+                <p
+                  role="alert"
+                  className="mx-auto mt-3 max-w-3xl whitespace-pre-wrap break-words text-xs text-destructive"
+                >
+                  {alertText}
+                </p>
+              ) : null}
+            </div>
           </div>
-          {empty && alertText ? (
-            <p
-              role="alert"
-              className="mx-auto mt-3 max-w-3xl whitespace-pre-wrap break-words text-xs text-destructive"
-            >
-              {alertText}
-            </p>
-          ) : null}
-        </div>
-      </div>
+        </>
+      )}
     </div>
   )
 }
