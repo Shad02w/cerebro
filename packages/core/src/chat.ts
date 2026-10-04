@@ -128,9 +128,12 @@ export type AgentActivityStatus = Exclude<AgentSession['status'], 'idle'>
 /** One non-idle session, so a workspace can show every agent that is working. */
 export type ChatAgentActivity = {
   sessionId: string
+  workspaceId: number
   harness: AgentHarness
   status: AgentActivityStatus
   title: string
+  /** Pane currently showing this session, when one is bound. */
+  paneId: number | null
 }
 export type ChatWorkspaceActivity = {
   workspaceId: number

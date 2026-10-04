@@ -721,7 +721,7 @@ test('overview prefers waiting over running and hides an older failure after a n
   const listed = () =>
     service.overview().workspaces.map(({ workspaceId, agents }) => ({
       workspaceId,
-      agents: agents.map(({ harness, status }) => ({ harness, status }))
+      agents: agents.map(({ harness, status, paneId }) => ({ harness, status, paneId }))
     }))
   const settle = async (
     workspaceId: number,
@@ -771,8 +771,8 @@ test('overview prefers waiting over running and hides an older failure after a n
       {
         workspaceId: 2,
         agents: [
-          { harness: 'codex', status: 'waiting' },
-          { harness: 'claude', status: 'running' }
+          { harness: 'codex', status: 'waiting', paneId: 21 },
+          { harness: 'claude', status: 'running', paneId: 22 }
         ]
       }
     ])
@@ -785,8 +785,8 @@ test('overview prefers waiting over running and hides an older failure after a n
         {
           workspaceId: 3,
           agents: [
-            { harness: 'codex', status: 'running' },
-            { harness: 'codex', status: 'failed' }
+            { harness: 'codex', status: 'running', paneId: 31 },
+            { harness: 'codex', status: 'failed', paneId: 32 }
           ]
         }
       ]
@@ -807,20 +807,20 @@ test('overview prefers waiting over running and hides an older failure after a n
       {
         workspaceId: 2,
         agents: [
-          { harness: 'codex', status: 'waiting' },
-          { harness: 'claude', status: 'running' }
+          { harness: 'codex', status: 'waiting', paneId: 21 },
+          { harness: 'claude', status: 'running', paneId: 22 }
         ]
       },
       {
         workspaceId: 3,
         agents: [
-          { harness: 'codex', status: 'running' },
-          { harness: 'codex', status: 'failed' }
+          { harness: 'codex', status: 'running', paneId: 31 },
+          { harness: 'codex', status: 'failed', paneId: 32 }
         ]
       },
-      { workspaceId: 4, agents: [{ harness: 'codex', status: 'failed' }] },
-      { workspaceId: 5, agents: [{ harness: 'codex', status: 'interrupted' }] },
-      { workspaceId: 7, agents: [{ harness: 'codex', status: 'running' }] }
+      { workspaceId: 4, agents: [{ harness: 'codex', status: 'failed', paneId: 42 }] },
+      { workspaceId: 5, agents: [{ harness: 'codex', status: 'interrupted', paneId: 52 }] },
+      { workspaceId: 7, agents: [{ harness: 'codex', status: 'running', paneId: 71 }] }
     ])
   } finally {
     await service.shutdown()

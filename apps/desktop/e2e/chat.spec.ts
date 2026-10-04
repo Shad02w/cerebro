@@ -170,6 +170,20 @@ test('chat works through native adapters, survives reload, handles requests, and
     expect(waitingBadgeBox!.y + waitingBadgeBox!.height).toBeGreaterThan(
       waitingIconBox!.y + waitingIconBox!.height - 1
     )
+    const agentButton = page.locator(
+      `[data-sidebar="menu-row"][data-workspace-id="${workspaceId}"] [data-testid="workspace-agent-open"]`
+    )
+    await expect(agentButton).toHaveAttribute('data-agent-title', userText)
+    await agentButton.hover()
+    await expect(page.getByRole('tooltip')).toHaveText(
+      /Build a normalized agent chat\s+Preserve spacing/
+    )
+    await page.getByTestId('new-terminal-tab').click()
+    await page.getByTestId('open-terminal-tab').click()
+    await expect(page.getByTestId('terminal-tab')).toHaveAttribute('data-active', 'true')
+    await agentButton.click()
+    await expect(page.getByTestId('chat-tab').first()).toHaveAttribute('data-active', 'true')
+    await expect(page.getByRole('button', { name: 'Allow once', exact: true })).toBeVisible()
     await expect(page.locator('[data-chat-agent-status="waiting"]')).toBeVisible()
     await expect(page.locator('[data-chat-agent-status="waiting"]')).toHaveAttribute(
       'aria-label',
@@ -188,6 +202,12 @@ test('chat works through native adapters, survives reload, handles requests, and
     await expect(projectStatus.locator('[data-workspace-agent-status="waiting"]')).toBeVisible()
     await expect(projectStatus).not.toContainText('Codex')
     await expect(projectStatus).toHaveCSS('opacity', '0.6')
+    await page.getByTestId('new-terminal-tab').click()
+    await page.getByTestId('open-terminal-tab').click()
+    await expect(page.getByTestId('terminal-tab').last()).toHaveAttribute('data-active', 'true')
+    await projectStatus.getByTestId('workspace-agent-open').click()
+    await expect(projectRow).toHaveAttribute('aria-expanded', 'false')
+    await expect(page.getByTestId('chat-tab').first()).toHaveAttribute('data-active', 'true')
     await projectRow.click()
     await expect(waitingRow).toBeVisible()
     await page.getByRole('button', { name: 'Decline', exact: true }).click()

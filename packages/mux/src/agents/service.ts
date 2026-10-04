@@ -164,7 +164,20 @@ const activityRank: Record<AgentActivityStatus, number> = {
  * Every live session is listed. A failed or interrupted session is listed only when it is the
  * newest session for its harness, so an older failure does not linger after a newer idle turn.
  */
-function visibleAgents(sessions: AgentSession[]): ChatAgentActivity[] {
+function boundPaneId(bindings: Record<string, string>, sessionId: string): number | null {
+  let paneId: number | null = null
+  for (const [key, bound] of Object.entries(bindings)) {
+    if (bound !== sessionId) continue
+    const id = Number(key)
+    if (!Number.isInteger(id) || id <= 0) continue
+    if (paneId == null || id > paneId) paneId = id
+  }
+  return paneId
+}
+function visibleAgents(
+  sessions: AgentSession[],
+  bindings: Record<string, string>
+): ChatAgentActivity[] {
   const newest = new Map<AgentHarness, AgentSession>()
   for (const session of sessions) {
     const current = newest.get(session.model.harness)
@@ -184,9 +197,11 @@ function visibleAgents(sessions: AgentSession[]): ChatAgentActivity[] {
     )
     .map((session) => ({
       sessionId: session.id,
+      workspaceId: session.workspaceId,
       harness: session.model.harness,
       status: session.status as AgentActivityStatus,
-      title: session.title
+      title: session.title,
+      paneId: boundPaneId(bindings, session.id)
     }))
 }
 const readJson = <T>(path: string, fallback: T): T => {
@@ -413,7 +428,7 @@ export class AgentSessions {
       else grouped.set(session.workspaceId, [session])
     }
     const workspaces = [...grouped.entries()].flatMap(([workspaceId, sessions]) => {
-      const agents = visibleAgents(sessions)
+      const agents = visibleAgents(sessions, this.bindings)
       return agents.length ? [{ workspaceId, agents }] : []
     })
     workspaces.sort((a, b) => a.workspaceId - b.workspaceId)

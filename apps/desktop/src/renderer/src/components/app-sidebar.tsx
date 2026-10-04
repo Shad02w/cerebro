@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import '@/assets/sidebar.css'
 import {
   ArrowLeft,
@@ -16,11 +17,13 @@ import {
   Trash2,
   X
 } from 'lucide-react'
-import type { ChatAgentActivity } from '@cerebro/core'
+import type { ChatAgentActivity, LayoutState, PaneNode } from '@cerebro/core'
 import type { Project, Workspace } from '@shared/types'
 import type { SettingsSectionId } from '@/lib/app-route'
 import { HarnessStatusIcon } from '@/components/harness-icon'
+import { harnessLabels } from '@/components/chat/queries'
 import { sortAgentActivity, useAgentActivity } from '@/lib/agent-activity'
+import { acceptLayout, layoutOptions } from '@/lib/query-client'
 import { SETTINGS_SECTIONS } from '@/lib/settings-sections'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -126,30 +129,71 @@ function PlusActionTooltip({
   )
 }
 
+function containsPane(node: PaneNode, paneId: number): boolean {
+  if (node.type === 'pane') return node.id === paneId
+  return containsPane(node.first, paneId) || containsPane(node.second, paneId)
+}
+
+function agentTabTitle(agent: ChatAgentActivity, layout: LayoutState | undefined): string {
+  const fallback = agent.title.trim() || harnessLabels[agent.harness]
+  const paneId = agent.paneId
+  if (paneId == null || !layout) return fallback
+  const label = layout.workspaces[agent.workspaceId]?.tabs
+    .find((tab) => containsPane(tab.root, paneId))
+    ?.label.trim()
+  return label || fallback
+}
+
 function WorkspaceAgents({
   agents,
   testId,
-  className
+  className,
+  onOpenAgent
 }: {
   agents: ChatAgentActivity[]
   testId?: string
   className?: string
+  onOpenAgent: (agent: ChatAgentActivity) => void
 }): React.JSX.Element | null {
+  const layout = useQuery(layoutOptions).data
   if (!agents.length) return null
   return (
     <div
       data-testid={testId}
       className={cn('mt-1 flex min-w-0 flex-wrap items-center gap-2', className)}
     >
-      {agents.map((agent) => (
-        <HarnessStatusIcon
-          key={agent.sessionId}
-          harness={agent.harness}
-          status={agent.status}
-          surface="sidebar"
-          plateClassName="bg-sidebar"
-        />
-      ))}
+      {agents.map((agent) => {
+        const title = agentTabTitle(agent, layout)
+        return (
+          <Tooltip key={agent.sessionId}>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                data-testid="workspace-agent-open"
+                data-agent-title={title}
+                aria-label={title}
+                className="relative inline-flex shrink-0 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sidebar-selected"
+                onPointerDown={(event): void => event.stopPropagation()}
+                onClick={(event): void => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  onOpenAgent(agent)
+                }}
+              >
+                <HarnessStatusIcon
+                  harness={agent.harness}
+                  status={agent.status}
+                  surface="sidebar"
+                  plateClassName="bg-sidebar"
+                />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right" sideOffset={6} className="max-w-64 text-wrap break-words">
+              {title}
+            </TooltipContent>
+          </Tooltip>
+        )
+      })}
     </div>
   )
 }
@@ -391,13 +435,15 @@ function MultiRootRepoRow({
   workspace,
   active,
   agents,
-  onSelect
+  onSelect,
+  onOpenAgent
 }: {
   project: Project
   workspace: Workspace
   active: boolean
   agents: ChatAgentActivity[]
   onSelect: (workspaceId: number) => void
+  onOpenAgent: (agent: ChatAgentActivity) => void
 }): React.JSX.Element {
   const name = repositoryDirName(project, workspace)
   const branch = workspace.branch.trim()
@@ -439,7 +485,7 @@ function MultiRootRepoRow({
                 <span className="min-w-0 flex-1 truncate">{branch}</span>
               </span>
             ) : null}
-            <WorkspaceAgents agents={agents} />
+            <WorkspaceAgents agents={agents} onOpenAgent={onOpenAgent} />
           </button>
           {branch ? (
             <WorkspacePrPopover
@@ -458,12 +504,14 @@ function MultiRootWorkspaceTree({
   project,
   activeWorkspaceId,
   activity,
-  onSelectWorkspace
+  onSelectWorkspace,
+  onOpenAgent
 }: {
   project: Project
   activeWorkspaceId: number | null
   activity: Map<number, ChatAgentActivity[]>
   onSelectWorkspace: (workspaceId: number) => void
+  onOpenAgent: (agent: ChatAgentActivity) => void
 }): React.JSX.Element {
   const [rootOpen, setRootOpen] = useState(true)
   const rootWorkspace = rootWorkspaceOf(project)
@@ -510,7 +558,7 @@ function MultiRootWorkspaceTree({
                     {repos.length} {repos.length === 1 ? 'repo' : 'repos'}
                   </span>
                 </span>
-                <WorkspaceAgents agents={rootAgents} />
+                <WorkspaceAgents agents={rootAgents} onOpenAgent={onOpenAgent} />
               </button>
               <SidebarMenuAction
                 className="app-no-drag right-6"
@@ -548,6 +596,7 @@ function MultiRootWorkspaceTree({
                     active={workspace.id === activeWorkspaceId}
                     agents={activity.get(workspace.id) ?? []}
                     onSelect={onSelectWorkspace}
+                    onOpenAgent={onOpenAgent}
                   />
                 ))}
               </ul>
@@ -578,7 +627,8 @@ function ProjectItem({
   onSelectWorkspace,
   onAddWorkspace,
   onRemoveProject,
-  onRemoveWorkspace
+  onRemoveWorkspace,
+  onOpenAgent
 }: {
   project: Project
   activeWorkspaceId: number | null
@@ -588,6 +638,7 @@ function ProjectItem({
   onAddWorkspace: (project: Project) => void
   onRemoveProject: (projectId: number, deleteFiles: boolean) => void
   onRemoveWorkspace: (workspaceId: number, deleteFiles: boolean) => void
+  onOpenAgent: (agent: ChatAgentActivity) => void
 }): React.JSX.Element {
   const [open, setOpen] = useState(defaultOpen)
   const githubLinked = project.github != null
@@ -627,6 +678,7 @@ function ProjectItem({
                   agents={summary}
                   testId={`project-agent-status-${project.id}`}
                   className="opacity-60"
+                  onOpenAgent={onOpenAgent}
                 />
               </div>
               {multiRoot ? (
@@ -668,6 +720,7 @@ function ProjectItem({
               activeWorkspaceId={activeWorkspaceId}
               activity={activity}
               onSelectWorkspace={onSelectWorkspace}
+              onOpenAgent={onOpenAgent}
             />
           ) : project.workspaces.length > 0 ? (
             <SidebarMenuSub>
@@ -693,7 +746,10 @@ function ProjectItem({
                           <span className="min-w-0 truncate text-left">
                             {workspaceLabel(project, workspace)}
                           </span>
-                          <WorkspaceAgents agents={activity.get(workspace.id) ?? []} />
+                          <WorkspaceAgents
+                            agents={activity.get(workspace.id) ?? []}
+                            onOpenAgent={onOpenAgent}
+                          />
                         </button>
                       </SidebarMenuSubButton>
                       <WorkspacePrPopover
@@ -827,12 +883,14 @@ function WorkspaceSearchResults({
   results,
   activeWorkspaceId,
   activity,
-  onSelectWorkspace
+  onSelectWorkspace,
+  onOpenAgent
 }: {
   results: WorkspaceSearchResult[]
   activeWorkspaceId: number | null
   activity: Map<number, ChatAgentActivity[]>
   onSelectWorkspace: (workspaceId: number) => void
+  onOpenAgent: (agent: ChatAgentActivity) => void
 }): React.JSX.Element {
   return (
     <div>
@@ -862,7 +920,10 @@ function WorkspaceSearchResults({
                   <span className="truncate text-[11px] text-sidebar-foreground/60">
                     {project.name}
                   </span>
-                  <WorkspaceAgents agents={activity.get(workspace.id) ?? []} />
+                  <WorkspaceAgents
+                    agents={activity.get(workspace.id) ?? []}
+                    onOpenAgent={onOpenAgent}
+                  />
                 </span>
               </SidebarMenuButton>
             </WorkspaceHoverCard>
@@ -892,6 +953,19 @@ export function AppSidebar({
   const query = search.trim().toLowerCase()
   const results = searchWorkspaces(projects, query)
   const activity = useAgentActivity()
+  const openAgent = (agent: ChatAgentActivity): void => {
+    onSelectWorkspace(agent.workspaceId)
+    if (agent.paneId == null) return
+    void window.cerebro
+      .layoutCommand({
+        target: 'pane',
+        action: 'focus',
+        workspaceId: agent.workspaceId,
+        paneId: agent.paneId
+      })
+      .then((reply) => acceptLayout(reply.state))
+      .catch(() => {})
+  }
 
   return (
     <Sidebar
@@ -941,6 +1015,7 @@ export function AppSidebar({
                   activeWorkspaceId={activeWorkspaceId}
                   activity={activity}
                   onSelectWorkspace={onSelectWorkspace}
+                  onOpenAgent={openAgent}
                 />
               ) : null}
               {projects.length === 0 ? (
@@ -966,6 +1041,7 @@ export function AppSidebar({
                         activity={activity}
                         defaultOpen={containsActive || projects.length === 1}
                         onSelectWorkspace={onSelectWorkspace}
+                        onOpenAgent={openAgent}
                         onAddWorkspace={onAddWorkspace}
                         onRemoveProject={onRemoveProject}
                         onRemoveWorkspace={onRemoveWorkspace}
