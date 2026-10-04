@@ -149,7 +149,6 @@ export function ChatView({
     const moving = dockHydrated.current && wasEmpty.current !== empty
     dockHydrated.current = true
     wasEmpty.current = empty
-    input.dataset.motion = moving ? 'on' : 'off'
     const syncDock = (): void => {
       if (empty) {
         transcript.style.paddingBottom = ''
@@ -168,8 +167,9 @@ export function ChatView({
       }
       input.style.transform = 'translateY(0)'
     }
-    syncDock()
     if (empty) {
+      input.dataset.motion = moving ? 'on' : 'off'
+      syncDock()
       const observer = new ResizeObserver(syncDock)
       observer.observe(view)
       observer.observe(input)
@@ -178,6 +178,10 @@ export function ChatView({
       // Do not clear transform here — clearing would snap before the dock animation runs.
       return () => observer.disconnect()
     }
+    // Enable transition on the current (centered) transform, then move to bottom next frame.
+    input.dataset.motion = moving ? 'on' : 'off'
+    if (moving) void input.offsetWidth
+    syncDock()
     const stopLayout = observeChatLayout(transcript, input, stick)
     return () => {
       stopLayout()

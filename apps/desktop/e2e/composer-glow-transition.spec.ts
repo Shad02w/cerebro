@@ -77,8 +77,16 @@ test('empty glowing composer centers, then docks after send', async ({ page, ele
     await page.waitForTimeout(350)
     await page.getByRole('button', { name: 'Send message', exact: true }).click()
     await expect(dock).toHaveAttribute('data-dock', 'bottom')
+    await expect(dock).toHaveAttribute('data-motion', 'on')
+    // Capture the in-flight dock motion, then settle.
+    await page.waitForTimeout(280)
+    await expect
+      .poll(async () => dock.evaluate((el) => getComputedStyle(el).transform))
+      .not.toBe('none')
+    await page.waitForTimeout(450)
     await expect(glow).toHaveCSS('opacity', '0')
-    await page.waitForTimeout(900)
+    await expect(page.getByTestId('chat-empty-hero')).toHaveCSS('visibility', 'hidden')
+    await page.waitForTimeout(200)
 
     await session.send('Page.stopScreencast')
     await page.screenshot({ path: join(evidence, 'composer-glow-docked-v5.png') })
