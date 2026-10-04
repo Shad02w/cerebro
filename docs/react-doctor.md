@@ -79,7 +79,7 @@ Paths are relative to `apps/desktop/src/renderer`. Each row is one diagnostic, a
 | `src/components/cli-settings.tsx:7`          | `no-high-complexity-react-function`   | Refactor candidate: cyclomatic 18, cognitive 44 |
 | `src/components/settings-view.tsx:41`        | `no-high-complexity-react-function`   | Refactor candidate: cyclomatic 12, cognitive 24 |
 | `src/components/settings-view.tsx:381`       | `no-high-complexity-react-function`   | Refactor candidate: cyclomatic 14, cognitive 39 |
-| `src/components/terminal-tab-bar.tsx:141`    | `html-no-nested-interactive`          | Review close button inside `role="tab"`         |
+| `src/components/content-tab-bar.tsx:141`     | `html-no-nested-interactive`          | Review close button inside `role="tab"`         |
 | `src/components/workspace-hover-card.tsx:17` | `js-hoist-intl`                       | Reuse the relative-time formatter               |
 | `src/components/workspace-hover-card.tsx:23` | `no-high-complexity-react-function`   | Refactor candidate: cyclomatic 13, cognitive 19 |
 | `src/components/workspace-hover-card.tsx:94` | `no-prevent-default`                  | False positive: Electron external link          |

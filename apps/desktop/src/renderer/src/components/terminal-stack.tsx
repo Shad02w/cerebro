@@ -21,7 +21,7 @@ import { resolveTerminalFontFamily } from '@/lib/terminal-font'
 import { encodeExtendedKey } from '@/lib/terminal-keys'
 import { useKeybindHandler } from '@/keybinds'
 import { ChangesView } from '@/components/changes-view'
-import { TerminalTabBar } from '@/components/terminal-tab-bar'
+import { ContentTabBar } from '@/components/content-tab-bar'
 import { WorkspaceEmptyState } from '@/components/workspace-empty-state'
 
 type TerminalSessionProps = {
@@ -626,7 +626,7 @@ export function TerminalStack({
   return (
     <div data-testid="terminal-stack" className="flex min-h-0 flex-1 flex-col">
       {activeWorkspaceId != null ? (
-        <TerminalTabBar
+        <ContentTabBar
           workspaceId={activeWorkspaceId}
           tabs={workspace?.tabs ?? []}
           activeTabId={activeTabId}

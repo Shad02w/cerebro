@@ -32,7 +32,7 @@ test('header searches projects, repositories and branches without changing tree 
     await expect(results).toHaveCount(1)
     await search.press('Enter')
     await expect(results).toHaveAttribute('aria-current', 'location')
-    await expect(page.getByTestId('terminal-tab-bar')).toBeVisible()
+    await expect(page.getByTestId('content-tab-bar')).toBeVisible()
     await expect(page.locator('[data-terminal-workspace-id]')).toHaveCount(0)
 
     await search.fill(source.split('/').at(-1)!)

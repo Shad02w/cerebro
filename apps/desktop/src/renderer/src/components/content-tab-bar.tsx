@@ -48,12 +48,10 @@ export type ContentTabKind = PaneKind
 
 export type ContentTab = WorkspaceTab
 
-export type TerminalTab = ContentTab
-
 const TAB_DRAG_THRESHOLD_PX = 6
 const TAB_SWAP_TRANSITION = { duration: 200, easing: 'cubic-bezier(0.2, 0, 0, 1)' } as const
 
-type TerminalTabBarProps = {
+type ContentTabBarProps = {
   workspaceId: number
   tabs: ContentTab[]
   activeTabId: number | null
@@ -170,7 +168,7 @@ function SortableTab({
               type="button"
               className="inline-flex size-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground opacity-0 transition-opacity [.group:hover_&]:opacity-100 [.group:focus-within_&]:opacity-100 hover:bg-background/80 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
               aria-label={`Close ${tab.label} (${closeHotkey})`}
-              data-testid="terminal-tab-close"
+              data-testid="content-tab-close"
               onPointerDown={(event): void => event.stopPropagation()}
               onClick={(event): void => {
                 event.stopPropagation()
@@ -184,7 +182,7 @@ function SortableTab({
                 const nextFocus =
                   tabButtons[index + 1] ??
                   tabButtons[index - 1] ??
-                  tablist?.querySelector<HTMLButtonElement>('[data-testid="new-terminal-tab"]')
+                  tablist?.querySelector<HTMLButtonElement>('[data-testid="new-content-tab"]')
                 nextFocus?.focus()
                 onClose(tab.id)
               }}
@@ -202,7 +200,7 @@ function SortableTab({
   )
 }
 
-export function TerminalTabBar({
+export function ContentTabBar({
   workspaceId,
   tabs,
   activeTabId,
@@ -213,7 +211,7 @@ export function TerminalTabBar({
   onOpenChanges,
   onAddPane,
   onReorder
-}: TerminalTabBarProps): React.JSX.Element {
+}: ContentTabBarProps): React.JSX.Element {
   const closeHotkey = useKeybindBinding('closeTab')
   const chatHotkey = useKeybindBinding('newChat')
   const newHotkey = useKeybindBinding('newTerminal')
@@ -262,7 +260,7 @@ export function TerminalTabBar({
 
   return (
     <div
-      data-testid="terminal-tab-bar"
+      data-testid="content-tab-bar"
       data-dragging={draggingTabId != null ? 'true' : undefined}
       data-variant="pill"
       className="app-drag-region relative z-50 flex shrink-0 items-center bg-background pr-2 shadow-[inset_0_-1px_0_0_var(--border)]"
@@ -317,7 +315,7 @@ export function TerminalTabBar({
                   size="icon-xs"
                   className="app-no-drag my-auto shrink-0 size-6"
                   aria-label="Add tab"
-                  data-testid="new-terminal-tab"
+                  data-testid="new-content-tab"
                 >
                   <Plus className="size-4" />
                 </Button>
