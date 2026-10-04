@@ -58,6 +58,8 @@ export function ChatView({
   const editorRef = useRef<ComposerEditorHandle>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const empty = !session?.items.length
+  const wasEmpty = useRef(empty)
+  const dockHydrated = useRef(false)
   const imageRejection = useCallback(
     (): string | null =>
       selected?.modalities && !selected.modalities.includes('image')
@@ -144,6 +146,10 @@ export function ChatView({
     const transcript = scrolling.current
     const input = composer.current
     if (!view || !transcript || !input) return
+    const moving = dockHydrated.current && wasEmpty.current !== empty
+    dockHydrated.current = true
+    wasEmpty.current = empty
+    input.dataset.motion = moving ? 'on' : 'off'
     const syncDock = (): void => {
       if (empty) {
         transcript.style.paddingBottom = ''
@@ -166,6 +172,7 @@ export function ChatView({
     return () => {
       stopLayout()
       input.style.transform = ''
+      input.dataset.motion = 'off'
     }
   }, [empty])
   const send = async (): Promise<void> => {

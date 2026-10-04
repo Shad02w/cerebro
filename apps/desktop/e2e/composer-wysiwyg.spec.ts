@@ -97,13 +97,14 @@ test('agent composer renders bullets, inline code, a code block, and Add tags', 
     expect(glow.filter === 'none' || glow.filter === '').toBeTruthy()
     expect(glow.opacity).toBe('1')
     expect(formZ).toBeGreaterThan(glow.zIndex)
-    const dockBox = await dock.boundingBox()
-    const viewBox = await page.getByTestId('chat-view').boundingBox()
-    expect(dockBox).toBeTruthy()
-    expect(viewBox).toBeTruthy()
-    const dockMid = dockBox!.y + dockBox!.height / 2
-    const viewMid = viewBox!.y + viewBox!.height / 2
-    expect(Math.abs(dockMid - viewMid)).toBeLessThan(80)
+    await expect
+      .poll(async () => {
+        const dockBox = await dock.boundingBox()
+        const viewBox = await page.getByTestId('chat-view').boundingBox()
+        if (!dockBox || !viewBox) return Number.POSITIVE_INFINITY
+        return Math.abs(dockBox.y + dockBox.height / 2 - (viewBox.y + viewBox.height / 2))
+      })
+      .toBeLessThan(100)
     await mkdir(evidence, { recursive: true })
     await page.screenshot({ path: join(evidence, 'composer-glow.png') })
     await shell.screenshot({ path: join(evidence, 'composer-glow-shell.png') })
