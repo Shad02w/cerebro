@@ -178,12 +178,21 @@ export function ChatView({
       // Do not clear transform here — clearing would snap before the dock animation runs.
       return () => observer.disconnect()
     }
-    // Enable transition on the current (centered) transform, then move to bottom next frame.
+    // WAAPI keeps the center→bottom motion intact across the React commit that docks the shell.
+    const from = getComputedStyle(input).transform
     input.dataset.motion = moving ? 'on' : 'off'
-    if (moving) void input.offsetWidth
-    syncDock()
+    input.style.transform = 'translateY(0)'
+    let anim: Animation | undefined
+    if (moving && from && from !== 'none') {
+      anim = input.animate([{ transform: from }, { transform: 'translateY(0px)' }], {
+        duration: 700,
+        easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+        fill: 'forwards'
+      })
+    }
     const stopLayout = observeChatLayout(transcript, input, stick)
     return () => {
+      anim?.cancel()
       stopLayout()
     }
   }, [empty])

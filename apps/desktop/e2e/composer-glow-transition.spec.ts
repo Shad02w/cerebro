@@ -19,9 +19,9 @@ test.use({
 })
 
 test('empty glowing composer centers, then docks after send', async ({ page, electronApp }) => {
+  test.setTimeout(90_000)
   const directory = await mkdtemp(join(tmpdir(), 'cerebro-composer-glow-transition-'))
   const framesDir = await mkdtemp(join(tmpdir(), 'cerebro-composer-glow-frames-'))
-  const frames: Buffer[] = []
   try {
     await electronApp.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0].setSize(1250, 900)
@@ -57,42 +57,53 @@ test('empty glowing composer centers, then docks after send', async ({ page, ele
     await page.screenshot({ path: join(evidence, 'composer-glow-centered-v5.png') })
     await page.screenshot({ path: join(mediaDir, 'composer-glow-centered-v5.png') })
 
-    const session = await page.context().newCDPSession(page)
-    session.on('Page.screencastFrame', async (frame) => {
-      frames.push(Buffer.from(frame.data, 'base64'))
-      await session.send('Page.screencastFrameAck', { sessionId: frame.sessionId })
-    })
-    await session.send('Page.startScreencast', {
-      format: 'jpeg',
-      quality: 80,
-      everyNthFrame: 1,
-      maxWidth: 1250,
-      maxHeight: 900
-    })
+    const frames: Buffer[] = []
+    const grab = async (): Promise<void> => {
+      frames.push(await page.screenshot({ type: 'jpeg', quality: 70 }))
+    }
 
-    await page.waitForTimeout(600)
+    await grab()
+    await page.waitForTimeout(250)
+    await grab()
+
     const composer = page.getByRole('textbox', { name: 'Message agent' })
     await composer.click()
-    await page.keyboard.type('Ship a soft glow on the empty agent composer', { delay: 35 })
-    await page.waitForTimeout(350)
+    await page.keyboard.type('Ship a soft glow on the empty agent composer', { delay: 20 })
+    await grab()
+
+    const beforeSend = await dock.evaluate((el) => getComputedStyle(el).transform)
+    expect(beforeSend).not.toBe('none')
+    expect(beforeSend).not.toBe('matrix(1, 0, 0, 1, 0, 0)')
     await page.getByRole('button', { name: 'Send message', exact: true }).click()
     await expect(dock).toHaveAttribute('data-dock', 'bottom')
     await expect(dock).toHaveAttribute('data-motion', 'on')
-    // Capture the in-flight dock motion, then settle.
-    await page.waitForTimeout(280)
     await expect
-      .poll(async () => dock.evaluate((el) => getComputedStyle(el).transform))
-      .not.toBe('none')
-    await page.waitForTimeout(450)
+      .poll(async () => dock.evaluate((el) => el.getAnimations().length))
+      .toBeGreaterThan(0)
+
+    const pathYs: number[] = []
+    const started = Date.now()
+    while (Date.now() - started < 800) {
+      const box = await form.boundingBox()
+      if (box) pathYs.push(box.y)
+      await grab()
+    }
+    const uniqueBands = new Set(pathYs.map((y) => Math.round(y / 8)))
+    expect(
+      uniqueBands.size,
+      `expected multiple vertical samples during dock, got ${JSON.stringify(pathYs)}`
+    ).toBeGreaterThan(2)
+
     await expect(glow).toHaveCSS('opacity', '0')
     await expect(page.getByTestId('chat-empty-hero')).toHaveCSS('visibility', 'hidden')
+    await grab()
     await page.waitForTimeout(200)
+    await grab()
 
-    await session.send('Page.stopScreencast')
     await page.screenshot({ path: join(evidence, 'composer-glow-docked-v5.png') })
     await page.screenshot({ path: join(mediaDir, 'composer-glow-docked-v5.png') })
 
-    expect(frames.length).toBeGreaterThan(10)
+    expect(frames.length).toBeGreaterThan(8)
     for (const [index, frame] of frames.entries()) {
       await writeFile(join(framesDir, `frame-${String(index).padStart(4, '0')}.jpg`), frame)
     }
@@ -100,7 +111,7 @@ test('empty glowing composer centers, then docks after send', async ({ page, ele
     await execFileAsync('ffmpeg', [
       '-y',
       '-framerate',
-      '20',
+      '12',
       '-i',
       join(framesDir, 'frame-%04d.jpg'),
       '-vf',
