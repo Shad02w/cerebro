@@ -74,6 +74,41 @@ test('agent composer renders bullets, inline code, a code block, and Add tags', 
     if ((await projectRow.getAttribute('aria-expanded')) === 'false') await projectRow.click()
     await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
     await page.getByRole('button', { name: /^New Agent tab/ }).click()
+    const dock = page.getByTestId('chat-composer')
+    const shell = page.getByTestId('chat-composer-shell')
+    const glowLayer = page.getByTestId('chat-composer-glow')
+    const form = shell.locator('form.chat-composer-shell')
+    await expect(shell).toBeVisible()
+    await expect(dock).toHaveAttribute('data-dock', 'center')
+    await expect(page.getByTestId('chat-empty-hero')).toBeVisible()
+    await expect(glowLayer).toBeAttached()
+    await expect(form).toBeVisible()
+    const glow = await glowLayer.evaluate((element) => {
+      const style = getComputedStyle(element)
+      return {
+        zIndex: Number(style.zIndex),
+        boxShadow: style.boxShadow,
+        filter: style.filter,
+        opacity: style.opacity
+      }
+    })
+    const formZ = await form.evaluate((element) => Number(getComputedStyle(element).zIndex))
+    expect(glow.boxShadow).not.toBe('none')
+    expect(glow.filter === 'none' || glow.filter === '').toBeTruthy()
+    expect(glow.opacity).toBe('1')
+    expect(formZ).toBeGreaterThan(glow.zIndex)
+    // Center the shell/form itself — hero copy is absolutely positioned above it.
+    await expect
+      .poll(async () => {
+        const formBox = await form.boundingBox()
+        const viewBox = await page.getByTestId('chat-view').boundingBox()
+        if (!formBox || !viewBox) return Number.POSITIVE_INFINITY
+        return Math.abs(formBox.y + formBox.height / 2 - (viewBox.y + viewBox.height / 2))
+      })
+      .toBeLessThan(24)
+    await mkdir(evidence, { recursive: true })
+    await page.screenshot({ path: join(evidence, 'composer-glow.png') })
+    await shell.screenshot({ path: join(evidence, 'composer-glow-shell.png') })
     const composer = page.getByRole('textbox', { name: 'Message agent' })
     await expect(composer).toBeVisible()
     await composer.click()
@@ -81,7 +116,6 @@ test('agent composer renders bullets, inline code, a code block, and Add tags', 
     await expect(composer.locator('li')).toHaveText('Ship the notes')
     await expect(composer.locator('li code')).toHaveText('notes')
     await expect(composer.locator('h1, h2, h3')).toHaveCount(0)
-    await mkdir(evidence, { recursive: true })
     await page.screenshot({ path: join(evidence, 'composer-bullet.png') })
 
     await page.keyboard.press('Shift+Enter')
@@ -159,6 +193,8 @@ test('agent composer renders bullets, inline code, a code block, and Add tags', 
       .getByRole('button', { name: /^Test Model.*Codex/ })
       .click()
     await page.getByRole('button', { name: 'Send message', exact: true }).click()
+    await expect(dock).toHaveAttribute('data-dock', 'bottom')
+    await expect(glowLayer).toHaveCSS('opacity', '0')
     const sent = page.getByTestId('chat-user-message').first()
     await expect(sent.locator('li p').first()).toHaveText('Ship the notes')
     await expect(sent.locator('p code')).toHaveText('notes')

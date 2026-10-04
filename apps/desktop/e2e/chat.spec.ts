@@ -38,10 +38,13 @@ test('chat works through native adapters, survives reload, handles requests, and
     await expect(page.getByRole('button', { name: 'New chat', exact: true })).toHaveCount(0)
     await page.getByRole('button', { name: 'Send message', exact: true }).click()
     await expect(page.getByRole('alert')).toContainText('Write a message first')
-    await expect(page.getByTestId('chat-transcript').getByRole('alert')).toContainText(
+    await expect(page.getByTestId('chat-composer').getByRole('alert')).toContainText(
       'Write a message first'
     )
-    await expect(page.getByTestId('chat-composer').getByRole('alert')).toHaveCount(0)
+    await expect(page.getByTestId('chat-transcript').getByRole('alert')).toHaveCount(0)
+    await expect(page.getByTestId('chat-composer')).toHaveAttribute('data-dock', 'center')
+    await expect(page.getByTestId('chat-empty-hero')).toBeVisible()
+    await expect(page.getByTestId('chat-composer-glow')).toHaveCSS('opacity', '1')
     await page.getByTestId('chat-model-picker').click()
     await expect(
       page.getByTestId('model-picker').getByRole('button', { name: 'All', exact: true })
@@ -435,7 +438,7 @@ test('chat works through native adapters, survives reload, handles requests, and
     const panes = page.locator('[data-pane-kind="chat"]:visible')
     await expect(panes).toHaveCount(2)
     await expect(panes.nth(0).getByTestId('chat-transcript')).toContainText('Adapter connected.')
-    await expect(panes.nth(1).getByTestId('chat-transcript')).toContainText(
+    await expect(panes.nth(1).getByTestId('chat-empty-hero')).toContainText(
       'What would you like to build?'
     )
     await panes
@@ -669,7 +672,8 @@ test('Mod+N opens independent Agent tabs from a workspace row, composer, and ter
     await expect(terminal).toBeFocused()
     await page.keyboard.press(chord)
     await expect(page.getByTestId('chat-tab')).toHaveCount(3)
-    await expect(chat.getByTestId('chat-transcript')).toContainText('What would you like to build?')
+    await expect(chat.getByTestId('chat-empty-hero')).toContainText('What would you like to build?')
+    await expect(chat.getByTestId('chat-composer')).toHaveAttribute('data-dock', 'center')
     await page.getByTestId('new-terminal-tab').click()
     await expect(page.getByTestId('open-chat-tab').locator('[data-hotkey="Mod+N"]')).toBeVisible()
     await mkdir('/tmp/cerebro-pane-session-evidence', { recursive: true })
