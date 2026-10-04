@@ -84,13 +84,14 @@ test('agent composer renders bullets, inline code, a code block, and Add tags', 
       const style = getComputedStyle(element)
       return {
         zIndex: Number(style.zIndex),
+        boxShadow: style.boxShadow,
         filter: style.filter,
-        backgroundImage: style.backgroundImage
+        backgroundColor: style.backgroundColor
       }
     })
     const formZ = await form.evaluate((element) => Number(getComputedStyle(element).zIndex))
-    expect(glow.filter).toMatch(/blur\(/)
-    expect(glow.backgroundImage).toMatch(/gradient/)
+    expect(glow.boxShadow).not.toBe('none')
+    expect(glow.filter === 'none' || glow.filter === '').toBeTruthy()
     expect(formZ).toBeGreaterThan(glow.zIndex)
     await mkdir(evidence, { recursive: true })
     await page.screenshot({ path: join(evidence, 'composer-glow.png') })
