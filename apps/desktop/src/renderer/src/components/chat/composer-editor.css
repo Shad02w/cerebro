@@ -54,11 +54,8 @@
 .composer-editor .composer-tag {
   color: var(--sidebar-selected);
   font-weight: 600;
-}
-
-.composer-editor .composer-tag-at {
-  display: inline-block;
-  transform: translateY(-0.14em);
+  line-height: inherit;
+  vertical-align: baseline;
 }
 
 .composer-editor .composer-image-chip {

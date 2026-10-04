@@ -1,4 +1,5 @@
 import type { Node as ProseNode } from '@tiptap/pm/model'
+import type { EditorState, Transaction } from '@tiptap/pm/state'
 
 type JSONContent = {
   type?: string
@@ -34,7 +35,96 @@ export const codeLanguages: Array<[string, string]> = [
   ['sql', 'SQL']
 ]
 
-const tagByLabel = new Map(addTags.map((tag) => [tag.label, tag]))
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+const tagPatternSource = (tags: readonly TagOption[]): string =>
+  tags
+    .toSorted((left, right) => right.label.length - left.label.length)
+    .map((tag) =>
+      [...tag.label]
+        .map((char) => {
+          const upper = char.toUpperCase()
+          const lower = char.toLowerCase()
+          return upper === lower
+            ? escapeRegExp(char)
+            : `[${escapeRegExp(upper)}${escapeRegExp(lower)}]`
+        })
+        .join('')
+    )
+    .join('|')
+
+export type AddTagMatch = {
+  start: number
+  end: number
+  tag: TagOption
+  /** A boundary follows the token, or the caret has left it. Still-open typing stays editable. */
+  closed: boolean
+}
+
+/** `@` tokens whose label equals an Add tag. Matching is case-insensitive and keeps the catalog label. */
+export function findAddTagMatches(
+  text: string,
+  caret: number | null = null,
+  tags: readonly TagOption[] = addTags
+): AddTagMatch[] {
+  if (!tags.length || !text) return []
+  const byFold = new Map(tags.map((tag) => [tag.label.toLowerCase(), tag]))
+  const expression = new RegExp(`@(${tagPatternSource(tags)})(?![A-Za-z0-9_-])`, 'g')
+  const matches: AddTagMatch[] = []
+  for (const match of text.matchAll(expression)) {
+    const raw = match[1]
+    const tag = raw ? byFold.get(raw.toLowerCase()) : undefined
+    if (!tag || match.index === undefined) continue
+    const start = match.index
+    const end = start + match[0].length
+    const stillTyping = end === text.length && caret === end
+    matches.push({ start, end, tag, closed: !stillTyping })
+  }
+  return matches
+}
+
+export const visitAddTagText = (
+  state: EditorState,
+  visit: (match: AddTagMatch, from: number, to: number) => void
+): void => {
+  state.doc.descendants((node, pos) => {
+    if (!node.isText || !node.text) return
+    if (node.marks.some((mark) => mark.type.name === 'code')) return
+    if (state.doc.resolve(pos).parent.type.spec.code) return
+    const caret =
+      state.selection.empty &&
+      state.selection.from >= pos &&
+      state.selection.from <= pos + node.text.length
+        ? state.selection.from - pos
+        : null
+    for (const match of findAddTagMatches(node.text, caret))
+      visit(match, pos + match.start, pos + match.end)
+  })
+}
+
+/** Turns a finished `@Tag` into a mention. A token the caret is still typing stays text so it can grow. */
+export function promoteAddTagTransaction(state: EditorState): Transaction | null {
+  const mention = state.schema.nodes.mention
+  if (!mention) return null
+  const found: Array<{ from: number; to: number; tag: TagOption }> = []
+  visitAddTagText(state, (match, from, to) => {
+    if (match.closed) found.push({ from, to, tag: match.tag })
+  })
+  if (!found.length) return null
+  let tr = state.tr
+  for (const match of found.reverse()) {
+    tr = tr.replaceWith(
+      match.from,
+      match.to,
+      mention.create({
+        id: match.tag.id,
+        label: match.tag.label,
+        mentionSuggestionChar: '@'
+      })
+    )
+  }
+  return tr
+}
 
 type Writer = { text: string; chips: Chip[] }
 
@@ -169,35 +259,53 @@ export function serializedOffset(
   return text.length
 }
 
+type InlineSpan = { start: number; end: number; part: JSONContent }
+
 const inlineFromText = (line: string, attachments?: Array<{ id: string }>): JSONContent[] => {
   if (!line) return []
-  const parts: JSONContent[] = []
-  const pattern = /@(A|B|C)|`([^`]+)`|\[Image #(\d+)\]/g
-  let last = 0
-  for (const match of line.matchAll(pattern)) {
-    const index = match.index ?? 0
-    if (index > last) parts.push({ type: 'text', text: line.slice(last, index) })
-    if (match[1]) {
-      const tag = tagByLabel.get(match[1])
-      if (tag)
-        parts.push({
-          type: 'mention',
-          attrs: { id: tag.id, label: tag.label, mentionSuggestionChar: '@' }
-        })
-    } else if (match[2]) parts.push({ type: 'text', text: match[2], marks: [{ type: 'code' }] })
-    else if (match[3] && attachments) {
-      const imageIndex = Number(match[3])
+  const spans: InlineSpan[] = []
+  for (const match of line.matchAll(/`([^`]+)`|\[Image #(\d+)\]/g)) {
+    const start = match.index ?? 0
+    const end = start + match[0].length
+    if (match[1])
+      spans.push({ start, end, part: { type: 'text', text: match[1], marks: [{ type: 'code' }] } })
+    else if (match[2] && attachments) {
+      const imageIndex = Number(match[2])
       const attachment = attachments[imageIndex - 1]
-      if (attachment)
-        parts.push({
-          type: 'imageChip',
-          attrs: { attachmentId: attachment.id, label: chatImageMarker(imageIndex) }
-        })
-      else parts.push({ type: 'text', text: match[0] })
-    } else parts.push({ type: 'text', text: match[0] })
-    last = index + match[0].length
+      spans.push({
+        start,
+        end,
+        part: attachment
+          ? {
+              type: 'imageChip',
+              attrs: { attachmentId: attachment.id, label: chatImageMarker(imageIndex) }
+            }
+          : { type: 'text', text: match[0] }
+      })
+    } else spans.push({ start, end, part: { type: 'text', text: match[0] } })
   }
-  if (last < line.length) parts.push({ type: 'text', text: line.slice(last) })
+  for (const match of findAddTagMatches(line)) {
+    const overlaps = spans.some((span) => match.start < span.end && match.end > span.start)
+    if (overlaps) continue
+    spans.push({
+      start: match.start,
+      end: match.end,
+      part: {
+        type: 'mention',
+        attrs: { id: match.tag.id, label: match.tag.label, mentionSuggestionChar: '@' }
+      }
+    })
+  }
+  spans.sort((left, right) => left.start - right.start)
+  const parts: JSONContent[] = []
+  let cursor = 0
+  for (const span of spans) {
+    if (span.start < cursor) continue
+    if (span.start > cursor) parts.push({ type: 'text', text: line.slice(cursor, span.start) })
+    parts.push(span.part)
+    cursor = span.end
+  }
+  if (cursor < line.length) parts.push({ type: 'text', text: line.slice(cursor) })
   return parts
 }
 
