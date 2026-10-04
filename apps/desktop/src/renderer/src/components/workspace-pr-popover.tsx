@@ -79,23 +79,27 @@ export function WorkspacePrPopover({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button
-          type="button"
+        <span
+          role="button"
+          tabIndex={0}
           data-testid={`workspace-pr-icon-${workspace.id}`}
           data-pr-state={display.state}
           data-stale={stale}
           aria-label={`${display.label} pull request #${pr.number}${stale ? ' (stale)' : ''}`}
           title={`${display.label}${stale ? ' · Refresh failed' : ''}`}
           className={cn(
-            'app-no-drag inline-flex shrink-0 items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring',
+            'app-no-drag inline-flex shrink-0 cursor-pointer items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring',
             display.color,
             className
           )}
           onClick={(event) => event.stopPropagation()}
           onPointerDown={(event) => event.stopPropagation()}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') event.stopPropagation()
+          }}
         >
           <Icon className="size-full" />
-        </button>
+        </span>
       </PopoverTrigger>
       <PopoverContent
         align="start"

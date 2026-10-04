@@ -12,6 +12,7 @@ import {
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import {
+  agentActivityStatus,
   chatAttachmentLimits,
   chatImageTypes,
   type AgentAccessMode,
@@ -158,51 +159,42 @@ const activityRank: Record<AgentActivityStatus, number> = {
   waiting: 0,
   running: 1,
   failed: 2,
-  interrupted: 3
+  interrupted: 3,
+  finished: 4,
+  idle: 5
 }
 /**
- * Every live session is listed. A failed or interrupted session is listed only when it is the
- * newest session for its harness, so an older failure does not linger after a newer idle turn.
+ * Sidebar agents follow open chat panes in the live layout: one entry per binding
+ * whose pane still exists, including idle. Stale bindings for closed tabs are ignored.
  */
-function boundPaneId(bindings: Record<string, string>, sessionId: string): number | null {
-  let paneId: number | null = null
-  for (const [key, bound] of Object.entries(bindings)) {
-    if (bound !== sessionId) continue
-    const id = Number(key)
-    if (!Number.isInteger(id) || id <= 0) continue
-    if (paneId == null || id > paneId) paneId = id
-  }
-  return paneId
-}
 function visibleAgents(
   sessions: AgentSession[],
-  bindings: Record<string, string>
+  bindings: Record<string, string>,
+  liveChatPanes: Set<number>
 ): ChatAgentActivity[] {
-  const newest = new Map<AgentHarness, AgentSession>()
-  for (const session of sessions) {
-    const current = newest.get(session.model.harness)
-    if (!current || session.updatedAt >= current.updatedAt)
-      newest.set(session.model.harness, session)
-  }
-  return sessions
-    .filter((session) => {
-      if (session.status === 'running' || session.status === 'waiting') return true
-      if (session.status !== 'failed' && session.status !== 'interrupted') return false
-      return newest.get(session.model.harness)?.id === session.id
-    })
-    .sort(
-      (a, b) =>
-        activityRank[a.status as AgentActivityStatus] -
-          activityRank[b.status as AgentActivityStatus] || b.updatedAt - a.updatedAt
-    )
-    .map((session) => ({
+  const byId = new Map(sessions.map((session) => [session.id, session]))
+  const agents: ChatAgentActivity[] = []
+  for (const [key, sessionId] of Object.entries(bindings)) {
+    const paneId = Number(key)
+    if (!Number.isInteger(paneId) || paneId <= 0) continue
+    if (!liveChatPanes.has(paneId)) continue
+    const session = byId.get(sessionId)
+    if (!session) continue
+    agents.push({
       sessionId: session.id,
       workspaceId: session.workspaceId,
       harness: session.model.harness,
-      status: session.status as AgentActivityStatus,
+      status: agentActivityStatus(session),
       title: session.title,
-      paneId: boundPaneId(bindings, session.id)
-    }))
+      paneId
+    })
+  }
+  return agents.sort(
+    (a, b) =>
+      activityRank[a.status] - activityRank[b.status] ||
+      (b.paneId ?? 0) - (a.paneId ?? 0) ||
+      a.harness.localeCompare(b.harness)
+  )
 }
 const readJson = <T>(path: string, fallback: T): T => {
   try {
@@ -419,8 +411,19 @@ export class AgentSessions {
         .map(({ id, title, model, status, updatedAt }) => ({ id, title, model, status, updatedAt }))
     })
   }
-  /** Workspaces with a non-idle activity status. Unselected workspaces are included; idle ones are not. */
-  overview(): ChatActivityOverview {
+  /**
+   * Workspaces with at least one open agent tab. `liveChatPanes` is the set of chat pane IDs
+   * currently present in layout; bindings for closed panes are pruned and omitted.
+   */
+  overview(liveChatPanes: Iterable<number>): ChatActivityOverview {
+    const live = new Set<number>()
+    for (const paneId of liveChatPanes) {
+      if (Number.isInteger(paneId) && paneId > 0) live.add(paneId)
+    }
+    const stale = Object.keys(this.bindings)
+      .map(Number)
+      .filter((paneId) => Number.isInteger(paneId) && paneId > 0 && !live.has(paneId))
+    if (stale.length) this.releasePanes(stale)
     const grouped = new Map<number, AgentSession[]>()
     for (const session of this.sessions.values()) {
       const list = grouped.get(session.workspaceId)
@@ -428,11 +431,30 @@ export class AgentSessions {
       else grouped.set(session.workspaceId, [session])
     }
     const workspaces = [...grouped.entries()].flatMap(([workspaceId, sessions]) => {
-      const agents = visibleAgents(sessions, this.bindings)
+      const agents = visibleAgents(sessions, this.bindings, live)
       return agents.length ? [{ workspaceId, agents }] : []
     })
     workspaces.sort((a, b) => a.workspaceId - b.workspaceId)
     return { workspaces }
+  }
+  /** Drop pane bindings when chat panes close so overview tracks open tabs only. */
+  releasePanes(paneIds: Iterable<number>): void {
+    let changed = false
+    const next = { ...this.bindings }
+    const workspaces = new Set<number>()
+    for (const paneId of paneIds) {
+      const key = String(paneId)
+      const sessionId = next[key]
+      if (!sessionId) continue
+      delete next[key]
+      changed = true
+      const session = this.sessions.get(sessionId)
+      if (session) workspaces.add(session.workspaceId)
+    }
+    if (!changed) return
+    this.atomic('bindings.json', next)
+    this.bindings = next
+    for (const workspaceId of workspaces) this.publish(workspaceId)
   }
   async command(scope: AgentScope, command: ChatCommand): Promise<ChatView> {
     if (this.stopping) throw new Error('Agent host is stopping.')
@@ -680,6 +702,7 @@ export class AgentSessions {
     session.reasoning = reasoning
     session.status = 'running'
     session.error = undefined
+    session.attention = undefined
     session.generation = randomUUID()
     session.turnId = randomUUID()
     session.items.push({
@@ -847,10 +870,17 @@ export class AgentSessions {
           runtime.steer = fn
         }
       })
-      session.status = runtime.controller.signal.aborted ? 'interrupted' : 'idle'
+      if (runtime.controller.signal.aborted) {
+        session.status = 'interrupted'
+        session.attention = undefined
+      } else {
+        session.status = 'idle'
+        session.attention = { kind: 'finished', at: Date.now() }
+      }
     } catch (error) {
       session.status = runtime.controller.signal.aborted ? 'interrupted' : 'failed'
       session.error = String(error)
+      session.attention = undefined
     } finally {
       declinePending()
       runtime.controller.signal.removeEventListener('abort', declinePending)

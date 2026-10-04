@@ -5,6 +5,7 @@ import piIcon from '@/assets/agents/pi.svg'
 import { AgentStatusIcon } from '@/components/agent-status-icon'
 import { harnessLabels } from '@/components/chat/queries'
 import { cn } from '@/lib/utils'
+import './agent-status.css'
 
 const icons: Record<AgentHarness, string> = {
   claude: claudeIcon,
@@ -15,10 +16,12 @@ const icons: Record<AgentHarness, string> = {
 /** Masked harness logo, the same form as the agent tab title icon. */
 export function HarnessIcon({
   harness,
+  loading = false,
   testId,
   className
 }: {
   harness: AgentHarness
+  loading?: boolean
   testId?: string
   className?: string
 }): React.JSX.Element {
@@ -29,7 +32,8 @@ export function HarnessIcon({
       data-testid={testId}
       data-harness-icon={harness}
       className={cn(
-        'size-4 bg-current [mask-repeat:no-repeat] [mask-position:center] [mask-size:contain]',
+        'size-4 [mask-repeat:no-repeat] [mask-position:center] [mask-size:contain]',
+        loading ? 'agent-harness-loading' : 'bg-current',
         harness === 'claude' && 'text-[#D97757]',
         className
       )}
@@ -43,23 +47,21 @@ export function HarnessStatusIcon({
   harness,
   status,
   surface,
-  testId,
-  plateClassName
+  testId
 }: {
   harness: AgentHarness
-  status: AgentActivityStatus
+  status: Exclude<AgentActivityStatus, 'idle'>
   surface: 'sidebar' | 'tab'
   testId?: string
-  plateClassName: string
 }): React.JSX.Element {
+  // Pad the layout box so the absolute badge stays inside overflow-hidden ancestors.
   return (
-    <span className="relative inline-flex size-4 shrink-0" data-agent-harness={harness}>
-      <HarnessIcon harness={harness} testId={testId} />
-      <AgentStatusIcon
-        status={status}
-        surface={surface}
-        className={cn('absolute -right-1 -bottom-1 rounded-[3px] p-px', plateClassName)}
-      />
+    <span
+      className="relative inline-flex size-4 shrink-0 pr-[3px] pb-[3px] box-content"
+      data-agent-harness={harness}
+    >
+      <HarnessIcon harness={harness} loading={status === 'running'} testId={testId} />
+      <AgentStatusIcon status={status} surface={surface} className="absolute right-0 bottom-0" />
     </span>
   )
 }

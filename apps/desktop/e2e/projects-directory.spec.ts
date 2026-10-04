@@ -133,21 +133,33 @@ test('adds a folder of git repos as a multi-root workspace', async ({ page, elec
     await expect(frontendRow.getByTestId(/workspace-repo-/)).toHaveText('frontend')
     await expect(backendRow.getByTestId(/workspace-branch-/)).toHaveText('main')
     await expect(frontendRow.getByTestId(/workspace-branch-/)).toHaveText('main')
-    // Leading icons are siblings of the selection button so PR popovers never nest buttons.
-    await expect(backendRow.locator('..').getByTestId(/workspace-default-icon-/)).toBeVisible()
-    await expect(frontendRow.locator('..').getByTestId(/workspace-default-icon-/)).toBeVisible()
+    // Branch / PR icons live in the branch line (in flow, not absolutely over the name).
+    const backendIcon = backendRow.getByTestId(/workspace-default-icon-/)
+    const frontendIcon = frontendRow.getByTestId(/workspace-default-icon-/)
+    await expect(backendIcon).toBeVisible()
+    await expect(frontendIcon).toBeVisible()
 
     const backendNameBox = await backendRow.getByTestId(/workspace-repo-/).boundingBox()
     const backendBranchBox = await backendRow.getByTestId(/workspace-branch-/).boundingBox()
+    const backendIconBox = await backendIcon.boundingBox()
     const backendBox = await backendRow.boundingBox()
     const frontendBox = await frontendRow.boundingBox()
     expect(backendNameBox).toBeTruthy()
     expect(backendBranchBox).toBeTruthy()
+    expect(backendIconBox).toBeTruthy()
     expect(backendBox).toBeTruthy()
     expect(frontendBox).toBeTruthy()
     expect(backendBranchBox!.y).toBeGreaterThan(backendNameBox!.y)
     expect(backendBranchBox!.x).toBeGreaterThanOrEqual(backendNameBox!.x - 1)
     expect(backendBranchBox!.x - backendNameBox!.x).toBeLessThan(20)
+    expect(backendIconBox!.y).toBeGreaterThan(backendNameBox!.y + backendNameBox!.height - 2)
+    expect(backendIconBox!.y + backendIconBox!.height).toBeLessThanOrEqual(
+      backendBranchBox!.y + backendBranchBox!.height + 2
+    )
+    await mkdir('/tmp/cerebro-sidebar-evidence', { recursive: true })
+    await page.screenshot({
+      path: '/tmp/cerebro-sidebar-evidence/multi-root-repo-icons.png'
+    })
     const innerGap = backendBranchBox!.y - (backendNameBox!.y + backendNameBox!.height)
     const firstBox = backendBox!.y < frontendBox!.y ? backendBox! : frontendBox!
     const secondBox = backendBox!.y < frontendBox!.y ? frontendBox! : backendBox!

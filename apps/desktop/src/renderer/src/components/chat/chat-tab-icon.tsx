@@ -1,5 +1,11 @@
 import { useQueries } from '@tanstack/react-query'
-import type { AgentHarness, AgentSession, PaneNode, WorkspaceTab } from '@cerebro/core'
+import {
+  agentActivityStatus,
+  type AgentActivityStatus,
+  type AgentHarness,
+  type PaneNode,
+  type WorkspaceTab
+} from '@cerebro/core'
 import { HarnessIcon, HarnessStatusIcon } from '@/components/harness-icon'
 
 function chatPaneIds(node: PaneNode): number[] {
@@ -7,7 +13,7 @@ function chatPaneIds(node: PaneNode): number[] {
   return [...chatPaneIds(node.first), ...chatPaneIds(node.second)]
 }
 
-type TabSession = { harness: AgentHarness; status: AgentSession['status'] }
+type TabSession = { harness: AgentHarness; status: AgentActivityStatus }
 
 export function ChatTabIcon({
   workspaceId,
@@ -23,7 +29,12 @@ export function ChatTabIcon({
       queryFn: () => window.cerebro.chatCommand({ action: 'get', workspaceId, paneId }),
       staleTime: Infinity,
       select: (view: Awaited<ReturnType<typeof window.cerebro.chatCommand>>): TabSession | null =>
-        view.session ? { harness: view.session.model.harness, status: view.session.status } : null
+        view.session
+          ? {
+              harness: view.session.model.harness,
+              status: agentActivityStatus(view.session)
+            }
+          : null
     }))
   })
   const session =
@@ -38,7 +49,6 @@ export function ChatTabIcon({
       status={session.status}
       surface="tab"
       testId="chat-tab-agent-icon"
-      plateClassName="bg-background"
     />
   )
 }

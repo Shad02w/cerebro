@@ -4,7 +4,11 @@ import { cn } from '@/lib/utils'
 import './agent-status.css'
 
 /** Four dots in a square for a running agent. Every other status is one small dot. */
-export function AgentStatusMark({ status }: { status: AgentActivityStatus }): React.JSX.Element {
+export function AgentStatusMark({
+  status
+}: {
+  status: Exclude<AgentActivityStatus, 'idle'>
+}): React.JSX.Element {
   if (status === 'running') {
     return (
       <span className="agent-status-dots" aria-hidden>
@@ -18,12 +22,13 @@ export function AgentStatusMark({ status }: { status: AgentActivityStatus }): Re
   return <span aria-hidden className="agent-status-dot" />
 }
 
+/** Status mark used by both sidebar agent icons and chat tab titles. */
 export function AgentStatusIcon({
   status,
   surface,
   className
 }: {
-  status: AgentActivityStatus
+  status: Exclude<AgentActivityStatus, 'idle'>
   surface: 'sidebar' | 'tab'
   className?: string
 }): React.JSX.Element {

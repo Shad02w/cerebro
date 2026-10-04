@@ -20,7 +20,7 @@ import {
 import type { ChatAgentActivity, LayoutState, PaneNode } from '@cerebro/core'
 import type { Project, Workspace } from '@shared/types'
 import type { SettingsSectionId } from '@/lib/app-route'
-import { HarnessStatusIcon } from '@/components/harness-icon'
+import { HarnessIcon, HarnessStatusIcon } from '@/components/harness-icon'
 import { harnessLabels } from '@/components/chat/queries'
 import { sortAgentActivity, useAgentActivity } from '@/lib/agent-activity'
 import { acceptLayout, layoutOptions } from '@/lib/query-client'
@@ -153,29 +153,43 @@ function WorkspaceAgentIcon({
   title: string
   onOpenAgent: (agent: ChatAgentActivity) => void
 }): React.JSX.Element {
+  // Use a span so agent controls can live inside workspace <button> rows without
+  // the HTML parser closing the row early and orphaning the status icons.
   return (
     <Tooltip disableHoverableContent>
       <TooltipTrigger asChild>
-        <button
-          type="button"
+        <span
+          role="button"
+          tabIndex={0}
           data-testid="workspace-agent-open"
           data-agent-title={title}
           aria-label={title}
-          className="relative inline-flex shrink-0 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sidebar-selected"
+          className="relative inline-flex shrink-0 cursor-pointer rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sidebar-selected"
           onPointerDown={(event): void => event.stopPropagation()}
           onClick={(event): void => {
             event.preventDefault()
             event.stopPropagation()
             onOpenAgent(agent)
           }}
+          onKeyDown={(event): void => {
+            if (event.key !== 'Enter' && event.key !== ' ') return
+            event.preventDefault()
+            event.stopPropagation()
+            onOpenAgent(agent)
+          }}
         >
-          <HarnessStatusIcon
-            harness={agent.harness}
-            status={agent.status}
-            surface="sidebar"
-            plateClassName="bg-sidebar"
-          />
-        </button>
+          {agent.status === 'idle' ? (
+            <span
+              className="relative inline-flex size-4 shrink-0 pr-[3px] pb-[3px] box-content"
+              data-agent-harness={agent.harness}
+              data-workspace-agent-status="idle"
+            >
+              <HarnessIcon harness={agent.harness} />
+            </span>
+          ) : (
+            <HarnessStatusIcon harness={agent.harness} status={agent.status} surface="sidebar" />
+          )}
+        </span>
       </TooltipTrigger>
       <TooltipContent
         side="bottom"
@@ -190,6 +204,9 @@ function WorkspaceAgentIcon({
   )
 }
 
+/** Keep the sidebar strip to one row; the rest are a +N glance cue. */
+const WORKSPACE_AGENT_STRIP = 4
+
 function WorkspaceAgents({
   agents,
   testId,
@@ -203,19 +220,33 @@ function WorkspaceAgents({
 }): React.JSX.Element | null {
   const layout = useQuery(layoutOptions).data
   if (!agents.length) return null
+  const visible = agents.slice(0, WORKSPACE_AGENT_STRIP)
+  const overflow = agents.length - visible.length
   return (
     <div
       data-testid={testId}
-      className={cn('mt-1 flex min-w-0 flex-wrap items-center gap-2', className)}
+      className={cn(
+        'mt-1 flex min-w-0 flex-nowrap items-center gap-1.5 overflow-hidden',
+        className
+      )}
     >
-      {agents.map((agent) => (
+      {visible.map((agent) => (
         <WorkspaceAgentIcon
-          key={agent.sessionId}
+          key={agent.paneId ?? agent.sessionId}
           agent={agent}
           title={agentTabTitle(agent, layout)}
           onOpenAgent={onOpenAgent}
         />
       ))}
+      {overflow > 0 ? (
+        <span
+          data-testid="workspace-agent-overflow"
+          className="shrink-0 text-[10px] tabular-nums text-sidebar-foreground/55"
+          aria-label={`${overflow} more agent tabs`}
+        >
+          +{overflow}
+        </span>
+      ) : null}
     </div>
   )
 }
@@ -503,18 +534,12 @@ function MultiRootRepoRow({
                   aria-hidden
                   className="mb-px ml-0.5 h-2.5 w-2 shrink-0 rounded-bl-[3px] border-b border-l border-current opacity-40"
                 />
-                <span aria-hidden className="size-3 shrink-0" />
+                <WorkspacePrPopover workspace={workspace} className="size-3 shrink-0" />
                 <span className="min-w-0 flex-1 truncate">{branch}</span>
               </span>
             ) : null}
             <WorkspaceAgents agents={agents} onOpenAgent={onOpenAgent} />
           </button>
-          {branch ? (
-            <WorkspacePrPopover
-              workspace={workspace}
-              className="absolute top-2 left-[22px] size-3"
-            />
-          ) : null}
           <WorkspaceOverflowMenu workspace={workspace} allowRemove={false} />
         </SidebarMenuRow>
       </WorkspaceHoverCard>
@@ -556,7 +581,7 @@ function MultiRootWorkspaceTree({
             <SidebarMenuRow data-workspace-id={rootWorkspace?.id}>
               <button
                 type="button"
-                className="app-no-drag peer/menu-button flex h-auto min-h-7 w-full min-w-0 flex-col items-stretch overflow-hidden rounded-md px-2 py-1 pr-14 text-left text-xs hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                className="app-no-drag peer/menu-button flex h-auto min-h-7 w-full min-w-0 flex-col items-stretch rounded-md px-2 py-1 pr-14 text-left text-xs hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                 data-testid={`project-root-${project.id}`}
                 data-workspace-role="root"
                 data-workspace-icon="folder-tree"
