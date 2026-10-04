@@ -46,7 +46,6 @@
   background: var(--background);
 }
 
-.composer-editor-readonly .composer-tag,
 .composer-editor-readonly .composer-image-chip,
 .composer-editor-readonly .composer-code-block {
   background: var(--background);
@@ -55,13 +54,15 @@
 .composer-editor .composer-tag {
   display: inline-flex;
   align-items: center;
-  margin: 0 0.1rem;
+  margin: 0 0.12rem;
   border-radius: 9999px;
-  background: var(--muted);
-  padding: 0 0.4rem;
-  color: var(--foreground);
+  background: color-mix(in srgb, var(--sidebar-selected) 22%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sidebar-selected) 55%, transparent);
+  padding: 0 0.45rem;
+  color: var(--sidebar-selected);
   font-size: 0.75rem;
-  line-height: 1.4rem;
+  font-weight: 600;
+  line-height: 1.45rem;
 }
 
 .composer-editor .composer-image-chip {
