@@ -1,20 +1,13 @@
 import { useQueries } from '@tanstack/react-query'
-import type { AgentHarness, PaneNode, WorkspaceTab } from '@cerebro/core'
-import claudeIcon from '@/assets/agents/claude.svg'
-import codexIcon from '@/assets/agents/codex.svg'
-import piIcon from '@/assets/agents/pi.svg'
-import { harnessLabels } from './queries'
-
-const icons: Record<AgentHarness, string> = {
-  claude: claudeIcon,
-  codex: codexIcon,
-  pi: piIcon
-}
+import type { AgentHarness, AgentSession, PaneNode, WorkspaceTab } from '@cerebro/core'
+import { HarnessIcon, HarnessStatusIcon } from '@/components/harness-icon'
 
 function chatPaneIds(node: PaneNode): number[] {
   if (node.type === 'pane') return node.kind === 'chat' ? [node.id] : []
   return [...chatPaneIds(node.first), ...chatPaneIds(node.second)]
 }
+
+type TabSession = { harness: AgentHarness; status: AgentSession['status'] }
 
 export function ChatTabIcon({
   workspaceId,
@@ -29,22 +22,23 @@ export function ChatTabIcon({
       queryKey: ['chat', workspaceId, paneId],
       queryFn: () => window.cerebro.chatCommand({ action: 'get', workspaceId, paneId }),
       staleTime: Infinity,
-      select: (view: Awaited<ReturnType<typeof window.cerebro.chatCommand>>) =>
-        view.session?.model.harness
+      select: (view: Awaited<ReturnType<typeof window.cerebro.chatCommand>>): TabSession | null =>
+        view.session ? { harness: view.session.model.harness, status: view.session.status } : null
     }))
   })
-  const harness =
-    sessions[paneIds.indexOf(tab.activePaneId)]?.data ??
-    sessions.find((session) => session.data)?.data
-  if (!harness) return null
+  const session =
+    sessions[paneIds.indexOf(tab.activePaneId)]?.data ?? sessions.find((entry) => entry.data)?.data
+  if (!session) return null
+  if (session.status === 'idle') {
+    return <HarnessIcon harness={session.harness} testId="chat-tab-agent-icon" />
+  }
   return (
-    <span
-      role="img"
-      aria-label={harnessLabels[harness]}
-      data-testid="chat-tab-agent-icon"
-      data-harness-icon={harness}
-      className={`size-4 shrink-0 bg-current [mask-repeat:no-repeat] [mask-position:center] [mask-size:contain] ${harness === 'claude' ? 'text-[#D97757]' : ''}`}
-      style={{ maskImage: `url("${icons[harness]}")` }}
+    <HarnessStatusIcon
+      harness={session.harness}
+      status={session.status}
+      surface="tab"
+      testId="chat-tab-agent-icon"
+      plateClassName="bg-background"
     />
   )
 }

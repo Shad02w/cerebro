@@ -683,3 +683,147 @@ test('stopWorkspace converges through an auto-flushed queue instead of leaving a
     rmSync(f.dir, { recursive: true, force: true })
   }
 })
+test('overview prefers waiting over running and hides an older failure after a newer idle session', async () => {
+  const f = fixture(async (context) => {
+    if (context.text === 'wait') {
+      await context.ask({ id: 'permission', title: 'Bash', text: 'pwd', kind: 'approval' })
+      return
+    }
+    if (context.text === 'run') {
+      await new Promise<void>((resolve) => {
+        if (context.signal.aborted) resolve()
+        else context.signal.addEventListener('abort', () => resolve(), { once: true })
+      })
+      return
+    }
+    if (context.text === 'fail') throw new Error('boom')
+  })
+  const claude = {
+    ...model,
+    key: 'claude',
+    harness: 'claude' as const,
+    id: 'claude',
+    label: 'Claude'
+  }
+  const advertised = { models: async () => [model, claude], run: f.drivers.codex.run }
+  const service = new AgentSessions(f.dir, () => {}, {
+    claude: advertised,
+    codex: advertised,
+    pi: advertised
+  })
+  const scopeFor = (workspaceId: number, paneId: number) => ({
+    workspaceId,
+    paneId,
+    repositoryId: null as number | null,
+    cwd: '/tmp'
+  })
+  const pause = () => new Promise((resolve) => setTimeout(resolve, 25))
+  const listed = () =>
+    service.overview().workspaces.map(({ workspaceId, agents }) => ({
+      workspaceId,
+      agents: agents.map(({ harness, status, paneId }) => ({ harness, status, paneId }))
+    }))
+  const settle = async (
+    workspaceId: number,
+    paneId: number,
+    text: string,
+    commandId: string,
+    expected: 'idle' | 'running' | 'waiting' | 'interrupted' | 'failed',
+    selected = model
+  ): Promise<void> => {
+    const target = scopeFor(workspaceId, paneId)
+    await service.command(target, {
+      action: 'send',
+      workspaceId,
+      paneId,
+      commandId,
+      text,
+      model: selected
+    })
+    for (let attempt = 0; attempt < 30; attempt++) {
+      const view = await service.command(target, { ...send, action: 'get', workspaceId, paneId })
+      if (view.session?.status === expected) return
+      await new Promise((resolve) => setImmediate(resolve))
+    }
+    const view = await service.command(target, { ...send, action: 'get', workspaceId, paneId })
+    assert.equal(view.session?.status, expected)
+  }
+  const stop = async (workspaceId: number, paneId: number): Promise<void> => {
+    const target = scopeFor(workspaceId, paneId)
+    await service.command(target, { ...send, action: 'stop', workspaceId, paneId })
+    for (let attempt = 0; attempt < 30; attempt++) {
+      const view = await service.command(target, { ...send, action: 'get', workspaceId, paneId })
+      if (view.session?.status === 'interrupted') return
+      await new Promise((resolve) => setImmediate(resolve))
+    }
+    const view = await service.command(target, { ...send, action: 'get', workspaceId, paneId })
+    assert.equal(view.session?.status, 'interrupted')
+  }
+  try {
+    assert.deepEqual(service.overview(), { workspaces: [] })
+    await settle(1, 11, 'fail', 'w1-fail', 'failed')
+    await pause()
+    await settle(1, 12, 'done', 'w1-idle', 'idle')
+    assert.deepEqual(service.overview().workspaces, [])
+    await settle(2, 21, 'wait', 'w2-wait', 'waiting')
+    await settle(2, 22, 'run', 'w2-run', 'running', claude)
+    assert.deepEqual(listed(), [
+      {
+        workspaceId: 2,
+        agents: [
+          { harness: 'codex', status: 'waiting', paneId: 21 },
+          { harness: 'claude', status: 'running', paneId: 22 }
+        ]
+      }
+    ])
+    await settle(3, 31, 'run', 'w3-run', 'running')
+    await pause()
+    await settle(3, 32, 'fail', 'w3-fail', 'failed')
+    assert.deepEqual(
+      listed().filter((entry) => entry.workspaceId === 3),
+      [
+        {
+          workspaceId: 3,
+          agents: [
+            { harness: 'codex', status: 'running', paneId: 31 },
+            { harness: 'codex', status: 'failed', paneId: 32 }
+          ]
+        }
+      ]
+    )
+    await settle(4, 41, 'done', 'w4-idle', 'idle')
+    await pause()
+    await settle(4, 42, 'fail', 'w4-fail', 'failed')
+    await settle(5, 51, 'fail', 'w5-fail', 'failed')
+    await pause()
+    await settle(5, 52, 'run', 'w5-run', 'running')
+    await stop(5, 52)
+    await settle(6, 61, 'run', 'w6-run', 'running')
+    await stop(6, 61)
+    await pause()
+    await settle(6, 62, 'done', 'w6-idle', 'idle')
+    await settle(7, 71, 'run', 'w7-run', 'running')
+    assert.deepEqual(listed(), [
+      {
+        workspaceId: 2,
+        agents: [
+          { harness: 'codex', status: 'waiting', paneId: 21 },
+          { harness: 'claude', status: 'running', paneId: 22 }
+        ]
+      },
+      {
+        workspaceId: 3,
+        agents: [
+          { harness: 'codex', status: 'running', paneId: 31 },
+          { harness: 'codex', status: 'failed', paneId: 32 }
+        ]
+      },
+      { workspaceId: 4, agents: [{ harness: 'codex', status: 'failed', paneId: 42 }] },
+      { workspaceId: 5, agents: [{ harness: 'codex', status: 'interrupted', paneId: 52 }] },
+      { workspaceId: 7, agents: [{ harness: 'codex', status: 'running', paneId: 71 }] }
+    ])
+  } finally {
+    await service.shutdown()
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})

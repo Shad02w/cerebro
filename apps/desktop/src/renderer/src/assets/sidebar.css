@@ -4,7 +4,8 @@
 }
 
 .cerebro-sidebar .sidebar-project-button {
-  height: 34px;
+  min-height: 34px;
+  height: auto;
   gap: 7px;
   font-size: 13px;
   font-weight: 600;
@@ -24,7 +25,8 @@
 
 .cerebro-sidebar [data-workspace-role='branch'],
 .cerebro-sidebar [data-workspace-role='root'] {
-  height: 32px;
+  min-height: 32px;
+  height: auto;
   font-size: 12px;
 }
 

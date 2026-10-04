@@ -27,6 +27,9 @@ import {
   type ChatAttachmentContent,
   type ChatCommand,
   type ChatImageType,
+  type AgentActivityStatus,
+  type ChatActivityOverview,
+  type ChatAgentActivity,
   type ChatView,
   type QueuedMessage
 } from '@cerebro/core'
@@ -151,6 +154,56 @@ function validateAttachments(
 }
 const busy = (session: AgentSession): boolean =>
   session.status === 'running' || session.status === 'waiting'
+const activityRank: Record<AgentActivityStatus, number> = {
+  waiting: 0,
+  running: 1,
+  failed: 2,
+  interrupted: 3
+}
+/**
+ * Every live session is listed. A failed or interrupted session is listed only when it is the
+ * newest session for its harness, so an older failure does not linger after a newer idle turn.
+ */
+function boundPaneId(bindings: Record<string, string>, sessionId: string): number | null {
+  let paneId: number | null = null
+  for (const [key, bound] of Object.entries(bindings)) {
+    if (bound !== sessionId) continue
+    const id = Number(key)
+    if (!Number.isInteger(id) || id <= 0) continue
+    if (paneId == null || id > paneId) paneId = id
+  }
+  return paneId
+}
+function visibleAgents(
+  sessions: AgentSession[],
+  bindings: Record<string, string>
+): ChatAgentActivity[] {
+  const newest = new Map<AgentHarness, AgentSession>()
+  for (const session of sessions) {
+    const current = newest.get(session.model.harness)
+    if (!current || session.updatedAt >= current.updatedAt)
+      newest.set(session.model.harness, session)
+  }
+  return sessions
+    .filter((session) => {
+      if (session.status === 'running' || session.status === 'waiting') return true
+      if (session.status !== 'failed' && session.status !== 'interrupted') return false
+      return newest.get(session.model.harness)?.id === session.id
+    })
+    .sort(
+      (a, b) =>
+        activityRank[a.status as AgentActivityStatus] -
+          activityRank[b.status as AgentActivityStatus] || b.updatedAt - a.updatedAt
+    )
+    .map((session) => ({
+      sessionId: session.id,
+      workspaceId: session.workspaceId,
+      harness: session.model.harness,
+      status: session.status as AgentActivityStatus,
+      title: session.title,
+      paneId: boundPaneId(bindings, session.id)
+    }))
+}
 const readJson = <T>(path: string, fallback: T): T => {
   try {
     return JSON.parse(readFileSync(path, 'utf8')) as T
@@ -365,6 +418,21 @@ export class AgentSessions {
         .sort((a, b) => b.updatedAt - a.updatedAt)
         .map(({ id, title, model, status, updatedAt }) => ({ id, title, model, status, updatedAt }))
     })
+  }
+  /** Workspaces with a non-idle activity status. Unselected workspaces are included; idle ones are not. */
+  overview(): ChatActivityOverview {
+    const grouped = new Map<number, AgentSession[]>()
+    for (const session of this.sessions.values()) {
+      const list = grouped.get(session.workspaceId)
+      if (list) list.push(session)
+      else grouped.set(session.workspaceId, [session])
+    }
+    const workspaces = [...grouped.entries()].flatMap(([workspaceId, sessions]) => {
+      const agents = visibleAgents(sessions, this.bindings)
+      return agents.length ? [{ workspaceId, agents }] : []
+    })
+    workspaces.sort((a, b) => a.workspaceId - b.workspaceId)
+    return { workspaces }
   }
   async command(scope: AgentScope, command: ChatCommand): Promise<ChatView> {
     if (this.stopping) throw new Error('Agent host is stopping.')

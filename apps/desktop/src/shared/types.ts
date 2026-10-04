@@ -1,4 +1,10 @@
-import type { ChatAttachmentContent, ChatCommand, ChatView, AgentCatalog } from '@cerebro/core'
+import type {
+  AgentCatalog,
+  ChatActivityOverview,
+  ChatAttachmentContent,
+  ChatCommand,
+  ChatView
+} from '@cerebro/core'
 import type { LayoutCommand, LayoutState, LayoutReply } from '@cerebro/core'
 import type { TerminalThemeId } from './terminal-themes'
 export type LinkedRepository = {
@@ -243,6 +249,7 @@ export type CliInstallStatus = {
 
 export type CerebroApi = {
   chatCommand: (command: ChatCommand) => Promise<ChatView>
+  chatOverview: () => Promise<ChatActivityOverview>
   agentCatalog: (refresh?: boolean) => Promise<AgentCatalog>
   agentFavorite: (key: string, favorite: boolean) => Promise<AgentCatalog>
   chatAttachment: (

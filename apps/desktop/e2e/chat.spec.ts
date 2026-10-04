@@ -89,12 +89,15 @@ test('chat works through native adapters, survives reload, handles requests, and
     await expect(page.getByTestId('chat-transcript').getByRole('status')).toContainText(
       'Ready · Native session saved'
     )
+    await expect(page.locator('[data-workspace-agent-status]')).toHaveCount(0)
+    await expect(page.locator('[data-chat-agent-status]')).toHaveCount(0)
     await expect(page.getByRole('separator', { name: 'End of response' })).toHaveCount(1)
     await expect(page.getByTestId('context-usage-ring')).toContainText('17%')
     await page.getByTestId('context-usage-ring').hover()
     await expect(page.getByText('17% of context used')).toBeVisible()
     await expect(page.getByText('43,759 / 258,400 tokens')).toBeVisible()
     await mkdir('/tmp/cerebro-chat-evidence', { recursive: true })
+    await mkdir('/opt/cursor/artifacts', { recursive: true })
     const userMessage = page.getByTestId('chat-user-message').first()
     const copyButton = userMessage.getByRole('button', { name: 'Copy message', exact: true })
     const previousClipboard = await electronApp.evaluate(({ clipboard }) => clipboard.readText())
@@ -139,6 +142,82 @@ test('chat works through native adapters, survives reload, handles requests, and
     await page.getByRole('textbox', { name: 'Message agent' }).fill('approval')
     await page.getByRole('button', { name: 'Send message', exact: true }).click()
     await expect(page.getByRole('button', { name: 'Allow once', exact: true })).toBeVisible()
+    const waitingIcon = page.locator(
+      `[data-sidebar="menu-row"][data-workspace-id="${workspaceId}"] [data-agent-harness="codex"]`
+    )
+    const waitingRow = waitingIcon.locator('[data-workspace-agent-status]')
+    await expect(waitingIcon).toHaveAttribute('data-agent-harness', 'codex')
+    await expect(waitingIcon.getByRole('img', { name: 'Codex' })).toHaveAttribute(
+      'data-harness-icon',
+      'codex'
+    )
+    await expect(waitingRow).toHaveAttribute('data-workspace-agent-status', 'waiting')
+    await expect(waitingRow).toHaveAttribute('aria-label', 'Agent needs your action')
+    await expect(waitingRow).toHaveClass(/text-amber-500/)
+    await expect(waitingRow.locator('.agent-status-dot')).toBeVisible()
+    await expect(waitingIcon).not.toContainText('Codex')
+    const waitingTitle = page.locator(`[data-testid="workspace-row-${workspaceId}"] span`).first()
+    const waitingTitleBox = await waitingTitle.boundingBox()
+    const waitingIconBox = await waitingIcon.boundingBox()
+    const waitingBadgeBox = await waitingRow.boundingBox()
+    expect(waitingIconBox!.y).toBeGreaterThan(waitingTitleBox!.y)
+    expect(Math.abs(waitingIconBox!.x - waitingTitleBox!.x)).toBeLessThan(12)
+    expect(waitingBadgeBox!.x).toBeGreaterThan(waitingIconBox!.x + waitingIconBox!.width / 2)
+    expect(waitingBadgeBox!.y).toBeGreaterThan(waitingIconBox!.y + waitingIconBox!.height / 2)
+    expect(waitingBadgeBox!.x + waitingBadgeBox!.width).toBeGreaterThan(
+      waitingIconBox!.x + waitingIconBox!.width - 1
+    )
+    expect(waitingBadgeBox!.y + waitingBadgeBox!.height).toBeGreaterThan(
+      waitingIconBox!.y + waitingIconBox!.height - 1
+    )
+    const agentButton = page.locator(
+      `[data-sidebar="menu-row"][data-workspace-id="${workspaceId}"] [data-testid="workspace-agent-open"]`
+    )
+    await expect(agentButton).toHaveAttribute('data-agent-title', userText)
+    await agentButton.hover()
+    const tooltip = page.getByRole('tooltip')
+    await expect(tooltip).toHaveText(/Build a normalized agent chat\s+Preserve spacing/)
+    const iconBox = await agentButton.boundingBox()
+    const tooltipBox = await tooltip.boundingBox()
+    expect(Math.abs(tooltipBox!.x - iconBox!.x)).toBeLessThan(4)
+    expect(tooltipBox!.y).toBeGreaterThan(iconBox!.y + iconBox!.height - 2)
+    expect(tooltipBox!.x + tooltipBox!.width).toBeGreaterThan(iconBox!.x + iconBox!.width)
+    await page.screenshot({ path: '/opt/cursor/artifacts/agent-status-tooltip.png' })
+    await page.screenshot({ path: '/tmp/cerebro-chat-evidence/agent-status-tooltip.png' })
+    await page.getByTestId('new-terminal-tab').click()
+    await page.getByTestId('open-terminal-tab').click()
+    await expect(page.getByTestId('terminal-tab')).toHaveAttribute('data-active', 'true')
+    await agentButton.click()
+    await expect(page.getByTestId('chat-tab').first()).toHaveAttribute('data-active', 'true')
+    await expect(page.getByRole('button', { name: 'Allow once', exact: true })).toBeVisible()
+    await expect(page.locator('[data-chat-agent-status="waiting"]')).toBeVisible()
+    await expect(page.locator('[data-chat-agent-status="waiting"]')).toHaveAttribute(
+      'aria-label',
+      'Agent needs your action'
+    )
+    await expect(page.locator('[data-chat-agent-status="waiting"] .agent-status-dots')).toHaveCount(
+      0
+    )
+    await expect(page.getByTestId(`project-agent-status-${project.id}`)).toHaveCount(0)
+    await expect(page.getByTestId('chat-tab').first()).toHaveText(userText)
+    await page.screenshot({ path: '/opt/cursor/artifacts/agent-status-blocked.png' })
+    await page.screenshot({ path: '/tmp/cerebro-chat-evidence/agent-status-blocked.png' })
+    await projectRow.click()
+    const projectStatus = page.getByTestId(`project-agent-status-${project.id}`)
+    await expect(projectStatus.locator('[data-harness-icon="codex"]')).toBeVisible()
+    await expect(projectStatus.locator('[data-workspace-agent-status="waiting"]')).toBeVisible()
+    await expect(projectStatus).not.toContainText('Codex')
+    await expect(projectStatus).toHaveCSS('opacity', '0.6')
+    await page.getByTestId('new-terminal-tab').click()
+    await page.getByTestId('open-terminal-tab').click()
+    await expect(page.getByTestId('terminal-tab').last()).toHaveAttribute('data-active', 'true')
+    await projectStatus.getByTestId('workspace-agent-open').click()
+    await expect(projectRow).toHaveAttribute('aria-expanded', 'false')
+    await expect(page.getByTestId('chat-tab').first()).toHaveAttribute('data-active', 'true')
+    await page.mouse.move(8, 8)
+    await expect(page.getByRole('tooltip')).toHaveCount(0)
+    await projectRow.click()
+    await expect(waitingRow).toBeVisible()
     await page.getByRole('button', { name: 'Decline', exact: true }).click()
     await expect(page.getByTestId('chat-transcript')).toContainText('Permission resolved.')
     await page.reload()
@@ -163,17 +242,65 @@ test('chat works through native adapters, survives reload, handles requests, and
     await expect(page.getByTestId('chat-view').getByRole('status')).toHaveCount(1)
     const workingText = working.locator('span')
     await expect(workingText).toHaveCSS('animation-name', 'chat-working-shimmer')
+    const runningRow = page.locator(
+      `[data-sidebar="menu-row"][data-workspace-id="${workspaceId}"] [data-agent-harness="codex"] [data-workspace-agent-status="running"]`
+    )
+    await expect(runningRow).toBeVisible()
+    await expect(runningRow.locator('xpath=..')).not.toContainText('Codex')
+    await expect(runningRow).toHaveClass(/text-sky-500/)
+    await expect(runningRow.locator('.agent-status-dots > span')).toHaveCount(4)
+    await expect(runningRow.locator('.agent-status-dots > span').first()).toHaveCSS(
+      'animation-name',
+      'agent-status-dot'
+    )
+    const runningTab = page.locator('[data-chat-agent-status="running"]')
+    await expect(runningTab).toBeVisible()
+    await expect(runningTab.locator('.agent-status-dots > span').first()).toHaveCSS(
+      'animation-name',
+      'agent-status-dot'
+    )
+    await expect(page.getByTestId('chat-tab-agent-icon')).toHaveAttribute(
+      'data-harness-icon',
+      'codex'
+    )
+    await expect(page.getByTestId('chat-tab').first()).toHaveText(userText)
     await working.scrollIntoViewIfNeeded()
     await page.screenshot({ path: '/tmp/cerebro-chat-evidence/working-shimmer.png' })
+    await page.screenshot({ path: '/opt/cursor/artifacts/agent-status-working.png' })
+    await page.screenshot({ path: '/tmp/cerebro-chat-evidence/agent-status-working.png' })
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await expect(workingText).toHaveCSS('animation-name', 'none')
     await expect(workingText).not.toHaveCSS('color', 'rgba(0, 0, 0, 0)')
+    await expect(runningRow.locator('.agent-status-dots > span').first()).toHaveCSS(
+      'animation-name',
+      'none'
+    )
+    await expect(runningRow).toHaveClass(/text-sky-500/)
     await page.screenshot({ path: '/tmp/cerebro-chat-evidence/working-reduced-motion.png' })
     await page.emulateMedia({ reducedMotion: 'no-preference' })
+    await expect(runningRow.locator('.agent-status-dots > span').first()).toHaveCSS(
+      'animation-name',
+      'agent-status-dot'
+    )
     await page.getByRole('button', { name: 'Stop agent' }).click()
     await expect(working).not.toContainText('Working…')
     await expect(page.getByRole('separator', { name: 'End of response' })).toHaveCount(4)
     await page.screenshot({ path: '/tmp/cerebro-chat-evidence/response-interrupted.png' })
+    const interruptedRow = page.locator(
+      `[data-sidebar="menu-row"][data-workspace-id="${workspaceId}"] [data-agent-harness="codex"] [data-workspace-agent-status="interrupted"]`
+    )
+    await expect(interruptedRow).toBeVisible()
+    await expect(interruptedRow.locator('xpath=..')).not.toContainText('Codex')
+    await expect(interruptedRow).toHaveAttribute('aria-label', 'Agent interrupted')
+    await expect(interruptedRow).toHaveClass(/text-orange-500/)
+    await expect(interruptedRow.locator('.agent-status-dots')).toHaveCount(0)
+    await expect(interruptedRow.locator('.agent-status-dot')).toBeVisible()
+    await expect(page.locator('[data-chat-agent-status="interrupted"]')).toHaveAttribute(
+      'aria-label',
+      'Agent interrupted'
+    )
+    await expect(page.getByTestId('chat-tab').first()).toHaveText(userText)
+    await page.screenshot({ path: '/opt/cursor/artifacts/agent-status-interrupted.png' })
     await expect(page.getByTestId('chat-view').getByRole('status')).toContainText('interrupted')
     const chatTranscript = page.getByTestId('chat-transcript')
     const composer = page.getByTestId('chat-composer')
