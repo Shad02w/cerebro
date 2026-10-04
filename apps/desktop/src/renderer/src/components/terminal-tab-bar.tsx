@@ -137,7 +137,7 @@ function SortableTab({
         data-slot="content-tab-pill"
         data-state={state}
         data-variant="pill"
-        className={cn(tabsTriggerVariants({ variant: 'pill' }), 'pointer-events-none w-full')}
+        className={cn(tabsTriggerVariants({ variant: 'pill' }), 'w-full')}
       >
         <button
           type="button"
@@ -146,7 +146,7 @@ function SortableTab({
           aria-roledescription={attributes['aria-roledescription']}
           aria-describedby={attributes['aria-describedby']}
           data-terminal-tab-id={tab.id}
-          className="pointer-events-auto flex h-full min-w-0 flex-1 cursor-inherit items-center gap-1.5 text-left outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          className="flex h-full min-w-0 flex-1 cursor-inherit items-center gap-1.5 text-left outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           onPointerDown={(event): void => {
             listeners?.onPointerDown?.(event)
             if (event.button === 0) onSelect(tab.id)
@@ -168,7 +168,7 @@ function SortableTab({
           <TooltipTrigger asChild>
             <button
               type="button"
-              className="pointer-events-auto inline-flex size-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground opacity-0 transition-opacity group-hover/tab:opacity-100 group-focus-within/tab:opacity-100 hover:bg-background/80 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
+              className="inline-flex size-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground opacity-0 transition-opacity group-hover/tab:opacity-100 group-focus-within/tab:opacity-100 hover:bg-background/80 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
               aria-label={`Close ${tab.label} (${closeHotkey})`}
               data-testid="terminal-tab-close"
               onPointerDown={(event): void => event.stopPropagation()}
