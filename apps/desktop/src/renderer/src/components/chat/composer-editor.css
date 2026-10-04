@@ -45,11 +45,23 @@
 }
 
 .chat-composer-glow {
-  --composer-glow-a: color-mix(in oklch, var(--sidebar-selected) 78%, white);
-  --composer-glow-b: var(--sidebar-selected);
-  --composer-glow-c: color-mix(in oklch, var(--sidebar-selected) 70%, #0f766e);
-  --composer-glow-d: color-mix(in oklch, var(--sidebar-selected) 55%, #67e8f9);
-  --composer-glow-core: transparent;
+  /* Desaturated teal family — mix with background so the aura stays whisper-soft. */
+  --composer-glow-a: color-mix(
+    in oklch,
+    color-mix(in oklch, var(--sidebar-selected) 42%, white) 55%,
+    var(--background)
+  );
+  --composer-glow-b: color-mix(in oklch, var(--sidebar-selected) 38%, var(--background));
+  --composer-glow-c: color-mix(
+    in oklch,
+    color-mix(in oklch, var(--sidebar-selected) 45%, #0f766e) 50%,
+    var(--background)
+  );
+  --composer-glow-d: color-mix(
+    in oklch,
+    color-mix(in oklch, var(--sidebar-selected) 35%, #67e8f9) 45%,
+    var(--background)
+  );
   --composer-glow-layers:
     radial-gradient(circle farthest-side at 0 100%, var(--composer-glow-a), transparent),
     radial-gradient(circle farthest-side at 100% 0, var(--composer-glow-b), transparent),
@@ -67,33 +79,33 @@
   overflow: visible;
 }
 
-/* Wide soft halo — Aceternity blurred twin (blur-xl+), teal family only. */
+/* Wide soft halo — Aceternity blurred twin, substantially lighter for dark UI. */
 .chat-composer-glow::before {
   content: '';
   position: absolute;
-  inset: -12% -6% -18%;
+  inset: -14% -8% -20%;
   border-radius: inherit;
   background-image: var(--composer-glow-layers);
   background-size: 400% 400%;
   background-position: 0% 50%;
-  opacity: 0.55;
-  filter: blur(40px);
+  opacity: 0.28;
+  filter: blur(48px);
   animation: chat-composer-glow-shift 8s ease-in-out infinite alternate;
   will-change: background-position;
   pointer-events: none;
 }
 
-/* Closer soft rim — same radials, lighter blur (avoids hard outline on dark UI). */
+/* Closer soft rim — same radials, lower opacity + gentle blur. */
 .chat-composer-glow::after {
   content: '';
   position: absolute;
-  inset: -2%;
+  inset: -3%;
   border-radius: inherit;
   background-image: var(--composer-glow-layers);
   background-size: 400% 400%;
   background-position: 0% 50%;
-  opacity: 0.4;
-  filter: blur(14px);
+  opacity: 0.18;
+  filter: blur(18px);
   animation: chat-composer-glow-shift 8s ease-in-out infinite alternate;
   will-change: background-position;
   pointer-events: none;
