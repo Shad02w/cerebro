@@ -70,7 +70,7 @@ Terminals have their own enum in `packages/mux/src/protocol.ts` (`TerminalInfo.s
 - The renderer renders whatever `activeTabId` / `activePaneId` the layout state says, so no extra renderer work is needed to land on a pane once the command has run.
 - The CLI `pane focus` command already uses exactly this path, which is why it "selects the owning workspace in the UI".
 
-Gaps for a notification click: nothing restores or focuses the `BrowserWindow`, the main process keeps no reference to it beyond `BrowserWindow.getAllWindows()`, and there is no path that reopens a session whose chat pane was closed.
+Gaps for a notification click: nothing restores or focuses the `BrowserWindow`, the main process keeps no reference to it beyond `BrowserWindow.getAllWindows()`, and there is no path that reopens a session whose agent pane was closed.
 
 ### 2.6 Notifications
 
@@ -162,7 +162,7 @@ type NotificationTarget = { workspaceId: number; sessionId: string; paneId?: num
 On `click`:
 
 1. Restore the window: `win.show()`, `win.restore()` if minimized, `win.focus()`, and on macOS `app.focus({ steal: true })`; if no window exists (macOS after all windows closed), `createWindow()` and wait for `ready-to-show`. `createWindow` in `index.ts` currently discards the window reference, so keep one.
-2. Resolve the pane: read the current layout for a chat pane bound to `sessionId`. Bindings live in the agent service, so expose a host method (`chat.locate { sessionId }` returning `{ workspaceId, paneId, tabId } | null`) rather than reading `bindings.json` from main.
+2. Resolve the pane: read the current layout for an agent pane bound to `sessionId`. Bindings live in the agent service, so expose a host method (`chat.locate { sessionId }` returning `{ workspaceId, paneId, tabId } | null`) rather than reading `bindings.json` from main.
 3. If found: `muxCall('layout.command', { action: 'focus', workspaceId, paneId })`. This sets the active tab and pane in the mux and publishes `focus`, which the renderer already turns into workspace selection and a route change away from Settings.
 4. If not found (pane closed): `layout.command { action: 'create', kind: 'chat' }` in that workspace, then `chat.command { action: 'open', workspaceId, paneId, sessionId }`, then focus. Both commands exist; only the sequencing is new. This is the "Chat history selector reopens saved sessions" behaviour driven from main.
 5. Mark `attention.seen` through the normal renderer `ack` path once the pane is visible, so a click and an ordinary visit behave identically.
@@ -212,7 +212,7 @@ Project rows show a muted aggregate (a single small dot) only while the project 
 
 ### 6.3 Data source
 
-Chat state is currently fetched per pane through the `['chat', workspaceId]` query, which only exists for mounted chat panes. The sidebar needs an aggregate across every workspace, including ones with no open chat pane. Add a mux method `chat.overview` (backed by the in-memory `sessions` map in the service) that returns, per workspace, the counts of `starting`/`running` and `waiting` sessions plus the highest-priority unseen attention. The renderer holds it in one `['chat', 'overview']` query invalidated by the existing `chat.changed` broadcast (already routed through `connectQueryEvents`) and by the new `agent.status` event, so the icon changes within the 100 ms coalescing window without any per-workspace polling.
+Chat state is currently fetched per pane through the `['chat', workspaceId]` query, which only exists for mounted agent panes. The sidebar needs an aggregate across every workspace, including ones with no open agent pane. Add a mux method `chat.overview` (backed by the in-memory `sessions` map in the service) that returns, per workspace, the counts of `starting`/`running` and `waiting` sessions plus the highest-priority unseen attention. The renderer holds it in one `['chat', 'overview']` query invalidated by the existing `chat.changed` broadcast (already routed through `connectQueryEvents`) and by the new `agent.status` event, so the icon changes within the 100 ms coalescing window without any per-workspace polling.
 
 Because the same aggregate drives the sidebar, the dock badge count, and the notification suppression rule, computing it once in the service keeps all three consistent.
 
