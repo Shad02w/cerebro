@@ -1,107 +1,79 @@
-import {
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type ClipboardEvent,
-  type CompositionEvent,
-  type DragEvent,
-  type FormEvent,
-  type KeyboardEvent,
-  type RefObject,
-  type SyntheticEvent
-} from 'react'
+import { useEffect, useRef, useState, type DragEvent, type RefObject } from 'react'
 import { chatAttachmentLimits, type ChatAttachmentUpload } from '@cerebro/core'
 import {
   emptyDraft,
   imageFiles,
-  insertAttachment,
   prepareImage,
-  reconcile,
-  removeAttachment,
-  snapCaret,
   stripChips,
+  type Chip,
   type ComposerDraft
 } from './chat-attachments'
+import type { ComposerEditorHandle } from './composer-editor'
 
 export const chatImageAccept = 'image/png,image/jpeg,image/gif,image/webp'
 
+const sameDraft = (left: ComposerDraft, right: ComposerDraft): boolean =>
+  left.text === right.text &&
+  left.attachments.length === right.attachments.length &&
+  left.attachments.every((item, index) => item.id === right.attachments[index]?.id) &&
+  left.chips.length === right.chips.length &&
+  left.chips.every(
+    (chip, index) =>
+      chip.attachmentId === right.chips[index]?.attachmentId &&
+      chip.start === right.chips[index]?.start &&
+      chip.end === right.chips[index]?.end
+  )
+
 /**
- * Composer state with atomic `[Image #N]` chips. Text is the source of truth for what is sent;
- * chips track which spans are markers. Any edit touching a chip removes it and its attachment.
+ * Composer state for the Tiptap field. The editor document is the source of the text and of which
+ * image chips still exist. Attachments are added here, then inserted as atomic nodes.
  */
 export function useComposerDraft({
   storageKey,
-  textarea,
+  editorRef,
   canAttach,
   onError
 }: {
   storageKey: string
-  textarea: RefObject<HTMLTextAreaElement | null>
+  editorRef: RefObject<ComposerEditorHandle | null>
   canAttach: () => string | null
   onError: (message: string | null) => void
 }): {
   draft: ComposerDraft
+  initialText: string
   dragging: boolean
   attachFiles: (files: File[]) => Promise<void>
   remove: (attachmentId: string) => void
   clear: () => void
-  textareaHandlers: {
-    onChange: (event: FormEvent<HTMLTextAreaElement>) => void
-    onCompositionStart: (event: CompositionEvent<HTMLTextAreaElement>) => void
-    onCompositionEnd: (event: CompositionEvent<HTMLTextAreaElement>) => void
-    onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void
-    onKeyUp: (event: SyntheticEvent<HTMLTextAreaElement>) => void
-    onMouseUp: (event: SyntheticEvent<HTMLTextAreaElement>) => void
-    onSelect: (event: SyntheticEvent<HTMLTextAreaElement>) => void
-    onPaste: (event: ClipboardEvent<HTMLTextAreaElement>) => void
-  }
+  onDocument: (text: string, chips: Chip[]) => void
+  readDraft: () => ComposerDraft
   dropHandlers: {
     onDragOver: (event: DragEvent<HTMLElement>) => void
     onDragLeave: (event: DragEvent<HTMLElement>) => void
     onDrop: (event: DragEvent<HTMLElement>) => void
   }
 } {
-  const [draft, setDraft] = useState<ComposerDraft>(() => {
+  const [initialText] = useState(() => {
     try {
-      return emptyDraft(localStorage.getItem(storageKey) ?? '')
+      return localStorage.getItem(storageKey) ?? ''
     } catch {
-      return emptyDraft()
+      return ''
     }
   })
+  const [draft, setDraft] = useState<ComposerDraft>(() => emptyDraft(initialText))
   const current = useRef(draft)
-  const selection = useRef<[number, number]>([0, 0])
-  const composing = useRef<{ draft: ComposerDraft; selection: [number, number] } | null>(null)
-  const pendingCaret = useRef<number | null>(null)
   const [dragging, setDragging] = useState(false)
-  useLayoutEffect(() => {
-    current.current = draft
-  }, [draft])
-  // React's synthetic onBeforeInput skips deletions; the native event covers every edit kind.
-  useEffect(() => {
-    const node = textarea.current
-    if (!node) return undefined
-    const capture = (): void => {
-      selection.current = [node.selectionStart, node.selectionEnd]
-    }
-    node.addEventListener('beforeinput', capture)
-    return () => node.removeEventListener('beforeinput', capture)
-  }, [textarea])
+  const commit = (next: ComposerDraft): void => {
+    current.current = next
+    setDraft(next)
+  }
   useEffect(() => {
     try {
-      localStorage.setItem(storageKey, stripChips(draft))
+      localStorage.setItem(storageKey, stripChips(current.current))
     } catch {
       /* per-pane convenience only */
     }
   }, [draft, storageKey])
-  useLayoutEffect(() => {
-    const node = textarea.current
-    if (pendingCaret.current === null || !node) return
-    const caret = Math.min(pendingCaret.current, node.value.length)
-    pendingCaret.current = null
-    node.focus()
-    node.setSelectionRange(caret, caret)
-  }, [draft, textarea])
   const attachFiles = async (files: File[]): Promise<void> => {
     if (!files.length) return
     const rejection = canAttach()
@@ -124,108 +96,48 @@ export function useComposerDraft({
       }
     }
     onError(failure)
-    if (!prepared.length) return
-    const node = textarea.current
-    let next = current.current
-    let caret = node && document.activeElement === node ? node.selectionEnd : next.text.length
     for (const attachment of prepared) {
-      const result = insertAttachment(next, attachment, caret)
-      next = result.draft
-      caret = result.caret
+      current.current = {
+        ...current.current,
+        attachments: [...current.current.attachments, attachment]
+      }
+      setDraft(current.current)
+      editorRef.current?.insertAttachment(attachment.id)
     }
-    pendingCaret.current = caret
-    setDraft(next)
   }
-  const snap = (node: HTMLTextAreaElement): void => {
-    const chips = current.current.chips
-    if (!chips.length) return
-    const start = node.selectionStart
-    const end = node.selectionEnd
-    const nextStart = start === end ? snapCaret(chips, start) : snapCaret(chips, start, 'left')
-    const nextEnd = start === end ? nextStart : snapCaret(chips, end, 'right')
-    if (nextStart !== start || nextEnd !== end)
-      node.setSelectionRange(nextStart, nextEnd, node.selectionDirection ?? 'none')
-  }
-  const onSnap = (event: SyntheticEvent<HTMLTextAreaElement>): void => snap(event.currentTarget)
   return {
     draft,
+    initialText,
     dragging,
     attachFiles,
-    remove: (attachmentId: string) => {
-      setDraft((previous) => removeAttachment(previous, attachmentId))
+    remove: (attachmentId) => {
+      editorRef.current?.removeAttachment(attachmentId)
     },
-    clear: () => setDraft(emptyDraft()),
-    textareaHandlers: {
-      onChange: (event: FormEvent<HTMLTextAreaElement>) => {
-        const value = event.currentTarget.value
-        if (composing.current) {
-          setDraft((previous) => ({ ...previous, text: value }))
-          return
-        }
-        const { caret, ...next } = reconcile(current.current, value, selection.current)
-        if (caret !== undefined) pendingCaret.current = caret
-        setDraft(next)
-      },
-      onCompositionStart: (event: CompositionEvent<HTMLTextAreaElement>) => {
-        const node = event.currentTarget
-        composing.current = {
-          draft: current.current,
-          selection: [node.selectionStart, node.selectionEnd]
-        }
-      },
-      onCompositionEnd: (event: CompositionEvent<HTMLTextAreaElement>) => {
-        const started = composing.current
-        composing.current = null
-        if (!started) return
-        const { caret, ...next } = reconcile(
-          started.draft,
-          event.currentTarget.value,
-          started.selection
-        )
-        if (caret !== undefined) pendingCaret.current = caret
-        setDraft(next)
-      },
-      onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => {
-        const chips = current.current.chips
-        if (!chips.length || event.shiftKey || event.altKey || event.metaKey || event.ctrlKey)
-          return
-        const node = event.currentTarget
-        if (node.selectionStart !== node.selectionEnd) return
-        if (event.key === 'ArrowLeft' && node.selectionStart > 0) {
-          const target = snapCaret(chips, node.selectionStart - 1, 'left')
-          if (target !== node.selectionStart - 1) {
-            event.preventDefault()
-            node.setSelectionRange(target, target)
-          }
-        } else if (event.key === 'ArrowRight' && node.selectionEnd < node.value.length) {
-          const target = snapCaret(chips, node.selectionEnd + 1, 'right')
-          if (target !== node.selectionEnd + 1) {
-            event.preventDefault()
-            node.setSelectionRange(target, target)
-          }
-        }
-      },
-      onKeyUp: onSnap,
-      onMouseUp: onSnap,
-      onSelect: onSnap,
-      onPaste: (event: ClipboardEvent<HTMLTextAreaElement>) => {
-        const files = imageFiles(event.clipboardData)
-        if (!files.length) return
-        event.preventDefault()
-        void attachFiles(files)
+    clear: () => {
+      editorRef.current?.clear()
+      commit(emptyDraft())
+    },
+    onDocument: (text, chips) => {
+      const ids = new Set(chips.map((chip) => chip.attachmentId))
+      const next = {
+        text,
+        chips,
+        attachments: current.current.attachments.filter((item) => ids.has(item.id))
       }
+      if (!sameDraft(current.current, next)) commit(next)
     },
+    readDraft: () => current.current,
     dropHandlers: {
-      onDragOver: (event: DragEvent<HTMLElement>) => {
+      onDragOver: (event) => {
         if (![...event.dataTransfer.types].includes('Files')) return
         event.preventDefault()
         event.dataTransfer.dropEffect = 'copy'
         setDragging(true)
       },
-      onDragLeave: (event: DragEvent<HTMLElement>) => {
+      onDragLeave: (event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false)
       },
-      onDrop: (event: DragEvent<HTMLElement>) => {
+      onDrop: (event) => {
         event.preventDefault()
         setDragging(false)
         void attachFiles(imageFiles(event.dataTransfer))

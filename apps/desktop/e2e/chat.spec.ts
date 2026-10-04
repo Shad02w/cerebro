@@ -528,9 +528,13 @@ test('Mod+N opens independent Agent tabs from a workspace row, composer, and ter
     await page.keyboard.press(chord)
     await expect(page.getByTestId('chat-tab')).toHaveCount(2)
     await expect(chat).not.toHaveAttribute('data-pane-id', firstPane!)
-    await expect(chat.getByRole('textbox', { name: 'Message agent' })).toHaveValue('')
+    await expect(chat.getByRole('textbox', { name: 'Message agent' })).toHaveAttribute(
+      'data-composer-text',
+      ''
+    )
     await page.getByTestId('chat-tab').first().click()
-    await expect(chat.getByRole('textbox', { name: 'Message agent' })).toHaveValue(
+    await expect(chat.getByRole('textbox', { name: 'Message agent' })).toHaveAttribute(
+      'data-composer-text',
       'Keep this draft'
     )
     await page.keyboard.press(process.platform === 'darwin' ? 'Meta+t' : 'Control+t')
@@ -594,8 +598,15 @@ test('image attachments use atomic chips, reach the harness, render in the trans
     const textbox = chat.getByRole('textbox', { name: 'Message agent' })
     const form = chat.getByTestId('chat-composer').locator('form')
     const attachments = chat.getByTestId('chat-attachment')
+    const composerText = (): Promise<string | null> => textbox.getAttribute('data-composer-text')
     const caret = (): Promise<number> =>
-      textbox.evaluate((element: HTMLTextAreaElement) => element.selectionStart)
+      textbox.evaluate((element) => Number(element.getAttribute('data-composer-caret')))
+    const placeCaret = async (offset: number): Promise<void> => {
+      await textbox.focus()
+      await textbox.press('Home')
+      for (let index = 0; index < offset; index++) await textbox.press('ArrowRight')
+      await expect.poll(caret).toBe(offset)
+    }
     const transfer = (name: string): Promise<JSHandle<DataTransfer>> =>
       page.evaluateHandle(
         ({ name, png }) => {
@@ -626,7 +637,7 @@ test('image attachments use atomic chips, reach the harness, render in the trans
       .getByRole('button', { name: /^Test Model.*Codex/ })
       .click()
     await textbox.fill('attachments here')
-    await textbox.evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(11, 11))
+    await placeCaret(11)
     const dropped = await transfer('first.png')
     await form.dispatchEvent('dragover', { dataTransfer: dropped })
     await expect(chat.getByTestId('chat-drop-overlay')).toBeVisible()
@@ -634,11 +645,11 @@ test('image attachments use atomic chips, reach the harness, render in the trans
     await expect(chat.getByTestId('chat-drop-overlay')).toHaveCount(0)
     await expect(attachments).toHaveCount(1)
     await expect(attachments.first()).toContainText('first.png')
-    await expect(textbox).toHaveValue('attachments [Image #1] here')
+    await expect.poll(composerText).toBe('attachments [Image #1] here')
     expect(await caret()).toBe(22)
     await paste('second.png')
     await expect(attachments).toHaveCount(2)
-    await expect(textbox).toHaveValue('attachments [Image #1] [Image #2] here')
+    await expect.poll(composerText).toBe('attachments [Image #1] [Image #2] here')
     expect(await caret()).toBe(33)
     await mkdir('/tmp/cerebro-chat-evidence', { recursive: true })
     await page.screenshot({ path: '/tmp/cerebro-chat-evidence/attachments-composer.png' })
@@ -651,15 +662,16 @@ test('image attachments use atomic chips, reach the harness, render in the trans
     expect(await caret()).toBe(33)
     await textbox.press('Backspace')
     await expect(attachments).toHaveCount(1)
-    await expect(textbox).toHaveValue('attachments [Image #1] here')
+    await expect.poll(composerText).toBe('attachments [Image #1] here')
     expect(await caret()).toBe(23)
-    // Typing over part of a chip removes it entirely.
-    await textbox.evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(12, 12))
+    // Typing over part of a chip removes it entirely. The chip is atomic, so the first
+    // shift-right selects it and the second includes the following space.
+    await placeCaret(12)
     await textbox.press('Shift+ArrowRight')
     await textbox.press('Shift+ArrowRight')
     await textbox.type('x')
     await expect(attachments).toHaveCount(0)
-    await expect(textbox).toHaveValue('attachments xhere')
+    await expect.poll(composerText).toBe('attachments xhere')
     // A hand-typed marker is plain text, not a chip.
     await textbox.fill('attachments here [Image #1]')
     await expect(attachments).toHaveCount(0)
@@ -670,21 +682,21 @@ test('image attachments use atomic chips, reach the harness, render in the trans
       buffer: Buffer.from(png, 'base64')
     })
     await expect(attachments).toHaveCount(1)
-    await expect(textbox).toHaveValue('attachments here [Image #1] [Image #1] ')
+    await expect.poll(composerText).toBe('attachments here [Image #1] [Image #1] ')
     await paste('fourth.png')
     await expect(attachments).toHaveCount(2)
-    await expect(textbox).toHaveValue('attachments here [Image #1] [Image #1] [Image #2] ')
+    await expect.poll(composerText).toBe('attachments here [Image #1] [Image #1] [Image #2] ')
     await chat.getByRole('button', { name: 'Remove image 1', exact: true }).click()
     await expect(attachments).toHaveCount(1)
     await expect(attachments.first()).toContainText('fourth.png')
     await expect(attachments.first()).toContainText('#1')
-    await expect(textbox).toHaveValue('attachments here [Image #1] [Image #1] ')
+    await expect.poll(composerText).toBe('attachments here [Image #1] [Image #1] ')
     // Reload keeps plain text and drops chips with their attachments.
     await page.reload()
-    await expect(textbox).toHaveValue('attachments here [Image #1]')
+    await expect.poll(composerText).toBe('attachments here [Image #1]')
     await expect(attachments).toHaveCount(0)
     await paste('sent.png')
-    await expect(textbox).toHaveValue('attachments here [Image #1] [Image #1] ')
+    await expect.poll(composerText).toBe('attachments here [Image #1] [Image #1] ')
     // The reload reset the picker to the default harness; send through Codex again.
     await chat.getByTestId('chat-model-picker').click()
     await page
@@ -700,7 +712,7 @@ test('image attachments use atomic chips, reach the harness, render in the trans
     await expect(transcript).toContainText('"type":"localImage"')
     await expect(transcript).toContainText('"placeholder":"[Image #1]"')
     await expect(chat.getByTestId('chat-view').getByRole('status')).toContainText('Ready')
-    await expect(textbox).toHaveValue('')
+    await expect.poll(composerText).toBe('')
     await expect(attachments).toHaveCount(0)
     const message = chat.getByTestId('chat-user-message').first()
     await expect(message.getByRole('img', { name: 'sent.png' })).toBeVisible()
