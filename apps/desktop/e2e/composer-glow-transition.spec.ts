@@ -43,6 +43,15 @@ test('empty glowing composer centers, then docks after send', async ({ page, ele
     const glow = page.getByTestId('chat-composer-glow')
     await expect(dock).toHaveAttribute('data-dock', 'center')
     await expect(glow).toHaveCSS('opacity', '1')
+    const hero = page.getByTestId('chat-empty-hero')
+    await expect(hero).toBeVisible()
+    await expect(hero).toHaveCSS('position', 'absolute')
+    // Hero sits above the form in paint order but must not change form geometry.
+    const heroBox = await hero.boundingBox()
+    const formBoxBefore = await form.boundingBox()
+    expect(heroBox).toBeTruthy()
+    expect(formBoxBefore).toBeTruthy()
+    expect(heroBox!.y + heroBox!.height).toBeLessThanOrEqual(formBoxBefore!.y + 1)
     await expect
       .poll(async () => {
         const formBox = await form.boundingBox()
@@ -50,26 +59,31 @@ test('empty glowing composer centers, then docks after send', async ({ page, ele
         if (!formBox || !viewBox) return Number.POSITIVE_INFINITY
         return Math.abs(formBox.y + formBox.height / 2 - (viewBox.y + viewBox.height / 2))
       })
-      .toBeLessThan(24)
+      .toBeLessThan(16)
 
     await mkdir(evidence, { recursive: true })
     await mkdir(mediaDir, { recursive: true })
-    await page.screenshot({ path: join(evidence, 'composer-glow-centered-v5.png') })
-    await page.screenshot({ path: join(mediaDir, 'composer-glow-centered-v5.png') })
+    await page.screenshot({ path: join(evidence, 'composer-glow-centered-v6.png') })
+    await page.screenshot({ path: join(mediaDir, 'composer-glow-centered-empty.png') })
 
     const frames: Buffer[] = []
     const grab = async (): Promise<void> => {
-      frames.push(await page.screenshot({ type: 'jpeg', quality: 70 }))
+      frames.push(await page.screenshot({ type: 'jpeg', quality: 78 }))
     }
 
-    await grab()
-    await page.waitForTimeout(250)
-    await grab()
+    // Hold the empty centered+glow state so the video reads clearly.
+    for (let i = 0; i < 8; i++) {
+      await grab()
+      await page.waitForTimeout(80)
+    }
 
     const composer = page.getByRole('textbox', { name: 'Message agent' })
     await composer.click()
-    await page.keyboard.type('Ship a soft glow on the empty agent composer', { delay: 20 })
-    await grab()
+    await page.keyboard.type('Ship a soft glow on the empty agent composer', { delay: 35 })
+    for (let i = 0; i < 4; i++) {
+      await grab()
+      await page.waitForTimeout(60)
+    }
 
     const beforeSend = await dock.evaluate((el) => getComputedStyle(el).transform)
     expect(beforeSend).not.toBe('none')
@@ -83,7 +97,7 @@ test('empty glowing composer centers, then docks after send', async ({ page, ele
 
     const pathYs: number[] = []
     const started = Date.now()
-    while (Date.now() - started < 800) {
+    while (Date.now() - started < 900) {
       const box = await form.boundingBox()
       if (box) pathYs.push(box.y)
       await grab()
@@ -96,14 +110,15 @@ test('empty glowing composer centers, then docks after send', async ({ page, ele
 
     await expect(glow).toHaveCSS('opacity', '0')
     await expect(page.getByTestId('chat-empty-hero')).toHaveCSS('visibility', 'hidden')
-    await grab()
-    await page.waitForTimeout(200)
-    await grab()
+    for (let i = 0; i < 6; i++) {
+      await grab()
+      await page.waitForTimeout(70)
+    }
 
-    await page.screenshot({ path: join(evidence, 'composer-glow-docked-v5.png') })
-    await page.screenshot({ path: join(mediaDir, 'composer-glow-docked-v5.png') })
+    await page.screenshot({ path: join(evidence, 'composer-glow-docked-v6.png') })
+    await page.screenshot({ path: join(mediaDir, 'composer-glow-docked-v6.png') })
 
-    expect(frames.length).toBeGreaterThan(8)
+    expect(frames.length).toBeGreaterThan(20)
     for (const [index, frame] of frames.entries()) {
       await writeFile(join(framesDir, `frame-${String(index).padStart(4, '0')}.jpg`), frame)
     }
@@ -111,7 +126,7 @@ test('empty glowing composer centers, then docks after send', async ({ page, ele
     await execFileAsync('ffmpeg', [
       '-y',
       '-framerate',
-      '12',
+      '18',
       '-i',
       join(framesDir, 'frame-%04d.jpg'),
       '-vf',
