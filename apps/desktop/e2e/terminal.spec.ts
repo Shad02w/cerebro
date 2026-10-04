@@ -570,6 +570,83 @@ test('supports multiple terminal tabs; shell exit retains output and can restart
   }
 })
 
+test('content tabs use pill selection and reveal close on hover or keyboard focus', async ({
+  page
+}) => {
+  const sourcesRoot = await mkdtemp(join(tmpdir(), 'cerebro-terminal-pill-tabs-e2e-'))
+  const source = join(sourcesRoot, 'pill-tabs')
+
+  try {
+    await initGitRepo(source, 'main', 'pill-tabs')
+    await addProjectViaUi(page, `file://${source}`, 'pill-tabs')
+    await selectWorkspaceRow(page, 'main')
+
+    await openNewTerminal(page)
+    await clickNewTerminalMenu(page)
+    await expect(page.getByTestId('terminal-tab')).toHaveCount(2)
+    await waitForActiveTerminal(page)
+
+    const tabBar = page.getByTestId('terminal-tab-bar')
+    await expect(tabBar).toHaveAttribute('data-variant', 'pill')
+    await expect(tabBar).toHaveAttribute('role', 'tablist')
+
+    const active = page.getByTestId('terminal-tab').filter({ hasText: 'Terminal 2' })
+    const inactive = page.getByTestId('terminal-tab').filter({ hasText: 'Terminal 1' })
+    await expect(active).toHaveAttribute('data-active', 'true')
+    await expect(active).toHaveAttribute('data-state', 'active')
+    await expect(active).toHaveAttribute('data-variant', 'pill')
+    await expect(inactive).toHaveAttribute('data-state', 'inactive')
+
+    const activeStyles = await active.evaluate((el) => {
+      const style = getComputedStyle(el)
+      return {
+        borderRadius: style.borderRadius,
+        background: style.backgroundColor,
+        borderBottomWidth: style.borderBottomWidth,
+        borderBottomStyle: style.borderBottomStyle
+      }
+    })
+    const inactiveStyles = await inactive.evaluate((el) => {
+      const style = getComputedStyle(el)
+      return {
+        background: style.backgroundColor,
+        borderBottomWidth: style.borderBottomWidth
+      }
+    })
+    expect(Number.parseFloat(activeStyles.borderRadius)).toBeGreaterThan(0)
+    expect(activeStyles.background).not.toBe('rgba(0, 0, 0, 0)')
+    expect(activeStyles.background).not.toBe(inactiveStyles.background)
+    expect(
+      activeStyles.borderBottomStyle === 'none' || activeStyles.borderBottomWidth === '0px'
+    ).toBe(true)
+    expect(
+      inactiveStyles.borderBottomWidth === '0px' || inactiveStyles.background === 'rgba(0, 0, 0, 0)'
+    ).toBe(true)
+
+    await expect(active.locator('svg').first()).toBeVisible()
+    await expect(inactive.locator('svg').first()).toBeVisible()
+
+    const close = inactive.getByTestId('terminal-tab-close')
+    await expect(close).toHaveAttribute('aria-label', /Close Terminal 1/)
+    await page.mouse.move(20, 400)
+    await expect(close).toHaveCSS('opacity', '0')
+    await inactive.hover()
+    await expect(close).toHaveCSS('opacity', '1')
+    await page.mouse.move(20, 400)
+    await expect(close).toHaveCSS('opacity', '0')
+
+    await inactive.getByRole('tab').focus()
+    await expect(inactive.getByRole('tab')).toBeFocused()
+    await expect(close).toHaveCSS('opacity', '1')
+    await page.keyboard.press('Tab')
+    await expect(close).toBeFocused()
+    await expect(close).toHaveCSS('opacity', '1')
+    await expect(close).toHaveCSS('outline-style', 'solid')
+  } finally {
+    await rm(sourcesRoot, { recursive: true, force: true })
+  }
+})
+
 test('does not spawn a terminal for a multi-root project until New terminal is clicked', async ({
   page,
   electronApp

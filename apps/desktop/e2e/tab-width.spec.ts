@@ -54,7 +54,7 @@ for (const harness of ['Claude Code', 'Codex', 'Pi']) {
       await expect(changesTab).toBeVisible()
       const changesWidth = (await changesTab.boundingBox())!.width
       expect(changesWidth).toBeGreaterThan(emptyWidth)
-      expect(changesWidth).toBeLessThan(120)
+      expect(changesWidth).toBeLessThan(140)
       const chat = page.locator('[data-pane-kind="chat"]:visible')
       await expect(chat.getByTestId('chat-model-picker')).toContainText('Test Model')
       await chat.getByTestId('chat-model-picker').click()

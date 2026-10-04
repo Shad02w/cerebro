@@ -190,8 +190,12 @@ test('chat works through native adapters, survives reload, handles requests, and
     await page.getByTestId('new-terminal-tab').click()
     await page.getByTestId('open-terminal-tab').click()
     await expect(page.getByTestId('terminal-tab')).toHaveAttribute('data-active', 'true')
+    await expect(page.getByTestId('terminal-tab-bar')).toHaveAttribute('data-variant', 'pill')
+    await expect(page.getByTestId('terminal-tab')).toHaveAttribute('data-state', 'active')
+    await expect(page.getByTestId('chat-tab').first()).toHaveAttribute('data-state', 'inactive')
     await agentButton.click()
     await expect(page.getByTestId('chat-tab').first()).toHaveAttribute('data-active', 'true')
+    await expect(page.getByTestId('chat-tab').first()).toHaveAttribute('data-state', 'active')
     await expect(page.getByRole('button', { name: 'Allow once', exact: true })).toBeVisible()
     await expect(page.locator('[data-chat-agent-status="waiting"]')).toBeVisible()
     await expect(page.locator('[data-chat-agent-status="waiting"]')).toHaveAttribute(

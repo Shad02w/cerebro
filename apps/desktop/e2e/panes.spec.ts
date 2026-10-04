@@ -253,6 +253,9 @@ test('CLI and Electron share pane IDs, focus, BSP ratios and close behavior', as
     const ws = String(workspaceId)
     const tab: WorkspaceTab = await cli<WorkspaceTab>(home, 'tab', 'create', '--workspace', ws)
     await expect(pane(page, tab.activePaneId).locator('.xterm')).toBeVisible()
+    await expect(page.getByTestId('terminal-tab-bar')).toHaveAttribute('data-variant', 'pill')
+    await expect(page.getByTestId('terminal-tab')).toHaveAttribute('data-variant', 'pill')
+    await expect(page.getByTestId('terminal-tab')).toHaveAttribute('data-state', 'active')
     const originalSession = await cli<{ sessionId: string }>(
       home,
       'pane',
