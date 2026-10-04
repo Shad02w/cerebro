@@ -306,13 +306,31 @@ const extensionsFor = (menuOpen: { current: boolean }, interactive: boolean): Ex
     ...(interactive
       ? [Placeholder.configure({ placeholder: 'Ask your agent to work on something…' })]
       : []),
-    Mention.configure({
+    Mention.extend({
+      addKeyboardShortcuts() {
+        const shortcuts = this.parent?.() ?? {}
+        return {
+          ...shortcuts,
+          Delete: () =>
+            this.editor.commands.command(({ tr, state }) => {
+              const { selection } = state
+              if (!selection.empty) return false
+              const mention = selection.$from.nodeAfter
+              if (mention?.type.name !== this.name) return false
+              tr.delete(selection.from, selection.from + mention.nodeSize)
+              return true
+            })
+        }
+      }
+    }).configure({
+      deleteTriggerWithBackspace: true,
       HTMLAttributes: { class: 'composer-tag', 'data-testid': 'composer-tag' },
       renderText: ({ node }) => `@${node.attrs.label ?? node.attrs.id ?? ''}`,
       renderHTML: ({ node }) => [
         'span',
         {
           class: 'composer-tag',
+          contenteditable: 'false',
           'data-testid': 'composer-tag',
           'data-id': node.attrs.id
         },

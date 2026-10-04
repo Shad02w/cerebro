@@ -74,6 +74,15 @@ test('agent composer renders bullets, inline code, a code block, and Add tags', 
     expect(markdown).toContain('@B')
     expect(markdown).not.toMatch(/^#{1,3} /m)
     await page.screenshot({ path: join(evidence, 'composer-tag.png') })
+    await page.keyboard.press('Backspace')
+    await expect(composer.getByTestId('composer-tag')).toHaveText('@B')
+    await page.keyboard.press('Backspace')
+    await expect(composer.getByTestId('composer-tag')).toHaveCount(0)
+    expect(await composer.getAttribute('data-composer-text')).not.toContain('@')
+    await page.keyboard.type('@')
+    await expect(addMenu).toBeVisible()
+    await addMenu.getByTestId('composer-add-option-B').click()
+    await expect(composer.getByTestId('composer-tag')).toHaveText('@B')
 
     await page.getByTestId('chat-model-picker').click()
     await page
