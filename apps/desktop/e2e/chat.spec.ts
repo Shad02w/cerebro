@@ -364,7 +364,7 @@ test('Claude and Pi keep separate chat sessions, with a mixed Terminal pane', as
     await expect(chat.getByTestId('chat-transcript')).toContainText('hello Claude')
     await page.getByTestId('new-terminal-tab').click()
     await page.getByTestId('open-chat-tab').click()
-    // Tab switches keep prior chat panes mounted under display:none; re-query the active pane.
+    // Tab switches keep prior agent panes mounted under display:none; re-query the active pane.
     const nextChat = page.locator('[data-pane-kind="chat"]:visible')
     await expect(nextChat.getByText('What would you like to build?')).toBeVisible()
     await expect(nextChat.getByTestId('chat-model-picker')).toBeVisible()

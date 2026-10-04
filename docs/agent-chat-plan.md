@@ -8,7 +8,7 @@ This plan consolidates the conversation's decisions. It supersedes the earlier r
 
 Users can work with their Claude Code, Codex, and Pi agents through Cerebro's own graphical chat interface. One normalized adapter contract connects all three agents to the same UI. Each native agent keeps responsibility for its agent loop, tools, context management, and native conversation state.
 
-Chat is a first-class tab kind alongside Terminal and Changes. It is also a pane kind so it fits the existing mixed BSP layout. A new Chat tab begins with one chat pane, and a mixed tab can show Chat beside Terminal or Changes.
+Chat is a first-class tab kind alongside Terminal and Changes. It is also a pane kind so it fits the existing mixed BSP layout. A new Chat tab begins with one agent pane, and a mixed tab can show Chat beside Terminal or Changes.
 
 The first implementation covers local execution of these three agents. The design leaves room for more adapters and remote clients without making either a prerequisite.
 
@@ -36,7 +36,7 @@ The first implementation covers local execution of these three agents. The desig
 flowchart TB
     subgraph UI[Electron renderer]
         Tabs[Workspace tabs and BSP panes]
-        Chat[Custom Chat pane]
+        Chat[Custom Agent pane]
         Projection[Transcript projection and UI state]
         Tabs --> Chat
         Chat <--> Projection
@@ -93,7 +93,7 @@ Keep these identities separate even if the initial UI presents a simple agent/mo
 ```mermaid
 flowchart LR
     Workspace[Workspace / repository scope] --> Session[Chat session]
-    Pane[Chat pane] -->|references| Session
+    Pane[Agent pane] -->|references| Session
     Session --> Instance[Harness instance]
     Instance --> Host[Execution host]
     Instance --> Harness[Claude / Codex / Pi]
@@ -103,7 +103,7 @@ flowchart LR
     Session --> Runtime[Current runtime generation]
 ```
 
-Initial recommendation: one session per new chat pane. Session identity is not the pane ID, leaving room for reopening an existing conversation later. Exact session-history navigation is an open UX decision.
+Initial recommendation: one session per new agent pane. Session identity is not the pane ID, leaving room for reopening an existing conversation later. Exact session-history navigation is an open UX decision.
 
 ## 5. Adapter contract
 
@@ -252,15 +252,15 @@ flowchart TB
     Bar --> Terminal[Terminal tab]
     Bar --> Changes[Changes tab]
     Bar --> Chat[Chat tab]
-    Chat --> Single[Initially one Chat pane]
+    Chat --> Single[Initially one Agent pane]
     Single --> Split[Existing BSP split actions]
-    Split --> Left[Chat pane]
+    Split --> Left[Agent pane]
     Split --> Right[Terminal or Changes pane]
 ```
 
 Add Chat to the New tab menu and pane split choices. Preserve existing Terminal and Changes behavior, tab ordering, keyboard focus, split sizing, and workspace selection semantics. The chat session uses the owning workspace/repository scope as its working directory; this is particularly relevant to multi-root workspaces.
 
-Changing tabs or selecting another workspace only changes presentation. Existing agent work continues in the host. Closing a view, canceling a turn, stopping a runtime, and deleting conversation history are separate actions; closing a Chat pane detaches its view and retains both history and active work. Stop interrupts the active turn. Removing its workspace stops active agents before removal.
+Changing tabs or selecting another workspace only changes presentation. Existing agent work continues in the host. Closing a view, canceling a turn, stopping a runtime, and deleting conversation history are separate actions; closing an Agent pane detaches its view and retains both history and active work. Stop interrupts the active turn. Removing its workspace stops active agents before removal.
 
 Do not assign a new shortcut or redesign the sidebar in this plan. Those changes are not necessary to establish Chat as a tab and pane kind.
 
@@ -365,7 +365,7 @@ Use recorded native frames for adapter contract tests and reducer cases. Run opt
 | Question                                             | Initial decision                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | What does closing Chat do?                           | Detach the view; keep active work and saved history. Stop explicitly interrupts a turn.                                                                                                                                                                                                                                                                                                                                                   |
-| How are closed conversations reopened?               | The history selector at the top of a Chat pane, scoped to its workspace and repository.                                                                                                                                                                                                                                                                                                                                                   |
+| How are closed conversations reopened?               | The history selector at the top of an Agent pane, scoped to its workspace and repository.                                                                                                                                                                                                                                                                                                                                                   |
 | What happens to a follow-up during a running turn?   | Sending queues the message by default (shown as a row above the composer, with a Steer button to fold it into the running turn immediately and a remove button). Confirmed native support: Claude Agent SDK streaming-input mid-turn fold, Codex app-server `turn/steer`, Pi RPC `streamingBehavior: 'steer'`. Steering one queued message never affects others; Stop leaves the queue intact and it becomes the next turn automatically. |
 | What happens when a workspace is removed?            | Stop its active agents before removal. Saved transcripts remain on disk.                                                                                                                                                                                                                                                                                                                                                                  |
 | How are first-run setup and account selection shown? | Per-harness setup errors in the model picker and native authentication errors in Chat. Account switching stays in the native CLI.                                                                                                                                                                                                                                                                                                         |

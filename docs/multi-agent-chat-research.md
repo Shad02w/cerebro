@@ -111,7 +111,7 @@ Use runtime model discovery where supported, with marked fallback catalogs. [T3'
 ## Proposed Cerebro boundary
 
 ```text
-Chat pane / transcript / composer
+Agent pane / transcript / composer
               |
        Cerebro client contract
               |
@@ -138,7 +138,7 @@ Proposed structure, not implemented:
 - `packages/agent-runtime/adapters`: Codex, Claude, Pi, shared ACP support.
 - `packages/mux`: host/supervise the agent service beside the existing terminal service; preserve one owner of shared storage.
 - Desktop main/preload: expose typed agent operations and subscriptions.
-- Renderer chat components: render the normalized transcript; attach a chat pane to a session ID.
+- Renderer chat components: render the normalized transcript; attach an agent pane to a session ID.
 
 Package names are a proposal. The essential boundary is agent session ownership outside Electron and outside a pane's mount lifetime. A pane references a session; it is not the session itself.
 
@@ -194,6 +194,6 @@ Recommendation: prototype assistant-ui's external-store integration with a repre
 
 Build one chat flow using Codex, Claude, and Pi behind the same contract. Verify streaming text, command/file tools, images, cancellation, native resume, pane switching, Electron reload, daemon restart, and prompt deduplication. Verify approvals/questions where the provider supports them and display capability-based limitations where it does not. Then add one ACP agent to test whether the abstraction generalizes.
 
-Use recorded provider frames for adapter mapping tests, including delta/final deduplication, missing exit codes, rejected approvals, late cancellation, and unknown events. Add focused real Electron coverage for the chat pane. Separately run opt-in native-provider smoke tests against explicit versions/accounts; fixture tests alone do not prove integration compatibility.
+Use recorded provider frames for adapter mapping tests, including delta/final deduplication, missing exit codes, rejected approvals, late cancellation, and unknown events. Add focused real Electron coverage for the agent pane. Separately run opt-in native-provider smoke tests against explicit versions/accounts; fixture tests alone do not prove integration compatibility.
 
 No tests were run for this research-only document. Existing uncommitted application changes were left untouched.
