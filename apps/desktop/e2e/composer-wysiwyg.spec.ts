@@ -74,6 +74,22 @@ test('agent composer renders bullets, inline code, a code block, and Add tags', 
     if ((await projectRow.getAttribute('aria-expanded')) === 'false') await projectRow.click()
     await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
     await page.getByRole('button', { name: /^New Agent tab/ }).click()
+    const shell = page.getByTestId('chat-composer-shell')
+    await expect(shell).toBeVisible()
+    const glow = await shell.evaluate((element) => {
+      const style = getComputedStyle(element, '::before')
+      return {
+        content: style.content,
+        filter: style.filter,
+        backgroundImage: style.backgroundImage
+      }
+    })
+    expect(glow.content).not.toBe('none')
+    expect(glow.filter).toMatch(/blur\(/)
+    expect(glow.backgroundImage).toMatch(/gradient/)
+    await mkdir(evidence, { recursive: true })
+    await page.screenshot({ path: join(evidence, 'composer-glow.png') })
+    await shell.screenshot({ path: join(evidence, 'composer-glow-shell.png') })
     const composer = page.getByRole('textbox', { name: 'Message agent' })
     await expect(composer).toBeVisible()
     await composer.click()
@@ -81,7 +97,6 @@ test('agent composer renders bullets, inline code, a code block, and Add tags', 
     await expect(composer.locator('li')).toHaveText('Ship the notes')
     await expect(composer.locator('li code')).toHaveText('notes')
     await expect(composer.locator('h1, h2, h3')).toHaveCount(0)
-    await mkdir(evidence, { recursive: true })
     await page.screenshot({ path: join(evidence, 'composer-bullet.png') })
 
     await page.keyboard.press('Shift+Enter')

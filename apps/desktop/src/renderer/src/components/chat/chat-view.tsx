@@ -295,7 +295,8 @@ export function ChatView({
             </div>
           ) : null}
           <form
-            className={`relative mx-auto max-w-3xl rounded-2xl border bg-background p-2 shadow-lg ${visible ? 'pointer-events-auto' : ''}`}
+            className={`chat-composer-shell relative mx-auto max-w-3xl rounded-2xl border bg-background p-2 shadow-lg ${visible ? 'pointer-events-auto' : ''}`}
+            data-testid="chat-composer-shell"
             data-dragging={dragging || undefined}
             onSubmit={(e) => {
               e.preventDefault()

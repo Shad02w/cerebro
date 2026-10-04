@@ -1,3 +1,24 @@
+/* Soft highlight back-light behind the agent composer (same token as @-tag ink). */
+.chat-composer-shell {
+  isolation: isolate;
+}
+
+.chat-composer-shell::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: -3rem -2.5rem -1.75rem;
+  border-radius: 3rem;
+  background: radial-gradient(
+    110% 85% at 50% 0%,
+    color-mix(in oklch, color-mix(in oklch, var(--sidebar-selected) 72%, white) 36%, transparent),
+    color-mix(in oklch, var(--sidebar-selected) 14%, transparent) 42%,
+    transparent 74%
+  );
+  filter: blur(40px);
+  pointer-events: none;
+}
+
 .composer-editor {
   white-space: pre-wrap;
 }
