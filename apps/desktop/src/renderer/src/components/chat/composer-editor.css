@@ -1,7 +1,6 @@
-/* Soft highlight back-light behind the agent composer (same token as @-tag ink).
-   Sibling under the opaque shell — blur/noise live on ::before/::after so they cannot
-   paint over composer text/controls. Glow is for the empty/centered dock only.
-   Avoid large box-shadow rings: Chromium’s shadow blur path posterizes on dark UIs. */
+/* Soft highlight back-light behind the agent composer (Aceternity Background Gradient
+   principle: saturated corner radials + twin layers — one blurred halo, one near-rim —
+   under the opaque shell. Empty/centered dock only. Teal from --sidebar-selected. */
 .chat-composer-dock {
   position: absolute;
   inset-inline: 0;
@@ -46,10 +45,21 @@
 }
 
 .chat-composer-glow {
+  --composer-glow-a: color-mix(in oklch, var(--sidebar-selected) 78%, white);
+  --composer-glow-b: var(--sidebar-selected);
+  --composer-glow-c: color-mix(in oklch, var(--sidebar-selected) 70%, #0f766e);
+  --composer-glow-d: color-mix(in oklch, var(--sidebar-selected) 55%, #67e8f9);
+  --composer-glow-core: color-mix(in oklch, var(--background) 88%, black);
+  --composer-glow-layers:
+    radial-gradient(circle farthest-side at 0 100%, var(--composer-glow-a), transparent),
+    radial-gradient(circle farthest-side at 100% 0, var(--composer-glow-b), transparent),
+    radial-gradient(circle farthest-side at 100% 100%, var(--composer-glow-c), transparent),
+    radial-gradient(circle farthest-side at 0 0, var(--composer-glow-d), var(--composer-glow-core));
   position: absolute;
   z-index: 0;
-  inset: 0;
-  border-radius: 1rem; /* match rounded-2xl */
+  /* Slightly larger than the shell so the soft halo / rim peeks around opaque edges. */
+  inset: -3px;
+  border-radius: calc(1rem + 3px); /* match rounded-2xl + inset */
   background: transparent;
   opacity: 0;
   transition: opacity 400ms ease;
@@ -57,44 +67,34 @@
   overflow: visible;
 }
 
-/* Continuous oval aura: layered soft radials + heavy blur (box-shadow rings posterize in Chromium). */
+/* Soft diffuse halo — same radials as the rim, heavily blurred (Aceternity blur-xl twin). */
 .chat-composer-glow::before {
   content: '';
   position: absolute;
-  inset: -48% -20% -58%;
-  border-radius: 50%;
-  background:
-    radial-gradient(
-      52% 42% at 50% 48%,
-      color-mix(in oklch, color-mix(in oklch, var(--sidebar-selected) 50%, white) 32%, transparent)
-        0%,
-      transparent 62%
-    ),
-    radial-gradient(
-      72% 58% at 50% 54%,
-      color-mix(in oklch, var(--sidebar-selected) 14%, transparent) 0%,
-      transparent 70%
-    ),
-    radial-gradient(
-      95% 78% at 50% 58%,
-      color-mix(in oklch, var(--sidebar-selected) 6%, transparent) 0%,
-      transparent 78%
-    );
-  filter: blur(56px);
-  transform: translate3d(0, 10px, 0);
+  inset: 0;
+  border-radius: inherit;
+  background-image: var(--composer-glow-layers);
+  background-size: 400% 400%;
+  background-position: 0% 50%;
+  opacity: 0.65;
+  filter: blur(28px);
+  animation: chat-composer-glow-shift 8s ease-in-out infinite alternate;
+  will-change: background-position;
   pointer-events: none;
 }
 
-/* Fractal dither on top of the blur — Chromium does not dither soft fills. */
+/* Near-rim intensity under/around the shell (Aceternity unblurred twin). */
 .chat-composer-glow::after {
   content: '';
   position: absolute;
-  inset: -60% -30% -70%;
-  border-radius: 50%;
-  opacity: 0.08;
-  mix-blend-mode: overlay;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  background-size: 128px 128px;
+  inset: 0;
+  border-radius: inherit;
+  background-image: var(--composer-glow-layers);
+  background-size: 400% 400%;
+  background-position: 0% 50%;
+  opacity: 0.55;
+  animation: chat-composer-glow-shift 8s ease-in-out infinite alternate;
+  will-change: background-position;
   pointer-events: none;
 }
 
@@ -107,11 +107,25 @@
   z-index: 1;
 }
 
+@keyframes chat-composer-glow-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 100% 50%;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .chat-composer-dock,
   .chat-composer-empty,
   .chat-composer-glow {
     transition: none;
+  }
+
+  .chat-composer-glow::before,
+  .chat-composer-glow::after {
+    animation: none;
   }
 }
 
