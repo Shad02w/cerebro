@@ -556,6 +556,20 @@ function MultiRootWorkspaceTree({
   )
 }
 
+function collapsedProjectStatus(
+  project: Project,
+  open: boolean,
+  activity: Map<number, AgentActivityStatus>
+): AgentActivityStatus | null {
+  if (open) return null
+  return aggregateAgentStatus(project.workspaces.map((workspace) => activity.get(workspace.id)))
+}
+
+function projectButtonPadding(githubLinked: boolean, status: AgentActivityStatus | null): string {
+  if (status) return githubLinked ? 'pr-[88px]!' : 'pr-14!'
+  return githubLinked ? 'pr-14' : ''
+}
+
 function ProjectItem({
   project,
   activeWorkspaceId,
@@ -578,10 +592,7 @@ function ProjectItem({
   const [open, setOpen] = useState(defaultOpen)
   const githubLinked = project.github != null
   const multiRoot = isMultiRootProject(project)
-  const summary = aggregateAgentStatus(
-    project.workspaces.map((workspace) => activity.get(workspace.id))
-  )
-  const showSummary = !open && summary != null
+  const summary = collapsedProjectStatus(project, open, activity)
 
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="group/collapsible">
@@ -591,8 +602,7 @@ function ProjectItem({
             <SidebarMenuButton
               className={cn(
                 'app-no-drag sidebar-project-button',
-                githubLinked && !showSummary && 'pr-14',
-                showSummary && (githubLinked ? 'pr-[88px]!' : 'pr-14!')
+                projectButtonPadding(githubLinked, summary)
               )}
               data-testid={`project-row-${project.id}`}
               data-project-kind={project.kind}
@@ -625,7 +635,7 @@ function ProjectItem({
               ) : null}
             </SidebarMenuButton>
           </CollapsibleTrigger>
-          {showSummary && summary ? (
+          {summary ? (
             <WorkspaceAgentStatus
               status={summary}
               shifted={githubLinked}
