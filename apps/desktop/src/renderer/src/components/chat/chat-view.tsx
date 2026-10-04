@@ -7,6 +7,7 @@ import { ChatItem } from './chat-item'
 import { ChatTurnActions } from './chat-turn-actions'
 import { ChatQueue } from './chat-queue'
 import { AttachmentStrip, DropOverlay } from './chat-composer-attachments'
+import { ComposerEditor, type ComposerEditorHandle } from './composer-editor'
 import { chatImageAccept, useComposerDraft } from './use-composer-draft'
 import { ModelPicker } from './model-picker'
 import { ContextUsageRing } from './context-usage-ring'
@@ -52,7 +53,7 @@ export function ChatView({
   const pendingSend = useRef<{ id: string; text: string; key?: string } | null>(null)
   const scrolling = useRef<HTMLDivElement>(null)
   const composer = useRef<HTMLDivElement>(null)
-  const textarea = useRef<HTMLTextAreaElement>(null)
+  const editorRef = useRef<ComposerEditorHandle>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const imageRejection = useCallback(
     (): string | null =>
@@ -61,13 +62,22 @@ export function ChatView({
         : null,
     [selected]
   )
-  const { draft, dragging, attachFiles, remove, clear, textareaHandlers, dropHandlers } =
-    useComposerDraft({
-      storageKey: draftKey,
-      textarea,
-      canAttach: imageRejection,
-      onError: setError
-    })
+  const {
+    draft,
+    initialText,
+    dragging,
+    attachFiles,
+    remove,
+    clear,
+    onDocument,
+    readDraft,
+    dropHandlers
+  } = useComposerDraft({
+    storageKey: draftKey,
+    editorRef,
+    canAttach: imageRejection,
+    onError: setError
+  })
   const stick = useRef(true)
   const busy = session?.status === 'running' || session?.status === 'waiting'
   const { mutateAsync } = useMutation({
@@ -133,11 +143,12 @@ export function ChatView({
   }, [])
   const send = async (): Promise<void> => {
     if (inFlight.current) return
-    if (!draft.text.trim()) {
+    const message = readDraft()
+    if (!message.text.trim()) {
       setError('Write a message first.')
       return
     }
-    const rejection = draft.attachments.length ? imageRejection() : null
+    const rejection = message.attachments.length ? imageRejection() : null
     if (rejection) {
       setError(rejection)
       return
@@ -146,7 +157,7 @@ export function ChatView({
       setError('Choose an available model first.')
       return
     }
-    const fingerprint = [draft.text, ...draft.attachments.map((a) => a.id)].join('\u0000')
+    const fingerprint = [message.text, ...message.attachments.map((a) => a.id)].join('\u0000')
     if (
       !pendingSend.current ||
       pendingSend.current.text !== fingerprint ||
@@ -154,15 +165,15 @@ export function ChatView({
     )
       pendingSend.current = { id: crypto.randomUUID(), text: fingerprint, key: selected.key }
     const isFirstMessage = !session
-    const promptLabel = draft.text.trim()
+    const promptLabel = message.text.trim()
     stick.current = true
     if (
       await execute({
         action: 'send',
         commandId: pendingSend.current.id,
         sessionId: session?.id,
-        text: draft.text,
-        ...(draft.attachments.length ? { attachments: draft.attachments } : {}),
+        text: message.text,
+        ...(message.attachments.length ? { attachments: message.attachments } : {}),
         model: selected,
         reasoning: reasoning || undefined,
         accessMode
@@ -294,22 +305,18 @@ export function ChatView({
           >
             <DropOverlay visible={dragging} />
             <AttachmentStrip attachments={draft.attachments} onRemove={remove} />
-            <textarea
-              ref={textarea}
-              aria-label="Message agent"
-              placeholder="Ask your agent to work on something…"
-              value={draft.text}
-              {...textareaHandlers}
-              onKeyDown={(e) => {
-                textareaHandlers.onKeyDown(e)
-                if (e.defaultPrevented) return
-                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                  e.preventDefault()
-                  void send()
-                }
+            <ComposerEditor
+              ref={editorRef}
+              defaultText={initialText}
+              attachments={draft.attachments}
+              getAttachments={() => readDraft().attachments}
+              onDocument={onDocument}
+              onAttachFiles={(files) => {
+                void attachFiles(files)
               }}
-              rows={3}
-              className="max-h-48 min-h-20 w-full resize-y bg-transparent px-2 py-2 text-sm outline-none"
+              onSubmit={() => {
+                void send()
+              }}
             />
             <input
               ref={fileInput}
