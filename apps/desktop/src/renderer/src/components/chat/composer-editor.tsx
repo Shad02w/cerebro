@@ -69,8 +69,9 @@ function deleteChip(view: EditorView, attachmentId: string): void {
   if (tr.docChanged) view.dispatch(tr)
 }
 
-function CodeBlockView({ node, updateAttributes }: ReactNodeViewProps): React.JSX.Element {
+function CodeBlockView({ node, updateAttributes, editor }: ReactNodeViewProps): React.JSX.Element {
   const language = (node.attrs.language as string | null) ?? 'plaintext'
+  const editable = editor.isEditable
   const button = useRef<HTMLButtonElement>(null)
   const [open, setOpen] = useState(false)
   const [box, setBox] = useState<DOMRect | null>(null)
@@ -82,24 +83,33 @@ function CodeBlockView({ node, updateAttributes }: ReactNodeViewProps): React.JS
   return (
     <NodeViewWrapper className="composer-code-block" data-testid="composer-code-block">
       <div className="flex items-center justify-end px-1.5 pt-1" contentEditable={false}>
-        <button
-          ref={button}
-          type="button"
-          aria-label="Code block language"
-          aria-expanded={open}
-          aria-haspopup="listbox"
-          data-testid="composer-code-language"
-          className="rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-background"
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={toggle}
-        >
-          {languageLabel(language)}
-        </button>
+        {editable ? (
+          <button
+            ref={button}
+            type="button"
+            aria-label="Code block language"
+            aria-expanded={open}
+            aria-haspopup="listbox"
+            data-testid="composer-code-language"
+            className="rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-background"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={toggle}
+          >
+            {languageLabel(language)}
+          </button>
+        ) : (
+          <span
+            data-testid="composer-code-language"
+            className="px-1.5 py-0.5 text-xs text-muted-foreground"
+          >
+            {languageLabel(language)}
+          </span>
+        )}
       </div>
       <pre>
         <NodeViewContent />
       </pre>
-      {open && box
+      {editable && open && box
         ? createPortal(
             <div
               data-testid="composer-code-language-menu"
@@ -142,15 +152,34 @@ function CodeBlockView({ node, updateAttributes }: ReactNodeViewProps): React.JS
   )
 }
 
-function ImageChipView({ node }: ReactNodeViewProps): React.JSX.Element {
+const imageChipOpeners = new WeakMap<Editor, (attachmentId: string) => void>()
+
+function ImageChipView({ node, editor }: ReactNodeViewProps): React.JSX.Element {
+  const openImage = imageChipOpeners.get(editor) ?? null
+  const label = node.attrs.label as string
+  const attachmentId = String(node.attrs.attachmentId ?? '')
+  if (openImage)
+    return (
+      <NodeViewWrapper as="span" data-attachment-id={attachmentId}>
+        <button
+          type="button"
+          className="composer-image-chip"
+          data-testid="chat-image-chip"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => imageChipOpeners.get(editor)?.(attachmentId)}
+        >
+          {label}
+        </button>
+      </NodeViewWrapper>
+    )
   return (
     <NodeViewWrapper
       as="span"
       className="composer-image-chip"
       data-testid="composer-image-chip"
-      data-attachment-id={node.attrs.attachmentId}
+      data-attachment-id={attachmentId}
     >
-      {node.attrs.label}
+      {label}
     </NodeViewWrapper>
   )
 }
@@ -253,7 +282,7 @@ function TagMenu({
   )
 }
 
-const extensionsFor = (menuOpen: { current: boolean }): Extensions => {
+const extensionsFor = (menuOpen: { current: boolean }, interactive: boolean): Extensions => {
   const CodeBlock = CodeBlockLowlight.extend({
     addNodeView() {
       return ReactNodeViewRenderer(CodeBlockView)
@@ -262,12 +291,21 @@ const extensionsFor = (menuOpen: { current: boolean }): Extensions => {
   return [
     StarterKit.configure({
       codeBlock: false,
-      heading: { levels: [1, 2, 3] },
-      link: { openOnClick: false, autolink: false }
+      blockquote: false,
+      bold: false,
+      heading: false,
+      horizontalRule: false,
+      italic: false,
+      link: false,
+      orderedList: false,
+      strike: false,
+      underline: false
     }),
     CodeBlock,
     ImageChip,
-    Placeholder.configure({ placeholder: 'Ask your agent to work on something…' }),
+    ...(interactive
+      ? [Placeholder.configure({ placeholder: 'Ask your agent to work on something…' })]
+      : []),
     Mention.configure({
       HTMLAttributes: { class: 'composer-tag', 'data-testid': 'composer-tag' },
       renderText: ({ node }) => `@${node.attrs.label ?? node.attrs.id ?? ''}`,
@@ -345,7 +383,7 @@ export function ComposerEditor({
   const editorBox = useRef<Editor | null>(null)
   const setup = useMemo(() => {
     const menuOpen = { current: false }
-    return { extensions: extensionsFor(menuOpen), menuOpen }
+    return { extensions: extensionsFor(menuOpen, true), menuOpen }
   }, [])
   const mirror = (view: EditorView): { text: string; chips: Chip[] } => {
     const attachments = getAttachmentsRef.current()
@@ -532,5 +570,33 @@ export function ComposerEditor({
     }),
     [editor]
   )
+  return <EditorContent editor={editor} />
+}
+
+/** The same composer document, without a caret, so a sent message matches what was typed. */
+export function ComposerMessage({
+  text,
+  attachments,
+  onImageChip
+}: {
+  text: string
+  attachments: Array<{ id: string }>
+  onImageChip?: (attachmentId: string) => void
+}): React.JSX.Element {
+  const extensions = useMemo(() => extensionsFor({ current: false }, false), [])
+  const editor = useEditor({
+    editable: false,
+    extensions,
+    content: textToContent(text, { attachments }),
+    editorProps: {
+      attributes: {
+        class:
+          'composer-editor composer-editor-readonly w-full bg-transparent text-sm outline-none',
+        role: 'document',
+        'aria-label': 'Your message'
+      }
+    }
+  })
+  if (editor && onImageChip) imageChipOpeners.set(editor, onImageChip)
   return <EditorContent editor={editor} />
 }

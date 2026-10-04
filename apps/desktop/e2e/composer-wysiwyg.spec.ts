@@ -12,7 +12,7 @@ test.use({
   }
 })
 
-test('agent composer renders markdown, a code language menu, and Add tags', async ({
+test('agent composer renders bullets, inline code, a code block, and Add tags', async ({
   page,
   electronApp
 }) => {
@@ -36,10 +36,12 @@ test('agent composer renders markdown, a code language menu, and Add tags', asyn
     const composer = page.getByRole('textbox', { name: 'Message agent' })
     await expect(composer).toBeVisible()
     await composer.click()
-    await page.keyboard.type('# Release notes')
-    await expect(composer.locator('h1')).toHaveText('Release notes')
+    await page.keyboard.type('- Ship the `notes`')
+    await expect(composer.locator('li')).toHaveText('Ship the notes')
+    await expect(composer.locator('li code')).toHaveText('notes')
+    await expect(composer.locator('h1, h2, h3')).toHaveCount(0)
     await mkdir(evidence, { recursive: true })
-    await page.screenshot({ path: join(evidence, 'composer-heading.png') })
+    await page.screenshot({ path: join(evidence, 'composer-bullet.png') })
 
     await page.keyboard.press('Shift+Enter')
     await page.keyboard.type('``` ')
@@ -65,10 +67,12 @@ test('agent composer renders markdown, a code language menu, and Add tags', asyn
     await page.screenshot({ path: join(evidence, 'composer-add-menu.png') })
     await addMenu.getByTestId('composer-add-option-B').click()
     await expect(composer.getByTestId('composer-tag')).toHaveText('@B')
-    await expect(composer).toHaveAttribute(
-      'data-composer-text',
-      '# Release notes\n```javascript\nconst value = 1\n```\n@B '
-    )
+    const markdown = await composer.getAttribute('data-composer-text')
+    expect(markdown).toContain('Ship the `notes`')
+    expect(markdown).toContain('```javascript')
+    expect(markdown).toContain('const value = 1')
+    expect(markdown).toContain('@B')
+    expect(markdown).not.toMatch(/^#{1,3} /m)
     await page.screenshot({ path: join(evidence, 'composer-tag.png') })
 
     await page.getByTestId('chat-model-picker').click()
@@ -81,10 +85,15 @@ test('agent composer renders markdown, a code language menu, and Add tags', asyn
       .getByRole('button', { name: /^Test Model.*Codex/ })
       .click()
     await page.getByRole('button', { name: 'Send message', exact: true }).click()
-    await expect(page.getByTestId('chat-user-message').first()).toContainText('# Release notes')
-    await expect(page.getByTestId('chat-user-message').first()).toContainText('```javascript')
-    await expect(page.getByTestId('chat-user-message').first()).toContainText('@B')
+    const sent = page.getByTestId('chat-user-message').first()
+    await expect(sent.locator('li p').first()).toHaveText('Ship the notes')
+    await expect(sent.locator('p code')).toHaveText('notes')
+    await expect(sent.locator('.hljs-keyword')).toHaveText('const')
+    await expect(sent.getByTestId('composer-code-language')).toHaveText('JavaScript')
+    await expect(sent.getByTestId('composer-tag')).toHaveText('@B')
+    await expect(sent.locator('h1, h2, h3')).toHaveCount(0)
     await expect(composer).toHaveAttribute('data-composer-text', '')
+    await expect(page.getByTestId('model-picker')).toBeHidden()
     await page.screenshot({ path: join(evidence, 'composer-sent.png') })
   } finally {
     await rm(directory, { recursive: true, force: true })

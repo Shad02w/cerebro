@@ -169,10 +169,10 @@ export function serializedOffset(
   return text.length
 }
 
-const inlineFromText = (line: string): JSONContent[] => {
+const inlineFromText = (line: string, attachments?: Array<{ id: string }>): JSONContent[] => {
   if (!line) return []
   const parts: JSONContent[] = []
-  const pattern = /@(A|B|C)|`([^`]+)`/g
+  const pattern = /@(A|B|C)|`([^`]+)`|\[Image #(\d+)\]/g
   let last = 0
   for (const match of line.matchAll(pattern)) {
     const index = match.index ?? 0
@@ -185,49 +185,97 @@ const inlineFromText = (line: string): JSONContent[] => {
           attrs: { id: tag.id, label: tag.label, mentionSuggestionChar: '@' }
         })
     } else if (match[2]) parts.push({ type: 'text', text: match[2], marks: [{ type: 'code' }] })
+    else if (match[3] && attachments) {
+      const imageIndex = Number(match[3])
+      const attachment = attachments[imageIndex - 1]
+      if (attachment)
+        parts.push({
+          type: 'imageChip',
+          attrs: { attachmentId: attachment.id, label: chatImageMarker(imageIndex) }
+        })
+      else parts.push({ type: 'text', text: match[0] })
+    } else parts.push({ type: 'text', text: match[0] })
     last = index + match[0].length
   }
   if (last < line.length) parts.push({ type: 'text', text: line.slice(last) })
   return parts
 }
 
-/** Restores a stored draft. Image markers stay plain text; only live chips are nodes. */
-export function textToContent(text: string): JSONContent {
-  if (!text) return { type: 'doc', content: [{ type: 'paragraph' }] }
-  const content: JSONContent[] = []
-  const lines = text.split('\n')
-  let index = 0
-  while (index < lines.length) {
-    const line = lines[index] ?? ''
-    const fence = /^```([\w-]*)\s*$/.exec(line)
-    if (fence) {
-      const code: string[] = []
-      index += 1
-      while (index < lines.length && !lines[index]?.startsWith('```')) {
-        code.push(lines[index] ?? '')
-        index += 1
-      }
-      if (index < lines.length) index += 1
-      const language = fence[1] || null
-      content.push({
-        type: 'codeBlock',
-        attrs: { language },
-        ...(code.join('\n').length ? { content: [{ type: 'text', text: code.join('\n') }] } : {})
-      })
-      continue
-    }
-    const heading = /^(#{1,3}) (.*)$/.exec(line)
-    if (heading?.[1]) {
-      content.push({
-        type: 'heading',
-        attrs: { level: heading[1].length },
-        content: inlineFromText(heading[2] ?? '')
-      })
-      index += 1
-      continue
-    }
-    content.push({ type: 'paragraph', content: inlineFromText(line) })
+const paragraph = (line: string, attachments?: Array<{ id: string }>): JSONContent => {
+  const content = inlineFromText(line, attachments)
+  return content.length ? { type: 'paragraph', content } : { type: 'paragraph' }
+}
+
+const readFence = (lines: string[], start: number): { node: JSONContent; next: number } => {
+  const fence = /^```([\w-]*)\s*$/.exec(lines[start] ?? '')
+  const code: string[] = []
+  let index = start + 1
+  while (index < lines.length && !(lines[index] ?? '').startsWith('```')) {
+    code.push(lines[index] ?? '')
     index += 1
   }
+  if (index < lines.length) index += 1
+  const text = code.join('\n')
+  return {
+    node: {
+      type: 'codeBlock',
+      attrs: { language: fence?.[1] || null },
+      ...(text.length ? { content: [{ type: 'text', text }] } : {})
+    },
+    next: index
+  }
+}
+
+/** Parses composer markdown. Only bullets, inline code, and fenced code blocks are structured. */
+const parseBlocks = (
+  lines: string[],
+  start: number,
+  attachments?: Array<{ id: string }>
+): { nodes: JSONContent[]; next: number } => {
+  const nodes: JSONContent[] = []
+  let index = start
+  while (index < lines.length) {
+    const line = lines[index] ?? ''
+    if (line.startsWith('```')) {
+      const fence = readFence(lines, index)
+      nodes.push(fence.node)
+      index = fence.next
+      continue
+    }
+    if (/^[-*+] /.test(line)) {
+      const items: JSONContent[] = []
+      while (index < lines.length && /^[-*+] /.test(lines[index] ?? '')) {
+        const first = (lines[index] ?? '').replace(/^[-*+] /, '')
+        index += 1
+        const nested: string[] = []
+        while (index < lines.length && /^ {2,}/.test(lines[index] ?? '')) {
+          nested.push((lines[index] ?? '').replace(/^ {2}/, ''))
+          index += 1
+        }
+        const nestedBlocks = parseBlocks(nested, 0, attachments).nodes
+        items.push({
+          type: 'listItem',
+          content: [paragraph(first, attachments), ...nestedBlocks]
+        })
+      }
+      nodes.push({ type: 'bulletList', content: items })
+      continue
+    }
+    nodes.push(paragraph(line, attachments))
+    index += 1
+  }
+  return { nodes, next: index }
+}
+
+/**
+ * Restores composer markdown. Drafts leave `[Image #N]` as text. Pass attachments to render those
+ * markers as chips, which is how a sent message is shown.
+ */
+export function textToContent(
+  text: string,
+  options?: { attachments?: Array<{ id: string }> }
+): JSONContent {
+  if (!text) return { type: 'doc', content: [{ type: 'paragraph' }] }
+  const content = parseBlocks(text.split('\n'), 0, options?.attachments).nodes
   return { type: 'doc', content: content.length ? content : [{ type: 'paragraph' }] }
 }
