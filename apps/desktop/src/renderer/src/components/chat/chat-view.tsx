@@ -154,14 +154,15 @@ export function ChatView({
         transcript.style.paddingBottom = ''
         transcript.style.scrollPaddingBottom = ''
         input.style.right = ''
-        // Center on the input shell — empty hero is absolutely positioned above it.
+        // Center on the form only — empty hero is absolutely positioned off-flow above it.
+        const form = input.querySelector('form.chat-composer-shell')
         const shell = input.querySelector('[data-testid="chat-composer-shell"]')
-        const shellHeight = shell instanceof HTMLElement ? shell.offsetHeight : input.offsetHeight
-        const padBottom =
-          shell instanceof HTMLElement
-            ? Number.parseFloat(getComputedStyle(shell.parentElement!).paddingBottom) || 0
-            : 0
-        const offset = Math.max(0, view.clientHeight / 2 - shellHeight / 2 - padBottom)
+        const formHeight = form instanceof HTMLElement ? form.offsetHeight : input.offsetHeight
+        const padHost = shell?.parentElement ?? form?.parentElement
+        const padBottom = padHost
+          ? Number.parseFloat(getComputedStyle(padHost).paddingBottom) || 0
+          : 0
+        const offset = Math.max(0, view.clientHeight / 2 - formHeight / 2 - padBottom)
         input.style.transform = `translateY(-${offset}px)`
         return
       }
@@ -173,8 +174,8 @@ export function ChatView({
       const observer = new ResizeObserver(syncDock)
       observer.observe(view)
       observer.observe(input)
-      const shell = input.querySelector('[data-testid="chat-composer-shell"]')
-      if (shell instanceof HTMLElement) observer.observe(shell)
+      const form = input.querySelector('form.chat-composer-shell')
+      if (form instanceof HTMLElement) observer.observe(form)
       // Do not clear transform here — clearing would snap before the dock animation runs.
       return () => observer.disconnect()
     }
