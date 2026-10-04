@@ -37,6 +37,7 @@
 
 .chat-composer-dock[data-dock='bottom'] .chat-composer-empty {
   opacity: 0;
+  visibility: hidden;
 }
 
 .chat-composer-glow-wrap {

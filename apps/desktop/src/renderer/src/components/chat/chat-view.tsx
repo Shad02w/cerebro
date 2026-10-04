@@ -175,13 +175,12 @@ export function ChatView({
       observer.observe(input)
       const shell = input.querySelector('[data-testid="chat-composer-shell"]')
       if (shell instanceof HTMLElement) observer.observe(shell)
+      // Do not clear transform here — clearing would snap before the dock animation runs.
       return () => observer.disconnect()
     }
     const stopLayout = observeChatLayout(transcript, input, stick)
     return () => {
       stopLayout()
-      input.style.transform = ''
-      input.dataset.motion = 'off'
     }
   }, [empty])
   const send = async (): Promise<void> => {
