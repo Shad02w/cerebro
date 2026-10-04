@@ -49,17 +49,17 @@
   --composer-glow-b: var(--sidebar-selected);
   --composer-glow-c: color-mix(in oklch, var(--sidebar-selected) 70%, #0f766e);
   --composer-glow-d: color-mix(in oklch, var(--sidebar-selected) 55%, #67e8f9);
-  --composer-glow-core: color-mix(in oklch, var(--background) 88%, black);
+  --composer-glow-core: transparent;
   --composer-glow-layers:
     radial-gradient(circle farthest-side at 0 100%, var(--composer-glow-a), transparent),
     radial-gradient(circle farthest-side at 100% 0, var(--composer-glow-b), transparent),
     radial-gradient(circle farthest-side at 100% 100%, var(--composer-glow-c), transparent),
-    radial-gradient(circle farthest-side at 0 0, var(--composer-glow-d), var(--composer-glow-core));
+    radial-gradient(circle farthest-side at 0 0, var(--composer-glow-d), transparent);
   position: absolute;
   z-index: 0;
-  /* Slightly larger than the shell so the soft halo / rim peeks around opaque edges. */
-  inset: -3px;
-  border-radius: calc(1rem + 3px); /* match rounded-2xl + inset */
+  /* Match shell footprint; blur expands the soft aura beyond the opaque card. */
+  inset: 0;
+  border-radius: 1rem; /* match rounded-2xl */
   background: transparent;
   opacity: 0;
   transition: opacity 400ms ease;
@@ -67,32 +67,33 @@
   overflow: visible;
 }
 
-/* Soft diffuse halo — same radials as the rim, heavily blurred (Aceternity blur-xl twin). */
+/* Wide soft halo — Aceternity blurred twin (blur-xl+), teal family only. */
 .chat-composer-glow::before {
   content: '';
   position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background-image: var(--composer-glow-layers);
-  background-size: 400% 400%;
-  background-position: 0% 50%;
-  opacity: 0.65;
-  filter: blur(28px);
-  animation: chat-composer-glow-shift 8s ease-in-out infinite alternate;
-  will-change: background-position;
-  pointer-events: none;
-}
-
-/* Near-rim intensity under/around the shell (Aceternity unblurred twin). */
-.chat-composer-glow::after {
-  content: '';
-  position: absolute;
-  inset: 0;
+  inset: -12% -6% -18%;
   border-radius: inherit;
   background-image: var(--composer-glow-layers);
   background-size: 400% 400%;
   background-position: 0% 50%;
   opacity: 0.55;
+  filter: blur(40px);
+  animation: chat-composer-glow-shift 8s ease-in-out infinite alternate;
+  will-change: background-position;
+  pointer-events: none;
+}
+
+/* Closer soft rim — same radials, lighter blur (avoids hard outline on dark UI). */
+.chat-composer-glow::after {
+  content: '';
+  position: absolute;
+  inset: -2%;
+  border-radius: inherit;
+  background-image: var(--composer-glow-layers);
+  background-size: 400% 400%;
+  background-position: 0% 50%;
+  opacity: 0.4;
+  filter: blur(14px);
   animation: chat-composer-glow-shift 8s ease-in-out infinite alternate;
   will-change: background-position;
   pointer-events: none;

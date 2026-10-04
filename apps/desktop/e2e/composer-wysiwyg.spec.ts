@@ -111,7 +111,7 @@ test('agent composer renders bullets, inline code, a code block, and Add tags', 
     expect(glow.beforeBackgroundImage).toMatch(/radial-gradient/)
     expect(Number(glow.beforeOpacity)).toBeGreaterThan(0)
     expect(glow.afterContent).not.toBe('none')
-    expect(glow.afterFilter === 'none' || glow.afterFilter === '').toBeTruthy()
+    expect(glow.afterFilter).toMatch(/blur\(/)
     expect(glow.afterBackgroundImage).toMatch(/radial-gradient/)
     expect(Number(glow.afterOpacity)).toBeGreaterThan(0)
     expect(glow.opacity).toBe('1')
