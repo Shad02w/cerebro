@@ -67,23 +67,27 @@ test('empty glowing composer centers, then docks after send', async ({ page, ele
     await page.screenshot({ path: join(mediaDir, 'composer-glow-centered-empty.png') })
 
     const frames: Buffer[] = []
-    const grab = async (): Promise<void> => {
-      frames.push(await page.screenshot({ type: 'jpeg', quality: 78 }))
+    const cdp = await page.context().newCDPSession(page)
+    const onFrame = (payload: { data: string; sessionId: number }): void => {
+      frames.push(Buffer.from(payload.data, 'base64'))
+      void cdp.send('Page.screencastFrameAck', { sessionId: payload.sessionId })
     }
+    cdp.on('Page.screencastFrame', onFrame)
+    await cdp.send('Page.startScreencast', {
+      format: 'jpeg',
+      quality: 72,
+      everyNthFrame: 1,
+      maxWidth: 1250,
+      maxHeight: 900
+    })
 
     // Hold the empty centered+glow state so the video reads clearly.
-    for (let i = 0; i < 8; i++) {
-      await grab()
-      await page.waitForTimeout(80)
-    }
+    await page.waitForTimeout(900)
 
     const composer = page.getByRole('textbox', { name: 'Message agent' })
     await composer.click()
-    await page.keyboard.type('Ship a soft glow on the empty agent composer', { delay: 35 })
-    for (let i = 0; i < 4; i++) {
-      await grab()
-      await page.waitForTimeout(60)
-    }
+    await page.keyboard.type('Ship a soft glow on the empty agent composer', { delay: 28 })
+    await page.waitForTimeout(350)
 
     const beforeSend = await dock.evaluate((el) => getComputedStyle(el).transform)
     expect(beforeSend).not.toBe('none')
@@ -100,7 +104,7 @@ test('empty glowing composer centers, then docks after send', async ({ page, ele
     while (Date.now() - started < 900) {
       const box = await form.boundingBox()
       if (box) pathYs.push(box.y)
-      await grab()
+      await page.waitForTimeout(16)
     }
     const uniqueBands = new Set(pathYs.map((y) => Math.round(y / 8)))
     expect(
@@ -110,15 +114,16 @@ test('empty glowing composer centers, then docks after send', async ({ page, ele
 
     await expect(glow).toHaveCSS('opacity', '0')
     await expect(page.getByTestId('chat-empty-hero')).toHaveCSS('visibility', 'hidden')
-    for (let i = 0; i < 6; i++) {
-      await grab()
-      await page.waitForTimeout(70)
-    }
+    await page.waitForTimeout(500)
+
+    await cdp.send('Page.stopScreencast')
+    cdp.off('Page.screencastFrame', onFrame)
+    await cdp.detach().catch(() => undefined)
 
     await page.screenshot({ path: join(evidence, 'composer-glow-docked-v6.png') })
     await page.screenshot({ path: join(mediaDir, 'composer-glow-docked-v6.png') })
 
-    expect(frames.length).toBeGreaterThan(20)
+    expect(frames.length).toBeGreaterThan(30)
     for (const [index, frame] of frames.entries()) {
       await writeFile(join(framesDir, `frame-${String(index).padStart(4, '0')}.jpg`), frame)
     }
@@ -126,7 +131,7 @@ test('empty glowing composer centers, then docks after send', async ({ page, ele
     await execFileAsync('ffmpeg', [
       '-y',
       '-framerate',
-      '18',
+      '30',
       '-i',
       join(framesDir, 'frame-%04d.jpg'),
       '-vf',
