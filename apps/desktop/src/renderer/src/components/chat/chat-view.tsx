@@ -294,120 +294,129 @@ export function ChatView({
               <ChatQueue session={session} onSteer={steer} onDequeue={dequeue} />
             </div>
           ) : null}
-          <form
-            className={`chat-composer-shell relative mx-auto max-w-3xl rounded-2xl border bg-background p-2 shadow-lg ${visible ? 'pointer-events-auto' : ''}`}
+          <div
+            className={`chat-composer-glow-wrap mx-auto max-w-3xl ${visible ? 'pointer-events-auto' : ''}`}
             data-testid="chat-composer-shell"
-            data-dragging={dragging || undefined}
-            onSubmit={(e) => {
-              e.preventDefault()
-              void send()
-            }}
-            {...dropHandlers}
           >
-            <DropOverlay visible={dragging} />
-            <AttachmentStrip attachments={draft.attachments} onRemove={remove} />
-            <ComposerEditor
-              ref={editorRef}
-              defaultText={initialText}
-              attachments={draft.attachments}
-              getAttachments={() => readDraft().attachments}
-              onDocument={onDocument}
-              onAttachFiles={(files) => {
-                void attachFiles(files)
-              }}
-              onSubmit={() => {
+            <div
+              className="chat-composer-glow"
+              aria-hidden="true"
+              data-testid="chat-composer-glow"
+            />
+            <form
+              className="chat-composer-shell relative rounded-2xl border bg-background p-2 shadow-lg"
+              data-dragging={dragging || undefined}
+              onSubmit={(e) => {
+                e.preventDefault()
                 void send()
               }}
-            />
-            <input
-              ref={fileInput}
-              type="file"
-              accept={chatImageAccept}
-              multiple
-              hidden
-              data-testid="chat-image-input"
-              onChange={(e) => {
-                const files = [...(e.target.files ?? [])]
-                e.target.value = ''
-                void attachFiles(files)
-              }}
-            />
-            <div className="flex flex-wrap items-center gap-1">
-              <div className="min-w-0 flex-1">
-                <ModelPicker
-                  selected={selected}
-                  onSelect={(model) => {
-                    if (session && session.model.harness !== model.harness) {
-                      setError(
-                        `Open a new Agent tab or pane to use ${harnessLabels[model.harness]}.`
-                      )
-                      return
-                    }
-                    setError(null)
-                    setSelection(model)
-                    setReasoning('')
-                  }}
-                />
-              </div>
-              <ContextUsageRing usage={session?.contextUsage} effort={session?.reasoning} />
-              <select
-                aria-label="Access mode"
-                title={
-                  selected?.harness === 'pi'
-                    ? 'Pi: Edit and Read-only limit tools and disable extensions; shell commands require Full access. Changes apply to the next message.'
-                    : 'Access for the next message. Edit allows file changes; Read-only uses the harness read or plan mode.'
-                }
-                value={accessMode}
-                onChange={(event) => setAccessSelection(event.target.value as AgentAccessMode)}
-                className="max-w-36 rounded bg-transparent p-1 text-xs text-muted-foreground"
-              >
-                <option value="full">Full access (YOLO)</option>
-                <option value="edit">Edit</option>
-                <option value="read">Read-only</option>
-              </select>
-              {selected?.reasoning.length ? (
+              {...dropHandlers}
+            >
+              <DropOverlay visible={dragging} />
+              <AttachmentStrip attachments={draft.attachments} onRemove={remove} />
+              <ComposerEditor
+                ref={editorRef}
+                defaultText={initialText}
+                attachments={draft.attachments}
+                getAttachments={() => readDraft().attachments}
+                onDocument={onDocument}
+                onAttachFiles={(files) => {
+                  void attachFiles(files)
+                }}
+                onSubmit={() => {
+                  void send()
+                }}
+              />
+              <input
+                ref={fileInput}
+                type="file"
+                accept={chatImageAccept}
+                multiple
+                hidden
+                data-testid="chat-image-input"
+                onChange={(e) => {
+                  const files = [...(e.target.files ?? [])]
+                  e.target.value = ''
+                  void attachFiles(files)
+                }}
+              />
+              <div className="flex flex-wrap items-center gap-1">
+                <div className="min-w-0 flex-1">
+                  <ModelPicker
+                    selected={selected}
+                    onSelect={(model) => {
+                      if (session && session.model.harness !== model.harness) {
+                        setError(
+                          `Open a new Agent tab or pane to use ${harnessLabels[model.harness]}.`
+                        )
+                        return
+                      }
+                      setError(null)
+                      setSelection(model)
+                      setReasoning('')
+                    }}
+                  />
+                </div>
+                <ContextUsageRing usage={session?.contextUsage} effort={session?.reasoning} />
                 <select
-                  aria-label="Reasoning effort"
-                  value={reasoning}
-                  onChange={(e) => setReasoning(e.target.value)}
-                  className="max-w-28 rounded bg-transparent p-1 text-xs text-muted-foreground"
+                  aria-label="Access mode"
+                  title={
+                    selected?.harness === 'pi'
+                      ? 'Pi: Edit and Read-only limit tools and disable extensions; shell commands require Full access. Changes apply to the next message.'
+                      : 'Access for the next message. Edit allows file changes; Read-only uses the harness read or plan mode.'
+                  }
+                  value={accessMode}
+                  onChange={(event) => setAccessSelection(event.target.value as AgentAccessMode)}
+                  className="max-w-36 rounded bg-transparent p-1 text-xs text-muted-foreground"
                 >
-                  <option value="">Default effort</option>
-                  {selected.reasoning.map((effort) => (
-                    <option key={effort} value={effort}>
-                      {effort}
-                    </option>
-                  ))}
+                  <option value="full">Full access (YOLO)</option>
+                  <option value="edit">Edit</option>
+                  <option value="read">Read-only</option>
                 </select>
-              ) : null}
-              <Button
-                type="button"
-                size="icon-sm"
-                variant="ghost"
-                aria-label="Attach image"
-                title="Attach image (or drop / paste one)"
-                onClick={() => fileInput.current?.click()}
-              >
-                <ImagePlus className="size-4" />
-              </Button>
-              {busy ? (
+                {selected?.reasoning.length ? (
+                  <select
+                    aria-label="Reasoning effort"
+                    value={reasoning}
+                    onChange={(e) => setReasoning(e.target.value)}
+                    className="max-w-28 rounded bg-transparent p-1 text-xs text-muted-foreground"
+                  >
+                    <option value="">Default effort</option>
+                    {selected.reasoning.map((effort) => (
+                      <option key={effort} value={effort}>
+                        {effort}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
                 <Button
                   type="button"
                   size="icon-sm"
-                  variant="outline"
-                  aria-label="Stop agent"
-                  onClick={() => {
-                    void execute({ action: 'stop', sessionId: session?.id })
-                  }}
+                  variant="ghost"
+                  aria-label="Attach image"
+                  title="Attach image (or drop / paste one)"
+                  onClick={() => fileInput.current?.click()}
                 >
-                  <Square className="size-3 fill-current" />
+                  <ImagePlus className="size-4" />
                 </Button>
-              ) : null}
-              <Button type="submit" size="icon-sm" aria-label="Send message">
-                <ArrowUp className="size-4" />
-              </Button>
-            </div>
-          </form>
+                {busy ? (
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="outline"
+                    aria-label="Stop agent"
+                    onClick={() => {
+                      void execute({ action: 'stop', sessionId: session?.id })
+                    }}
+                  >
+                    <Square className="size-3 fill-current" />
+                  </Button>
+                ) : null}
+                <Button type="submit" size="icon-sm" aria-label="Send message">
+                  <ArrowUp className="size-4" />
+                </Button>
+              </div>
+            </form>
+          </div>
         </div>
       </div>
     </div>

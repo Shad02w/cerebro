@@ -75,18 +75,23 @@ test('agent composer renders bullets, inline code, a code block, and Add tags', 
     await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
     await page.getByRole('button', { name: /^New Agent tab/ }).click()
     const shell = page.getByTestId('chat-composer-shell')
+    const glowLayer = page.getByTestId('chat-composer-glow')
+    const form = shell.locator('form.chat-composer-shell')
     await expect(shell).toBeVisible()
-    const glow = await shell.evaluate((element) => {
-      const style = getComputedStyle(element, '::before')
+    await expect(glowLayer).toBeAttached()
+    await expect(form).toBeVisible()
+    const glow = await glowLayer.evaluate((element) => {
+      const style = getComputedStyle(element)
       return {
-        content: style.content,
+        zIndex: Number(style.zIndex),
         filter: style.filter,
         backgroundImage: style.backgroundImage
       }
     })
-    expect(glow.content).not.toBe('none')
+    const formZ = await form.evaluate((element) => Number(getComputedStyle(element).zIndex))
     expect(glow.filter).toMatch(/blur\(/)
     expect(glow.backgroundImage).toMatch(/gradient/)
+    expect(formZ).toBeGreaterThan(glow.zIndex)
     await mkdir(evidence, { recursive: true })
     await page.screenshot({ path: join(evidence, 'composer-glow.png') })
     await shell.screenshot({ path: join(evidence, 'composer-glow-shell.png') })

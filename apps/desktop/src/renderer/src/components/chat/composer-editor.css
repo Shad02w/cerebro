@@ -1,22 +1,28 @@
-/* Soft highlight back-light behind the agent composer (same token as @-tag ink). */
-.chat-composer-shell {
-  isolation: isolate;
+/* Soft highlight back-light behind the agent composer (same token as @-tag ink).
+   Sibling layer under the opaque shell — not a ::before — so blur cannot paint over controls. */
+.chat-composer-glow-wrap {
+  position: relative;
 }
 
-.chat-composer-shell::before {
-  content: '';
+.chat-composer-glow {
   position: absolute;
-  z-index: -1;
-  inset: -3rem -2.5rem -1.75rem;
+  z-index: 0;
+  /* Bias the aura slightly downward so the light sits behind the field, not above it. */
+  inset: -1.25rem -2.5rem -2.75rem;
   border-radius: 3rem;
   background: radial-gradient(
-    110% 85% at 50% 0%,
+    110% 90% at 50% 42%,
     color-mix(in oklch, color-mix(in oklch, var(--sidebar-selected) 72%, white) 36%, transparent),
     color-mix(in oklch, var(--sidebar-selected) 14%, transparent) 42%,
     transparent 74%
   );
   filter: blur(40px);
   pointer-events: none;
+}
+
+.chat-composer-shell {
+  position: relative;
+  z-index: 1;
 }
 
 .composer-editor {
