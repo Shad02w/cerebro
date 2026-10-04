@@ -698,7 +698,19 @@ test('overview prefers waiting over running and hides an older failure after a n
     }
     if (context.text === 'fail') throw new Error('boom')
   })
-  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  const claude = {
+    ...model,
+    key: 'claude',
+    harness: 'claude' as const,
+    id: 'claude',
+    label: 'Claude'
+  }
+  const advertised = { models: async () => [model, claude], run: f.drivers.codex.run }
+  const service = new AgentSessions(f.dir, () => {}, {
+    claude: advertised,
+    codex: advertised,
+    pi: advertised
+  })
   const scopeFor = (workspaceId: number, paneId: number) => ({
     workspaceId,
     paneId,
@@ -706,12 +718,18 @@ test('overview prefers waiting over running and hides an older failure after a n
     cwd: '/tmp'
   })
   const pause = () => new Promise((resolve) => setTimeout(resolve, 25))
+  const listed = () =>
+    service.overview().workspaces.map(({ workspaceId, agents }) => ({
+      workspaceId,
+      agents: agents.map(({ harness, status }) => ({ harness, status }))
+    }))
   const settle = async (
     workspaceId: number,
     paneId: number,
     text: string,
     commandId: string,
-    expected: 'idle' | 'running' | 'waiting' | 'interrupted' | 'failed'
+    expected: 'idle' | 'running' | 'waiting' | 'interrupted' | 'failed',
+    selected = model
   ): Promise<void> => {
     const target = scopeFor(workspaceId, paneId)
     await service.command(target, {
@@ -720,7 +738,7 @@ test('overview prefers waiting over running and hides an older failure after a n
       paneId,
       commandId,
       text,
-      model
+      model: selected
     })
     for (let attempt = 0; attempt < 30; attempt++) {
       const view = await service.command(target, { ...send, action: 'get', workspaceId, paneId })
@@ -748,14 +766,30 @@ test('overview prefers waiting over running and hides an older failure after a n
     await settle(1, 12, 'done', 'w1-idle', 'idle')
     assert.deepEqual(service.overview().workspaces, [])
     await settle(2, 21, 'wait', 'w2-wait', 'waiting')
-    await settle(2, 22, 'run', 'w2-run', 'running')
-    assert.deepEqual(service.overview().workspaces, [{ workspaceId: 2, status: 'waiting' }])
+    await settle(2, 22, 'run', 'w2-run', 'running', claude)
+    assert.deepEqual(listed(), [
+      {
+        workspaceId: 2,
+        agents: [
+          { harness: 'codex', status: 'waiting' },
+          { harness: 'claude', status: 'running' }
+        ]
+      }
+    ])
     await settle(3, 31, 'run', 'w3-run', 'running')
     await pause()
     await settle(3, 32, 'fail', 'w3-fail', 'failed')
     assert.deepEqual(
-      service.overview().workspaces.filter((entry) => entry.workspaceId === 3),
-      [{ workspaceId: 3, status: 'running' }]
+      listed().filter((entry) => entry.workspaceId === 3),
+      [
+        {
+          workspaceId: 3,
+          agents: [
+            { harness: 'codex', status: 'running' },
+            { harness: 'codex', status: 'failed' }
+          ]
+        }
+      ]
     )
     await settle(4, 41, 'done', 'w4-idle', 'idle')
     await pause()
@@ -769,12 +803,24 @@ test('overview prefers waiting over running and hides an older failure after a n
     await pause()
     await settle(6, 62, 'done', 'w6-idle', 'idle')
     await settle(7, 71, 'run', 'w7-run', 'running')
-    assert.deepEqual(service.overview().workspaces, [
-      { workspaceId: 2, status: 'waiting' },
-      { workspaceId: 3, status: 'running' },
-      { workspaceId: 4, status: 'failed' },
-      { workspaceId: 5, status: 'interrupted' },
-      { workspaceId: 7, status: 'running' }
+    assert.deepEqual(listed(), [
+      {
+        workspaceId: 2,
+        agents: [
+          { harness: 'codex', status: 'waiting' },
+          { harness: 'claude', status: 'running' }
+        ]
+      },
+      {
+        workspaceId: 3,
+        agents: [
+          { harness: 'codex', status: 'running' },
+          { harness: 'codex', status: 'failed' }
+        ]
+      },
+      { workspaceId: 4, agents: [{ harness: 'codex', status: 'failed' }] },
+      { workspaceId: 5, agents: [{ harness: 'codex', status: 'interrupted' }] },
+      { workspaceId: 7, agents: [{ harness: 'codex', status: 'running' }] }
     ])
   } finally {
     await service.shutdown()

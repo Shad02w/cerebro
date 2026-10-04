@@ -123,13 +123,20 @@ export type AgentSessionSummary = Pick<
   'id' | 'title' | 'model' | 'status' | 'updatedAt'
 >
 export type ChatView = { session: AgentSession | null; sessions: AgentSessionSummary[] }
-/** A session status the sidebar and chat tab actually draw. Idle sessions are omitted. */
+/** A session status the sidebar and agent tab actually draw. Idle sessions are omitted. */
 export type AgentActivityStatus = Exclude<AgentSession['status'], 'idle'>
+/** One non-idle session, so a workspace can show every agent that is working. */
+export type ChatAgentActivity = {
+  sessionId: string
+  harness: AgentHarness
+  status: AgentActivityStatus
+  title: string
+}
 export type ChatWorkspaceActivity = {
   workspaceId: number
-  status: AgentActivityStatus
+  agents: ChatAgentActivity[]
 }
-/** Workspaces that currently have a visible agent activity status. */
+/** Workspaces that currently have at least one visible agent. */
 export type ChatActivityOverview = {
   workspaces: ChatWorkspaceActivity[]
 }

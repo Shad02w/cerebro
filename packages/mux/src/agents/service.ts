@@ -29,6 +29,7 @@ import {
   type ChatImageType,
   type AgentActivityStatus,
   type ChatActivityOverview,
+  type ChatAgentActivity,
   type ChatView,
   type QueuedMessage
 } from '@cerebro/core'
@@ -153,14 +154,40 @@ function validateAttachments(
 }
 const busy = (session: AgentSession): boolean =>
   session.status === 'running' || session.status === 'waiting'
-/** waiting beats running. Otherwise only the newest session counts, and only when it failed or was interrupted. */
-function activityStatus(sessions: AgentSession[]): AgentActivityStatus | null {
-  if (sessions.some((session) => session.status === 'waiting')) return 'waiting'
-  if (sessions.some((session) => session.status === 'running')) return 'running'
-  const newest = sessions.reduce((best, session) =>
-    session.updatedAt > best.updatedAt ? session : best
-  )
-  return newest.status === 'failed' || newest.status === 'interrupted' ? newest.status : null
+const activityRank: Record<AgentActivityStatus, number> = {
+  waiting: 0,
+  running: 1,
+  failed: 2,
+  interrupted: 3
+}
+/**
+ * Every live session is listed. A failed or interrupted session is listed only when it is the
+ * newest session for its harness, so an older failure does not linger after a newer idle turn.
+ */
+function visibleAgents(sessions: AgentSession[]): ChatAgentActivity[] {
+  const newest = new Map<AgentHarness, AgentSession>()
+  for (const session of sessions) {
+    const current = newest.get(session.model.harness)
+    if (!current || session.updatedAt >= current.updatedAt)
+      newest.set(session.model.harness, session)
+  }
+  return sessions
+    .filter((session) => {
+      if (session.status === 'running' || session.status === 'waiting') return true
+      if (session.status !== 'failed' && session.status !== 'interrupted') return false
+      return newest.get(session.model.harness)?.id === session.id
+    })
+    .sort(
+      (a, b) =>
+        activityRank[a.status as AgentActivityStatus] -
+          activityRank[b.status as AgentActivityStatus] || b.updatedAt - a.updatedAt
+    )
+    .map((session) => ({
+      sessionId: session.id,
+      harness: session.model.harness,
+      status: session.status as AgentActivityStatus,
+      title: session.title
+    }))
 }
 const readJson = <T>(path: string, fallback: T): T => {
   try {
@@ -386,8 +413,8 @@ export class AgentSessions {
       else grouped.set(session.workspaceId, [session])
     }
     const workspaces = [...grouped.entries()].flatMap(([workspaceId, sessions]) => {
-      const status = activityStatus(sessions)
-      return status ? [{ workspaceId, status }] : []
+      const agents = visibleAgents(sessions)
+      return agents.length ? [{ workspaceId, agents }] : []
     })
     workspaces.sort((a, b) => a.workspaceId - b.workspaceId)
     return { workspaces }

@@ -53,7 +53,7 @@ export function ChatTabIcon({
         <AgentStatusIcon
           status={session.status}
           surface="tab"
-          className="absolute -right-1.5 -bottom-1.5 rounded-full bg-background"
+          className="absolute -right-1 -bottom-1 rounded-[3px] bg-background p-px"
         />
       )}
     </span>

@@ -16,11 +16,12 @@ import {
   Trash2,
   X
 } from 'lucide-react'
-import type { AgentActivityStatus } from '@cerebro/core'
+import type { ChatAgentActivity } from '@cerebro/core'
 import type { Project, Workspace } from '@shared/types'
 import type { SettingsSectionId } from '@/lib/app-route'
-import { AgentStatusIcon } from '@/components/agent-status-icon'
-import { aggregateAgentStatus, useAgentActivity } from '@/lib/agent-activity'
+import { AgentStatusMark } from '@/components/agent-status-icon'
+import { harnessLabels } from '@/components/chat/queries'
+import { agentStatusPresentation, sortAgentActivity, useAgentActivity } from '@/lib/agent-activity'
 import { SETTINGS_SECTIONS } from '@/lib/settings-sections'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -126,26 +127,37 @@ function PlusActionTooltip({
   )
 }
 
-function WorkspaceAgentStatus({
-  status,
-  shifted = false,
-  muted = false,
-  testId
+function WorkspaceAgents({
+  agents,
+  testId,
+  className
 }: {
-  status?: AgentActivityStatus
-  shifted?: boolean
-  muted?: boolean
+  agents: ChatAgentActivity[]
   testId?: string
+  className?: string
 }): React.JSX.Element | null {
-  if (!status) return null
+  if (!agents.length) return null
   return (
-    <AgentStatusIcon
-      status={status}
-      surface="sidebar"
-      muted={muted}
-      testId={testId}
-      className={cn('workspace-agent-status', shifted && 'is-shifted')}
-    />
+    <span
+      data-testid={testId}
+      className={cn('mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5', className)}
+    >
+      {agents.map((agent) => (
+        <span
+          key={agent.sessionId}
+          data-workspace-agent-status={agent.status}
+          data-agent-harness={agent.harness}
+          aria-label={agentStatusPresentation[agent.status].label}
+          className={cn(
+            'inline-flex min-w-0 items-center gap-1 text-[10px] leading-3',
+            agentStatusPresentation[agent.status].color
+          )}
+        >
+          <AgentStatusMark status={agent.status} />
+          <span className="truncate">{harnessLabels[agent.harness]}</span>
+        </span>
+      ))}
+    </span>
   )
 }
 
@@ -385,13 +397,13 @@ function MultiRootRepoRow({
   project,
   workspace,
   active,
-  status,
+  agents,
   onSelect
 }: {
   project: Project
   workspace: Workspace
   active: boolean
-  status?: AgentActivityStatus
+  agents: ChatAgentActivity[]
   onSelect: (workspaceId: number) => void
 }): React.JSX.Element {
   const name = repositoryDirName(project, workspace)
@@ -404,8 +416,7 @@ function MultiRootRepoRow({
           <button
             type="button"
             className={cn(
-              'app-no-drag peer/menu-button flex w-full min-w-0 flex-col items-stretch rounded-md px-2 py-1.5 text-left',
-              status ? 'pr-14!' : 'pr-8',
+              'app-no-drag peer/menu-button flex w-full min-w-0 flex-col items-stretch rounded-md px-2 py-1.5 pr-8 text-left',
               'text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
             )}
             data-testid={`workspace-row-${workspace.id}`}
@@ -435,14 +446,14 @@ function MultiRootRepoRow({
                 <span className="min-w-0 flex-1 truncate">{branch}</span>
               </span>
             ) : null}
+            <WorkspaceAgents agents={agents} />
           </button>
           {branch ? (
             <WorkspacePrPopover
               workspace={workspace}
-              className="absolute bottom-2 left-[22px] size-3"
+              className="absolute top-2 left-[22px] size-3"
             />
           ) : null}
-          <WorkspaceAgentStatus status={status} />
           <WorkspaceOverflowMenu workspace={workspace} allowRemove={false} />
         </SidebarMenuRow>
       </WorkspaceHoverCard>
@@ -458,14 +469,14 @@ function MultiRootWorkspaceTree({
 }: {
   project: Project
   activeWorkspaceId: number | null
-  activity: Map<number, AgentActivityStatus>
+  activity: Map<number, ChatAgentActivity[]>
   onSelectWorkspace: (workspaceId: number) => void
 }): React.JSX.Element {
   const [rootOpen, setRootOpen] = useState(true)
   const rootWorkspace = rootWorkspaceOf(project)
   const repos = repositoryWorkspaces(project)
   const rootActive = rootWorkspace != null && rootWorkspace.id === activeWorkspaceId
-  const rootStatus = rootWorkspace ? activity.get(rootWorkspace.id) : undefined
+  const rootAgents = rootWorkspace ? (activity.get(rootWorkspace.id) ?? []) : []
 
   return (
     <SidebarMenuSub>
@@ -482,10 +493,7 @@ function MultiRootWorkspaceTree({
             <SidebarMenuRow data-workspace-id={rootWorkspace?.id}>
               <button
                 type="button"
-                className={cn(
-                  'app-no-drag peer/menu-button flex h-7 w-full min-w-0 items-center gap-2 overflow-hidden rounded-md px-2 text-left text-xs hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
-                  rootStatus ? 'pr-[88px]!' : 'pr-14'
-                )}
+                className="app-no-drag peer/menu-button flex h-auto min-h-7 w-full min-w-0 flex-col items-stretch overflow-hidden rounded-md px-2 py-1 pr-14 text-left text-xs hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                 data-testid={`project-root-${project.id}`}
                 data-workspace-role="root"
                 data-workspace-icon="folder-tree"
@@ -498,18 +506,21 @@ function MultiRootWorkspaceTree({
                   if (rootWorkspace) onSelectWorkspace(rootWorkspace.id)
                 }}
               >
-                <FolderTree className="size-4 shrink-0 text-sidebar-accent-foreground" />
-                <span className="min-w-0 flex-1 truncate font-medium">root</span>
-                <span
-                  className="shrink-0 text-[10px] text-sidebar-foreground/55 tabular-nums"
-                  aria-label={`${repos.length} repositories in root`}
-                  data-testid={`root-repo-count-${project.id}`}
-                >
-                  {repos.length} {repos.length === 1 ? 'repo' : 'repos'}
+                <span className="flex w-full min-w-0 items-center gap-2">
+                  <FolderTree className="size-4 shrink-0 text-sidebar-accent-foreground" />
+                  <span className="min-w-0 flex-1 truncate font-medium">root</span>
+                  <span
+                    className="shrink-0 text-[10px] text-sidebar-foreground/55 tabular-nums"
+                    aria-label={`${repos.length} repositories in root`}
+                    data-testid={`root-repo-count-${project.id}`}
+                  >
+                    {repos.length} {repos.length === 1 ? 'repo' : 'repos'}
+                  </span>
                 </span>
+                <WorkspaceAgents agents={rootAgents} />
               </button>
               <SidebarMenuAction
-                className={cn('app-no-drag right-6', rootStatus && 'shifts-for-agent-status')}
+                className="app-no-drag right-6"
                 data-testid={`root-toggle-${project.id}`}
                 aria-expanded={rootOpen}
                 aria-label={rootOpen ? 'Collapse repositories' : 'Expand repositories'}
@@ -526,7 +537,6 @@ function MultiRootWorkspaceTree({
                   {rootOpen ? 'Collapse repositories' : 'Expand repositories'}
                 </span>
               </SidebarMenuAction>
-              <WorkspaceAgentStatus status={rootStatus} />
               <RootOverflowMenu project={project} />
             </SidebarMenuRow>
           </WorkspaceHoverCard>
@@ -543,7 +553,7 @@ function MultiRootWorkspaceTree({
                     project={project}
                     workspace={workspace}
                     active={workspace.id === activeWorkspaceId}
-                    status={activity.get(workspace.id)}
+                    agents={activity.get(workspace.id) ?? []}
                     onSelect={onSelectWorkspace}
                   />
                 ))}
@@ -556,18 +566,15 @@ function MultiRootWorkspaceTree({
   )
 }
 
-function collapsedProjectStatus(
+function collapsedProjectAgents(
   project: Project,
   open: boolean,
-  activity: Map<number, AgentActivityStatus>
-): AgentActivityStatus | null {
-  if (open) return null
-  return aggregateAgentStatus(project.workspaces.map((workspace) => activity.get(workspace.id)))
-}
-
-function projectButtonPadding(githubLinked: boolean, status: AgentActivityStatus | null): string {
-  if (status) return githubLinked ? 'pr-[88px]!' : 'pr-14!'
-  return githubLinked ? 'pr-14' : ''
+  activity: Map<number, ChatAgentActivity[]>
+): ChatAgentActivity[] {
+  if (open) return []
+  return sortAgentActivity(
+    project.workspaces.flatMap((workspace) => activity.get(workspace.id) ?? [])
+  )
 }
 
 function ProjectItem({
@@ -582,7 +589,7 @@ function ProjectItem({
 }: {
   project: Project
   activeWorkspaceId: number | null
-  activity: Map<number, AgentActivityStatus>
+  activity: Map<number, ChatAgentActivity[]>
   defaultOpen: boolean
   onSelectWorkspace: (workspaceId: number) => void
   onAddWorkspace: (project: Project) => void
@@ -592,7 +599,7 @@ function ProjectItem({
   const [open, setOpen] = useState(defaultOpen)
   const githubLinked = project.github != null
   const multiRoot = isMultiRootProject(project)
-  const summary = collapsedProjectStatus(project, open, activity)
+  const summary = collapsedProjectAgents(project, open, activity)
 
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="group/collapsible">
@@ -600,10 +607,7 @@ function ProjectItem({
         <SidebarMenuRow>
           <CollapsibleTrigger asChild>
             <SidebarMenuButton
-              className={cn(
-                'app-no-drag sidebar-project-button',
-                projectButtonPadding(githubLinked, summary)
-              )}
+              className={cn('app-no-drag sidebar-project-button h-auto!', githubLinked && 'pr-14')}
               data-testid={`project-row-${project.id}`}
               data-project-kind={project.kind}
               data-project-icon={multiRoot ? 'folders' : githubLinked ? 'avatar' : 'folder'}
@@ -624,7 +628,14 @@ function ProjectItem({
               ) : (
                 <Folder />
               )}
-              <span className="min-w-0 truncate">{project.name}</span>
+              <div className="flex min-w-0 flex-1 flex-col">
+                <span className="truncate">{project.name}</span>
+                <WorkspaceAgents
+                  agents={summary}
+                  testId={`project-agent-status-${project.id}`}
+                  className="opacity-60"
+                />
+              </div>
               {multiRoot ? (
                 <span
                   className="shrink-0 rounded-md bg-[color-mix(in_oklch,var(--sidebar-selected)_15%,transparent)] px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-[var(--sidebar-selected)] uppercase"
@@ -635,14 +646,6 @@ function ProjectItem({
               ) : null}
             </SidebarMenuButton>
           </CollapsibleTrigger>
-          {summary ? (
-            <WorkspaceAgentStatus
-              status={summary}
-              shifted={githubLinked}
-              muted
-              testId={`project-agent-status-${project.id}`}
-            />
-          ) : null}
           <ProjectOverflowMenu
             project={project}
             offsetForAdd={githubLinked}
@@ -686,10 +689,7 @@ function ProjectItem({
                       >
                         <button
                           type="button"
-                          className={cn(
-                            'app-no-drag flex w-full min-w-0 items-center gap-2 pl-8',
-                            activity.get(workspace.id) ? 'pr-14!' : 'pr-8'
-                          )}
+                          className="app-no-drag flex h-auto! w-full min-w-0 flex-col items-stretch gap-0 py-1.5 pr-8 pl-8"
                           data-testid={`workspace-row-${workspace.id}`}
                           data-workspace-id={workspace.id}
                           aria-current={workspace.id === activeWorkspaceId ? 'location' : undefined}
@@ -697,16 +697,16 @@ function ProjectItem({
                           data-workspace-icon="branch"
                           onClick={(): void => onSelectWorkspace(workspace.id)}
                         >
-                          <span className="min-w-0 flex-1 truncate text-left">
+                          <span className="min-w-0 truncate text-left">
                             {workspaceLabel(project, workspace)}
                           </span>
+                          <WorkspaceAgents agents={activity.get(workspace.id) ?? []} />
                         </button>
                       </SidebarMenuSubButton>
                       <WorkspacePrPopover
                         workspace={workspace}
-                        className="absolute top-1/2 left-2 size-4 -translate-y-1/2"
+                        className="absolute top-2 left-2 size-4"
                       />
-                      <WorkspaceAgentStatus status={activity.get(workspace.id)} />
                       <WorkspaceOverflowMenu
                         workspace={workspace}
                         onRemoveWorkspace={onRemoveWorkspace}
@@ -838,7 +838,7 @@ function WorkspaceSearchResults({
 }: {
   results: WorkspaceSearchResult[]
   activeWorkspaceId: number | null
-  activity: Map<number, AgentActivityStatus>
+  activity: Map<number, ChatAgentActivity[]>
   onSelectWorkspace: (workspaceId: number) => void
 }): React.JSX.Element {
   return (
@@ -853,10 +853,7 @@ function WorkspaceSearchResults({
           <SidebarMenuItem key={workspace.id}>
             <WorkspaceHoverCard workspace={workspace}>
               <SidebarMenuButton
-                className={cn(
-                  'app-no-drag h-auto min-h-12 items-start py-2',
-                  activity.get(workspace.id) && 'pr-14!'
-                )}
+                className="app-no-drag h-auto min-h-12 items-start py-2"
                 isActive={workspace.id === activeWorkspaceId}
                 aria-current={workspace.id === activeWorkspaceId ? 'location' : undefined}
                 onClick={() => onSelectWorkspace(workspace.id)}
@@ -872,10 +869,10 @@ function WorkspaceSearchResults({
                   <span className="truncate text-[11px] text-sidebar-foreground/60">
                     {project.name}
                   </span>
+                  <WorkspaceAgents agents={activity.get(workspace.id) ?? []} />
                 </span>
               </SidebarMenuButton>
             </WorkspaceHoverCard>
-            <WorkspaceAgentStatus status={activity.get(workspace.id)} />
           </SidebarMenuItem>
         ))}
       </SidebarMenu>
