@@ -166,7 +166,7 @@ test('marks workspace rows and groups the sidebar by project or status', async (
     const submenuBox = await page.locator('[data-slot="dropdown-menu-sub-content"]').boundingBox()
     expect(sidebarBox && submenuBox).toBeTruthy()
     await page.screenshot({
-      path: join(artifacts, 'status-move-menu.png'),
+      path: join(artifacts, 'overflow-status-menu.png'),
       animations: 'disabled',
       clip: {
         x: 0,
@@ -202,7 +202,7 @@ test('marks workspace rows and groups the sidebar by project or status', async (
 
     await page.mouse.move(700, 20)
     await page.locator('[data-slot="sidebar"]').screenshot({
-      path: join(artifacts, 'status-by-project.png'),
+      path: join(artifacts, 'status-projects-current.png'),
       animations: 'disabled'
     })
 
@@ -243,7 +243,7 @@ test('marks workspace rows and groups the sidebar by project or status', async (
 
     await page.mouse.move(700, 20)
     await page.locator('[data-slot="sidebar"]').screenshot({
-      path: join(artifacts, 'status-by-status.png'),
+      path: join(artifacts, 'status-groups-current.png'),
       animations: 'disabled'
     })
 
