@@ -5,18 +5,20 @@ import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import type { ElectronApplication, JSHandle, Page } from '@playwright/test'
 import { test, expect, stopMux } from './fixtures'
+import { ensureArtifactDir } from './artifact-dir'
 
 const execFileAsync = promisify(execFile)
 const executable = resolve(__dirname, '../../../packages/mux/src/agents/fixtures/fake-harness.cjs')
 const chatEvidenceDir = '/tmp/cerebro-chat-evidence'
-const optArtifactsDir = '/opt/cursor/artifacts'
+const preferredArtifactsDir = '/opt/cursor/artifacts'
 
 async function screenshotChatEvidence(
   page: { screenshot: (options: { path: string }) => Promise<Buffer> },
   name: string
 ): Promise<void> {
   await page.screenshot({ path: join(chatEvidenceDir, name) })
-  await page.screenshot({ path: join(optArtifactsDir, name) }).catch(() => undefined)
+  const artifacts = await ensureArtifactDir(preferredArtifactsDir)
+  await page.screenshot({ path: join(artifacts, name) }).catch(() => undefined)
 }
 
 test.use({
@@ -1130,12 +1132,12 @@ test('agent pane loading does not flash empty placeholder before session is conf
     await page.getByRole('button', { name: /^New Agent tab/ }).click()
 
     const chat = page.getByTestId('chat-view')
-    await mkdir(mediaDir, { recursive: true })
-    await mkdir('/opt/cursor/artifacts', { recursive: true })
+    const shots = await ensureArtifactDir(mediaDir)
+    const artifacts = await ensureArtifactDir(preferredArtifactsDir)
     await expect(page.getByTestId('chat-loading')).toBeVisible()
     // Capture while get is still delayed — do not await extra work before this shot.
-    await page.screenshot({ path: join(mediaDir, 'agent-section-loading.png') })
-    await page.screenshot({ path: '/opt/cursor/artifacts/agent-section-loading.png' })
+    await page.screenshot({ path: join(shots, 'agent-section-loading.png') })
+    await page.screenshot({ path: join(artifacts, 'agent-section-loading.png') })
     const duringFirstLoad = await page.evaluate(() => ({
       loading: Boolean(document.querySelector('[data-testid="chat-loading"]')),
       dataLoading: document
@@ -1161,8 +1163,8 @@ test('agent pane loading does not flash empty placeholder before session is conf
     await expect(page.getByTestId('chat-composer-glow')).toHaveCount(0)
     const emptyFlash = await readAgentPaneFlash(page)
     expect(emptyFlash.sawLoading).toBe(true)
-    await page.screenshot({ path: join(mediaDir, 'agent-section-empty.png') })
-    await page.screenshot({ path: '/opt/cursor/artifacts/agent-section-empty.png' })
+    await page.screenshot({ path: join(shots, 'agent-section-empty.png') })
+    await page.screenshot({ path: join(artifacts, 'agent-section-empty.png') })
 
     await page.getByTestId('chat-model-picker').click()
     await page.getByRole('button', { name: 'Codex', exact: true }).click()
@@ -1188,8 +1190,8 @@ test('agent pane loading does not flash empty placeholder before session is conf
     await expect(page.getByTestId('chat-composer-glow')).toHaveCount(0)
     const loadedFlash = await readAgentPaneFlash(page)
     expect(loadedFlash.sawEmptyCenter).toBe(false)
-    await page.screenshot({ path: join(mediaDir, 'agent-section-loaded.png') })
-    await page.screenshot({ path: '/opt/cursor/artifacts/agent-section-loaded.png' })
+    await page.screenshot({ path: join(shots, 'agent-section-loaded.png') })
+    await page.screenshot({ path: join(artifacts, 'agent-section-loaded.png') })
   } finally {
     await setChatGetDelay(electronApp, 0).catch(() => {})
     await rm(directory, { recursive: true, force: true })
@@ -1203,7 +1205,7 @@ test('empty agent pane shows a light teal star field until the first message', a
   test.setTimeout(90_000)
   const directory = await mkdtemp(join(tmpdir(), 'cerebro-chat-stars-'))
   try {
-    await mkdir(optArtifactsDir, { recursive: true })
+    const artifacts = await ensureArtifactDir(preferredArtifactsDir)
     await electronApp.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0].setSize(1250, 900)
     )
@@ -1243,18 +1245,18 @@ test('empty agent pane shows a light teal star field until the first message', a
     )
     expect(hit).toBe('Send message')
     await page.screenshot({
-      path: join(optArtifactsDir, 'agent-pane-stars-200.png')
+      path: join(artifacts, 'agent-pane-stars-200.png')
     })
 
     await page.getByRole('textbox', { name: 'Message agent' }).fill('Hello stars')
     await expect(page.getByTestId('chat-composer')).toHaveAttribute('data-dock', 'center')
     await expect(page.getByTestId('chat-stars')).toBeVisible()
-    await page.screenshot({ path: join(optArtifactsDir, 'agent-pane-stars-while-typing.png') })
+    await page.screenshot({ path: join(artifacts, 'agent-pane-stars-while-typing.png') })
     await send.click()
     await expect(page.getByTestId('chat-transcript')).toContainText('Adapter connected.')
     await expect(page.getByTestId('chat-stars')).toHaveCount(0)
     await expect(page.getByTestId('chat-composer')).toHaveAttribute('data-dock', 'bottom')
-    await page.screenshot({ path: join(optArtifactsDir, 'agent-pane-stars-after-first-send.png') })
+    await page.screenshot({ path: join(artifacts, 'agent-pane-stars-after-first-send.png') })
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
@@ -1264,7 +1266,7 @@ test('empty agent pane switches between stars, glow, and off', async ({ page, el
   test.setTimeout(90_000)
   const directory = await mkdtemp(join(tmpdir(), 'cerebro-chat-background-'))
   try {
-    await mkdir(optArtifactsDir, { recursive: true })
+    const artifacts = await ensureArtifactDir(preferredArtifactsDir)
     await electronApp.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0].setSize(1250, 900)
     )
@@ -1296,19 +1298,19 @@ test('empty agent pane switches between stars, glow, and off', async ({ page, el
     await expect(page.getByTestId('chat-view')).toHaveAttribute('data-agent-background', 'stars')
     await expect(page.getByTestId('chat-stars')).toBeVisible()
     await expect(page.getByTestId('chat-composer-glow')).toHaveCount(0)
-    await page.screenshot({ path: join(optArtifactsDir, 'agent-background-stars.png') })
+    await page.screenshot({ path: join(artifacts, 'agent-background-stars.png') })
 
     await choose('Glow', 'glow')
     await expect(page.getByTestId('chat-stars')).toHaveCount(0)
     await expect(page.getByTestId('chat-composer-glow')).toBeVisible()
     await expect(page.getByTestId('chat-composer')).toHaveAttribute('data-dock', 'center')
-    await page.screenshot({ path: join(optArtifactsDir, 'agent-background-glow.png') })
+    await page.screenshot({ path: join(artifacts, 'agent-background-glow.png') })
 
     await choose('Off', 'off')
     await expect(page.getByTestId('chat-stars')).toHaveCount(0)
     await expect(page.getByTestId('chat-composer-glow')).toHaveCount(0)
     await expect(page.getByTestId('chat-empty-hero')).toBeVisible()
-    await page.screenshot({ path: join(optArtifactsDir, 'agent-background-off.png') })
+    await page.screenshot({ path: join(artifacts, 'agent-background-off.png') })
 
     await choose('Stars', 'stars')
     await expect(page.getByTestId('chat-stars')).toBeVisible()

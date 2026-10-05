@@ -1,8 +1,9 @@
-import { mkdtemp, mkdir, rm } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import type { Locator } from '@playwright/test'
 import { test, expect } from './fixtures'
+import { ensureArtifactDir } from './artifact-dir'
 
 const executable = resolve(__dirname, '../../../packages/mux/src/agents/fixtures/fake-harness.cjs')
 
@@ -58,7 +59,7 @@ test('agent composer renders bullets, inline code, a code block, and Add tags', 
   electronApp
 }) => {
   const directory = await mkdtemp(join(tmpdir(), 'cerebro-composer-wysiwyg-'))
-  const evidence = '/opt/cursor/artifacts'
+  const evidence = await ensureArtifactDir('/opt/cursor/artifacts')
   try {
     await electronApp.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0].setSize(1250, 900)
@@ -91,7 +92,6 @@ test('agent composer renders bullets, inline code, a code block, and Add tags', 
         return Math.abs(formBox.y + formBox.height / 2 - (viewBox.y + viewBox.height / 2))
       })
       .toBeLessThan(24)
-    await mkdir(evidence, { recursive: true })
     await page.screenshot({ path: join(evidence, 'composer-glow.png') })
     await shell.screenshot({ path: join(evidence, 'composer-glow-shell.png') })
     const composer = page.getByRole('textbox', { name: 'Message agent' })

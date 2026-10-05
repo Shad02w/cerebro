@@ -6,13 +6,14 @@ import { promisify } from 'node:util'
 import type { Workspace } from '@cerebro/core'
 import type { Locator } from '@playwright/test'
 import { expect, test, type ElectronApplication, type Page } from './fixtures'
+import { ensureArtifactDir } from './artifact-dir'
 
 const execFileAsync = promisify(execFile)
 const cliPath = resolve(__dirname, '../../cli/dist/index.js')
-const artifacts = '/opt/cursor/artifacts'
+let artifacts = ''
 
 test.beforeAll(async () => {
-  await mkdir(artifacts, { recursive: true })
+  artifacts = await ensureArtifactDir('/opt/cursor/artifacts')
   await execFileAsync('pnpm', ['--filter', '@cerebro/core', 'build'], {
     cwd: resolve(__dirname, '../../..')
   })

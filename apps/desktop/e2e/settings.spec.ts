@@ -13,6 +13,7 @@ import { promisify } from 'node:util'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { expect, test } from './fixtures'
+import { ensureArtifactDir } from './artifact-dir'
 
 const artifactsDir =
   process.env.CEREBRO_E2E_ARTIFACTS ?? path.join(tmpdir(), 'cerebro-e2e-artifacts')
@@ -567,7 +568,7 @@ test('saves the Kanagawa variants and Vercel from the theme picker', async ({ pa
 })
 
 test('persists the empty agent pane background', async ({ page }) => {
-  await mkdir('/opt/cursor/artifacts', { recursive: true })
+  const backgroundShots = await ensureArtifactDir('/opt/cursor/artifacts')
   await page.getByRole('button', { name: 'Settings', exact: true }).click()
   const background = page.getByTestId('settings-agent-background')
   await expect(background).toHaveText('Stars')
@@ -576,7 +577,7 @@ test('persists the empty agent pane background', async ({ page }) => {
   await expect(page.getByRole('option', { name: 'Stars', exact: true })).toBeVisible()
   await expect(page.getByRole('option', { name: 'Off', exact: true })).toBeVisible()
   await page.screenshot({
-    path: '/opt/cursor/artifacts/settings-agent-background-menu.png'
+    path: path.join(backgroundShots, 'settings-agent-background-menu.png')
   })
   await page.getByRole('option', { name: 'Off', exact: true }).click()
   await expect(background).toHaveText('Off')

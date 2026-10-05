@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { expect, test, type ElectronApplication, type Page } from './fixtures'
+import { ensureArtifactDir } from './artifact-dir'
 
 const execFileAsync = promisify(execFile)
 
@@ -248,7 +249,7 @@ test('renames workspace rows from the menu and can reset to the default label', 
   const sourcesRoot = await mkdtemp(join(tmpdir(), 'cerebro-rename-workspace-'))
   const alpha = join(sourcesRoot, 'alpha')
   const suite = join(sourcesRoot, 'suite')
-  await mkdir('/opt/cursor/artifacts', { recursive: true })
+  const artifacts = await ensureArtifactDir('/opt/cursor/artifacts')
 
   try {
     await initGitRepo(alpha, 'main', 'alpha')
@@ -295,7 +296,7 @@ test('renames workspace rows from the menu and can reset to the default label', 
     await expect(page.getByTestId('workspace-rename-error')).toHaveText('Enter a name.')
     await input.fill('Alpha checkout')
     await page.screenshot({
-      path: '/opt/cursor/artifacts/workspace-rename-dialog.png',
+      path: join(artifacts, 'workspace-rename-dialog.png'),
       animations: 'disabled'
     })
     await page.getByTestId('workspace-rename-submit').click()
@@ -310,7 +311,7 @@ test('renames workspace rows from the menu and can reset to the default label', 
       })
       .toBe('Alpha checkout')
     await page.screenshot({
-      path: '/opt/cursor/artifacts/workspace-rename-named.png',
+      path: join(artifacts, 'workspace-rename-named.png'),
       animations: 'disabled'
     })
 
@@ -319,7 +320,7 @@ test('renames workspace rows from the menu and can reset to the default label', 
     await page.getByTestId(`workspace-rename-${branchWorkspace!.id}`).click()
     await expect(input).toHaveValue('Alpha checkout')
     await page.screenshot({
-      path: '/opt/cursor/artifacts/workspace-rename-reset.png',
+      path: join(artifacts, 'workspace-rename-reset.png'),
       animations: 'disabled'
     })
     await page.getByTestId('workspace-rename-reset').click()
@@ -343,7 +344,7 @@ test('renames workspace rows from the menu and can reset to the default label', 
     await expect(repoName).toHaveText('Web client')
     await expect(page.getByTestId(`workspace-branch-${frontend!.id}`)).toContainText('main')
     await page.screenshot({
-      path: '/opt/cursor/artifacts/workspace-rename-directory.png',
+      path: join(artifacts, 'workspace-rename-directory.png'),
       animations: 'disabled'
     })
 
