@@ -226,13 +226,24 @@ test('marks workspace rows and groups the sidebar by project or status', async (
 
     await page.getByTestId('sidebar-group-by').click()
     const groupOption = page.getByTestId('sidebar-group-status')
-    await expect(page.getByRole('menu').getByText('Group by')).toBeVisible()
+    const groupLabel = page.getByRole('menu').getByText('Group by')
+    await expect(groupLabel).toBeVisible()
     await expect(groupOption).toBeVisible()
+    const groupLabelStyle = await groupLabel.evaluate((element) => {
+      const style = getComputedStyle(element)
+      return { fontSize: Number.parseFloat(style.fontSize), color: style.color }
+    })
+    const groupOptionStyle = await page.getByTestId('sidebar-group-project').evaluate((element) => {
+      const style = getComputedStyle(element)
+      return { fontSize: Number.parseFloat(style.fontSize), color: style.color }
+    })
+    expect(groupLabelStyle.fontSize).toBeLessThan(groupOptionStyle.fontSize)
+    expect(groupLabelStyle.color).not.toBe(groupOptionStyle.color)
     const groupMenuBox = await page.locator('[data-slot="dropdown-menu-content"]').boundingBox()
     const groupSidebarBox = await page.locator('[data-slot="sidebar"]').boundingBox()
     expect(groupMenuBox && groupSidebarBox).toBeTruthy()
     await page.screenshot({
-      path: join(artifacts, 'group-by-label-menu.png'),
+      path: join(artifacts, 'group-by-label-quiet.png'),
       animations: 'disabled',
       clip: {
         x: 0,
