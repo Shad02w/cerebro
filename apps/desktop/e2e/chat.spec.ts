@@ -109,19 +109,20 @@ test('chat works through native adapters, survives reload, handles requests, and
     await expect(page.getByTestId('chat-transcript').getByRole('status')).toContainText(
       'Ready · Native session saved'
     )
-    // Idle open tabs show the harness logo without a busy/attention badge.
+    // A completed turn keeps the green finished mark until the next turn.
     const sidebarAgents = page.locator(
       `[data-sidebar="menu-row"][data-workspace-id="${workspaceId}"] [data-testid="workspace-agent-open"]`
     )
-    await expect(
-      page.locator(
-        `[data-sidebar="menu-row"][data-workspace-id="${workspaceId}"] [data-agent-harness="codex"][data-workspace-agent-status="idle"]`
-      )
-    ).toBeVisible()
+    const finishedRow = page.locator(
+      `[data-sidebar="menu-row"][data-workspace-id="${workspaceId}"] [data-agent-harness="codex"] [data-workspace-agent-status="finished"]`
+    )
+    await expect(finishedRow).toBeVisible()
+    await expect(finishedRow).toHaveAttribute('aria-label', 'Agent finished')
+    await expect(finishedRow).toHaveClass(/text-emerald-500/)
     await expect(sidebarAgents).toHaveCount(1)
     await expect(page.locator('[data-workspace-agent-status="waiting"]')).toHaveCount(0)
     await expect(page.locator('[data-workspace-agent-status="running"]')).toHaveCount(0)
-    await expect(page.locator('[data-chat-agent-status]')).toHaveCount(0)
+    await expect(page.locator('[data-chat-agent-status="finished"]')).toBeVisible()
     await expect(page.getByRole('separator', { name: 'End of response' })).toHaveCount(1)
     await expect(page.getByTestId('context-usage-ring')).toContainText('17%')
     await page.getByTestId('context-usage-ring').hover()
