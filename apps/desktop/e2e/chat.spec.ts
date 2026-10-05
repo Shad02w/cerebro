@@ -1248,13 +1248,13 @@ test('empty agent pane shows a light teal star field until the first message', a
 
     await page.getByRole('textbox', { name: 'Message agent' }).fill('Hello stars')
     await expect(page.getByTestId('chat-composer')).toHaveAttribute('data-dock', 'center')
-    await expect(page.getByTestId('chat-stars')).toHaveCount(0)
-    await page.screenshot({ path: join(optArtifactsDir, 'agent-pane-stars-prompt-faded.png') })
+    await expect(page.getByTestId('chat-stars')).toBeVisible()
+    await page.screenshot({ path: join(optArtifactsDir, 'agent-pane-stars-while-typing.png') })
     await send.click()
     await expect(page.getByTestId('chat-transcript')).toContainText('Adapter connected.')
     await expect(page.getByTestId('chat-stars')).toHaveCount(0)
     await expect(page.getByTestId('chat-composer')).toHaveAttribute('data-dock', 'bottom')
-    await page.screenshot({ path: join(optArtifactsDir, 'agent-pane-stars-after-message.png') })
+    await page.screenshot({ path: join(optArtifactsDir, 'agent-pane-stars-after-first-send.png') })
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
