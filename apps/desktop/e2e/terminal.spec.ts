@@ -7,6 +7,8 @@ import { promisify } from 'node:util'
 import { expect, test, stopMux, type ElectronApplication, type Page } from './fixtures'
 
 const execFileAsync = promisify(execFile)
+const contentTabsMediaDir = '/cursor/stores/bc-ece937fc-5124-4a69-b19a-e93de51a8c0f/media'
+const contentTabsArtifactsDir = '/opt/cursor/artifacts'
 
 async function initGitRepo(dir: string, branch: string, marker: string): Promise<void> {
   await mkdir(dir, { recursive: true })
@@ -596,6 +598,30 @@ test('content tabs use pill selection and reveal close on hover or keyboard focu
     await expect(active).toHaveAttribute('data-state', 'active')
     await expect(active).toHaveAttribute('data-variant', 'pill')
     await expect(inactive).toHaveAttribute('data-state', 'inactive')
+
+    const leftGap = await page.evaluate(() => {
+      const bar = document.querySelector('[data-testid="content-tab-bar"]')
+      const firstTab = bar?.querySelector<HTMLElement>('[data-testid$="-tab"]')
+      const tabsList = bar?.querySelector<HTMLElement>('[data-slot="tabs-list"]')
+      if (!bar || !firstTab || !tabsList) {
+        throw new Error('Content tab bar chrome was not found.')
+      }
+      return {
+        tabOffset: firstTab.getBoundingClientRect().left - bar.getBoundingClientRect().left,
+        listMarginLeft: getComputedStyle(tabsList).marginLeft
+      }
+    })
+    expect(leftGap.listMarginLeft).toBe('8px')
+    expect(leftGap.tabOffset).toBeGreaterThanOrEqual(8)
+
+    await mkdir(contentTabsMediaDir, { recursive: true })
+    await mkdir(contentTabsArtifactsDir, { recursive: true })
+    await tabBar.screenshot({ path: join(contentTabsMediaDir, 'content-tabs-left-gap.png') })
+    await tabBar.screenshot({ path: join(contentTabsArtifactsDir, 'content-tabs-left-gap.png') })
+    await page.screenshot({ path: join(contentTabsMediaDir, 'content-tabs-left-gap-window.png') })
+    await page.screenshot({
+      path: join(contentTabsArtifactsDir, 'content-tabs-left-gap-window.png')
+    })
 
     const activeStyles = await active.locator('[data-slot="content-tab-pill"]').evaluate((el) => {
       const style = getComputedStyle(el)
