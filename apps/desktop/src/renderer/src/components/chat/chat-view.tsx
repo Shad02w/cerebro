@@ -257,8 +257,7 @@ export function ChatView({
     }
   }
   const alertText = error ?? session?.error ?? (view.error ? String(view.error) : null)
-  const promptHasInput = draft.text.trim().length > 0 || draft.attachments.length > 0
-  const starsWanted = agentBackground === 'stars' && empty && !promptHasInput
+  const starsWanted = agentBackground === 'stars' && empty
   const [starPhase, setStarPhase] = useState<'on' | 'out' | 'off'>('off')
   if (starsWanted && starPhase !== 'on') setStarPhase('on')
   else if (!starsWanted && starPhase === 'on') setStarPhase('out')
