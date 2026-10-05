@@ -13,7 +13,7 @@ const cliPath = resolve(__dirname, '../../cli/dist/index.js')
 let artifacts = ''
 
 test.beforeAll(async () => {
-  artifacts = await ensureArtifactDir('/opt/cursor/artifacts')
+  artifacts = await ensureArtifactDir()
   await execFileAsync('pnpm', ['--filter', '@cerebro/core', 'build'], {
     cwd: resolve(__dirname, '../../..')
   })
