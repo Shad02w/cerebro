@@ -62,6 +62,17 @@ export type WorkspacePullRequest = {
 
 export type WorkspaceKind = 'default' | 'worktree' | 'root'
 
+/** Sidebar workflow state for a workspace row. New rows start as `todo`. */
+export const WORKSPACE_STATUSES = ['todo', 'in_progress', 'ready_to_review', 'done'] as const
+
+export type WorkspaceStatus = (typeof WORKSPACE_STATUSES)[number]
+
+export type SidebarGroupBy = 'project' | 'status'
+
+export function isWorkspaceStatus(value: unknown): value is WorkspaceStatus {
+  return typeof value === 'string' && (WORKSPACE_STATUSES as readonly string[]).includes(value)
+}
+
 export const WORKSPACE_NAME_MAX_LENGTH = 80
 
 export type Workspace = {
@@ -71,6 +82,7 @@ export type Workspace = {
   kind: WorkspaceKind
   branch: string
   localPath: string
+  status: WorkspaceStatus
   /** Custom sidebar label. Null uses the directory name or branch name. */
   displayName: string | null
   createdAt: string
@@ -219,6 +231,8 @@ export type AppSettings = {
   agentBackground: AgentBackground
   /** Partial overrides; missing keys use app defaults. */
   keybinds: KeybindOverrides
+  /** Sidebar lists workspaces under projects, or under their workflow status. */
+  sidebarGroupBy: SidebarGroupBy
   /** Default model key for each harness provider. Missing keys use that provider's current first model. */
   agentModelDefaults: AgentModelDefaults
   /** Remembered harness for new agent panes. The model comes from `agentModelDefaults`. */
@@ -304,6 +318,7 @@ export type CerebroApi = {
   createWorkspace: (projectId: number, branch: string, from?: string | null) => Promise<Workspace>
   renameWorkspace: (workspaceId: number, displayName: string | null) => Promise<ProjectListResult>
   removeWorkspace: (workspaceId: number, deleteFiles: boolean) => Promise<ProjectListResult>
+  setWorkspaceStatus: (workspaceId: number, status: WorkspaceStatus) => Promise<Workspace>
   listProjectBranches: (projectId: number) => Promise<ProjectBranch[]>
   listWorkspaceChanges: (
     workspaceId: number,

@@ -135,6 +135,8 @@ cerebro workspace list [--project <id>]
 cerebro workspace create --project <id> --branch <name> [--focus]
 cerebro workspace create --project <id> --branch <name> --from <base> [--focus]
 cerebro workspace path <workspace-id>
+cerebro workspace status <workspace-id>
+cerebro workspace status <workspace-id> <todo|in-progress|ready-to-review|done>
 cerebro workspace delete <workspace-id>
 cerebro workspace remove <workspace-id>
 
@@ -204,6 +206,8 @@ cerebro workspace list --project 3
 **`workspace create` when a workspace for that branch already exists exits 1 with `code: "conflict"`.** Check for this before retrying. Creating a new branch with `--from` also exits `conflict` if that branch already exists locally or on origin.
 
 **`workspace delete` / `workspace remove` on a default workspace exits 1 with `code: "conflict"`.** Remove the project instead (`project delete` / `project remove`).
+
+**`workspace status` sets the sidebar status of any workspace row** (default branch, worktree, multi-root root, or nested repo). Values: `todo` (the initial status), `in-progress`, `ready-to-review`, `done`. Omitting the status prints the workspace, including `status`. JSON stores `in_progress` and `ready_to_review`. Unknown status exits 2 with `code: "usage"`. Missing workspace exits 1 with `code: "not_found"`.
 
 - `project delete` / `workspace delete` — remove worktree directories from disk (`git worktree remove`), then unregister.
 - `project remove` / `workspace remove` — unregister only; directories stay on disk.

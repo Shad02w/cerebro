@@ -5,10 +5,9 @@ import { join } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { expect, test, stopMux, type ElectronApplication, type Page } from './fixtures'
+import { ensureArtifactDir } from './artifact-dir'
 
 const execFileAsync = promisify(execFile)
-const contentTabsMediaDir = '/cursor/stores/bc-ece937fc-5124-4a69-b19a-e93de51a8c0f/media'
-const contentTabsArtifactsDir = '/opt/cursor/artifacts'
 
 async function initGitRepo(dir: string, branch: string, marker: string): Promise<void> {
   await mkdir(dir, { recursive: true })
@@ -614,8 +613,10 @@ test('content tabs use pill selection and reveal close on hover or keyboard focu
     expect(leftGap.listMarginLeft).toBe('8px')
     expect(leftGap.tabOffset).toBeGreaterThanOrEqual(8)
 
-    await mkdir(contentTabsMediaDir, { recursive: true })
-    await mkdir(contentTabsArtifactsDir, { recursive: true })
+    const contentTabsMediaDir = await ensureArtifactDir(
+      '/cursor/stores/bc-ece937fc-5124-4a69-b19a-e93de51a8c0f/media'
+    )
+    const contentTabsArtifactsDir = await ensureArtifactDir('/opt/cursor/artifacts')
     await tabBar.screenshot({ path: join(contentTabsMediaDir, 'content-tabs-left-gap.png') })
     await tabBar.screenshot({ path: join(contentTabsArtifactsDir, 'content-tabs-left-gap.png') })
     await page.screenshot({ path: join(contentTabsMediaDir, 'content-tabs-left-gap-window.png') })

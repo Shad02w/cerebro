@@ -2,7 +2,13 @@ import { isAgentHarness } from './chat'
 import { DEFAULT_TERMINAL_THEME, isTerminalThemeId } from './terminal-themes'
 import { existsSync, mkdirSync, statSync } from 'node:fs'
 import { isAbsolute, resolve } from 'node:path'
-import type { AgentModelDefaults, AppSettings, AppSettingsPatch, LastAgent } from './types'
+import type {
+  AgentModelDefaults,
+  AppSettings,
+  AppSettingsPatch,
+  LastAgent,
+  SidebarGroupBy
+} from './types'
 import {
   DEFAULT_AGENT_BACKGROUND,
   DEFAULT_TERMINAL_FONT_SIZE,
@@ -24,6 +30,7 @@ type StoredSettings = {
   terminalFontFamily?: string
   agentBackground?: string
   keybinds?: Record<string, string>
+  sidebarGroupBy?: string
   agentModelDefaults?: AgentModelDefaults
   lastAgent?: LastAgent | null
 }
@@ -36,6 +43,7 @@ function defaultSettings(): AppSettings {
     terminalFontFamily: TERMINAL_FONT_FAMILY_AUTO,
     agentBackground: DEFAULT_AGENT_BACKGROUND,
     keybinds: {},
+    sidebarGroupBy: 'project',
     agentModelDefaults: {},
     lastAgent: null
   }
@@ -182,6 +190,10 @@ function normalizeFontFamily(value: string): string {
   return trimmed
 }
 
+function normalizeSidebarGroupBy(value: unknown): SidebarGroupBy {
+  return value === 'status' ? 'status' : 'project'
+}
+
 function normalizeKeybinds(value: unknown): Record<string, string> {
   if (value == null) return {}
   if (typeof value !== 'object' || Array.isArray(value)) {
@@ -205,6 +217,7 @@ function mergeSettings(stored: StoredSettings): AppSettings {
   let terminalFontSize = defaults.terminalFontSize
   let terminalFontFamily = defaults.terminalFontFamily
   let keybinds = defaults.keybinds
+  const sidebarGroupBy = normalizeSidebarGroupBy(stored.sidebarGroupBy)
 
   if (typeof stored.defaultCloneDir === 'string' && stored.defaultCloneDir.trim()) {
     try {
@@ -251,6 +264,7 @@ function mergeSettings(stored: StoredSettings): AppSettings {
     terminalTheme,
     agentBackground,
     keybinds,
+    sidebarGroupBy,
     agentModelDefaults: readAgentModelDefaults(stored.agentModelDefaults),
     lastAgent: readLastAgent(stored.lastAgent)
   }
@@ -290,6 +304,13 @@ export function setSettings(patch: AppSettingsPatch): AppSettings {
   if (patch.terminalTheme !== undefined) {
     if (!isTerminalThemeId(patch.terminalTheme)) throw new Error('Unknown terminal theme.')
     next.terminalTheme = patch.terminalTheme
+  }
+
+  if (patch.sidebarGroupBy !== undefined) {
+    if (patch.sidebarGroupBy !== 'project' && patch.sidebarGroupBy !== 'status') {
+      throw new Error('Sidebar grouping must be project or status.')
+    }
+    next.sidebarGroupBy = patch.sidebarGroupBy
   }
 
   if (patch.agentBackground !== undefined) {

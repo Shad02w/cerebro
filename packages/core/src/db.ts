@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS workspaces (
   kind TEXT NOT NULL CHECK (kind IN ('default', 'worktree', 'root')),
   branch TEXT NOT NULL,
   local_path TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL DEFAULT 'todo',
   display_name TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE (repository_id, branch)
@@ -149,6 +150,11 @@ FROM workspaces;
   } finally {
     database.exec('PRAGMA foreign_keys = ON')
   }
+}
+
+function migrateWorkspaceStatus(database: DatabaseSync): void {
+  if (!tableExists(database, 'workspaces') || columnExists(database, 'workspaces', 'status')) return
+  database.exec(`ALTER TABLE workspaces ADD COLUMN status TEXT NOT NULL DEFAULT 'todo'`)
 }
 
 function migrateWorkspaceDisplayName(database: DatabaseSync): void {
@@ -359,6 +365,7 @@ export function getDb(): DatabaseSync {
   migrateProjectKind(db)
   migrateWorkspaceBranchUniqueness(db)
   migrateWorkspaceRootKind(db)
+  migrateWorkspaceStatus(db)
   migrateWorkspaceDisplayName(db)
 
   // Fresh DBs never hit the rename path; ensure workspaces exist for any pre-migration repos.

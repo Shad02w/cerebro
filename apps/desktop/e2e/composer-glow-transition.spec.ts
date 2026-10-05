@@ -1,14 +1,13 @@
-import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { test, expect } from './fixtures'
+import { ensureArtifactDir } from './artifact-dir'
 
 const execFileAsync = promisify(execFile)
 const executable = resolve(__dirname, '../../../packages/mux/src/agents/fixtures/fake-harness.cjs')
-const mediaDir = '/cursor/stores/bc-ece937fc-5124-4a69-b19a-e93de51a8c0f/media'
-const evidence = '/opt/cursor/artifacts'
 
 test.use({
   agentEnvironment: {
@@ -60,8 +59,10 @@ test('empty glowing composer centers, then docks after send', async ({ page, ele
       })
       .toBeLessThan(16)
 
-    await mkdir(evidence, { recursive: true })
-    await mkdir(mediaDir, { recursive: true })
+    const evidence = await ensureArtifactDir('/opt/cursor/artifacts')
+    const mediaDir = await ensureArtifactDir(
+      '/cursor/stores/bc-ece937fc-5124-4a69-b19a-e93de51a8c0f/media'
+    )
     await page.screenshot({ path: join(evidence, 'composer-glow-centered-v6.png') })
     await page.screenshot({ path: join(mediaDir, 'composer-glow-centered-empty.png') })
     await page.screenshot({ path: join(mediaDir, 'composer-glow-banding-after.png') })
