@@ -677,6 +677,7 @@ function MultiRootWorkspaceTree({
           onOpenChange={setRootOpen}
           className="sidebar-root-group"
           data-testid={`root-group-${project.id}`}
+          data-active={rootActive ? 'true' : 'false'}
           role="group"
           aria-label={`${project.name} root workspace`}
         >

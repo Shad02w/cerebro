@@ -222,6 +222,36 @@ test('sidebar keeps keyboard selection and disclosures usable in both themes', a
     expect(repoBox).toBeTruthy()
     expect(repoBox!.x - rootBox!.x).toBeGreaterThanOrEqual(20)
     expect(repoBox!.x - rootBox!.x).toBeLessThanOrEqual(28)
+
+    await rootButton.click()
+    await expect(rootButton).toHaveAttribute('data-active', 'true')
+    await expect(rootGroup).toHaveAttribute('data-active', 'true')
+    await expect(rootGroup).toHaveCSS('box-shadow', /0px 0px 0px 1px inset/)
+    await expect(rootButton).toHaveCSS('box-shadow', 'none')
+    const groupBox = await rootGroup.boundingBox()
+    expect(groupBox).toBeTruthy()
+    expect(groupBox!.height).toBeGreaterThan(rootBox!.height + 40)
+    for (const row of await rootGroup.locator('[data-workspace-role="repository"]').all()) {
+      await expect(row).toHaveAttribute('data-active', 'false')
+      await expect(row).toHaveCSS('box-shadow', 'none')
+    }
+    await mkdir('/opt/cursor/artifacts', { recursive: true })
+    await sidebar.screenshot({
+      path: '/opt/cursor/artifacts/multi-root-block-selected.png',
+      animations: 'disabled'
+    })
+
+    await repoRow.click()
+    await expect(repoRow).toHaveAttribute('data-active', 'true')
+    await expect(repoRow).toHaveCSS('box-shadow', /0px 0px 0px 1px inset/)
+    await expect(rootGroup).toHaveAttribute('data-active', 'false')
+    await expect(rootButton).toHaveAttribute('data-active', 'false')
+    await expect(rootGroup).not.toHaveCSS('box-shadow', /0px 0px 0px 1px inset/)
+    await sidebar.screenshot({
+      path: '/opt/cursor/artifacts/multi-root-repo-selected.png',
+      animations: 'disabled'
+    })
+
     for (const theme of ['dark', 'light']) {
       await page.evaluate((value) => {
         document.documentElement.classList.toggle('dark', value === 'dark')
