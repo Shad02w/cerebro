@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowUp, ImagePlus, MessageSquare, Square } from 'lucide-react'
 import type { AgentAccessMode, AgentAnswer, AgentModel, ChatCommand } from '@cerebro/core'
+import { DEFAULT_AGENT_BACKGROUND, type AgentBackground } from '@shared/types'
 import { Button } from '@/components/ui/button'
 import { StarsBackground } from '@/lib/stars-background'
 import { cn } from '@/lib/utils'
@@ -21,11 +22,13 @@ import './chat-status.css'
 export function ChatView({
   workspaceId,
   paneId,
-  visible = true
+  visible = true,
+  agentBackground = DEFAULT_AGENT_BACKGROUND
 }: {
   workspaceId: number
   paneId: number
   visible?: boolean
+  agentBackground?: AgentBackground
 }): React.JSX.Element {
   const client = useQueryClient()
   const queryKey = ['chat', workspaceId, paneId]
@@ -255,7 +258,7 @@ export function ChatView({
   }
   const alertText = error ?? session?.error ?? (view.error ? String(view.error) : null)
   const promptHasInput = draft.text.trim().length > 0 || draft.attachments.length > 0
-  const starsWanted = empty && !promptHasInput
+  const starsWanted = agentBackground === 'stars' && empty && !promptHasInput
   const [starPhase, setStarPhase] = useState<'on' | 'out' | 'off'>('off')
   if (starsWanted && starPhase !== 'on') setStarPhase('on')
   else if (!starsWanted && starPhase === 'on') setStarPhase('out')
@@ -270,6 +273,7 @@ export function ChatView({
       ref={viewRef}
       className="chat-scrollbars relative z-0 flex h-full min-w-0 flex-col bg-background text-foreground"
       data-testid="chat-view"
+      data-agent-background={agentBackground}
       data-loading={loading || undefined}
     >
       {starPhase !== 'off' ? (
@@ -405,6 +409,13 @@ export function ChatView({
                     Work with Claude Code, Codex, or Pi in this workspace.
                   </p>
                 </div>
+                {agentBackground === 'glow' ? (
+                  <div
+                    className="chat-composer-glow"
+                    aria-hidden="true"
+                    data-testid="chat-composer-glow"
+                  />
+                ) : null}
                 <form
                   className="chat-composer-shell relative rounded-2xl border bg-background p-2 shadow-lg"
                   data-dragging={dragging || undefined}

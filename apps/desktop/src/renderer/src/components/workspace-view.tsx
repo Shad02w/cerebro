@@ -1,6 +1,6 @@
 import type { TerminalThemeId } from '@shared/terminal-themes'
 import { Plus } from 'lucide-react'
-import type { Workspace } from '@shared/types'
+import { DEFAULT_AGENT_BACKGROUND, type AgentBackground, type Workspace } from '@shared/types'
 import { BrainMark } from '@/components/brain-mark'
 import { Button } from '@/components/ui/button'
 import { TerminalStack } from '@/components/terminal-stack'
@@ -15,6 +15,7 @@ type WorkspaceViewProps = {
   terminalTheme: TerminalThemeId | null
   terminalFontSize: number | null
   terminalFontFamily: string | null
+  agentBackground: AgentBackground | null
   onAddProject: () => void
   onSelectWorkspace: (workspaceId: number) => void
   onStartupReady?: () => void
@@ -30,6 +31,7 @@ export function WorkspaceView({
   terminalTheme,
   terminalFontSize,
   terminalFontFamily,
+  agentBackground,
   onAddProject,
   onSelectWorkspace,
   onStartupReady
@@ -76,6 +78,7 @@ export function WorkspaceView({
         themeId={terminalTheme}
         fontSize={terminalFontSize}
         fontFamily={terminalFontFamily}
+        agentBackground={agentBackground ?? DEFAULT_AGENT_BACKGROUND}
         onSelectWorkspace={onSelectWorkspace}
         onStartupReady={onStartupReady}
       />

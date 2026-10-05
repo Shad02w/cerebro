@@ -1259,3 +1259,61 @@ test('empty agent pane shows a light teal star field until the first message', a
     await rm(directory, { recursive: true, force: true })
   }
 })
+
+test('empty agent pane switches between stars, glow, and off', async ({ page, electronApp }) => {
+  test.setTimeout(90_000)
+  const directory = await mkdtemp(join(tmpdir(), 'cerebro-chat-background-'))
+  try {
+    await mkdir(optArtifactsDir, { recursive: true })
+    await electronApp.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0].setSize(1250, 900)
+    )
+    const project = await page.evaluate(
+      (folder) => window.cerebro.createProjectFromDirectory(folder),
+      directory
+    )
+    const workspaceId = project.workspaces[0].id
+    await page.reload()
+    const projectRow = page.getByTestId(/project-row-/).first()
+    await expect(projectRow).toBeVisible()
+    if ((await projectRow.getAttribute('aria-expanded')) === 'false') await projectRow.click()
+    await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
+    await page.getByRole('button', { name: /^New Agent tab/ }).click()
+
+    const choose = async (
+      label: 'Glow' | 'Stars' | 'Off',
+      value: 'glow' | 'stars' | 'off'
+    ): Promise<void> => {
+      await page.getByRole('button', { name: 'Settings', exact: true }).click()
+      const background = page.getByTestId('settings-agent-background')
+      await background.click()
+      await page.getByRole('option', { name: label, exact: true }).click()
+      await expect(background).toHaveText(label)
+      await page.getByRole('button', { name: 'Back' }).click()
+      await expect(page.getByTestId('chat-view')).toHaveAttribute('data-agent-background', value)
+    }
+
+    await expect(page.getByTestId('chat-view')).toHaveAttribute('data-agent-background', 'stars')
+    await expect(page.getByTestId('chat-stars')).toBeVisible()
+    await expect(page.getByTestId('chat-composer-glow')).toHaveCount(0)
+    await page.screenshot({ path: join(optArtifactsDir, 'agent-background-stars.png') })
+
+    await choose('Glow', 'glow')
+    await expect(page.getByTestId('chat-stars')).toHaveCount(0)
+    await expect(page.getByTestId('chat-composer-glow')).toBeVisible()
+    await expect(page.getByTestId('chat-composer')).toHaveAttribute('data-dock', 'center')
+    await page.screenshot({ path: join(optArtifactsDir, 'agent-background-glow.png') })
+
+    await choose('Off', 'off')
+    await expect(page.getByTestId('chat-stars')).toHaveCount(0)
+    await expect(page.getByTestId('chat-composer-glow')).toHaveCount(0)
+    await expect(page.getByTestId('chat-empty-hero')).toBeVisible()
+    await page.screenshot({ path: join(optArtifactsDir, 'agent-background-off.png') })
+
+    await choose('Stars', 'stars')
+    await expect(page.getByTestId('chat-stars')).toBeVisible()
+    await expect(page.getByTestId('chat-composer-glow')).toHaveCount(0)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})

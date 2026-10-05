@@ -15,7 +15,7 @@ import { useSettings } from '@/hooks/use-settings'
 import { KeybindProvider, useKeybindHandler } from '@/keybinds'
 import { navigate, projectsPath, settingsPath } from '@/lib/app-route'
 import { TITLEBAR_HEIGHT, TITLEBAR_TRIGGER_LEFT } from '@/lib/titlebar'
-import type { Project } from '@shared/types'
+import { DEFAULT_AGENT_BACKGROUND, type Project } from '@shared/types'
 
 function WindowDragOverlay({
   showSidebarTrigger,
@@ -186,6 +186,7 @@ function App(): React.JSX.Element {
                 terminalTheme={settings?.terminalTheme ?? null}
                 terminalFontSize={settings?.terminalFontSize ?? null}
                 terminalFontFamily={settings?.terminalFontFamily ?? null}
+                agentBackground={settings?.agentBackground ?? DEFAULT_AGENT_BACKGROUND}
                 onAddProject={(): void => setProjectDialogOpen(true)}
                 onSelectWorkspace={handleSelectWorkspace}
                 onStartupReady={startupComplete ? undefined : completeStartup}
