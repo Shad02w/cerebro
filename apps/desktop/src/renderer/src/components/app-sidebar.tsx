@@ -10,7 +10,6 @@ import {
   Folders,
   FolderTree,
   GitBranch,
-  Group,
   MoreHorizontal,
   Plus,
   Search,
@@ -943,7 +942,7 @@ function NavigationHeader({
                     data-testid="sidebar-group-by"
                     data-group-by={groupBy}
                   >
-                    <Group className="size-4" />
+                    <Settings className="size-4" />
                   </button>
                 </DropdownMenuTrigger>
               </PlusActionTooltip>

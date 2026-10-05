@@ -219,7 +219,7 @@ test('marks workspace rows and groups the sidebar by project or status', async (
     }
 
     await page.locator('[data-slot="sidebar"]').screenshot({
-      path: join(artifacts, 'group-by-projects.png'),
+      path: join(artifacts, 'group-by-settings-projects.png'),
       animations: 'disabled'
     })
 
@@ -230,7 +230,7 @@ test('marks workspace rows and groups the sidebar by project or status', async (
     const groupSidebarBox = await page.locator('[data-slot="sidebar"]').boundingBox()
     expect(groupMenuBox && groupSidebarBox).toBeTruthy()
     await page.screenshot({
-      path: join(artifacts, 'group-by-menu.png'),
+      path: join(artifacts, 'group-by-settings-menu.png'),
       animations: 'disabled',
       clip: {
         x: 0,
@@ -300,7 +300,7 @@ test('marks workspace rows and groups the sidebar by project or status', async (
     })
     await page.mouse.move(420, 480)
     await page.locator('[data-slot="sidebar"]').screenshot({
-      path: join(artifacts, 'group-by-status.png'),
+      path: join(artifacts, 'group-by-settings-status.png'),
       animations: 'disabled'
     })
 
