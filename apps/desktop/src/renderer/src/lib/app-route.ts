@@ -1,5 +1,6 @@
 export const SETTINGS_SECTION_IDS = [
   'general',
+  'provider',
   'terminal',
   'cli',
   'keyboard',

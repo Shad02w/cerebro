@@ -74,6 +74,12 @@ export function SettingsView({
                 onPickDirectory={onPickDirectory}
               />
             )
+          ) : section === 'provider' ? (
+            loading || !settings ? (
+              <p className="text-sm text-muted-foreground">Loading settings…</p>
+            ) : (
+              <ProviderSettings settings={settings} onUpdate={onUpdate} />
+            )
           ) : section === 'terminal' ? (
             loading || !settings ? (
               <p className="text-sm text-muted-foreground">Loading settings…</p>
@@ -204,7 +210,6 @@ function GeneralSettings({
             </SelectContent>
           </Select>
         </div>
-        <AgentModelSettings settings={settings} onUpdate={onUpdate} />
       </div>
       <div className="space-y-3">
         <h2 className="text-xs font-medium text-muted-foreground">Projects</h2>
@@ -251,6 +256,19 @@ function GeneralSettings({
       {localError || error ? (
         <p className="text-xs text-destructive">{localError ?? error}</p>
       ) : null}
+    </section>
+  )
+}
+
+type ProviderSettingsProps = {
+  settings: AppSettings
+  onUpdate: (patch: AppSettingsPatch) => Promise<AppSettings>
+}
+
+function ProviderSettings({ settings, onUpdate }: ProviderSettingsProps): React.JSX.Element {
+  return (
+    <section className="space-y-6" data-testid="settings-provider">
+      <AgentModelSettings settings={settings} onUpdate={onUpdate} />
     </section>
   )
 }

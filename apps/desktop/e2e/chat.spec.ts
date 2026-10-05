@@ -1375,6 +1375,9 @@ test('new agent panes reuse the last model and settings choose each harness defa
     await page.screenshot({ path: join(optArtifactsDir, 'agent-model-remembered.png') })
 
     await page.getByRole('button', { name: 'Settings', exact: true }).click()
+    await page.getByTestId('settings-nav-provider').click()
+    await expect.poll(() => page.evaluate(() => window.location.hash)).toBe('#/settings/provider')
+    await expect(page.getByRole('heading', { name: 'Provider' })).toBeVisible()
     const claude = page.locator('[data-testid="settings-agent-model"][data-harness="claude"]')
     await expect(claude).toHaveText('Test Sonnet 5')
     await expect(
