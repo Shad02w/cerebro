@@ -1227,7 +1227,8 @@ test('empty agent pane shows a light teal star field until the first message', a
     await expect(starDot).toHaveCSS('box-shadow', /rgb\(153,\s*246,\s*228\)/)
     const background = await stars.evaluate((el) => getComputedStyle(el).backgroundImage)
     expect(background).toContain('radial-gradient')
-    expect(background).toMatch(/99f6e4|153,\s*246,\s*228|color-mix/i)
+    // #99f6e4 at 55% alpha. Chromium resolves color-mix() to srgb components.
+    expect(background).toMatch(/99f6e4|153,\s*246,\s*228|0\.6 0\.964706 0\.894118|color-mix/i)
     const send = page.getByRole('button', { name: 'Send message', exact: true })
     const box = await send.boundingBox()
     expect(box).toBeTruthy()
