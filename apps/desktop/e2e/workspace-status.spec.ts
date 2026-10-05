@@ -133,7 +133,7 @@ test('marks workspace rows and groups the sidebar by project or status', async (
     const apiRow = page.getByTestId(`workspace-row-${api!.id}`)
     for (const row of [rootRow, notesRow, ledgerRow]) {
       await expect(row).toHaveAttribute('data-workspace-status', 'todo')
-      await expect(row.locator('[data-workspace-status-icon="todo"]')).toBeVisible()
+      await expect(row.locator('[data-workspace-status-icon]')).toHaveCount(0)
     }
     for (const row of [storefrontRow, apiRow]) {
       await expect(row).not.toHaveAttribute('data-workspace-status')

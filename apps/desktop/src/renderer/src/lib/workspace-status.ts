@@ -1,4 +1,4 @@
-import { CircleCheck, CircleDashed, CirclePlay, Eye } from 'lucide-react'
+import { CircleCheck, CircleDashed, CircleDot, Eye } from 'lucide-react'
 import {
   isWorkspaceStatus,
   type Project,
@@ -20,7 +20,7 @@ export const WORKSPACE_STATUS_PRESENTATION: Record<
     label: 'In progress',
     iconClassName: 'text-sky-700 dark:text-sky-300',
     badgeClassName: 'bg-sky-500/15',
-    Icon: CirclePlay
+    Icon: CircleDot
   },
   ready_to_review: {
     label: 'Ready to review',

@@ -44,6 +44,7 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import {
+  WorkspaceRowStatusIcon,
   WorkspaceStatusContextMenu,
   WorkspaceStatusIcon,
   WorkspaceStatusMenu
@@ -650,7 +651,7 @@ function MultiRootWorkspaceTree({
                 >
                   <span className="flex w-full min-w-0 items-center gap-2">
                     <FolderTree className="size-4 shrink-0 text-sidebar-accent-foreground" />
-                    <WorkspaceStatusIcon status={rootStatus} />
+                    <WorkspaceRowStatusIcon status={rootStatus} />
                     <span className="min-w-0 flex-1 truncate font-medium">root</span>
                     <span
                       className="shrink-0 text-[10px] text-sidebar-foreground/55 tabular-nums"
@@ -854,7 +855,7 @@ function ProjectItem({
                             onClick={(): void => onSelectWorkspace(workspace.id)}
                           >
                             <span className="flex min-w-0 items-center gap-1.5 text-left">
-                              <WorkspaceStatusIcon status={workspaceStatus(workspace.status)} />
+                              <WorkspaceRowStatusIcon status={workspaceStatus(workspace.status)} />
                               <span className="min-w-0 truncate">
                                 {workspaceLabel(project, workspace)}
                               </span>
@@ -1077,7 +1078,7 @@ function WorkspaceSearchResults({
                 <GitBranch className="mt-0.5" />
               )}
               {carriesStatus ? (
-                <WorkspaceStatusIcon
+                <WorkspaceRowStatusIcon
                   status={workspaceStatus(workspace.status)}
                   className="mt-0.5"
                 />
@@ -1242,7 +1243,7 @@ function StatusGroup({
                                   onClick={(): void => onSelectWorkspace(workspace.id)}
                                 >
                                   <span className="flex min-w-0 items-center gap-1.5 text-left">
-                                    <WorkspaceStatusIcon
+                                    <WorkspaceRowStatusIcon
                                       status={workspaceStatus(workspace.status)}
                                     />
                                     <span className="min-w-0 flex-1 truncate">

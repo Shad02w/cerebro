@@ -44,6 +44,18 @@ export function WorkspaceStatusIcon({
   )
 }
 
+/** Todo is the default, so workspace rows only show an icon after the status moves. */
+export function WorkspaceRowStatusIcon({
+  status,
+  className
+}: {
+  status: WorkspaceStatus
+  className?: string
+}): React.JSX.Element | null {
+  if (status === 'todo') return null
+  return <WorkspaceStatusIcon status={status} className={className} />
+}
+
 function StatusChoices({
   workspace,
   onSetStatus,
