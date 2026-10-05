@@ -645,6 +645,17 @@ function MultiRootRepoRow({
   )
 }
 
+const rootWorkspaceButtonClass =
+  'app-no-drag peer/menu-button flex h-auto min-h-7 min-w-0 flex-1 flex-col items-stretch rounded-md px-2 py-1 text-left text-xs hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+
+function rootWorkspaceRowClass(compact: boolean): string {
+  return cn('group/root flex pr-1', compact ? 'items-center' : 'items-start')
+}
+
+function rootWorkspaceActionsClass(compact: boolean): string {
+  return cn('flex shrink-0 items-center', compact ? 'self-center' : 'mt-1 h-4')
+}
+
 function MultiRootWorkspaceTree({
   project,
   activeWorkspaceId,
@@ -668,6 +679,9 @@ function MultiRootWorkspaceTree({
   const rootActive = rootWorkspace != null && rootWorkspace.id === activeWorkspaceId
   const rootAgents = rootWorkspace ? (activity.get(rootWorkspace.id) ?? []) : []
   const rootStatus = workspaceStatus(rootWorkspace?.status)
+  // Agent status stacks under the name, so the disclosure stays on that first line.
+  // A single-line row centers the label and actions in the collapsed block.
+  const rootCompact = rootAgents.length === 0
 
   return (
     <SidebarMenuSub>
@@ -683,12 +697,12 @@ function MultiRootWorkspaceTree({
         >
           <WorkspaceHoverCard workspace={rootWorkspace ?? undefined}>
             <SidebarMenuRow
-              className="group/root flex items-start pr-1"
+              className={rootWorkspaceRowClass(rootCompact)}
               data-workspace-id={rootWorkspace?.id}
             >
               <button
                 type="button"
-                className="app-no-drag peer/menu-button flex h-auto min-h-7 min-w-0 flex-1 flex-col items-stretch rounded-md px-2 py-1 text-left text-xs hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                className={cn(rootWorkspaceButtonClass, rootCompact && 'justify-center')}
                 data-testid={`project-root-${project.id}`}
                 data-workspace-role="root"
                 data-workspace-icon="folder-tree"
@@ -702,8 +716,8 @@ function MultiRootWorkspaceTree({
                   if (rootWorkspace) onSelectWorkspace(rootWorkspace.id)
                 }}
               >
-                <span className="flex w-full min-w-0 items-baseline gap-2">
-                  <FolderTree className="size-4 shrink-0 self-center text-sidebar-accent-foreground" />
+                <span className="flex w-full min-w-0 items-center gap-2">
+                  <FolderTree className="size-4 shrink-0 text-sidebar-accent-foreground" />
                   <span className="min-w-0 flex-1 truncate font-medium leading-4">
                     {rootWorkspace ? workspaceRowLabel(project, rootWorkspace) : 'root'}
                   </span>
@@ -717,7 +731,7 @@ function MultiRootWorkspaceTree({
                 </span>
                 <WorkspaceAgents agents={rootAgents} onOpenAgent={onOpenAgent} />
               </button>
-              <div className="mt-1 flex h-4 shrink-0 items-center">
+              <div className={rootWorkspaceActionsClass(rootCompact)}>
                 <SidebarMenuAction
                   className={cn('app-no-drag', rootMenuActionClass)}
                   data-testid={`root-toggle-${project.id}`}
