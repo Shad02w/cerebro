@@ -60,6 +60,17 @@ export type WorkspacePullRequest = {
 
 export type WorkspaceKind = 'default' | 'worktree' | 'root'
 
+/** Sidebar workflow state for a workspace row. New rows start as `todo`. */
+export const WORKSPACE_STATUSES = ['todo', 'in_progress', 'ready_to_review', 'done'] as const
+
+export type WorkspaceStatus = (typeof WORKSPACE_STATUSES)[number]
+
+export type SidebarGroupBy = 'project' | 'status'
+
+export function isWorkspaceStatus(value: unknown): value is WorkspaceStatus {
+  return typeof value === 'string' && (WORKSPACE_STATUSES as readonly string[]).includes(value)
+}
+
 export type Workspace = {
   id: number
   projectId: number
@@ -67,6 +78,7 @@ export type Workspace = {
   kind: WorkspaceKind
   branch: string
   localPath: string
+  status: WorkspaceStatus
   createdAt: string
   pullRequest: WorkspacePullRequest | null
   prStatus?: {
@@ -206,6 +218,8 @@ export type AppSettings = {
   terminalFontFamily: string
   /** Partial overrides; missing keys use app defaults. */
   keybinds: KeybindOverrides
+  /** Sidebar lists workspaces under projects, or under their workflow status. */
+  sidebarGroupBy: SidebarGroupBy
 }
 
 export type AppSettingsPatch = Partial<AppSettings>
@@ -284,6 +298,7 @@ export type CerebroApi = {
   setActiveWorkspace: (workspaceId: number) => Promise<ProjectListResult>
   createWorkspace: (projectId: number, branch: string, from?: string | null) => Promise<Workspace>
   removeWorkspace: (workspaceId: number, deleteFiles: boolean) => Promise<ProjectListResult>
+  setWorkspaceStatus: (workspaceId: number, status: WorkspaceStatus) => Promise<Workspace>
   listProjectBranches: (projectId: number) => Promise<ProjectBranch[]>
   listWorkspaceChanges: (
     workspaceId: number,

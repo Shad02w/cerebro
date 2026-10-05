@@ -12,6 +12,8 @@ import {
   removeWorkspace,
   removeProject,
   setActiveWorkspace,
+  setWorkspaceStatus,
+  parseWorkspaceStatus,
   listWorkspaceChanges,
   getWorkspaceFileDiff
 } from '@cerebro/core'
@@ -176,6 +178,13 @@ async function handle(method: string, p: RequestParams): Promise<unknown> {
           })
         case 'workspace.remove':
           return removeWorkspace(p.workspaceId, { deleteFiles: p.deleteFiles })
+        case 'workspace.status': {
+          const status = parseWorkspaceStatus(p.status)
+          if (!status) {
+            throw Object.assign(new Error('Unknown workspace status.'), { code: 'usage' })
+          }
+          return setWorkspaceStatus(p.workspaceId, status)
+        }
         case 'project.remove':
           return removeProject(p.projectId, { deleteFiles: p.deleteFiles })
       }

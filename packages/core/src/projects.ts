@@ -2,14 +2,16 @@ import type { GitRemoteRunner } from './git'
 import { existsSync, readFileSync, readdirSync, realpathSync, rmSync, statSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import type {
-  LinkedRepository,
-  Project,
-  ProjectBranch,
-  ProjectKind,
-  ProjectListResult,
-  Workspace,
-  WorkspaceKind
+import {
+  isWorkspaceStatus,
+  type LinkedRepository,
+  type Project,
+  type ProjectBranch,
+  type ProjectKind,
+  type ProjectListResult,
+  type Workspace,
+  type WorkspaceKind,
+  type WorkspaceStatus
 } from './types'
 import { getDb, toId } from './db'
 import {
@@ -53,6 +55,7 @@ type WorkspaceRow = {
   kind: WorkspaceKind
   branch: string
   local_path: string
+  status: string
   created_at: string
 }
 
@@ -81,6 +84,7 @@ function mapWorkspace(row: WorkspaceRow): Workspace {
     kind: row.kind,
     branch: row.branch,
     localPath: row.local_path,
+    status: isWorkspaceStatus(row.status) ? row.status : 'todo',
     createdAt: row.created_at,
     pullRequest: null
   }
@@ -543,7 +547,7 @@ ORDER BY created_at ASC, id ASC
   const workspaceRows = db
     .prepare(
       `
-SELECT id, project_id, repository_id, kind, branch, local_path, created_at
+SELECT id, project_id, repository_id, kind, branch, local_path, status, created_at
 FROM workspaces
 ORDER BY
   CASE kind WHEN 'root' THEN 0 WHEN 'default' THEN 1 ELSE 2 END ASC,
@@ -612,6 +616,30 @@ export async function setActiveWorkspace(workspaceId: number): Promise<ProjectLi
 
   setActiveWorkspaceId(workspaceId, db)
   return listProjects()
+}
+
+export async function setWorkspaceStatus(
+  workspaceId: number,
+  status: WorkspaceStatus
+): Promise<Workspace> {
+  if (!isWorkspaceStatus(status)) {
+    throw Object.assign(new Error(`Unknown workspace status "${String(status)}".`), {
+      code: 'usage'
+    })
+  }
+
+  const db = getDb()
+  const row = db.prepare('SELECT id FROM workspaces WHERE id = ?').get(workspaceId) as
+    { id: number } | undefined
+  if (!row) throw Object.assign(new Error('Workspace not found.'), { code: 'not_found' })
+
+  db.prepare('UPDATE workspaces SET status = ? WHERE id = ?').run(status, workspaceId)
+  const listed = await listProjects()
+  const workspace = listed.projects
+    .flatMap((project) => project.workspaces)
+    .find((item) => item.id === workspaceId)
+  if (!workspace) throw Object.assign(new Error('Workspace not found.'), { code: 'not_found' })
+  return workspace
 }
 
 /** Absolute checkout path for a workspace (default clone or worktree). */
@@ -846,7 +874,7 @@ export async function removeWorkspace(
   const workspace = db
     .prepare(
       `
-SELECT id, project_id, repository_id, kind, branch, local_path, created_at
+SELECT id, project_id, repository_id, kind, branch, local_path, status, created_at
 FROM workspaces
 WHERE id = ?
       `

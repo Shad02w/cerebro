@@ -15,7 +15,7 @@ import { useSettings } from '@/hooks/use-settings'
 import { KeybindProvider, useKeybindHandler } from '@/keybinds'
 import { navigate, projectsPath, settingsPath } from '@/lib/app-route'
 import { TITLEBAR_HEIGHT, TITLEBAR_TRIGGER_LEFT } from '@/lib/titlebar'
-import type { Project } from '@shared/types'
+import type { Project, SidebarGroupBy, WorkspaceStatus } from '@shared/types'
 
 function WindowDragOverlay({
   showSidebarTrigger,
@@ -88,6 +88,7 @@ function App(): React.JSX.Element {
     selectWorkspace,
     createWorkspace,
     removeWorkspace,
+    setWorkspaceStatus,
     removeProject,
     listProjectBranches
   } = useProjects()
@@ -144,6 +145,13 @@ function App(): React.JSX.Element {
             }}
             onRemoveWorkspace={(workspaceId, deleteFiles): void => {
               void removeWorkspace(workspaceId, deleteFiles)
+            }}
+            sidebarGroupBy={settings?.sidebarGroupBy ?? 'project'}
+            onSidebarGroupBy={(groupBy: SidebarGroupBy): Promise<void> =>
+              updateSettings({ sidebarGroupBy: groupBy }).then(() => undefined)
+            }
+            onSetWorkspaceStatus={(workspaceId: number, status: WorkspaceStatus): void => {
+              void setWorkspaceStatus(workspaceId, status)
             }}
             onSelectSettingsSection={(section): void => {
               navigate(settingsPath(section))

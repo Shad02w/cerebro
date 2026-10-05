@@ -52,6 +52,27 @@ export type WorkspacePullRequest = {
 
 export type WorkspaceKind = 'default' | 'worktree' | 'root'
 
+/** Sidebar workflow state for a workspace row. New rows start as `todo`. */
+export const WORKSPACE_STATUSES = ['todo', 'in_progress', 'ready_to_review', 'done'] as const
+
+export type WorkspaceStatus = (typeof WORKSPACE_STATUSES)[number]
+
+export type SidebarGroupBy = 'project' | 'status'
+
+export function isWorkspaceStatus(value: unknown): value is WorkspaceStatus {
+  return typeof value === 'string' && (WORKSPACE_STATUSES as readonly string[]).includes(value)
+}
+
+/** Accepts `in-progress` and `ready to review` as well as the stored snake_case values. */
+export function parseWorkspaceStatus(value: unknown): WorkspaceStatus | null {
+  if (typeof value !== 'string') return null
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_')
+  return isWorkspaceStatus(normalized) ? normalized : null
+}
+
 export type Workspace = {
   id: number
   projectId: number
@@ -59,6 +80,7 @@ export type Workspace = {
   kind: WorkspaceKind
   branch: string
   localPath: string
+  status: WorkspaceStatus
   createdAt: string
   pullRequest: WorkspacePullRequest | null
 }
@@ -101,6 +123,8 @@ export type AppSettings = {
   terminalFontFamily: string
   /** Partial overrides; missing keys use app defaults. */
   keybinds: KeybindOverrides
+  /** Sidebar lists workspaces under projects, or under their workflow status. */
+  sidebarGroupBy: SidebarGroupBy
 }
 
 export type AppSettingsPatch = Partial<AppSettings>

@@ -5,6 +5,8 @@ import type { Workspace, WorkspacePullRequest } from '@shared/types'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { CiChecks, CiStatus } from './ci-status'
+import { WorkspaceStatusIcon } from './workspace-status'
+import { WORKSPACE_STATUS_PRESENTATION, workspaceStatus } from '@/lib/workspace-status'
 
 function prStatePresentation(pr: WorkspacePullRequest): {
   label: string
@@ -169,6 +171,10 @@ export function WorkspaceHoverCard({
             <p className="break-words font-medium">
               {workspace.branch ||
                 (workspace.kind === 'root' ? 'Root workspace' : 'Folder workspace')}
+            </p>
+            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <WorkspaceStatusIcon status={workspaceStatus(workspace.status)} />
+              {WORKSPACE_STATUS_PRESENTATION[workspaceStatus(workspace.status)].label}
             </p>
             <p className="text-xs text-muted-foreground">
               Workspace created {relativeCreatedAt(workspace.createdAt)}

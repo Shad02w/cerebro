@@ -1,5 +1,11 @@
 import { useMutation, useQueries, useQuery } from '@tanstack/react-query'
-import type { Project, ProjectBranch, ProjectListResult, Workspace } from '@shared/types'
+import type {
+  Project,
+  ProjectBranch,
+  ProjectListResult,
+  Workspace,
+  WorkspaceStatus
+} from '@shared/types'
 import {
   invalidateProjects,
   PR_REFRESH_MS,
@@ -21,6 +27,7 @@ type ProjectsState = {
   selectWorkspace: (workspaceId: number) => Promise<void>
   createWorkspace: (projectId: number, branch: string, from?: string | null) => Promise<Workspace>
   removeWorkspace: (workspaceId: number, deleteFiles: boolean) => Promise<void>
+  setWorkspaceStatus: (workspaceId: number, status: WorkspaceStatus) => Promise<void>
   removeProject: (projectId: number, deleteFiles: boolean) => Promise<void>
   listProjectBranches: (projectId: number) => Promise<ProjectBranch[]>
 }
@@ -137,6 +144,11 @@ export function useProjects(): ProjectsState {
       await invalidateProjects()
     }
   })
+  const setStatus = useMutation({
+    mutationFn: ({ id, status }: { id: number; status: WorkspaceStatus }) =>
+      window.cerebro.setWorkspaceStatus(id, status),
+    onSuccess: invalidateProjects
+  })
   const removeProject = useMutation({
     mutationFn: ({ id, deleteFiles }: { id: number; deleteFiles: boolean }) =>
       window.cerebro.removeProject(id, deleteFiles),
@@ -169,6 +181,9 @@ export function useProjects(): ProjectsState {
     ): Promise<Workspace> => createWorkspace.mutateAsync({ projectId, branch, from }),
     removeWorkspace: async (id: number, deleteFiles: boolean): Promise<void> => {
       await removeWorkspace.mutateAsync({ id, deleteFiles })
+    },
+    setWorkspaceStatus: async (id: number, status: WorkspaceStatus): Promise<void> => {
+      await setStatus.mutateAsync({ id, status })
     },
     removeProject: async (id: number, deleteFiles: boolean): Promise<void> => {
       await removeProject.mutateAsync({ id, deleteFiles })

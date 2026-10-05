@@ -1,7 +1,7 @@
 import { muxCall } from './mux'
 import { registerLayoutIpc } from './panes'
 import { ipcMain, shell } from 'electron'
-import { isChangedFileStatus } from '@cerebro/core'
+import { isChangedFileStatus, isWorkspaceStatus } from '@cerebro/core'
 import { IPC } from '../shared/ipc'
 import type { AppSettingsPatch, ChangedFile } from '../shared/types'
 import { registerGitHubIpc } from './github'
@@ -17,7 +17,8 @@ import {
   listProjects,
   removeProject,
   removeWorkspace,
-  setActiveWorkspace
+  setActiveWorkspace,
+  setWorkspaceStatus
 } from './projects'
 import { getSettings, pickDirectory, pickProjectDirectory, setSettings } from './settings'
 
@@ -164,6 +165,23 @@ export function registerWorkspaceIpc(): void {
       const fromBranch = typeof from === 'string' && from.trim() ? from.trim() : undefined
       try {
         return await createWorkspaceFromBranch(projectId, branch, fromBranch)
+      } catch (error) {
+        throw new Error(errorMessage(error))
+      }
+    }
+  )
+
+  ipcMain.handle(
+    IPC.workspaces.setStatus,
+    async (_event, workspaceId: unknown, status: unknown) => {
+      if (typeof workspaceId !== 'number' || !Number.isInteger(workspaceId)) {
+        throw new Error('Workspace id is required.')
+      }
+      if (!isWorkspaceStatus(status)) {
+        throw new Error('Unknown workspace status.')
+      }
+      try {
+        return await setWorkspaceStatus(workspaceId, status)
       } catch (error) {
         throw new Error(errorMessage(error))
       }

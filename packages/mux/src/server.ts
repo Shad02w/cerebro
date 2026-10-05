@@ -181,6 +181,7 @@ export async function startServer(): Promise<void> {
         'project.create',
         'workspace.create',
         'workspace.remove',
+        'workspace.status',
         'project.remove'
       ].includes(p.action)
     )

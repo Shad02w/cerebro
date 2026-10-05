@@ -1,7 +1,7 @@
 import { DEFAULT_TERMINAL_THEME, isTerminalThemeId } from './terminal-themes'
 import { existsSync, mkdirSync, statSync } from 'node:fs'
 import { isAbsolute, resolve } from 'node:path'
-import type { AppSettings, AppSettingsPatch } from './types'
+import type { AppSettings, AppSettingsPatch, SidebarGroupBy } from './types'
 import {
   DEFAULT_TERMINAL_FONT_SIZE,
   MAX_TERMINAL_FONT_SIZE,
@@ -20,6 +20,7 @@ type StoredSettings = {
   terminalFontSize?: number
   terminalFontFamily?: string
   keybinds?: Record<string, string>
+  sidebarGroupBy?: string
 }
 
 function defaultSettings(): AppSettings {
@@ -28,7 +29,8 @@ function defaultSettings(): AppSettings {
     terminalTheme: DEFAULT_TERMINAL_THEME,
     terminalFontSize: DEFAULT_TERMINAL_FONT_SIZE,
     terminalFontFamily: TERMINAL_FONT_FAMILY_AUTO,
-    keybinds: {}
+    keybinds: {},
+    sidebarGroupBy: 'project'
   }
 }
 
@@ -98,6 +100,10 @@ function normalizeFontFamily(value: string): string {
   return trimmed
 }
 
+function normalizeSidebarGroupBy(value: unknown): SidebarGroupBy {
+  return value === 'status' ? 'status' : 'project'
+}
+
 function normalizeKeybinds(value: unknown): Record<string, string> {
   if (value == null) return {}
   if (typeof value !== 'object' || Array.isArray(value)) {
@@ -121,6 +127,7 @@ function mergeSettings(stored: StoredSettings): AppSettings {
   let terminalFontSize = defaults.terminalFontSize
   let terminalFontFamily = defaults.terminalFontFamily
   let keybinds = defaults.keybinds
+  const sidebarGroupBy = normalizeSidebarGroupBy(stored.sidebarGroupBy)
 
   if (typeof stored.defaultCloneDir === 'string' && stored.defaultCloneDir.trim()) {
     try {
@@ -157,7 +164,14 @@ function mergeSettings(stored: StoredSettings): AppSettings {
   const terminalTheme = isTerminalThemeId(stored.terminalTheme)
     ? stored.terminalTheme
     : DEFAULT_TERMINAL_THEME
-  return { defaultCloneDir, terminalFontSize, terminalFontFamily, terminalTheme, keybinds }
+  return {
+    defaultCloneDir,
+    terminalFontSize,
+    terminalFontFamily,
+    terminalTheme,
+    keybinds,
+    sidebarGroupBy
+  }
 }
 
 export function getSettings(): AppSettings {
@@ -194,6 +208,13 @@ export function setSettings(patch: AppSettingsPatch): AppSettings {
   if (patch.terminalTheme !== undefined) {
     if (!isTerminalThemeId(patch.terminalTheme)) throw new Error('Unknown terminal theme.')
     next.terminalTheme = patch.terminalTheme
+  }
+
+  if (patch.sidebarGroupBy !== undefined) {
+    if (patch.sidebarGroupBy !== 'project' && patch.sidebarGroupBy !== 'status') {
+      throw new Error('Sidebar grouping must be project or status.')
+    }
+    next.sidebarGroupBy = patch.sidebarGroupBy
   }
 
   writeStored(next)

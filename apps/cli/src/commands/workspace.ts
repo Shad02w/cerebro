@@ -1,8 +1,11 @@
+import { parseWorkspaceStatus } from '@cerebro/core'
+import { MuxError } from '@cerebro/mux'
 import {
   createWorkspaceFromBranch,
   getWorkspaceLocalPath,
   listProjects,
-  removeWorkspace
+  removeWorkspace,
+  setWorkspaceStatus
 } from '../registry'
 import { die, printJson } from '../output'
 
@@ -15,6 +18,8 @@ Commands:
                                          Create a worktree for an existing branch, or a new
                                          branch based on --from
   path <workspace-id>                    Print the local filesystem path for a workspace
+  status <workspace-id> [status]         Show or set a workspace row status.
+                                         Status: todo, in-progress, ready-to-review, done
   delete <workspace-id>                  Delete a worktree workspace from disk and unregister it
   remove <workspace-id>                  Unregister a worktree workspace; leave the directory
 
@@ -130,6 +135,50 @@ export async function workspaceCommand(args: string[]): Promise<void> {
       printJson({ id: workspaceId, localPath })
     } catch (err) {
       die(err instanceof Error ? err.message : String(err), 'not_found')
+    }
+    return
+  }
+
+  if (sub === 'status') {
+    if (rest[0] === '--help' || rest[0] === '-h') {
+      process.stdout.write(WORKSPACE_USAGE + '\n')
+      process.exit(0)
+    }
+    if (rest.length > 2) {
+      die(
+        'Too many arguments.\n\nUsage: cerebro workspace status <workspace-id> [status]',
+        'usage',
+        2
+      )
+    }
+    const workspaceId = parseWorkspaceId(rest[0], 'status')
+    const requested = rest[1]
+    if (requested !== undefined && parseWorkspaceStatus(requested) == null) {
+      die(
+        `Unknown status "${requested}". Use todo, in-progress, ready-to-review, or done.`,
+        'usage',
+        2
+      )
+    }
+    try {
+      if (requested === undefined) {
+        const result = await listProjects()
+        const workspace = result.projects
+          .flatMap((project) => project.workspaces)
+          .find((item) => item.id === workspaceId)
+        if (!workspace) die('Workspace not found.', 'not_found')
+        printJson(workspace)
+        return
+      }
+      const status = parseWorkspaceStatus(requested)
+      if (!status) die(`Unknown status "${requested}".`, 'usage', 2)
+      printJson(await setWorkspaceStatus(workspaceId, status))
+    } catch (err) {
+      if (err instanceof MuxError) {
+        die(err.message, err.code, err.code === 'usage' ? 2 : 1)
+      }
+      const msg = err instanceof Error ? err.message : String(err)
+      die(msg, /not found/i.test(msg) ? 'not_found' : 'internal')
     }
     return
   }

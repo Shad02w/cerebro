@@ -18,7 +18,13 @@ import {
   X
 } from 'lucide-react'
 import type { ChatAgentActivity, LayoutState, PaneNode } from '@cerebro/core'
-import type { Project, Workspace } from '@shared/types'
+import {
+  WORKSPACE_STATUSES,
+  type Project,
+  type SidebarGroupBy,
+  type Workspace,
+  type WorkspaceStatus
+} from '@shared/types'
 import type { SettingsSectionId } from '@/lib/app-route'
 import { HarnessIcon, HarnessStatusIcon } from '@/components/harness-icon'
 import { harnessLabels } from '@/components/chat/queries'
@@ -37,6 +43,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
+import { WorkspaceStatusIcon, WorkspaceStatusMenu } from '@/components/workspace-status'
+import { WORKSPACE_STATUS_PRESENTATION, workspaceStatus } from '@/lib/workspace-status'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import {
@@ -70,6 +78,9 @@ type AppSidebarProps = {
   onAddWorkspace: (project: Project) => void
   onRemoveProject: (projectId: number, deleteFiles: boolean) => void
   onRemoveWorkspace: (workspaceId: number, deleteFiles: boolean) => void
+  onSetWorkspaceStatus: (workspaceId: number, status: WorkspaceStatus) => void
+  sidebarGroupBy: SidebarGroupBy
+  onSidebarGroupBy: (groupBy: SidebarGroupBy) => Promise<void> | void
   onSelectSettingsSection: (section: SettingsSectionId) => void
   onOpenSettings: () => void
   onBack: () => void
@@ -384,11 +395,17 @@ function ProjectOverflowMenu({
 function WorkspaceOverflowMenu({
   workspace,
   allowRemove = true,
-  onRemoveWorkspace
+  project,
+  onAddWorkspace,
+  onRemoveWorkspace,
+  onSetStatus
 }: {
   workspace: Workspace
   allowRemove?: boolean
+  project?: Project
+  onAddWorkspace?: (project: Project) => void
   onRemoveWorkspace?: (workspaceId: number, deleteFiles: boolean) => void
+  onSetStatus: (workspaceId: number, status: WorkspaceStatus) => void
 }): React.JSX.Element {
   const isDefault = workspace.kind === 'default'
 
@@ -406,7 +423,20 @@ function WorkspaceOverflowMenu({
           <span className="sr-only">Workspace actions</span>
         </SidebarMenuAction>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" side="right" className="w-52">
+      <DropdownMenuContent align="start" side="right" className="w-56">
+        <WorkspaceStatusMenu workspace={workspace} onSetStatus={onSetStatus} />
+        {project?.github && onAddWorkspace ? (
+          <DropdownMenuItem
+            data-testid={`workspace-add-${workspace.id}`}
+            onClick={(event): void => {
+              event.stopPropagation()
+              onAddWorkspace(project)
+            }}
+          >
+            <Plus />
+            Add workspace
+          </DropdownMenuItem>
+        ) : null}
         <CopyMenuItems
           branch={workspace.branch}
           localPath={workspace.localPath}
@@ -459,7 +489,13 @@ function WorkspaceOverflowMenu({
   )
 }
 
-function RootOverflowMenu({ project }: { project: Project }): React.JSX.Element {
+function RootOverflowMenu({
+  project,
+  onSetStatus
+}: {
+  project: Project
+  onSetStatus: (workspaceId: number, status: WorkspaceStatus) => void
+}): React.JSX.Element {
   const root = rootWorkspaceOf(project)
   const localPath = root?.localPath || multiRootDirectoryPath(project)
   return (
@@ -476,7 +512,8 @@ function RootOverflowMenu({ project }: { project: Project }): React.JSX.Element 
           <span className="sr-only">Root workspace actions</span>
         </SidebarMenuAction>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" side="right" className="w-52">
+      <DropdownMenuContent align="start" side="right" className="w-56">
+        {root ? <WorkspaceStatusMenu workspace={root} onSetStatus={onSetStatus} /> : null}
         <CopyMenuItems branch={null} localPath={localPath} testIdPrefix={`root-${project.id}`} />
       </DropdownMenuContent>
     </DropdownMenu>
@@ -489,7 +526,8 @@ function MultiRootRepoRow({
   active,
   agents,
   onSelect,
-  onOpenAgent
+  onOpenAgent,
+  onSetStatus
 }: {
   project: Project
   workspace: Workspace
@@ -497,9 +535,11 @@ function MultiRootRepoRow({
   agents: ChatAgentActivity[]
   onSelect: (workspaceId: number) => void
   onOpenAgent: (agent: ChatAgentActivity) => void
+  onSetStatus: (workspaceId: number, status: WorkspaceStatus) => void
 }): React.JSX.Element {
   const name = repositoryDirName(project, workspace)
   const branch = workspace.branch.trim()
+  const status = workspaceStatus(workspace.status)
 
   return (
     <li className="relative">
@@ -515,15 +555,19 @@ function MultiRootRepoRow({
             data-workspace-id={workspace.id}
             data-workspace-role="repository"
             data-workspace-icon="directory-name"
+            data-workspace-status={status}
             data-active={active ? 'true' : 'false'}
             aria-current={active ? 'location' : undefined}
             onClick={(): void => onSelect(workspace.id)}
           >
-            <span
-              className="min-w-0 truncate text-[13px] font-medium leading-4"
-              data-testid={`workspace-repo-${workspace.id}`}
-            >
-              {name}
+            <span className="flex min-w-0 items-center gap-1.5">
+              <WorkspaceStatusIcon status={status} />
+              <span
+                className="min-w-0 truncate text-[13px] font-medium leading-4"
+                data-testid={`workspace-repo-${workspace.id}`}
+              >
+                {name}
+              </span>
             </span>
             {branch ? (
               <span
@@ -540,7 +584,11 @@ function MultiRootRepoRow({
             ) : null}
             <WorkspaceAgents agents={agents} onOpenAgent={onOpenAgent} />
           </button>
-          <WorkspaceOverflowMenu workspace={workspace} allowRemove={false} />
+          <WorkspaceOverflowMenu
+            workspace={workspace}
+            allowRemove={false}
+            onSetStatus={onSetStatus}
+          />
         </SidebarMenuRow>
       </WorkspaceHoverCard>
     </li>
@@ -552,19 +600,22 @@ function MultiRootWorkspaceTree({
   activeWorkspaceId,
   activity,
   onSelectWorkspace,
-  onOpenAgent
+  onOpenAgent,
+  onSetStatus
 }: {
   project: Project
   activeWorkspaceId: number | null
   activity: Map<number, ChatAgentActivity[]>
   onSelectWorkspace: (workspaceId: number) => void
   onOpenAgent: (agent: ChatAgentActivity) => void
+  onSetStatus: (workspaceId: number, status: WorkspaceStatus) => void
 }): React.JSX.Element {
   const [rootOpen, setRootOpen] = useState(true)
   const rootWorkspace = rootWorkspaceOf(project)
   const repos = repositoryWorkspaces(project)
   const rootActive = rootWorkspace != null && rootWorkspace.id === activeWorkspaceId
   const rootAgents = rootWorkspace ? (activity.get(rootWorkspace.id) ?? []) : []
+  const rootStatus = workspaceStatus(rootWorkspace?.status)
 
   return (
     <SidebarMenuSub>
@@ -585,6 +636,7 @@ function MultiRootWorkspaceTree({
                 data-testid={`project-root-${project.id}`}
                 data-workspace-role="root"
                 data-workspace-icon="folder-tree"
+                data-workspace-status={rootStatus}
                 data-workspace-id={rootWorkspace?.id}
                 data-active={rootActive ? 'true' : 'false'}
                 aria-current={rootActive ? 'location' : undefined}
@@ -596,6 +648,7 @@ function MultiRootWorkspaceTree({
               >
                 <span className="flex w-full min-w-0 items-center gap-2">
                   <FolderTree className="size-4 shrink-0 text-sidebar-accent-foreground" />
+                  <WorkspaceStatusIcon status={rootStatus} />
                   <span className="min-w-0 flex-1 truncate font-medium">root</span>
                   <span
                     className="shrink-0 text-[10px] text-sidebar-foreground/55 tabular-nums"
@@ -625,7 +678,7 @@ function MultiRootWorkspaceTree({
                   {rootOpen ? 'Collapse repositories' : 'Expand repositories'}
                 </span>
               </SidebarMenuAction>
-              <RootOverflowMenu project={project} />
+              <RootOverflowMenu project={project} onSetStatus={onSetStatus} />
             </SidebarMenuRow>
           </WorkspaceHoverCard>
           <CollapsibleContent>
@@ -644,6 +697,7 @@ function MultiRootWorkspaceTree({
                     agents={activity.get(workspace.id) ?? []}
                     onSelect={onSelectWorkspace}
                     onOpenAgent={onOpenAgent}
+                    onSetStatus={onSetStatus}
                   />
                 ))}
               </ul>
@@ -675,6 +729,7 @@ function ProjectItem({
   onAddWorkspace,
   onRemoveProject,
   onRemoveWorkspace,
+  onSetStatus,
   onOpenAgent
 }: {
   project: Project
@@ -685,6 +740,7 @@ function ProjectItem({
   onAddWorkspace: (project: Project) => void
   onRemoveProject: (projectId: number, deleteFiles: boolean) => void
   onRemoveWorkspace: (workspaceId: number, deleteFiles: boolean) => void
+  onSetStatus: (workspaceId: number, status: WorkspaceStatus) => void
   onOpenAgent: (agent: ChatAgentActivity) => void
 }): React.JSX.Element {
   const [open, setOpen] = useState(defaultOpen)
@@ -768,6 +824,7 @@ function ProjectItem({
               activity={activity}
               onSelectWorkspace={onSelectWorkspace}
               onOpenAgent={onOpenAgent}
+              onSetStatus={onSetStatus}
             />
           ) : project.workspaces.length > 0 ? (
             <SidebarMenuSub>
@@ -788,10 +845,14 @@ function ProjectItem({
                           aria-current={workspace.id === activeWorkspaceId ? 'location' : undefined}
                           data-workspace-role="branch"
                           data-workspace-icon="branch"
+                          data-workspace-status={workspaceStatus(workspace.status)}
                           onClick={(): void => onSelectWorkspace(workspace.id)}
                         >
-                          <span className="min-w-0 truncate text-left">
-                            {workspaceLabel(project, workspace)}
+                          <span className="flex min-w-0 items-center gap-1.5 text-left">
+                            <WorkspaceStatusIcon status={workspaceStatus(workspace.status)} />
+                            <span className="min-w-0 truncate">
+                              {workspaceLabel(project, workspace)}
+                            </span>
                           </span>
                           <WorkspaceAgents
                             agents={activity.get(workspace.id) ?? []}
@@ -806,6 +867,7 @@ function ProjectItem({
                       <WorkspaceOverflowMenu
                         workspace={workspace}
                         onRemoveWorkspace={onRemoveWorkspace}
+                        onSetStatus={onSetStatus}
                       />
                     </SidebarMenuRow>
                   </WorkspaceHoverCard>
@@ -842,6 +904,8 @@ function NavigationHeader({
   isSettings,
   projectCount,
   search,
+  groupBy,
+  onGroupBy,
   onSearchChange,
   onAddProject,
   firstResultId,
@@ -850,6 +914,8 @@ function NavigationHeader({
   isSettings: boolean
   projectCount: number
   search: string
+  groupBy: SidebarGroupBy
+  onGroupBy: (groupBy: SidebarGroupBy) => void
   onSearchChange: (value: string) => void
   onAddProject: () => void
   firstResultId: number | undefined
@@ -884,43 +950,82 @@ function NavigationHeader({
         ) : null}
       </div>
       {!isSettings ? (
-        <div className="app-no-drag relative">
-          <Search
-            aria-hidden="true"
-            className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-sidebar-foreground/50"
-          />
-          <Input
-            ref={searchInput}
-            aria-label="Search projects and workspaces"
-            placeholder="Find a workspace…"
-            value={search}
-            className="h-8 rounded-md pr-8 pl-8 text-xs shadow-none md:text-xs"
-            onChange={(event) => onSearchChange(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.nativeEvent.isComposing) return
-              if (event.key === 'Escape') {
-                event.preventDefault()
-                onSearchChange('')
-              } else if (event.key === 'Enter' && firstResultId != null) {
-                event.preventDefault()
-                onSelectWorkspace(firstResultId)
-              }
-            }}
-          />
-          {search ? (
-            <button
-              type="button"
-              className="sidebar-header-action absolute top-1/2 right-0.5 -translate-y-1/2"
-              aria-label="Clear search"
-              onClick={() => {
-                onSearchChange('')
-                searchInput.current?.focus()
+        <>
+          <div className="app-no-drag relative">
+            <Search
+              aria-hidden="true"
+              className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-sidebar-foreground/50"
+            />
+            <Input
+              ref={searchInput}
+              aria-label="Search projects and workspaces"
+              placeholder="Find a workspace…"
+              value={search}
+              className="h-8 rounded-md pr-8 pl-8 text-xs shadow-none md:text-xs"
+              onChange={(event) => onSearchChange(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.nativeEvent.isComposing) return
+                if (event.key === 'Escape') {
+                  event.preventDefault()
+                  onSearchChange('')
+                } else if (event.key === 'Enter' && firstResultId != null) {
+                  event.preventDefault()
+                  onSelectWorkspace(firstResultId)
+                }
               }}
+            />
+            {search ? (
+              <button
+                type="button"
+                className="sidebar-header-action absolute top-1/2 right-0.5 -translate-y-1/2"
+                aria-label="Clear search"
+                onClick={() => {
+                  onSearchChange('')
+                  searchInput.current?.focus()
+                }}
+              >
+                <X className="size-3.5" />
+              </button>
+            ) : null}
+          </div>
+          <div className="app-no-drag flex items-center gap-2 px-1">
+            <span className="text-[11px] text-sidebar-foreground/55">Group</span>
+            <div
+              role="group"
+              aria-label="Group workspaces"
+              data-testid="sidebar-group-by"
+              data-group-by={groupBy}
+              className="flex min-w-0 flex-1 rounded-md bg-sidebar-accent p-0.5"
             >
-              <X className="size-3.5" />
-            </button>
-          ) : null}
-        </div>
+              {(
+                [
+                  ['project', 'Projects'],
+                  ['status', 'Status']
+                ] as const
+              ).map(([value, label]) => {
+                const selected = groupBy === value
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={selected}
+                    data-testid={`sidebar-group-${value}`}
+                    data-active={selected ? 'true' : 'false'}
+                    className={cn(
+                      'min-w-0 flex-1 rounded-[5px] px-2 py-1 text-xs font-medium',
+                      selected
+                        ? 'bg-sidebar text-sidebar-foreground shadow-sm'
+                        : 'text-sidebar-foreground/60 hover:text-sidebar-foreground'
+                    )}
+                    onClick={(): void => onGroupBy(value)}
+                  >
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </>
       ) : null}
     </SidebarHeader>
   )
@@ -956,12 +1061,17 @@ function WorkspaceSearchResults({
                 aria-current={workspace.id === activeWorkspaceId ? 'location' : undefined}
                 onClick={() => onSelectWorkspace(workspace.id)}
                 data-testid={`workspace-search-result-${workspace.id}`}
+                data-workspace-status={workspaceStatus(workspace.status)}
               >
                 {workspace.kind === 'root' ? (
                   <FolderTree className="mt-0.5" />
                 ) : (
                   <GitBranch className="mt-0.5" />
                 )}
+                <WorkspaceStatusIcon
+                  status={workspaceStatus(workspace.status)}
+                  className="mt-0.5"
+                />
                 <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <span className="truncate text-xs font-medium">{label}</span>
                   <span className="truncate text-[11px] text-sidebar-foreground/60">
@@ -981,6 +1091,176 @@ function WorkspaceSearchResults({
   )
 }
 
+function workspacesWithStatus(
+  projects: Project[],
+  status: WorkspaceStatus
+): Array<{ project: Project; workspace: Workspace }> {
+  const entries: Array<{ project: Project; workspace: Workspace }> = []
+  for (const project of projects) {
+    for (const workspace of project.workspaces) {
+      if (workspaceStatus(workspace.status) === status) entries.push({ project, workspace })
+    }
+  }
+  return entries
+}
+
+function statusGroupLabel(project: Project, workspace: Workspace): string {
+  if (workspace.kind === 'root') return 'root'
+  if (isMultiRootProject(project)) {
+    return [repositoryDirName(project, workspace), workspace.branch].filter(Boolean).join(' · ')
+  }
+  return workspaceLabel(project, workspace)
+}
+
+function StatusGroup({
+  status,
+  entries,
+  activeWorkspaceId,
+  activity,
+  onSelectWorkspace,
+  onOpenAgent,
+  onAddWorkspace,
+  onRemoveWorkspace,
+  onSetStatus
+}: {
+  status: WorkspaceStatus
+  entries: Array<{ project: Project; workspace: Workspace }>
+  activeWorkspaceId: number | null
+  activity: Map<number, ChatAgentActivity[]>
+  onSelectWorkspace: (workspaceId: number) => void
+  onOpenAgent: (agent: ChatAgentActivity) => void
+  onAddWorkspace: (project: Project) => void
+  onRemoveWorkspace: (workspaceId: number, deleteFiles: boolean) => void
+  onSetStatus: (workspaceId: number, status: WorkspaceStatus) => void
+}): React.JSX.Element {
+  const presentation = WORKSPACE_STATUS_PRESENTATION[status]
+  const containsActive = entries.some((entry) => entry.workspace.id === activeWorkspaceId)
+  const startsOpen = entries.length > 0 && (status !== 'done' || containsActive)
+  const [open, setOpen] = useState(startsOpen)
+  const [trackedCount, setTrackedCount] = useState(entries.length)
+  if (entries.length !== trackedCount) {
+    setTrackedCount(entries.length)
+    if (entries.length > trackedCount) setOpen(true)
+  }
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen} className="group/collapsible">
+      <SidebarMenuItem>
+        <CollapsibleTrigger asChild>
+          <SidebarMenuButton
+            className="app-no-drag h-auto font-medium"
+            data-testid={`status-group-${status}`}
+            data-status={status}
+            aria-label={`${presentation.label}, ${entries.length} ${entries.length === 1 ? 'workspace' : 'workspaces'}`}
+          >
+            <WorkspaceStatusIcon status={status} />
+            <span className="min-w-0 flex-1 truncate">{presentation.label}</span>
+            <span
+              className="text-xs text-sidebar-foreground/55 tabular-nums"
+              data-testid={`status-count-${status}`}
+            >
+              {entries.length}
+            </span>
+          </SidebarMenuButton>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          {entries.length === 0 ? (
+            <p className="px-2 py-1 text-xs text-sidebar-foreground/50">No workspaces</p>
+          ) : (
+            <SidebarMenuSub>
+              {entries.map(({ project, workspace }) => (
+                <SidebarMenuSubItem key={workspace.id}>
+                  <WorkspaceHoverCard workspace={workspace}>
+                    <SidebarMenuRow data-workspace-id={workspace.id}>
+                      <SidebarMenuSubButton
+                        size="sm"
+                        asChild
+                        isActive={workspace.id === activeWorkspaceId}
+                      >
+                        <button
+                          type="button"
+                          className="app-no-drag flex h-auto! w-full min-w-0 flex-col items-stretch gap-0 py-1.5 pr-8"
+                          data-testid={`workspace-row-${workspace.id}`}
+                          data-workspace-id={workspace.id}
+                          data-workspace-status={workspaceStatus(workspace.status)}
+                          data-workspace-role={workspace.kind === 'root' ? 'root' : 'branch'}
+                          aria-current={workspace.id === activeWorkspaceId ? 'location' : undefined}
+                          onClick={(): void => onSelectWorkspace(workspace.id)}
+                        >
+                          <span className="flex min-w-0 items-center gap-1.5 text-left">
+                            <WorkspaceStatusIcon status={workspaceStatus(workspace.status)} />
+                            <span className="min-w-0 flex-1 truncate">
+                              {statusGroupLabel(project, workspace)}
+                            </span>
+                          </span>
+                          <span className="truncate pl-5 text-[11px] text-sidebar-foreground/60">
+                            {project.name}
+                          </span>
+                          <WorkspaceAgents
+                            agents={activity.get(workspace.id) ?? []}
+                            onOpenAgent={onOpenAgent}
+                          />
+                        </button>
+                      </SidebarMenuSubButton>
+                      <WorkspaceOverflowMenu
+                        workspace={workspace}
+                        allowRemove={workspace.kind === 'worktree'}
+                        project={project}
+                        onAddWorkspace={project.github ? onAddWorkspace : undefined}
+                        onRemoveWorkspace={onRemoveWorkspace}
+                        onSetStatus={onSetStatus}
+                      />
+                    </SidebarMenuRow>
+                  </WorkspaceHoverCard>
+                </SidebarMenuSubItem>
+              ))}
+            </SidebarMenuSub>
+          )}
+        </CollapsibleContent>
+      </SidebarMenuItem>
+    </Collapsible>
+  )
+}
+
+function StatusGroups({
+  projects,
+  activeWorkspaceId,
+  activity,
+  onSelectWorkspace,
+  onOpenAgent,
+  onAddWorkspace,
+  onRemoveWorkspace,
+  onSetStatus
+}: {
+  projects: Project[]
+  activeWorkspaceId: number | null
+  activity: Map<number, ChatAgentActivity[]>
+  onSelectWorkspace: (workspaceId: number) => void
+  onOpenAgent: (agent: ChatAgentActivity) => void
+  onAddWorkspace: (project: Project) => void
+  onRemoveWorkspace: (workspaceId: number, deleteFiles: boolean) => void
+  onSetStatus: (workspaceId: number, status: WorkspaceStatus) => void
+}): React.JSX.Element {
+  return (
+    <SidebarMenu className="gap-1" data-testid="sidebar-status-groups">
+      {WORKSPACE_STATUSES.map((status) => (
+        <StatusGroup
+          key={status}
+          status={status}
+          entries={workspacesWithStatus(projects, status)}
+          activeWorkspaceId={activeWorkspaceId}
+          activity={activity}
+          onSelectWorkspace={onSelectWorkspace}
+          onOpenAgent={onOpenAgent}
+          onAddWorkspace={onAddWorkspace}
+          onRemoveWorkspace={onRemoveWorkspace}
+          onSetStatus={onSetStatus}
+        />
+      ))}
+    </SidebarMenu>
+  )
+}
+
 export function AppSidebar({
   mode,
   projects,
@@ -991,12 +1271,21 @@ export function AppSidebar({
   onAddWorkspace,
   onRemoveProject,
   onRemoveWorkspace,
+  onSetWorkspaceStatus,
+  sidebarGroupBy,
+  onSidebarGroupBy,
   onSelectSettingsSection,
   onOpenSettings,
   onBack
 }: AppSidebarProps): React.JSX.Element {
   const isSettings = mode === 'settings'
   const [search, setSearch] = useState('')
+  const [groupBy, setGroupBy] = useState(sidebarGroupBy)
+  const [trackedGroup, setTrackedGroup] = useState(sidebarGroupBy)
+  if (sidebarGroupBy !== trackedGroup) {
+    setTrackedGroup(sidebarGroupBy)
+    setGroupBy(sidebarGroupBy)
+  }
   const query = search.trim().toLowerCase()
   const results = searchWorkspaces(projects, query)
   const activity = useAgentActivity()
@@ -1023,6 +1312,13 @@ export function AppSidebar({
         isSettings={isSettings}
         projectCount={projects.length}
         search={search}
+        groupBy={groupBy}
+        onGroupBy={(next): void => {
+          if (next === groupBy) return
+          const previous = groupBy
+          setGroupBy(next)
+          void Promise.resolve(onSidebarGroupBy(next)).catch(() => setGroupBy(previous))
+        }}
         onSearchChange={setSearch}
         onAddProject={onAddProject}
         firstResultId={results[0]?.workspace.id}
@@ -1074,6 +1370,19 @@ export function AppSidebar({
                 >
                   No projects yet. Use + to clone a repository or open a folder.
                 </p>
+              ) : groupBy === 'status' ? (
+                <div className={query ? 'hidden' : undefined}>
+                  <StatusGroups
+                    projects={projects}
+                    activeWorkspaceId={activeWorkspaceId}
+                    activity={activity}
+                    onSelectWorkspace={onSelectWorkspace}
+                    onOpenAgent={openAgent}
+                    onAddWorkspace={onAddWorkspace}
+                    onRemoveWorkspace={onRemoveWorkspace}
+                    onSetStatus={onSetWorkspaceStatus}
+                  />
+                </div>
               ) : (
                 <SidebarMenu className={query ? 'hidden' : 'gap-1'}>
                   {projects.map((project) => {
@@ -1092,6 +1401,7 @@ export function AppSidebar({
                         onAddWorkspace={onAddWorkspace}
                         onRemoveProject={onRemoveProject}
                         onRemoveWorkspace={onRemoveWorkspace}
+                        onSetStatus={onSetWorkspaceStatus}
                       />
                     )
                   })}
