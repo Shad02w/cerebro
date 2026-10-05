@@ -123,7 +123,8 @@ function SortableTab({
       data-variant="pill"
       data-dragging={isDragging ? 'true' : undefined}
       className={cn(
-        'group app-no-drag flex h-full max-w-48 min-w-0 shrink-0 cursor-grab touch-none items-center bg-transparent select-none',
+        // first:ml-2 — inset the leading tab from the content-area edge (pill list p-0)
+        'group app-no-drag flex h-full max-w-48 min-w-0 shrink-0 cursor-grab touch-none items-center bg-transparent select-none first:ml-2',
         isDragging && 'relative z-10 cursor-grabbing opacity-60'
       )}
       style={{
@@ -291,8 +292,7 @@ export function ContentTabBar({
             data-variant="pill"
             className={cn(
               tabsListVariants({ variant: 'pill' }),
-              // ml-* (not pl-*) — pill tabsListVariants sets data-[variant=pill]:p-0
-              'ml-2 h-full w-auto min-w-0 max-w-full justify-start overflow-x-auto rounded-none bg-transparent'
+              'h-full w-auto min-w-0 max-w-full justify-start overflow-x-auto rounded-none bg-transparent'
             )}
           >
             {tabs.map((tab) => (

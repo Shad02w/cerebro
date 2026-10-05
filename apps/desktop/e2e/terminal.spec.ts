@@ -602,25 +602,24 @@ test('content tabs use pill selection and reveal close on hover or keyboard focu
     const leftGap = await page.evaluate(() => {
       const bar = document.querySelector('[data-testid="content-tab-bar"]')
       const firstTab = bar?.querySelector<HTMLElement>('[data-testid$="-tab"]')
-      const tabsList = bar?.querySelector<HTMLElement>('[data-slot="tabs-list"]')
-      if (!bar || !firstTab || !tabsList) {
+      if (!bar || !firstTab) {
         throw new Error('Content tab bar chrome was not found.')
       }
       return {
         tabOffset: firstTab.getBoundingClientRect().left - bar.getBoundingClientRect().left,
-        listMarginLeft: getComputedStyle(tabsList).marginLeft
+        firstTabMarginLeft: getComputedStyle(firstTab).marginLeft
       }
     })
-    expect(leftGap.listMarginLeft).toBe('8px')
+    expect(leftGap.firstTabMarginLeft).toBe('8px')
     expect(leftGap.tabOffset).toBeGreaterThanOrEqual(8)
 
     await mkdir(contentTabsMediaDir, { recursive: true })
     await mkdir(contentTabsArtifactsDir, { recursive: true })
-    await tabBar.screenshot({ path: join(contentTabsMediaDir, 'content-tabs-left-gap.png') })
-    await tabBar.screenshot({ path: join(contentTabsArtifactsDir, 'content-tabs-left-gap.png') })
-    await page.screenshot({ path: join(contentTabsMediaDir, 'content-tabs-left-gap-window.png') })
+    await tabBar.screenshot({ path: join(contentTabsMediaDir, 'first-tab-gap-after.png') })
+    await tabBar.screenshot({ path: join(contentTabsArtifactsDir, 'first-tab-gap-after.png') })
+    await page.screenshot({ path: join(contentTabsMediaDir, 'first-tab-gap-after-window.png') })
     await page.screenshot({
-      path: join(contentTabsArtifactsDir, 'content-tabs-left-gap-window.png')
+      path: join(contentTabsArtifactsDir, 'first-tab-gap-after-window.png')
     })
 
     const activeStyles = await active.locator('[data-slot="content-tab-pill"]').evaluate((el) => {
