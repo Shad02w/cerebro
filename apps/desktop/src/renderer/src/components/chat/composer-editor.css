@@ -45,9 +45,19 @@
   z-index: 1;
 }
 
+.chat-stars {
+  opacity: 0;
+  transition: opacity 450ms ease;
+}
+
+.chat-stars[data-visible='true'] {
+  opacity: 1;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .chat-composer-dock,
-  .chat-composer-empty {
+  .chat-composer-empty,
+  .chat-stars {
     transition: none;
   }
 }

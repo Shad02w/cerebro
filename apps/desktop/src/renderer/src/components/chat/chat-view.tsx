@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowUp, ImagePlus, MessageSquare, Square } from 'lucide-react'
 import type { AgentAccessMode, AgentAnswer, AgentModel, ChatCommand } from '@cerebro/core'
@@ -254,6 +254,17 @@ export function ChatView({
     }
   }
   const alertText = error ?? session?.error ?? (view.error ? String(view.error) : null)
+  const promptHasInput = draft.text.trim().length > 0 || draft.attachments.length > 0
+  const starsWanted = empty && !promptHasInput
+  const [starPhase, setStarPhase] = useState<'on' | 'out' | 'off'>('off')
+  if (starsWanted && starPhase !== 'on') setStarPhase('on')
+  else if (!starsWanted && starPhase === 'on') setStarPhase('out')
+  useEffect(() => {
+    if (starPhase !== 'out') return
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const timeout = window.setTimeout(() => setStarPhase('off'), reduce ? 0 : 480)
+    return () => window.clearTimeout(timeout)
+  }, [starPhase])
   return (
     <div
       ref={viewRef}
@@ -261,12 +272,13 @@ export function ChatView({
       data-testid="chat-view"
       data-loading={loading || undefined}
     >
-      {empty ? (
+      {starPhase !== 'off' ? (
         <StarsBackground
           aria-hidden="true"
           data-testid="chat-stars"
+          data-visible={starPhase === 'on' ? 'true' : 'false'}
           pointerEvents={false}
-          className="pointer-events-none absolute inset-0 -z-10"
+          className="chat-stars pointer-events-none absolute inset-0 -z-10"
         />
       ) : null}
       {loading ? (

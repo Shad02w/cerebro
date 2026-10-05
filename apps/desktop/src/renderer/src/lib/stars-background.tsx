@@ -18,8 +18,8 @@ import {
 } from 'motion/react'
 import { cn } from '@/lib/utils'
 
-/** Faint light teal. Solid teal-200 read as a bright glow on the empty pane. */
-const LIGHT_TEAL = 'rgba(153, 246, 228, 0.16)'
+/** Theme teal lifted toward white, so the dots stay light teal in dark and light UI. */
+const LIGHT_TEAL = 'color-mix(in srgb, var(--sidebar-selected) 48%, white)'
 
 type StarLayerProps = HTMLMotionProps<'div'> & {
   count: number
@@ -87,7 +87,7 @@ export type StarsBackgroundProps = ComponentProps<'div'> & {
 /**
  * Animate UI stars background (MIT).
  * https://animate-ui.com/docs/components/backgrounds/stars
- * No bottom wash — the empty pane keeps the app background, with only a faint star field.
+ * A light theme-teal field, without a bright glow behind the composer.
  */
 export function StarsBackground({
   children,
@@ -128,7 +128,8 @@ export function StarsBackground({
     ...style,
     '--chat-star': starColor,
     backgroundColor: 'transparent',
-    backgroundImage: 'none'
+    backgroundImage:
+      'radial-gradient(ellipse at center, color-mix(in srgb, var(--sidebar-selected) 18%, transparent) 0%, transparent 72%)'
   } as CSSProperties
 
   return (
