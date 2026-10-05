@@ -142,7 +142,7 @@
 [data-sidebar='menu-button'][data-active='true']:hover,
 [data-sidebar='menu-sub-button'][data-active='true']:hover,
 [data-workspace-role][data-active='true']:hover {
-  background-color: color-mix(in oklch, var(--sidebar-selected) 22%, var(--sidebar-accent));
+  background-color: var(--sidebar-accent);
 }
 
 /* More-actions are per-row. Do not use group-hover on the menu-item: nested

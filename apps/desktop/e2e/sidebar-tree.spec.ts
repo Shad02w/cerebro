@@ -240,6 +240,28 @@ test('sidebar keeps keyboard selection and disclosures usable in both themes', a
       animations: 'disabled'
     })
 
+    const accentBackground = await page.evaluate(() => {
+      const probe = document.createElement('div')
+      probe.style.backgroundColor = 'var(--sidebar-accent)'
+      document.body.appendChild(probe)
+      const color = getComputedStyle(probe).backgroundColor
+      probe.remove()
+      return color
+    })
+    await repoRow.hover()
+    await expect(repoRow).toHaveCSS('background-color', accentBackground)
+    await expect(rootGroup).not.toHaveCSS('background-color', accentBackground)
+    await sidebar.screenshot({
+      path: '/opt/cursor/artifacts/multi-root-repo-hover.png',
+      animations: 'disabled'
+    })
+    await rootButton.hover()
+    await expect(rootButton).toHaveCSS('background-color', accentBackground)
+    await sidebar.screenshot({
+      path: '/opt/cursor/artifacts/multi-root-root-hover.png',
+      animations: 'disabled'
+    })
+
     await repoRow.click()
     await expect(repoRow).toHaveAttribute('data-active', 'true')
     await expect(repoRow).toHaveCSS('box-shadow', /0px 0px 0px 1px inset/)
