@@ -1,3 +1,4 @@
+import { AgentModelSettings } from '@/components/agent-model-settings'
 import { TerminalThemeCombobox } from '@/components/terminal-theme-combobox'
 import { CliSettings } from '@/components/cli-settings'
 import type { TerminalThemeId } from '@shared/terminal-themes'
@@ -203,6 +204,7 @@ function GeneralSettings({
             </SelectContent>
           </Select>
         </div>
+        <AgentModelSettings settings={settings} onUpdate={onUpdate} />
       </div>
       <div className="space-y-3">
         <h2 className="text-xs font-medium text-muted-foreground">Projects</h2>

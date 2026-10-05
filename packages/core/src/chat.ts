@@ -1,6 +1,10 @@
 /** Transport-independent local agent contract. Native wire frames never cross this boundary. */
 export type AgentAccessMode = 'full' | 'edit' | 'read'
 export type AgentHarness = 'claude' | 'codex' | 'pi'
+export const agentHarnesses = ['claude', 'codex', 'pi'] as const satisfies readonly AgentHarness[]
+export function isAgentHarness(value: unknown): value is AgentHarness {
+  return agentHarnesses.some((harness) => harness === value)
+}
 export type AgentModality = 'text' | 'image'
 export type AgentModel = {
   key: string

@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { reconcileAgentPreferences, rememberAgentModel, type AgentModel } from '@cerebro/core'
+import { catalogOptions } from '@/components/chat/queries'
 import { layoutOptions } from '@/lib/query-client'
 import { StartupGate } from '@/components/startup-splash'
 import { AddProjectDialog } from '@/components/add-project-dialog'
@@ -112,6 +114,33 @@ function App(): React.JSX.Element {
     if (isSettings) void refreshSettings().catch(() => undefined)
   }, [isSettings, refreshSettings])
 
+  const catalog = useQuery(catalogOptions)
+  const reconciledCatalog = useRef<unknown>(null)
+  useEffect(() => {
+    if (!catalog.data || !settings) return
+    if (reconciledCatalog.current === catalog.data) return
+    const next = reconcileAgentPreferences(
+      catalog.data.models,
+      settings.agentModelDefaults,
+      settings.lastAgent
+    )
+    reconciledCatalog.current = catalog.data
+    if (!next.changed) return
+    void updateSettings({
+      agentModelDefaults: next.agentModelDefaults,
+      lastAgent: next.lastAgent
+    })
+  }, [catalog.data, settings, updateSettings])
+  const rememberAgent = useCallback(
+    (model: AgentModel): void => {
+      if (!settings) return
+      const patch = rememberAgentModel(settings, model)
+      if (!patch) return
+      void updateSettings(patch)
+    },
+    [settings, updateSettings]
+  )
+
   const handleSelectWorkspace = (id: number): void => {
     navigate(projectsPath())
     void selectWorkspace(id)
@@ -187,6 +216,9 @@ function App(): React.JSX.Element {
                 terminalFontSize={settings?.terminalFontSize ?? null}
                 terminalFontFamily={settings?.terminalFontFamily ?? null}
                 agentBackground={settings?.agentBackground ?? DEFAULT_AGENT_BACKGROUND}
+                agentModelDefaults={settings?.agentModelDefaults ?? {}}
+                lastAgent={settings?.lastAgent ?? null}
+                onRememberAgent={rememberAgent}
                 onAddProject={(): void => setProjectDialogOpen(true)}
                 onSelectWorkspace={handleSelectWorkspace}
                 onStartupReady={startupComplete ? undefined : completeStartup}

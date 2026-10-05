@@ -520,13 +520,18 @@ test('Claude and Pi keep separate chat sessions, with a mixed Terminal pane', as
       .click()
     await expect(page.getByRole('alert')).toContainText('Open a new Agent tab or pane to use Pi.')
     await expect(chat.getByTestId('chat-model-picker')).toContainText('Claude Code')
+    await expect
+      .poll(
+        async () => (await page.evaluate(() => window.cerebro.getSettings())).lastAgent?.harness
+      )
+      .toBe('pi')
     await expect(chat.getByTestId('chat-transcript')).toContainText('hello Claude')
     await page.getByTestId('new-content-tab').click()
     await page.getByTestId('open-chat-tab').click()
     // Tab switches keep prior agent panes mounted under display:none; re-query the active pane.
     const nextChat = page.locator('[data-pane-kind="chat"]:visible')
     await expect(nextChat.getByText('What would you like to build?')).toBeVisible()
-    await expect(nextChat.getByTestId('chat-model-picker')).toBeVisible()
+    await expect(nextChat.getByTestId('chat-model-picker')).toContainText('Pi')
     await nextChat.getByTestId('chat-model-picker').click()
     await page.getByTestId('model-picker').getByRole('button', { name: 'Pi', exact: true }).click()
     await page
@@ -857,7 +862,7 @@ test('image attachments use atomic chips, reach the harness, render in the trans
     await expect(attachments).toHaveCount(0)
     await paste('sent.png')
     await expect.poll(composerText).toBe('attachments here [Image #1] [Image #1] ')
-    // The reload reset the picker to the default harness; send through Codex again.
+    // Reload keeps the harness chosen before the draft was saved.
     await chat.getByTestId('chat-model-picker').click()
     await page
       .getByTestId('model-picker')
@@ -1313,6 +1318,111 @@ test('empty agent pane switches between stars, glow, and off', async ({ page, el
     await choose('Stars', 'stars')
     await expect(page.getByTestId('chat-stars')).toBeVisible()
     await expect(page.getByTestId('chat-composer-glow')).toHaveCount(0)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('new agent panes reuse the last model and settings choose each harness default', async ({
+  page,
+  electronApp
+}) => {
+  test.setTimeout(90_000)
+  const directory = await mkdtemp(join(tmpdir(), 'cerebro-agent-defaults-'))
+  const sonnetKey = JSON.stringify(['claude', 'local', 'configured', 'sonnet'])
+  const secondCodexKey = JSON.stringify(['codex', 'local', 'configured', 'second-model'])
+  try {
+    await mkdir(optArtifactsDir, { recursive: true })
+    await electronApp.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0].setSize(1250, 900)
+    )
+    const project = await page.evaluate(
+      (folder) => window.cerebro.createProjectFromDirectory(folder),
+      directory
+    )
+    const workspaceId = project.workspaces[0].id
+    await page.reload()
+    const projectRow = page.getByTestId(/project-row-/).first()
+    await expect(projectRow).toBeVisible()
+    if ((await projectRow.getAttribute('aria-expanded')) === 'false') await projectRow.click()
+    await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
+    await page.getByRole('button', { name: /^New Agent tab/ }).click()
+    const first = page.locator('[data-pane-kind="chat"]:visible')
+    await expect(first.getByTestId('chat-model-picker')).toContainText('Test Model')
+    await expect(first.getByTestId('chat-model-picker')).toContainText('Claude Code')
+    await first.getByTestId('chat-model-picker').click()
+    await page
+      .getByTestId('model-picker')
+      .getByRole('button', { name: /^Test Sonnet.*Claude Code/ })
+      .click()
+    await expect(first.getByTestId('chat-model-picker')).toContainText('Test Sonnet')
+    await expect
+      .poll(async () => (await page.evaluate(() => window.cerebro.getSettings())).lastAgent)
+      .toEqual({ harness: 'claude', provider: 'configured' })
+    await expect
+      .poll(
+        async () =>
+          (await page.evaluate(() => window.cerebro.getSettings())).agentModelDefaults.claude
+            ?.configured
+      )
+      .toBe(sonnetKey)
+
+    await page.getByTestId('new-content-tab').click()
+    await page.getByTestId('open-chat-tab').click()
+    const remembered = page.locator('[data-pane-kind="chat"]:visible')
+    await expect(remembered.getByTestId('chat-model-picker')).toContainText('Test Sonnet')
+    await expect(remembered.getByTestId('chat-model-picker')).toContainText('Claude Code')
+    await page.screenshot({ path: join(optArtifactsDir, 'agent-model-remembered.png') })
+
+    await page.getByRole('button', { name: 'Settings', exact: true }).click()
+    const claude = page.locator('[data-testid="settings-agent-model"][data-harness="claude"]')
+    await expect(claude).toHaveText('Test Sonnet')
+    await expect(
+      page.locator('[data-testid="settings-agent-model"][data-harness="codex"]')
+    ).toBeVisible()
+    await expect(
+      page.locator('[data-testid="settings-agent-model"][data-harness="pi"]')
+    ).toBeVisible()
+    await page.screenshot({ path: join(optArtifactsDir, 'settings-agent-model-defaults.png') })
+    await claude.click()
+    await page.getByRole('option', { name: 'Test Model', exact: true }).click()
+    await expect(claude).toHaveText('Test Model')
+    await page.getByTestId('settings-refresh-models').click()
+    await expect(claude).toHaveText('Test Model')
+    await page.getByRole('button', { name: 'Back' }).click()
+    await page.getByTestId('new-content-tab').click()
+    await page.getByTestId('open-chat-tab').click()
+    await expect(
+      page.locator('[data-pane-kind="chat"]:visible').getByTestId('chat-model-picker')
+    ).toContainText('Test Model · Claude Code')
+
+    await page.evaluate(
+      ({ sonnetKey }) =>
+        window.cerebro.setSettings({
+          lastAgent: { harness: 'codex', provider: 'configured' },
+          agentModelDefaults: {
+            claude: { configured: sonnetKey },
+            codex: { configured: 'retired-model' }
+          }
+        }),
+      { sonnetKey }
+    )
+    await page.reload()
+    await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
+    await expect(
+      page.locator('[data-pane-kind="chat"]:visible').getByTestId('chat-model-picker')
+    ).toContainText('Second Model · Codex')
+    await expect
+      .poll(async () => {
+        const settings = await page.evaluate(() => window.cerebro.getSettings())
+        return {
+          codex: settings.agentModelDefaults.codex?.configured,
+          claude: settings.agentModelDefaults.claude?.configured,
+          harness: settings.lastAgent?.harness
+        }
+      })
+      .toEqual({ codex: secondCodexKey, claude: sonnetKey, harness: 'codex' })
+    await page.screenshot({ path: join(optArtifactsDir, 'agent-model-fallback.png') })
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
