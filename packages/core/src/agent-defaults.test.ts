@@ -114,6 +114,14 @@ test('an unavailable saved model yields the provider’s available default', () 
   const offline = model('claude', 'configured', 'fable', { available: false, label: 'Fable' })
   const online = model('claude', 'configured', 'sonnet', { label: 'Sonnet' })
   assert.equal(
+    resolveNewAgentModel(
+      [offline, online],
+      { claude: { configured: offline.key } },
+      { harness: 'claude', provider: 'configured' }
+    ),
+    online
+  )
+  assert.equal(
     defaultModelForScope(
       [offline, online],
       { claude: { configured: offline.key } },
@@ -128,6 +136,15 @@ test('an unavailable saved model yields the provider’s available default', () 
     { harness: 'claude', provider: 'configured' }
   )
   assert.equal(repaired.agentModelDefaults.claude?.configured, online.key)
+})
+
+test('a catalog with no available model leaves a new pane unselected', () => {
+  const offline = model('claude', 'configured', 'fable', { available: false, label: 'Fable' })
+  assert.equal(
+    resolveNewAgentModel([offline], {}, { harness: 'claude', provider: 'configured' }),
+    undefined
+  )
+  assert.equal(defaultModelForScope([offline], {}, 'claude', 'configured'), offline)
 })
 
 test('settings persist agent defaults and reject an unknown harness', async () => {

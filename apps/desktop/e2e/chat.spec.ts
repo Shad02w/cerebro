@@ -1376,7 +1376,7 @@ test('new agent panes reuse the last model and settings choose each harness defa
 
     await page.getByRole('button', { name: 'Settings', exact: true }).click()
     const claude = page.locator('[data-testid="settings-agent-model"][data-harness="claude"]')
-    await expect(claude).toHaveText('Test Sonnet')
+    await expect(claude).toHaveText('Test Sonnet 5')
     await expect(
       page.locator('[data-testid="settings-agent-model"][data-harness="codex"]')
     ).toBeVisible()

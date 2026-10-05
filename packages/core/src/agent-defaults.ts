@@ -11,13 +11,13 @@ const availableFirst = (models: readonly AgentModel[]): AgentModel[] => {
   return available.length ? available : [...models]
 }
 
-/** Model a new agent pane should open with. */
+/** Model a new agent pane should open with. Unavailable models stay unselected. */
 export function resolveNewAgentModel(
   models: readonly AgentModel[],
   defaults: AgentModelDefaults,
   lastAgent: LastAgent | null
 ): AgentModel | undefined {
-  const pool = availableFirst(models)
+  const pool = models.filter((model) => model.available)
   if (!pool.length) return undefined
   const pick = (harness: AgentHarness, provider: string): AgentModel | undefined => {
     const scoped = pool.filter((model) => model.harness === harness && model.provider === provider)
