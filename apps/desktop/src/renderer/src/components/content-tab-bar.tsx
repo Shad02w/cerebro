@@ -291,8 +291,12 @@ export function ContentTabBar({
             data-variant="pill"
             className={cn(
               tabsListVariants({ variant: 'pill' }),
+              // The whole list is one stable no-drag block. Electron computes
+              // -webkit-app-region rects natively and can keep stale ones for per-tab
+              // elements that move (dnd-kit transforms, reorder, scroll, resize); a stale
+              // rect turns a tab into window-drag area: grab cursor stuck, no click/drag.
               // ml-* (not pl-*) — pill tabsListVariants sets data-[variant=pill]:p-0
-              'ml-2 h-full w-auto min-w-0 max-w-full justify-start overflow-x-auto rounded-none bg-transparent'
+              'app-no-drag ml-2 h-full w-auto min-w-0 max-w-full justify-start overflow-x-auto rounded-none bg-transparent'
             )}
           >
             {tabs.map((tab) => (
