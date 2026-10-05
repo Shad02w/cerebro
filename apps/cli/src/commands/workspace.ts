@@ -5,6 +5,7 @@ import {
   getWorkspaceLocalPath,
   listProjects,
   removeWorkspace,
+  renameWorkspace,
   setWorkspaceStatus
 } from '../registry'
 import { die, printJson } from '../output'
@@ -14,12 +15,16 @@ Usage: cerebro workspace <command>
 
 Commands:
   list [--project <id>]                  List workspaces, optionally filtered by project id
-  create --project <id> --branch <name> [--from <base>]
+  create --project <id> --branch <name> [--from <base>] [--focus]
                                          Create a worktree for an existing branch, or a new
-                                         branch based on --from
+                                         branch based on --from. Leaves the current workspace
+                                         selected unless --focus is set. The desktop app still
+                                         selects a workspace it creates.
   path <workspace-id>                    Print the local filesystem path for a workspace
   status <workspace-id> [status]         Show or set a workspace row status.
                                          Status: todo, in-progress, ready-to-review, done
+  rename <workspace-id> --name <name>    Set the sidebar label for a workspace
+  rename <workspace-id> --reset          Restore the default directory or branch label
   delete <workspace-id>                  Delete a worktree workspace from disk and unregister it
   remove <workspace-id>                  Unregister a worktree workspace; leave the directory
 
@@ -112,17 +117,57 @@ export async function workspaceCommand(args: string[]): Promise<void> {
     }
 
     try {
-      const workspace = await createWorkspaceFromBranch(
-        projectId,
-        branch,
-        from ? { from } : undefined
-      )
+      const workspace = await createWorkspaceFromBranch(projectId, branch, {
+        ...(from ? { from } : {}),
+        focus: flags.focus != null
+      })
       printJson(workspace)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       // Distinguish conflict (workspace already exists) from other failures.
       const code = msg.toLowerCase().includes('already exists') ? 'conflict' : 'create_failed'
       die(msg, code)
+    }
+    return
+  }
+
+  if (sub === 'rename') {
+    const workspaceId = parseWorkspaceId(rest[0], 'rename')
+    const flags = parseFlags(rest.slice(1))
+    const reset = flags.reset === true
+    const nameFlag = flags.name
+    if (nameFlag === true) die('--name requires a value', 'usage', 2)
+    if (reset && nameFlag) die('Use either --name or --reset.', 'usage', 2)
+    if (!reset && typeof nameFlag !== 'string') {
+      die(
+        '--name <name> or --reset is required.\n\nUsage: cerebro workspace rename <id> --name <name>',
+        'usage',
+        2
+      )
+    }
+    const displayName = reset || typeof nameFlag !== 'string' ? null : nameFlag
+    try {
+      const result = await renameWorkspace(workspaceId, displayName)
+      const workspace = result.projects
+        .flatMap((project) => project.workspaces)
+        .find((item) => item.id === workspaceId)
+      if (!workspace) die('Workspace not found.', 'not_found')
+      printJson(workspace)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      const reported =
+        err && typeof err === 'object' && 'code' in err && typeof err.code === 'string'
+          ? err.code
+          : ''
+      const code =
+        reported === 'not_found' || /not found/i.test(msg)
+          ? 'not_found'
+          : reported === 'usage' || /enter a name|line breaks|characters or fewer/i.test(msg)
+            ? 'usage'
+            : reported === 'unavailable'
+              ? 'unavailable'
+              : 'internal'
+      die(msg, code, code === 'usage' ? 2 : 1)
     }
     return
   }

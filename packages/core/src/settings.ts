@@ -3,10 +3,12 @@ import { existsSync, mkdirSync, statSync } from 'node:fs'
 import { isAbsolute, resolve } from 'node:path'
 import type { AppSettings, AppSettingsPatch, SidebarGroupBy } from './types'
 import {
+  DEFAULT_AGENT_BACKGROUND,
   DEFAULT_TERMINAL_FONT_SIZE,
   MAX_TERMINAL_FONT_SIZE,
   MIN_TERMINAL_FONT_SIZE,
-  TERMINAL_FONT_FAMILY_AUTO
+  TERMINAL_FONT_FAMILY_AUTO,
+  isAgentBackground
 } from './types'
 import { getDb } from './db'
 import { getCerebroHome } from './paths'
@@ -19,6 +21,7 @@ type StoredSettings = {
   terminalTheme?: string
   terminalFontSize?: number
   terminalFontFamily?: string
+  agentBackground?: string
   keybinds?: Record<string, string>
   sidebarGroupBy?: string
 }
@@ -29,6 +32,7 @@ function defaultSettings(): AppSettings {
     terminalTheme: DEFAULT_TERMINAL_THEME,
     terminalFontSize: DEFAULT_TERMINAL_FONT_SIZE,
     terminalFontFamily: TERMINAL_FONT_FAMILY_AUTO,
+    agentBackground: DEFAULT_AGENT_BACKGROUND,
     keybinds: {},
     sidebarGroupBy: 'project'
   }
@@ -164,11 +168,15 @@ function mergeSettings(stored: StoredSettings): AppSettings {
   const terminalTheme = isTerminalThemeId(stored.terminalTheme)
     ? stored.terminalTheme
     : DEFAULT_TERMINAL_THEME
+  const agentBackground = isAgentBackground(stored.agentBackground)
+    ? stored.agentBackground
+    : DEFAULT_AGENT_BACKGROUND
   return {
     defaultCloneDir,
     terminalFontSize,
     terminalFontFamily,
     terminalTheme,
+    agentBackground,
     keybinds,
     sidebarGroupBy
   }
@@ -215,6 +223,11 @@ export function setSettings(patch: AppSettingsPatch): AppSettings {
       throw new Error('Sidebar grouping must be project or status.')
     }
     next.sidebarGroupBy = patch.sidebarGroupBy
+  }
+
+  if (patch.agentBackground !== undefined) {
+    if (!isAgentBackground(patch.agentBackground)) throw new Error('Unknown agent background.')
+    next.agentBackground = patch.agentBackground
   }
 
   writeStored(next)

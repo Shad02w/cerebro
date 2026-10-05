@@ -5,12 +5,12 @@ import { die, printJson } from '../output'
 
 const HELP = `Usage:
   cerebro tab list --workspace <id>
-  cerebro tab create --workspace <id> [--kind terminal|changes|chat]
+  cerebro tab create --workspace <id> [--kind terminal|changes|chat] [--focus]
   cerebro tab focus|close --workspace <id> --tab <id>
   cerebro tab reorder --workspace <id> --tab <id> --index <zero-based-index>
   cerebro pane list --workspace <id> [--tab <id>]
   cerebro pane split --workspace <id> [--tab <id>] [--pane <id>]
-                     [--kind terminal|changes|chat] [--direction auto|right|down]
+                     [--kind terminal|changes|chat] [--direction auto|right|down] [--focus]
   cerebro pane focus|close --workspace <id> --pane <id>
   cerebro pane resize --workspace <id> --tab <id> --split <id> --ratio <0.1-0.9>
 
@@ -19,6 +19,9 @@ Tab and pane commands start the mux automatically. IDs persist across restarts.
   cerebro pane send --workspace <id> --pane <id> --text <text> [--enter]
   cerebro pane restart --workspace <id> --pane <id>
 Creation/splitting accepts --sub-repo <id> for repository scope.
+Creating a tab or splitting a pane leaves the current tab and pane selected.
+Pass --focus to select the new tab or pane. That does not switch workspaces;
+tab focus and pane focus still do. The desktop app still selects content it creates.
 Pane split defaults to the active pane; pane list defaults to the active tab.
 Auto splits use the pane's displayed dimensions (right when wide, down when tall).
 Workspace defaults to CEREBRO_WORKSPACE_ID inside a workspace terminal.
@@ -43,6 +46,7 @@ export async function layoutCommand(target: 'tab' | 'pane', args: string[]): Pro
   }
   const [action, ...rawRest] = args
   let enter = false
+  let focus = false
   const rest = rawRest
   const allowed =
     target === 'tab'
@@ -56,6 +60,7 @@ export async function layoutCommand(target: 'tab' | 'pane', args: string[]): Pro
       strict: true,
       options: {
         enter: { type: 'boolean' },
+        focus: { type: 'boolean' },
         ...Object.fromEntries(
           [
             'workspace',
@@ -74,10 +79,18 @@ export async function layoutCommand(target: 'tab' | 'pane', args: string[]): Pro
         )
       }
     }).values as Record<string, string | undefined>
-    enter = (values as unknown as { enter?: boolean }).enter === true
+    const parsed = values as unknown as { enter?: boolean; focus?: boolean }
+    enter = parsed.enter === true
+    focus = parsed.focus === true
     delete values.enter
+    delete values.focus
     if (enter && (action !== 'send' || target !== 'pane'))
       die('--enter is only valid with pane send.', 'usage', 2)
+    if (
+      focus &&
+      !((target === 'tab' && action === 'create') || (target === 'pane' && action === 'split'))
+    )
+      die('--focus is only valid when creating a tab or splitting a pane.', 'usage', 2)
   } catch (error) {
     die(error instanceof Error ? error.message : String(error), 'usage', 2)
   }
@@ -145,7 +158,10 @@ export async function layoutCommand(target: 'tab' | 'pane', args: string[]): Pro
     ratio: numeric(values.ratio, 'ratio', false),
     toIndex: numeric(values.index, 'index'),
     kind: values.kind as PaneKind | undefined,
-    direction: values.direction as SplitDirection | undefined
+    direction: values.direction as SplitDirection | undefined,
+    ...((target === 'tab' && action === 'create') || (target === 'pane' && action === 'split')
+      ? { focus }
+      : {})
   }
   if (['focus', 'close'].includes(action) && !(target === 'tab' ? command.tabId : command.paneId))
     die(`--${target} is required.`, 'usage', 2)

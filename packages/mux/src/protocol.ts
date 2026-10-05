@@ -127,6 +127,8 @@ export type RequestParams = {
   branch: string
   from?: string
   status?: string
+  focus?: boolean
+  displayName?: string | null
   deleteFiles: boolean
   version: number
   token: string

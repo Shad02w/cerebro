@@ -4,6 +4,7 @@ import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import {
   isWorkspaceStatus,
+  WORKSPACE_NAME_MAX_LENGTH,
   type LinkedRepository,
   type Project,
   type ProjectBranch,
@@ -56,6 +57,7 @@ type WorkspaceRow = {
   branch: string
   local_path: string
   status: string
+  display_name: string | null
   created_at: string
 }
 
@@ -77,6 +79,7 @@ function mapRepository(row: RepositoryRow): LinkedRepository {
 }
 
 function mapWorkspace(row: WorkspaceRow): Workspace {
+  const displayName = row.display_name?.trim()
   return {
     id: row.id,
     projectId: row.project_id,
@@ -85,6 +88,7 @@ function mapWorkspace(row: WorkspaceRow): Workspace {
     branch: row.branch,
     localPath: row.local_path,
     status: isWorkspaceStatus(row.status) ? row.status : 'todo',
+    displayName: displayName ? displayName : null,
     createdAt: row.created_at,
     pullRequest: null
   }
@@ -547,7 +551,7 @@ ORDER BY created_at ASC, id ASC
   const workspaceRows = db
     .prepare(
       `
-SELECT id, project_id, repository_id, kind, branch, local_path, status, created_at
+SELECT id, project_id, repository_id, kind, branch, local_path, status, display_name, created_at
 FROM workspaces
 ORDER BY
   CASE kind WHEN 'root' THEN 0 WHEN 'default' THEN 1 ELSE 2 END ASC,
@@ -781,6 +785,11 @@ export async function createWorkspaceFromBranch(
   branch: string,
   options?: {
     from?: string | null
+    /**
+     * Select the new workspace. Omitted means yes, so desktop creation still focuses it.
+     * The CLI passes false unless the user set --focus.
+     */
+    focus?: boolean
     git?: GitRemoteRunner
     /** Mux operation journal hooks; invoked before Git and within the metadata transaction. */
     onPrepared?: (path: string) => void
@@ -836,7 +845,7 @@ VALUES (?, ?, 'worktree', ?, ?)
       )
       .run(projectId, repository.id, trimmed, dest)
     const workspaceId = toId(insert.lastInsertRowid)
-    setActiveWorkspaceId(workspaceId, db)
+    if (options?.focus !== false) setActiveWorkspaceId(workspaceId, db)
     options?.onCommitted?.(workspaceId)
     db.exec('COMMIT')
 
@@ -874,7 +883,7 @@ export async function removeWorkspace(
   const workspace = db
     .prepare(
       `
-SELECT id, project_id, repository_id, kind, branch, local_path, status, created_at
+SELECT id, project_id, repository_id, kind, branch, local_path, status, display_name, created_at
 FROM workspaces
 WHERE id = ?
       `
@@ -900,6 +909,53 @@ WHERE id = ?
 
   db.prepare('DELETE FROM workspaces WHERE id = ?').run(workspaceId)
   ensureActiveWorkspaceValid(workspace.project_id, db)
+  return listProjects()
+}
+
+function containsControlCharacter(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    if (value.charCodeAt(index) <= 31) return true
+  }
+  return false
+}
+
+/**
+ * Set the sidebar label for a workspace. `null` clears it so the row uses the
+ * default directory name or branch name again.
+ */
+export async function renameWorkspace(
+  workspaceId: number,
+  displayName: string | null
+): Promise<ProjectListResult> {
+  if (!Number.isInteger(workspaceId) || workspaceId <= 0) {
+    throw new Error('Workspace not found.')
+  }
+  if (displayName != null && typeof displayName !== 'string') {
+    throw Object.assign(new Error('Enter a name.'), { code: 'usage' })
+  }
+
+  let stored: string | null = null
+  if (displayName != null) {
+    const trimmed = displayName.trim()
+    if (!trimmed) throw Object.assign(new Error('Enter a name.'), { code: 'usage' })
+    if (containsControlCharacter(trimmed)) {
+      throw Object.assign(new Error('Name cannot include line breaks.'), { code: 'usage' })
+    }
+    if ([...trimmed].length > WORKSPACE_NAME_MAX_LENGTH) {
+      throw Object.assign(
+        new Error(`Name must be ${WORKSPACE_NAME_MAX_LENGTH} characters or fewer.`),
+        { code: 'usage' }
+      )
+    }
+    stored = trimmed
+  }
+
+  const db = getDb()
+  const existing = db.prepare('SELECT id FROM workspaces WHERE id = ?').get(workspaceId) as
+    { id: number } | undefined
+  if (!existing) throw new Error('Workspace not found.')
+
+  db.prepare('UPDATE workspaces SET display_name = ? WHERE id = ?').run(stored, workspaceId)
   return listProjects()
 }
 

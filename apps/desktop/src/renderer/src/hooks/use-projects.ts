@@ -26,6 +26,7 @@ type ProjectsState = {
   createProjectFromDirectory: (directory: string) => Promise<Project>
   selectWorkspace: (workspaceId: number) => Promise<void>
   createWorkspace: (projectId: number, branch: string, from?: string | null) => Promise<Workspace>
+  renameWorkspace: (workspaceId: number, displayName: string | null) => Promise<void>
   removeWorkspace: (workspaceId: number, deleteFiles: boolean) => Promise<void>
   setWorkspaceStatus: (workspaceId: number, status: WorkspaceStatus) => Promise<void>
   removeProject: (projectId: number, deleteFiles: boolean) => Promise<void>
@@ -136,6 +137,11 @@ export function useProjects(): ProjectsState {
     }) => window.cerebro.createWorkspace(projectId, branch, from),
     onSuccess: invalidateProjects
   })
+  const renameWorkspace = useMutation({
+    mutationFn: ({ id, displayName }: { id: number; displayName: string | null }) =>
+      window.cerebro.renameWorkspace(id, displayName),
+    onSuccess: updateList
+  })
   const removeWorkspace = useMutation({
     mutationFn: ({ id, deleteFiles }: { id: number; deleteFiles: boolean }) =>
       window.cerebro.removeWorkspace(id, deleteFiles),
@@ -179,6 +185,9 @@ export function useProjects(): ProjectsState {
       branch: string,
       from?: string | null
     ): Promise<Workspace> => createWorkspace.mutateAsync({ projectId, branch, from }),
+    renameWorkspace: async (id: number, displayName: string | null): Promise<void> => {
+      await renameWorkspace.mutateAsync({ id, displayName })
+    },
     removeWorkspace: async (id: number, deleteFiles: boolean): Promise<void> => {
       await removeWorkspace.mutateAsync({ id, deleteFiles })
     },

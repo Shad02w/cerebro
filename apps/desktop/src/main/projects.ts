@@ -58,11 +58,18 @@ export async function createWorkspaceFromBranch(
     projectId,
     branch,
     from,
+    focus: true,
     provider: true
   })
 }
 export async function setWorkspaceStatus(workspaceId: number, status: string): Promise<Workspace> {
   return muxCall('registry', { action: 'workspace.status', workspaceId, status })
+}
+export async function renameWorkspace(
+  workspaceId: number,
+  displayName: string | null
+): Promise<ProjectListResult> {
+  return muxCall('registry', { action: 'workspace.rename', workspaceId, displayName })
 }
 export async function removeWorkspace(
   workspaceId: number,

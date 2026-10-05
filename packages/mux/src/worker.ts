@@ -9,6 +9,7 @@ import {
   createProjectFromDirectory,
   createProjectFromGitUrl,
   createWorkspaceFromBranch,
+  renameWorkspace,
   removeWorkspace,
   removeProject,
   setActiveWorkspace,
@@ -164,6 +165,7 @@ async function handle(method: string, p: RequestParams): Promise<unknown> {
         case 'workspace.create':
           return createWorkspaceFromBranch(p.projectId, p.branch, {
             from: p.from,
+            focus: p.focus,
             git,
             onPrepared: (path) => {
               getDb()
@@ -176,6 +178,11 @@ async function handle(method: string, p: RequestParams): Promise<unknown> {
                 .run(id, p.operationId)
             }
           })
+        case 'workspace.rename':
+          if (p.displayName !== null && typeof p.displayName !== 'string') {
+            throw Object.assign(new Error('Enter a name.'), { code: 'usage' })
+          }
+          return renameWorkspace(p.workspaceId, p.displayName)
         case 'workspace.remove':
           return removeWorkspace(p.workspaceId, { deleteFiles: p.deleteFiles })
         case 'workspace.status': {

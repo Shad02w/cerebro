@@ -10,6 +10,7 @@ import {
   createProjectFromDirectory,
   createProjectFromGitUrl,
   createWorkspaceFromBranch,
+  renameWorkspace,
   listProjectBranches,
   listWorkspaceRepositories,
   repositoryService,
@@ -182,6 +183,23 @@ export function registerWorkspaceIpc(): void {
       }
       try {
         return await setWorkspaceStatus(workspaceId, status)
+      } catch (error) {
+        throw new Error(errorMessage(error))
+      }
+    }
+  )
+
+  ipcMain.handle(
+    IPC.workspaces.rename,
+    async (_event, workspaceId: unknown, displayName: unknown) => {
+      if (typeof workspaceId !== 'number' || !Number.isInteger(workspaceId)) {
+        throw new Error('Workspace id is required.')
+      }
+      if (typeof displayName !== 'string' && displayName !== null) {
+        throw new Error('Enter a name.')
+      }
+      try {
+        return await renameWorkspace(workspaceId, displayName)
       } catch (error) {
         throw new Error(errorMessage(error))
       }

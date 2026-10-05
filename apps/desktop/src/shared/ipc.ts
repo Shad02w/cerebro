@@ -37,6 +37,7 @@ export const IPC = {
   workspaces: {
     setActive: 'cerebro:workspaces:set-active',
     create: 'cerebro:workspaces:create',
+    rename: 'cerebro:workspaces:rename',
     remove: 'cerebro:workspaces:remove',
     setStatus: 'cerebro:workspaces:set-status',
     listChanges: 'cerebro:workspaces:list-changes',

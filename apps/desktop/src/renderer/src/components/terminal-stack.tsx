@@ -16,7 +16,11 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
 import '@/assets/terminal.css'
-import { DEFAULT_TERMINAL_FONT_SIZE, TERMINAL_FONT_FAMILY_AUTO } from '@shared/types'
+import {
+  DEFAULT_TERMINAL_FONT_SIZE,
+  TERMINAL_FONT_FAMILY_AUTO,
+  type AgentBackground
+} from '@shared/types'
 import { resolveTerminalFontFamily } from '@/lib/terminal-font'
 import { encodeExtendedKey } from '@/lib/terminal-keys'
 import { useKeybindHandler } from '@/keybinds'
@@ -532,6 +536,7 @@ type TerminalStackProps = {
   fontSize: number | null
   themeId: TerminalThemeId | null
   fontFamily: string | null
+  agentBackground: AgentBackground
   onSelectWorkspace: (workspaceId: number) => void
   onStartupReady?: () => void
 }
@@ -544,6 +549,7 @@ export function TerminalStack({
   fontSize,
   fontFamily,
   themeId,
+  agentBackground,
   onSelectWorkspace,
   onStartupReady
 }: TerminalStackProps): React.JSX.Element {
@@ -580,9 +586,9 @@ export function TerminalStack({
   const workspace = activeWorkspaceId == null ? undefined : layout.workspaces[activeWorkspaceId]
   const activeTabId = workspace?.activeTabId ?? null
   const addTab = (workspaceId: number, kind: PaneKind = 'terminal'): void =>
-    command({ target: 'tab', action: 'create', workspaceId, kind })
+    command({ target: 'tab', action: 'create', workspaceId, kind, focus: true })
   const openChanges = (workspaceId: number): void =>
-    command({ target: 'tab', action: 'open-changes', workspaceId })
+    command({ target: 'tab', action: 'open-changes', workspaceId, focus: true })
   useKeybindHandler('newTerminal', () => {
     if (!visible || onStartupReady) return false
     const target = focusedWorkspaceId() ?? activeWorkspaceId
@@ -620,7 +626,8 @@ export function TerminalStack({
       workspaceId: activeWorkspaceId,
       tabId: activeTabId,
       kind,
-      direction
+      direction,
+      focus: true
     })
   }
   return (
@@ -745,7 +752,12 @@ export function TerminalStack({
                           fontFamilyPreference={fontFamily ?? TERMINAL_FONT_FAMILY_AUTO}
                         />
                       ) : pane.kind === 'chat' ? (
-                        <ChatView workspaceId={workspaceId} paneId={pane.id} visible={shown} />
+                        <ChatView
+                          workspaceId={workspaceId}
+                          paneId={pane.id}
+                          visible={shown}
+                          agentBackground={agentBackground}
+                        />
                       ) : pane.kind === 'changes' ? (
                         <ChangesView
                           workspaceId={workspaceId}

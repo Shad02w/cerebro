@@ -1,6 +1,3 @@
-/* Soft highlight back-light behind the agent composer (Aceternity Background Gradient
-   principle: corner radials + twin blurred layers under the opaque shell). Empty/centered
-   dock only. Hue from --sidebar-selected, lifted toward white in srgb for a brighter teal. */
 .chat-composer-dock {
   position: absolute;
   inset-inline: 0;
@@ -26,7 +23,7 @@
   flex-direction: column;
   align-items: center;
   gap: 0.75rem;
-  margin: 0 0 1.5rem;
+  margin: 0 0 3rem;
   max-width: none;
   text-align: center;
   opacity: 1;
@@ -45,8 +42,7 @@
 }
 
 .chat-composer-glow {
-  /* Brighter teal from --sidebar-selected (lift toward white in srgb), then soft alpha.
-     Keeps Cerebro teal hue without muddy near-black washes. */
+  /* Brighter teal from --sidebar-selected (lift toward white in srgb), then soft alpha. */
   --composer-glow-lit: color-mix(in srgb, var(--sidebar-selected) 58%, white);
   --composer-glow-a: color-mix(in srgb, var(--composer-glow-lit) 48%, transparent);
   --composer-glow-b: color-mix(in srgb, var(--composer-glow-lit) 40%, transparent);
@@ -59,9 +55,8 @@
     radial-gradient(circle farthest-side at 0 0, var(--composer-glow-d), transparent);
   position: absolute;
   z-index: 0;
-  /* Match shell footprint; blur expands the soft aura beyond the opaque card. */
   inset: 0;
-  border-radius: 1rem; /* match rounded-2xl */
+  border-radius: 1rem;
   background: transparent;
   opacity: 0;
   transition: opacity 400ms ease;
@@ -69,7 +64,6 @@
   overflow: visible;
 }
 
-/* Wide soft halo — Aceternity blurred twin, light teal for dark UI. */
 .chat-composer-glow::before {
   content: '';
   position: absolute;
@@ -85,7 +79,6 @@
   pointer-events: none;
 }
 
-/* Closer soft rim — same lighter teal radials, gentler opacity. */
 .chat-composer-glow::after {
   content: '';
   position: absolute;
@@ -119,10 +112,20 @@
   }
 }
 
+.chat-stars {
+  opacity: 0;
+  transition: opacity 450ms ease;
+}
+
+.chat-stars[data-visible='true'] {
+  opacity: 1;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .chat-composer-dock,
   .chat-composer-empty,
-  .chat-composer-glow {
+  .chat-composer-glow,
+  .chat-stars {
     transition: none;
   }
 

@@ -1,8 +1,10 @@
-import { Fragment, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowUp, ImagePlus, MessageSquare, Square } from 'lucide-react'
 import type { AgentAccessMode, AgentAnswer, AgentModel, ChatCommand } from '@cerebro/core'
+import { DEFAULT_AGENT_BACKGROUND, type AgentBackground } from '@shared/types'
 import { Button } from '@/components/ui/button'
+import { StarsBackground } from '@/lib/stars-background'
 import { cn } from '@/lib/utils'
 import { ChatItem } from './chat-item'
 import { ChatTurnActions } from './chat-turn-actions'
@@ -20,11 +22,13 @@ import './chat-status.css'
 export function ChatView({
   workspaceId,
   paneId,
-  visible = true
+  visible = true,
+  agentBackground = DEFAULT_AGENT_BACKGROUND
 }: {
   workspaceId: number
   paneId: number
   visible?: boolean
+  agentBackground?: AgentBackground
 }): React.JSX.Element {
   const client = useQueryClient()
   const queryKey = ['chat', workspaceId, paneId]
@@ -253,13 +257,33 @@ export function ChatView({
     }
   }
   const alertText = error ?? session?.error ?? (view.error ? String(view.error) : null)
+  const starsWanted = agentBackground === 'stars' && empty
+  const [starPhase, setStarPhase] = useState<'on' | 'out' | 'off'>('off')
+  if (starsWanted && starPhase !== 'on') setStarPhase('on')
+  else if (!starsWanted && starPhase === 'on') setStarPhase('out')
+  useEffect(() => {
+    if (starPhase !== 'out') return
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const timeout = window.setTimeout(() => setStarPhase('off'), reduce ? 0 : 480)
+    return () => window.clearTimeout(timeout)
+  }, [starPhase])
   return (
     <div
       ref={viewRef}
-      className="chat-scrollbars relative flex h-full min-w-0 flex-col bg-background text-foreground"
+      className="chat-scrollbars relative z-0 flex h-full min-w-0 flex-col bg-background text-foreground"
       data-testid="chat-view"
+      data-agent-background={agentBackground}
       data-loading={loading || undefined}
     >
+      {starPhase !== 'off' ? (
+        <StarsBackground
+          aria-hidden="true"
+          data-testid="chat-stars"
+          data-visible={starPhase === 'on' ? 'true' : 'false'}
+          pointerEvents={false}
+          className="chat-stars pointer-events-none absolute inset-0 -z-10"
+        />
+      ) : null}
       {loading ? (
         <div
           data-testid="chat-loading"
@@ -384,11 +408,13 @@ export function ChatView({
                     Work with Claude Code, Codex, or Pi in this workspace.
                   </p>
                 </div>
-                <div
-                  className="chat-composer-glow"
-                  aria-hidden="true"
-                  data-testid="chat-composer-glow"
-                />
+                {agentBackground === 'glow' ? (
+                  <div
+                    className="chat-composer-glow"
+                    aria-hidden="true"
+                    data-testid="chat-composer-glow"
+                  />
+                ) : null}
                 <form
                   className="chat-composer-shell relative rounded-2xl border bg-background p-2 shadow-lg"
                   data-dragging={dragging || undefined}

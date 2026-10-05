@@ -180,6 +180,7 @@ export async function startServer(): Promise<void> {
         'project.createDirectory',
         'project.create',
         'workspace.create',
+        'workspace.rename',
         'workspace.remove',
         'workspace.status',
         'project.remove'

@@ -71,6 +71,8 @@ export function isWorkspaceStatus(value: unknown): value is WorkspaceStatus {
   return typeof value === 'string' && (WORKSPACE_STATUSES as readonly string[]).includes(value)
 }
 
+export const WORKSPACE_NAME_MAX_LENGTH = 80
+
 export type Workspace = {
   id: number
   projectId: number
@@ -79,6 +81,8 @@ export type Workspace = {
   branch: string
   localPath: string
   status: WorkspaceStatus
+  /** Custom sidebar label. Null uses the directory name or branch name. */
+  displayName: string | null
   createdAt: string
   pullRequest: WorkspacePullRequest | null
   prStatus?: {
@@ -210,12 +214,19 @@ export type FileDiffContents = {
 /** Stored keyboard shortcut overrides keyed by action id (e.g. `closeTab`). */
 export type KeybindOverrides = Partial<Record<string, string>>
 
+/** Empty agent pane background. `stars` is the default. */
+export const AGENT_BACKGROUNDS = ['glow', 'stars', 'off'] as const
+export type AgentBackground = (typeof AGENT_BACKGROUNDS)[number]
+export const DEFAULT_AGENT_BACKGROUND: AgentBackground = 'stars'
+
 export type AppSettings = {
   defaultCloneDir: string
   terminalTheme: TerminalThemeId
   terminalFontSize: number
   /** `'auto'` or a CSS font-family name such as `Cerebro Mono`. */
   terminalFontFamily: string
+  /** Empty agent pane: composer glow, star field, or neither. */
+  agentBackground: AgentBackground
   /** Partial overrides; missing keys use app defaults. */
   keybinds: KeybindOverrides
   /** Sidebar lists workspaces under projects, or under their workflow status. */
@@ -297,6 +308,7 @@ export type CerebroApi = {
   removeProject: (projectId: number, deleteFiles: boolean) => Promise<ProjectListResult>
   setActiveWorkspace: (workspaceId: number) => Promise<ProjectListResult>
   createWorkspace: (projectId: number, branch: string, from?: string | null) => Promise<Workspace>
+  renameWorkspace: (workspaceId: number, displayName: string | null) => Promise<ProjectListResult>
   removeWorkspace: (workspaceId: number, deleteFiles: boolean) => Promise<ProjectListResult>
   setWorkspaceStatus: (workspaceId: number, status: WorkspaceStatus) => Promise<Workspace>
   listProjectBranches: (projectId: number) => Promise<ProjectBranch[]>

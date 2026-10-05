@@ -73,6 +73,9 @@ export function parseWorkspaceStatus(value: unknown): WorkspaceStatus | null {
   return isWorkspaceStatus(normalized) ? normalized : null
 }
 
+/** Sidebar label override. Null keeps the default directory or branch name. */
+export const WORKSPACE_NAME_MAX_LENGTH = 80
+
 export type Workspace = {
   id: number
   projectId: number
@@ -81,6 +84,8 @@ export type Workspace = {
   branch: string
   localPath: string
   status: WorkspaceStatus
+  /** Custom sidebar label. Null uses the directory name or branch name. */
+  displayName: string | null
   createdAt: string
   pullRequest: WorkspacePullRequest | null
 }
@@ -116,11 +121,22 @@ export type ProjectBranch = {
 /** Stored keyboard shortcut overrides keyed by action id (e.g. `closeTab`). */
 export type KeybindOverrides = Partial<Record<string, string>>
 
+/** Empty agent pane background. `stars` is the default. */
+export const AGENT_BACKGROUNDS = ['glow', 'stars', 'off'] as const
+export type AgentBackground = (typeof AGENT_BACKGROUNDS)[number]
+export const DEFAULT_AGENT_BACKGROUND: AgentBackground = 'stars'
+
+export function isAgentBackground(value: unknown): value is AgentBackground {
+  return typeof value === 'string' && (AGENT_BACKGROUNDS as readonly string[]).includes(value)
+}
+
 export type AppSettings = {
   defaultCloneDir: string
   terminalTheme: TerminalThemeId
   terminalFontSize: number
   terminalFontFamily: string
+  /** Empty agent pane: composer glow, star field, or neither. */
+  agentBackground: AgentBackground
   /** Partial overrides; missing keys use app defaults. */
   keybinds: KeybindOverrides
   /** Sidebar lists workspaces under projects, or under their workflow status. */

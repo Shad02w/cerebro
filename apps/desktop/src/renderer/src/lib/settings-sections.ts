@@ -12,7 +12,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   {
     id: 'general',
     label: 'General',
-    description: 'Configure where Cerebro clones new repositories.',
+    description: 'Configure projects and the empty agent pane.',
     icon: Settings
   },
   {
