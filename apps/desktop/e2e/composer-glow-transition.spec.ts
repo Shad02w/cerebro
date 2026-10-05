@@ -68,6 +68,8 @@ test('empty glowing composer centers, then docks after send', async ({ page, ele
     await page.screenshot({ path: join(mediaDir, 'composer-glow-banding-after.png') })
     await page.screenshot({ path: join(mediaDir, 'composer-glow-aceternity-after.png') })
     await page.screenshot({ path: join(mediaDir, 'composer-glow-aceternity-lighter.png') })
+    await page.screenshot({ path: join(mediaDir, 'composer-glow-teal-fresh.png') })
+    await page.screenshot({ path: join(mediaDir, 'composer-glow-teal-lighter-bg.png') })
     await page.screenshot({
       path: join(mediaDir, 'composer-glow-banding-after-crop.png'),
       clip: { x: 380, y: 280, width: 520, height: 320 }
@@ -78,6 +80,28 @@ test('empty glowing composer centers, then docks after send', async ({ page, ele
     })
     await page.screenshot({
       path: join(mediaDir, 'composer-glow-aceternity-lighter-crop.png'),
+      clip: { x: 380, y: 280, width: 520, height: 320 }
+    })
+    await page.screenshot({
+      path: join(mediaDir, 'composer-glow-teal-fresh-crop.png'),
+      clip: { x: 380, y: 280, width: 520, height: 320 }
+    })
+    await page.screenshot({
+      path: join(mediaDir, 'composer-glow-teal-lighter-bg-crop.png'),
+      clip: { x: 380, y: 280, width: 520, height: 320 }
+    })
+    await page.screenshot({
+      path: join(evidence, 'composer-glow-teal-fresh.png')
+    })
+    await page.screenshot({
+      path: join(evidence, 'composer-glow-teal-fresh-crop.png'),
+      clip: { x: 380, y: 280, width: 520, height: 320 }
+    })
+    await page.screenshot({
+      path: join(evidence, 'composer-glow-teal-lighter-bg.png')
+    })
+    await page.screenshot({
+      path: join(evidence, 'composer-glow-teal-lighter-bg-crop.png'),
       clip: { x: 380, y: 280, width: 520, height: 320 }
     })
 
