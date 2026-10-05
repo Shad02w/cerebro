@@ -177,7 +177,7 @@ test('agent composer renders bullets, inline code, a code block, and Add tags', 
       .click()
     await page.getByRole('button', { name: 'Send message', exact: true }).click()
     await expect(dock).toHaveAttribute('data-dock', 'bottom')
-    await expect(glowLayer).toHaveCSS('opacity', '0')
+    await expect(page.getByTestId('chat-composer-glow')).toHaveCount(0)
     const sent = page.getByTestId('chat-user-message').first()
     await expect(sent.locator('li p').first()).toHaveText('Ship the notes')
     await expect(sent.locator('p code')).toHaveText('notes')
