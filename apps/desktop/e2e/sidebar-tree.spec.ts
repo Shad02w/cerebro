@@ -240,3 +240,143 @@ test('sidebar keeps keyboard selection and disclosures usable in both themes', a
     await rm(sourcesRoot, { recursive: true, force: true })
   }
 })
+
+test('renames workspace rows from the menu and can reset to the default label', async ({
+  page,
+  electronApp
+}) => {
+  const sourcesRoot = await mkdtemp(join(tmpdir(), 'cerebro-rename-workspace-'))
+  const alpha = join(sourcesRoot, 'alpha')
+  const suite = join(sourcesRoot, 'suite')
+  await mkdir('/opt/cursor/artifacts', { recursive: true })
+
+  try {
+    await initGitRepo(alpha, 'main', 'alpha')
+    await initGitRepo(join(suite, 'frontend'), 'main', 'frontend')
+    await initGitRepo(join(suite, 'backend'), 'develop', 'backend')
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setSize(1400, 900)
+    })
+    await addDirectoryViaUi(page, electronApp, alpha)
+    await expect(page.getByTestId(/project-row-/).filter({ hasText: 'alpha' })).toBeVisible({
+      timeout: 30_000
+    })
+    await addDirectoryViaUi(page, electronApp, suite)
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+
+    const listed = await page.evaluate(async () => window.cerebro.listProjects())
+    const alphaProject = listed.projects.find((item) => item.name === 'alpha')
+    const suiteProject = listed.projects.find((item) => item.name === 'suite')
+    const branchWorkspace = alphaProject?.workspaces[0]
+    const frontend = suiteProject?.workspaces.find((workspace) =>
+      workspace.localPath.endsWith('/frontend')
+    )
+    const rootWorkspace = suiteProject?.workspaces.find((workspace) => workspace.kind === 'root')
+    expect(branchWorkspace?.id).toBeTruthy()
+    expect(frontend?.id).toBeTruthy()
+    expect(rootWorkspace?.id).toBeTruthy()
+
+    await expandProject(page, 'alpha')
+    const branchRow = page.getByTestId(`workspace-row-${branchWorkspace!.id}`)
+    await expect(branchRow).toContainText('main')
+    await branchRow.scrollIntoViewIfNeeded()
+    await branchRow.hover()
+    await page.getByTestId(`workspace-menu-${branchWorkspace!.id}`).click()
+    await page.getByTestId(`workspace-rename-${branchWorkspace!.id}`).click()
+
+    const dialog = page.getByRole('dialog')
+    await expect(dialog.getByRole('heading', { name: 'Rename workspace' })).toBeVisible()
+    const input = page.getByTestId('workspace-rename-input')
+    await expect(input).toHaveValue('main')
+    await expect(page.getByTestId('workspace-rename-default')).toHaveText('Default: main')
+    await expect(page.getByTestId('workspace-rename-reset')).toBeVisible()
+    await input.fill('')
+    await page.getByTestId('workspace-rename-submit').click()
+    await expect(page.getByTestId('workspace-rename-error')).toHaveText('Enter a name.')
+    await input.fill('Alpha checkout')
+    await page.screenshot({
+      path: '/opt/cursor/artifacts/workspace-rename-dialog.png',
+      animations: 'disabled'
+    })
+    await page.getByTestId('workspace-rename-submit').click()
+    await expect(dialog).toHaveCount(0)
+    await expect(branchRow).toContainText('Alpha checkout')
+    await expect
+      .poll(async () => {
+        const next = await page.evaluate(async () => window.cerebro.listProjects())
+        return next.projects
+          .flatMap((project) => project.workspaces)
+          .find((workspace) => workspace.id === branchWorkspace!.id)?.displayName
+      })
+      .toBe('Alpha checkout')
+    await page.screenshot({
+      path: '/opt/cursor/artifacts/workspace-rename-named.png',
+      animations: 'disabled'
+    })
+
+    await branchRow.hover()
+    await page.getByTestId(`workspace-menu-${branchWorkspace!.id}`).click()
+    await page.getByTestId(`workspace-rename-${branchWorkspace!.id}`).click()
+    await expect(input).toHaveValue('Alpha checkout')
+    await page.screenshot({
+      path: '/opt/cursor/artifacts/workspace-rename-reset.png',
+      animations: 'disabled'
+    })
+    await page.getByTestId('workspace-rename-reset').click()
+    await expect(dialog).toHaveCount(0)
+    await expect(branchRow).toContainText('main')
+    await expect(branchRow).not.toContainText('Alpha checkout')
+
+    await expandProject(page, 'suite')
+    const repoName = page.getByTestId(`workspace-repo-${frontend!.id}`)
+    await expect(repoName).toHaveText('frontend')
+    const repoRow = page.getByTestId(`workspace-row-${frontend!.id}`)
+    await repoRow.scrollIntoViewIfNeeded()
+    await repoRow.hover()
+    await page.getByTestId(`workspace-menu-${frontend!.id}`).click()
+    await page.getByTestId(`workspace-rename-${frontend!.id}`).click()
+    await expect(input).toHaveValue('frontend')
+    await expect(page.getByTestId('workspace-rename-default')).toHaveText('Default: frontend')
+    await input.fill('Web client')
+    await page.getByTestId('workspace-rename-submit').click()
+    await expect(dialog).toHaveCount(0)
+    await expect(repoName).toHaveText('Web client')
+    await expect(page.getByTestId(`workspace-branch-${frontend!.id}`)).toContainText('main')
+    await page.screenshot({
+      path: '/opt/cursor/artifacts/workspace-rename-directory.png',
+      animations: 'disabled'
+    })
+
+    await repoRow.hover()
+    await page.getByTestId(`workspace-menu-${frontend!.id}`).click()
+    await page.getByTestId(`workspace-rename-${frontend!.id}`).click()
+    await page.getByTestId('workspace-rename-reset').click()
+    await expect(repoName).toHaveText('frontend')
+
+    const rootButton = page.getByTestId(`project-root-${suiteProject!.id}`)
+    await expect(rootButton).toContainText('root')
+    await rootButton.scrollIntoViewIfNeeded()
+    await rootButton.hover()
+    await page.getByTestId(`root-menu-${suiteProject!.id}`).click()
+    await page.getByTestId(`workspace-rename-${rootWorkspace!.id}`).click()
+    await expect(input).toHaveValue('root')
+    await input.fill('Suite root')
+    await page.getByTestId('workspace-rename-submit').click()
+    await expect(rootButton).toContainText('Suite root')
+    await rootButton.hover()
+    await page.getByTestId(`root-menu-${suiteProject!.id}`).click()
+    await page.getByTestId(`workspace-rename-${rootWorkspace!.id}`).click()
+    await page.getByTestId('workspace-rename-reset').click()
+    await expect(rootButton).toContainText('root')
+    await expect(rootButton).not.toContainText('Suite root')
+  } finally {
+    await rm(sourcesRoot, { recursive: true, force: true })
+  }
+})
+
+async function expandProject(page: Page, name: string): Promise<void> {
+  const row = page.getByTestId(/project-row-/).filter({ hasText: name })
+  await expect(row).toBeVisible()
+  if ((await row.getAttribute('aria-expanded')) !== 'true') await row.click()
+  await expect(row).toHaveAttribute('aria-expanded', 'true')
+}

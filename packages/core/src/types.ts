@@ -52,6 +52,9 @@ export type WorkspacePullRequest = {
 
 export type WorkspaceKind = 'default' | 'worktree' | 'root'
 
+/** Sidebar label override. Null keeps the default directory or branch name. */
+export const WORKSPACE_NAME_MAX_LENGTH = 80
+
 export type Workspace = {
   id: number
   projectId: number
@@ -59,6 +62,8 @@ export type Workspace = {
   kind: WorkspaceKind
   branch: string
   localPath: string
+  /** Custom sidebar label. Null uses the directory name or branch name. */
+  displayName: string | null
   createdAt: string
   pullRequest: WorkspacePullRequest | null
 }

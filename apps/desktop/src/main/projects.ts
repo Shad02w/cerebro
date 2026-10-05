@@ -62,6 +62,12 @@ export async function createWorkspaceFromBranch(
     provider: true
   })
 }
+export async function renameWorkspace(
+  workspaceId: number,
+  displayName: string | null
+): Promise<ProjectListResult> {
+  return muxCall('registry', { action: 'workspace.rename', workspaceId, displayName })
+}
 export async function removeWorkspace(
   workspaceId: number,
   deleteFiles: boolean

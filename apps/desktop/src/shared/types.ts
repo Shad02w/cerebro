@@ -60,6 +60,8 @@ export type WorkspacePullRequest = {
 
 export type WorkspaceKind = 'default' | 'worktree' | 'root'
 
+export const WORKSPACE_NAME_MAX_LENGTH = 80
+
 export type Workspace = {
   id: number
   projectId: number
@@ -67,6 +69,8 @@ export type Workspace = {
   kind: WorkspaceKind
   branch: string
   localPath: string
+  /** Custom sidebar label. Null uses the directory name or branch name. */
+  displayName: string | null
   createdAt: string
   pullRequest: WorkspacePullRequest | null
   prStatus?: {
@@ -290,6 +294,7 @@ export type CerebroApi = {
   removeProject: (projectId: number, deleteFiles: boolean) => Promise<ProjectListResult>
   setActiveWorkspace: (workspaceId: number) => Promise<ProjectListResult>
   createWorkspace: (projectId: number, branch: string, from?: string | null) => Promise<Workspace>
+  renameWorkspace: (workspaceId: number, displayName: string | null) => Promise<ProjectListResult>
   removeWorkspace: (workspaceId: number, deleteFiles: boolean) => Promise<ProjectListResult>
   listProjectBranches: (projectId: number) => Promise<ProjectBranch[]>
   listWorkspaceChanges: (
