@@ -295,7 +295,10 @@ test('marks workspace rows and groups the sidebar by project or status', async (
     await expect(group('done').getByTestId(`workspace-row-${storefront!.id}`)).toHaveCount(0)
     await expect(group('todo').getByTestId(/workspace-row-/)).toHaveCount(0)
 
-    await page.getByTestId('sidebar-heading').hover()
+    await page.evaluate(() => {
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+    })
+    await page.mouse.move(420, 480)
     await page.locator('[data-slot="sidebar"]').screenshot({
       path: join(artifacts, 'group-by-status.png'),
       animations: 'disabled'
