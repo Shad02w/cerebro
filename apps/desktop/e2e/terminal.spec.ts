@@ -608,10 +608,10 @@ test('content tabs use pill selection and reveal close on hover or keyboard focu
       }
       return {
         tabOffset: firstTab.getBoundingClientRect().left - bar.getBoundingClientRect().left,
-        listPaddingLeft: getComputedStyle(tabsList).paddingLeft
+        listMarginLeft: getComputedStyle(tabsList).marginLeft
       }
     })
-    expect(leftGap.listPaddingLeft).toBe('8px')
+    expect(leftGap.listMarginLeft).toBe('8px')
     expect(leftGap.tabOffset).toBeGreaterThanOrEqual(8)
 
     await mkdir(contentTabsMediaDir, { recursive: true })
