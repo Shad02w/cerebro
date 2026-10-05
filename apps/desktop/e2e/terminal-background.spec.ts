@@ -28,7 +28,7 @@ for (const renderer of ['auto', 'dom'] as const) {
         })
       }
       await page.reload()
-      await page.getByTestId('new-terminal-tab').click()
+      await page.getByTestId('new-content-tab').click()
       await page.getByTestId('open-terminal-tab').click()
       const host = page.locator('.terminal-host')
       const screen = host.locator('.xterm-screen')

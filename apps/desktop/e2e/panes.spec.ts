@@ -48,7 +48,7 @@ async function addPane(
   direction: 'auto' | 'right' | 'down',
   kind: 'terminal' | 'changes'
 ): Promise<void> {
-  await page.getByTestId('new-terminal-tab').click()
+  await page.getByTestId('new-content-tab').click()
   await page.getByTestId(`pane-menu-${direction}`).hover()
   await page.getByTestId(`add-pane-${direction}-${kind}`).click()
   await expect(page.getByTestId('add-tab-menu')).toHaveCount(0)
@@ -84,7 +84,7 @@ test('UI adds mixed BSP panes, preserves terminals, resizes and collapses splits
     const listed = await page.evaluate(() => window.cerebro.listProjects())
     const workspaceId = listed.projects[0].workspaces[0].id
     await selectWorkspace(page, workspaceId)
-    await page.getByTestId('new-terminal-tab').click()
+    await page.getByTestId('new-content-tab').click()
     await page.getByTestId('open-terminal-tab').click()
     await expect(visiblePanes(page)).toHaveCount(1)
     const first = Number(await visiblePanes(page).first().getAttribute('data-pane-id'))
@@ -231,7 +231,7 @@ test('UI adds mixed BSP panes, preserves terminals, resizes and collapses splits
     ).toHaveCount(0)
     await expect(pane(page, first).getByTestId('pane-border')).toHaveCSS('box-shadow', 'none')
     await page.screenshot({ path: testInfo.outputPath('single-pane.png') })
-    await page.getByTestId('terminal-tab-close').click()
+    await page.getByTestId('content-tab-close').click()
     await expect(visiblePanes(page)).toHaveCount(0)
     await expect(page.getByRole('tab')).toHaveCount(0)
   } finally {
@@ -253,6 +253,9 @@ test('CLI and Electron share pane IDs, focus, BSP ratios and close behavior', as
     const ws = String(workspaceId)
     const tab: WorkspaceTab = await cli<WorkspaceTab>(home, 'tab', 'create', '--workspace', ws)
     await expect(pane(page, tab.activePaneId).locator('.xterm')).toBeVisible()
+    await expect(page.getByTestId('content-tab-bar')).toHaveAttribute('data-variant', 'pill')
+    await expect(page.getByTestId('terminal-tab')).toHaveAttribute('data-variant', 'pill')
+    await expect(page.getByTestId('terminal-tab')).toHaveAttribute('data-state', 'active')
     const originalSession = await cli<{ sessionId: string }>(
       home,
       'pane',

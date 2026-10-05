@@ -59,7 +59,7 @@ async function selectDefaultWorkspace(page: Page, projectName: string): Promise<
 async function openAddTabMenu(page: Page): Promise<void> {
   const menu = page.getByTestId('add-tab-menu')
   if (await menu.isVisible()) return
-  await page.getByTestId('new-terminal-tab').click()
+  await page.getByTestId('new-content-tab').click()
   await expect(menu).toBeVisible()
 }
 
@@ -404,7 +404,7 @@ test('shows working-tree diffs in a Changes tab with a right-hand file list', as
     await writeFile(join(repo, 'zzz.ts'), 'export const lastFile = true\n')
     await addDirectoryViaUi(page, electronApp, repo)
     await selectDefaultWorkspace(page, 'changed-alpha')
-    await expect(page.getByTestId('terminal-tab-bar')).toBeVisible()
+    await expect(page.getByTestId('content-tab-bar')).toBeVisible()
 
     await openChanges(page)
     const pane = activeChanges(page)
@@ -801,7 +801,7 @@ test('keeps terminals when opening and closing a Changes tab', async ({ page, el
     await addDirectoryViaUi(page, electronApp, repo)
     await selectDefaultWorkspace(page, 'changed-tabs')
 
-    await page.getByTestId('new-terminal-tab').click()
+    await page.getByTestId('new-content-tab').click()
     await expect(page.getByTestId('add-tab-menu')).toBeVisible()
     await expect(page.getByTestId('open-terminal-tab')).toBeVisible()
     await expect(page.getByTestId('open-changes-tab')).toBeVisible()

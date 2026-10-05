@@ -47,7 +47,7 @@ async function selectWorkspaceRow(page: Page, name: string): Promise<void> {
 async function openAddTabMenu(page: Page): Promise<void> {
   const menu = page.getByTestId('add-tab-menu')
   if (await menu.isVisible()) return
-  await page.getByTestId('new-terminal-tab').click()
+  await page.getByTestId('new-content-tab').click()
   await expect(menu).toBeVisible()
 }
 
@@ -65,7 +65,7 @@ async function clickOpenChanges(page: Page): Promise<void> {
 }
 
 function contentTabs(page: Page): Locator {
-  return page.locator('[data-testid="terminal-tab-bar"] [role="tab"]')
+  return page.locator('[data-testid="content-tab-bar"] [role="tab"]')
 }
 
 async function contentTabLabels(page: Page): Promise<string[]> {
@@ -88,7 +88,7 @@ async function dragTabTo(
   expect(to).toBeTruthy()
 
   const swapProbe = page.evaluate(() => {
-    const bar = document.querySelector('[data-testid="terminal-tab-bar"]')
+    const bar = document.querySelector('[data-testid="content-tab-bar"]')
     if (!bar) {
       return Promise.resolve({
         seenTransform: false,
@@ -104,7 +104,7 @@ async function dragTabTo(
         reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches
       }
       const observe = (): void => {
-        for (const el of bar.querySelectorAll('[role="tab"]')) {
+        for (const el of bar.querySelectorAll('[data-testid$="-tab"]')) {
           try {
             if (Math.abs(new DOMMatrix(getComputedStyle(el).transform).m41) > 0.5) {
               seen.seenTransform = true
@@ -138,7 +138,7 @@ async function dragTabTo(
   }
   await expect
     .poll(async () =>
-      contentTabs(page).evaluateAll((tabs) =>
+      page.locator('[data-testid="content-tab-bar"] [data-testid$="-tab"]').evaluateAll((tabs) =>
         tabs.every((tab) => {
           const transform = getComputedStyle(tab).transform
           return (
@@ -247,7 +247,7 @@ test('does not spawn a terminal until New terminal is clicked; project row only 
 
     const listedAfterCreate = await page.evaluate(async () => window.cerebro.listProjects())
     expect(listedAfterCreate.activeWorkspaceId).toBeNull()
-    await expect(page.getByTestId('terminal-tab-bar')).toHaveCount(0)
+    await expect(page.getByTestId('content-tab-bar')).toHaveCount(0)
     await expect(page.getByTestId('brain-mark')).toBeVisible()
     await expect(page.locator('[data-terminal-workspace-id]')).toHaveCount(0)
 
@@ -257,7 +257,7 @@ test('does not spawn a terminal until New terminal is clicked; project row only 
       .filter({ hasText: 'term-alpha' })
       .click()
     await expect(sidebar.getByTestId(/workspace-row-/).filter({ hasText: 'main' })).toBeHidden()
-    await expect(page.getByTestId('terminal-tab-bar')).toHaveCount(0)
+    await expect(page.getByTestId('content-tab-bar')).toHaveCount(0)
 
     await page
       .getByTestId(/project-row-/)
@@ -272,8 +272,8 @@ test('does not spawn a terminal until New terminal is clicked; project row only 
     })
     expect(workspaceAId).not.toBeNull()
 
-    await expect(page.getByTestId('terminal-tab-bar')).toBeVisible()
-    await expect(page.getByTestId('new-terminal-tab')).toBeVisible()
+    await expect(page.getByTestId('content-tab-bar')).toBeVisible()
+    await expect(page.getByTestId('new-content-tab')).toBeVisible()
     await expect(page.getByTestId('terminal-tab')).toHaveCount(0)
     await expect(page.locator('[data-terminal-workspace-id]')).toHaveCount(0)
 
@@ -313,7 +313,7 @@ test('does not spawn a terminal until New terminal is clicked; project row only 
     // Adding another project must not steal focus or spawn a second tab strip.
     const listedAfterSecond = await page.evaluate(async () => window.cerebro.listProjects())
     expect(listedAfterSecond.activeWorkspaceId).toBe(workspaceAId)
-    await expect(page.getByTestId('terminal-tab-bar')).toHaveCount(1)
+    await expect(page.getByTestId('content-tab-bar')).toHaveCount(1)
     await expect(
       page.locator(`[data-terminal-workspace-id="${workspaceAId}"][data-terminal-active="true"]`)
     ).toHaveCount(1)
@@ -364,7 +364,7 @@ test('does not spawn a terminal until New terminal is clicked; project row only 
     const chrome = await page.evaluate(() => {
       const overlay = document.querySelector('[data-testid="window-drag-overlay"]')
       const stack = document.querySelector('[data-testid="terminal-stack"]')
-      const tabBar = document.querySelector('[data-testid="terminal-tab-bar"]')
+      const tabBar = document.querySelector('[data-testid="content-tab-bar"]')
       const sessions = document.querySelector('[data-testid="terminal-sessions"]')
       const sidebarEl = document.querySelector('[data-slot="sidebar"]')
       const host = document.querySelector(
@@ -466,7 +466,7 @@ test('supports multiple terminal tabs; shell exit retains output and can restart
   try {
     await initGitRepo(source, 'main', 'tabs-terminal')
     await addProjectViaUi(page, `file://${source}`, 'term-tabs')
-    await expect(page.getByTestId('terminal-tab-bar')).toHaveCount(0)
+    await expect(page.getByTestId('content-tab-bar')).toHaveCount(0)
 
     await selectWorkspaceRow(page, 'main')
 
@@ -476,7 +476,7 @@ test('supports multiple terminal tabs; shell exit retains output and can restart
     })
     expect(workspaceId).not.toBeNull()
 
-    await expect(page.getByTestId('terminal-tab-bar')).toBeVisible()
+    await expect(page.getByTestId('content-tab-bar')).toBeVisible()
     await expect(page.getByTestId('terminal-tab')).toHaveCount(0)
     await expect(page.locator('[data-terminal-workspace-id]')).toHaveCount(0)
 
@@ -525,7 +525,7 @@ test('supports multiple terminal tabs; shell exit retains output and can restart
     await page
       .getByTestId('terminal-tab')
       .filter({ hasText: 'Terminal 2' })
-      .getByTestId('terminal-tab-close')
+      .getByTestId('content-tab-close')
       .click()
     await expect(page.getByTestId('terminal-tab')).toHaveCount(1)
     await expect(page.getByTestId('terminal-tab').filter({ hasText: 'Terminal 1' })).toBeVisible()
@@ -549,15 +549,15 @@ test('supports multiple terminal tabs; shell exit retains output and can restart
     await expect(page.getByText('Shell exited', { exact: true })).toBeVisible()
     await page
       .getByTestId('terminal-tab')
-      .filter({ has: page.getByTestId('terminal-tab-close') })
+      .filter({ has: page.getByTestId('content-tab-close') })
       .last()
-      .getByTestId('terminal-tab-close')
+      .getByTestId('content-tab-close')
       .click()
     await expect(page.getByTestId('terminal-tab')).toHaveCount(1)
-    await page.getByTestId('terminal-tab-close').click()
+    await page.getByTestId('content-tab-close').click()
     await expect(page.getByTestId('terminal-tab')).toHaveCount(0)
-    await expect(page.getByTestId('terminal-tab-bar')).toBeVisible()
-    await expect(page.getByTestId('new-terminal-tab')).toBeVisible()
+    await expect(page.getByTestId('content-tab-bar')).toBeVisible()
+    await expect(page.getByTestId('new-content-tab')).toBeVisible()
 
     await clickNewTerminalMenu(page)
     await expect(page.getByTestId('terminal-tab')).toHaveCount(1)
@@ -565,6 +565,80 @@ test('supports multiple terminal tabs; shell exit retains output and can restart
     await expect(page.locator(`[data-terminal-workspace-id="${workspaceId}"] .xterm`)).toHaveCount(
       1
     )
+  } finally {
+    await rm(sourcesRoot, { recursive: true, force: true })
+  }
+})
+
+test('content tabs use pill selection and reveal close on hover or keyboard focus', async ({
+  page
+}) => {
+  const sourcesRoot = await mkdtemp(join(tmpdir(), 'cerebro-terminal-pill-tabs-e2e-'))
+  const source = join(sourcesRoot, 'pill-tabs')
+
+  try {
+    await initGitRepo(source, 'main', 'pill-tabs')
+    await addProjectViaUi(page, `file://${source}`, 'pill-tabs')
+    await selectWorkspaceRow(page, 'main')
+
+    await openNewTerminal(page)
+    await clickNewTerminalMenu(page)
+    await expect(page.getByTestId('terminal-tab')).toHaveCount(2)
+    await waitForActiveTerminal(page)
+
+    const tabBar = page.getByTestId('content-tab-bar')
+    await expect(tabBar).toHaveAttribute('data-variant', 'pill')
+    await expect(tabBar).toHaveAttribute('role', 'tablist')
+
+    const active = page.getByTestId('terminal-tab').filter({ hasText: 'Terminal 2' })
+    const inactive = page.getByTestId('terminal-tab').filter({ hasText: 'Terminal 1' })
+    await expect(active).toHaveAttribute('data-active', 'true')
+    await expect(active).toHaveAttribute('data-state', 'active')
+    await expect(active).toHaveAttribute('data-variant', 'pill')
+    await expect(inactive).toHaveAttribute('data-state', 'inactive')
+
+    const activeStyles = await active.locator('[data-slot="content-tab-pill"]').evaluate((el) => {
+      const style = getComputedStyle(el)
+      return {
+        borderRadius: style.borderRadius,
+        background: style.backgroundColor,
+        borderBottomColor: style.borderBottomColor
+      }
+    })
+    const inactiveStyles = await inactive
+      .locator('[data-slot="content-tab-pill"]')
+      .evaluate((el) => {
+        const style = getComputedStyle(el)
+        return {
+          background: style.backgroundColor,
+          borderBottomColor: style.borderBottomColor
+        }
+      })
+    expect(Number.parseFloat(activeStyles.borderRadius)).toBeGreaterThan(0)
+    expect(activeStyles.background).not.toBe('rgba(0, 0, 0, 0)')
+    expect(activeStyles.background).not.toBe(inactiveStyles.background)
+    expect(activeStyles.borderBottomColor).toMatch(/rgba?\(0,\s*0,\s*0,\s*0\)|transparent/)
+    expect(inactiveStyles.background).toBe('rgba(0, 0, 0, 0)')
+
+    await expect(active.locator('svg').first()).toBeVisible()
+    await expect(inactive.locator('svg').first()).toBeVisible()
+
+    const close = inactive.getByTestId('content-tab-close')
+    await expect(close).toHaveAttribute('aria-label', /Close Terminal 1/)
+    await page.mouse.move(20, 400)
+    await expect(close).toHaveCSS('opacity', '0')
+    await inactive.getByRole('tab').hover()
+    await expect(close).toHaveCSS('opacity', '1')
+    await page.mouse.move(20, 400)
+    await expect(close).toHaveCSS('opacity', '0')
+
+    await inactive.getByRole('tab').focus()
+    await expect(inactive.getByRole('tab')).toBeFocused()
+    await expect(close).toHaveCSS('opacity', '1')
+    await page.keyboard.press('Tab')
+    await expect(close).toBeFocused()
+    await expect(close).toHaveCSS('opacity', '1')
+    await expect(close).toHaveCSS('outline-style', 'solid')
   } finally {
     await rm(sourcesRoot, { recursive: true, force: true })
   }
@@ -594,13 +668,13 @@ test('does not spawn a terminal for a multi-root project until New terminal is c
 
     const listed = await page.evaluate(async () => window.cerebro.listProjects())
     expect(listed.activeWorkspaceId).toBeNull()
-    await expect(page.getByTestId('terminal-tab-bar')).toHaveCount(0)
+    await expect(page.getByTestId('content-tab-bar')).toHaveCount(0)
     await expect(page.getByTestId('brain-mark')).toBeVisible()
     await expect(page.locator('[data-terminal-workspace-id]')).toHaveCount(0)
 
     await projectRow.click()
     await expect(page.getByTestId(/workspace-row-/).filter({ hasText: 'frontend' })).toBeHidden()
-    await expect(page.getByTestId('terminal-tab-bar')).toHaveCount(0)
+    await expect(page.getByTestId('content-tab-bar')).toHaveCount(0)
 
     await projectRow.click()
     const rootRow = page.getByTestId(/project-root-/)
@@ -628,7 +702,7 @@ test('does not spawn a terminal for a multi-root project until New terminal is c
     await expect(
       page.getByTestId(/workspace-row-/).filter({ hasText: 'frontend' })
     ).toHaveAttribute('data-active', 'false')
-    await expect(page.getByTestId('terminal-tab-bar')).toBeVisible()
+    await expect(page.getByTestId('content-tab-bar')).toBeVisible()
     await expect(page.getByTestId('terminal-tab')).toHaveCount(0)
     await expect(page.locator('[data-terminal-workspace-id]')).toHaveCount(0)
 
@@ -669,7 +743,7 @@ test('does not spawn a terminal for a multi-root project until New terminal is c
     await expect(
       page.getByTestId(/workspace-row-/).filter({ hasText: 'frontend' })
     ).toHaveAttribute('data-active', 'true')
-    await expect(page.getByTestId('terminal-tab-bar')).toBeVisible()
+    await expect(page.getByTestId('content-tab-bar')).toBeVisible()
     await expect(page.getByTestId('terminal-tab')).toHaveCount(0)
     await expect(page.locator(`[data-terminal-workspace-id="${frontendId}"]`)).toHaveCount(0)
     await expect(
@@ -731,7 +805,7 @@ test('closes the active terminal tab with Mod+W and shows the shortcut on the cl
     const closeButton = page
       .getByTestId('terminal-tab')
       .filter({ hasText: 'Terminal 2' })
-      .getByTestId('terminal-tab-close')
+      .getByTestId('content-tab-close')
     await closeButton.hover()
     const tooltip = page.getByRole('tooltip')
     await expect(tooltip).toBeVisible()
@@ -749,7 +823,7 @@ test('closes the active terminal tab with Mod+W and shows the shortcut on the cl
 
     await page.keyboard.press(closeChord)
     await expect(page.getByTestId('terminal-tab')).toHaveCount(0)
-    await expect(page.getByTestId('terminal-tab-bar')).toBeVisible()
+    await expect(page.getByTestId('content-tab-bar')).toBeVisible()
     expect(electronApp.windows().length).toBe(1)
 
     // Allow the post-tab-close native-close guard to expire.
@@ -782,7 +856,7 @@ test('opens a terminal with Mod+T when a default-branch workspace row is focused
     await expect(workspaceRow).toHaveAttribute('data-workspace-role', 'branch')
 
     await page.keyboard.press(newTerminalChord())
-    await expect(page.getByTestId('terminal-tab-bar')).toHaveCount(0)
+    await expect(page.getByTestId('content-tab-bar')).toHaveCount(0)
     await expect(page.locator('[data-terminal-workspace-id]')).toHaveCount(0)
 
     await sidebar
@@ -790,7 +864,7 @@ test('opens a terminal with Mod+T when a default-branch workspace row is focused
       .filter({ hasText: 'term-modt' })
       .focus()
     await page.keyboard.press(newTerminalChord())
-    await expect(page.getByTestId('terminal-tab-bar')).toHaveCount(0)
+    await expect(page.getByTestId('content-tab-bar')).toHaveCount(0)
 
     await workspaceRow.focus()
     await openTerminalWithKeybind(page)
@@ -807,7 +881,7 @@ test('opens a terminal with Mod+T when a default-branch workspace row is focused
     ).toBeVisible()
     await expect(page.getByTestId('terminal-tab')).toHaveCount(1)
 
-    await page.getByTestId('new-terminal-tab').click()
+    await page.getByTestId('new-content-tab').click()
     const terminalItem = page.getByTestId('open-terminal-tab')
     await expect(terminalItem).toBeVisible()
     await expect(terminalItem.getByTestId('shortcut-kbd')).toHaveAttribute('data-hotkey', 'Mod+T')
@@ -901,7 +975,7 @@ test('keeps the sidebar trigger visible above the tab bar when collapsed', async
     await initGitRepo(source, 'main', 'collapse-terminal')
     await addProjectViaUi(page, `file://${source}`, 'term-collapse')
     await selectWorkspaceRow(page, 'main')
-    await expect(page.getByTestId('terminal-tab-bar')).toBeVisible()
+    await expect(page.getByTestId('content-tab-bar')).toBeVisible()
     await openNewTerminal(page)
     await expect(page.getByTestId('terminal-tab').filter({ hasText: 'Terminal 1' })).toBeVisible()
 
@@ -928,7 +1002,7 @@ test('keeps the sidebar trigger visible above the tab bar when collapsed', async
     await expect(trigger).toBeVisible()
     await expect
       .poll(async () => {
-        const box = await page.getByTestId('terminal-tab-bar').boundingBox()
+        const box = await page.getByTestId('content-tab-bar').boundingBox()
         return box?.x ?? -1
       })
       .toBeLessThanOrEqual(1)
@@ -940,9 +1014,9 @@ test('keeps the sidebar trigger visible above the tab bar when collapsed', async
       }
       const triggerEl = document.querySelector('[data-slot="sidebar-trigger"]')
       const triggerHost = document.querySelector('[data-testid="titlebar-sidebar-trigger"]')
-      const tabBar = document.querySelector('[data-testid="terminal-tab-bar"]')
+      const tabBar = document.querySelector('[data-testid="content-tab-bar"]')
       const tab = document.querySelector('[data-testid="terminal-tab"]')
-      const plus = document.querySelector('[data-testid="new-terminal-tab"]')
+      const plus = document.querySelector('[data-testid="new-content-tab"]')
       if (!triggerEl || !triggerHost || !tabBar || !tab || !plus) {
         throw new Error('Collapsed chrome elements were not found.')
       }
@@ -978,15 +1052,15 @@ test('keeps the sidebar trigger visible above the tab bar when collapsed', async
 
     expect(layout.tabLeft).toBeLessThanOrEqual(1)
     expect(layout.tabRight).toBeGreaterThanOrEqual(layout.windowWidth - 1)
-    expect(layout.tabHeight).toBe(44)
-    expect(layout.tabButtonHeight).toBe(44)
-    expect(layout.tabButtonTop).toBe(0)
+    expect(Math.round(layout.tabHeight)).toBe(44)
+    expect(Math.round(layout.tabButtonHeight)).toBe(44)
+    expect(Math.round(layout.tabButtonTop)).toBe(0)
     expect(layout.triggerHostContainsButton).toBe(true)
     expect(layout.triggerHostRegion).toBe('no-drag')
     expect(Math.round(layout.triggerLeft)).toBe(78)
     expect(layout.plusLeft).toBeGreaterThanOrEqual(layout.triggerRight)
-    expect(layout.triggerHeight).toBe(24)
-    expect(layout.plusHeight).toBe(24)
+    expect(Math.round(layout.triggerHeight)).toBe(24)
+    expect(Math.round(layout.plusHeight)).toBe(24)
     expect(Math.round(layout.triggerTop)).toBe(Math.round(layout.plusTop))
     expect(Math.round(layout.triggerMid)).toBe(22)
     expect(Math.round(layout.plusMid)).toBe(22)
@@ -1133,7 +1207,7 @@ test('reorders content tabs by dragging', async ({ page }) => {
     await initGitRepo(source, 'main', 'tab-reorder')
     await addProjectViaUi(page, `file://${source}`, 'tab-reorder')
     await selectWorkspaceRow(page, 'main')
-    await expect(page.getByTestId('terminal-tab-bar')).toBeVisible()
+    await expect(page.getByTestId('content-tab-bar')).toBeVisible()
 
     await openNewTerminal(page)
     await clickNewTerminalMenu(page)
@@ -1160,7 +1234,7 @@ test('reorders content tabs by dragging', async ({ page }) => {
     await page
       .getByTestId('terminal-tab')
       .filter({ hasText: 'Terminal 1' })
-      .getByTestId('terminal-tab-close')
+      .getByTestId('content-tab-close')
       .click()
     await expect.poll(() => contentTabLabels(page)).toEqual(['Terminal 2', 'Changes'])
   } finally {
@@ -1192,7 +1266,7 @@ test('empty workspace guide opens terminal and Changes tabs with shortcuts', asy
     await guide.getByRole('button', { name: 'New terminal' }).click()
     await expect(page.locator('.terminal-host .xterm')).toHaveCount(1)
     await expect(guide).toHaveCount(0)
-    await page.getByTestId('terminal-tab-close').click()
+    await page.getByTestId('content-tab-close').click()
     await expect(guide).toBeVisible()
 
     await guide.getByRole('button', { name: 'New Changes tab' }).click()
@@ -1240,7 +1314,7 @@ test('empty workspace stays black before opening and after closing themed tabs',
       await clickNewTerminalMenu(page)
       await expect(page.locator('.terminal-host .xterm')).toHaveCount(1)
       await expect(page.locator('.terminal-host')).toHaveCSS('background-color', color)
-      await page.getByTestId('terminal-tab-close').click()
+      await page.getByTestId('content-tab-close').click()
       await expect(contentTabs(page)).toHaveCount(0)
       await expect(page.locator('.terminal-host')).toHaveCount(0)
       await expect(content).toHaveCSS('background-color', 'rgb(0, 0, 0)')

@@ -34,6 +34,7 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { SidebarTrigger, useSidebar } from '@/components/ui/sidebar'
+import { tabsListVariants, tabsTriggerVariants } from '@/components/ui/tabs'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ShortcutKbd, useKeybindBinding } from '@/keybinds'
 import {
@@ -47,12 +48,10 @@ export type ContentTabKind = PaneKind
 
 export type ContentTab = WorkspaceTab
 
-export type TerminalTab = ContentTab
-
 const TAB_DRAG_THRESHOLD_PX = 6
 const TAB_SWAP_TRANSITION = { duration: 200, easing: 'cubic-bezier(0.2, 0, 0, 1)' } as const
 
-type TerminalTabBarProps = {
+type ContentTabBarProps = {
   workspaceId: number
   tabs: ContentTab[]
   activeTabId: number | null
@@ -67,6 +66,22 @@ type TerminalTabBarProps = {
 
 function prefersReducedMotion(): boolean {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
+function ContentTabMark({
+  workspaceId,
+  tab
+}: {
+  workspaceId: number
+  tab: ContentTab
+}): React.JSX.Element | null {
+  if (tab.kind === 'terminal') {
+    return <SquareTerminal aria-hidden="true" className="size-3.5 shrink-0 opacity-80" />
+  }
+  if (tab.kind === 'changes') {
+    return <FileDiff aria-hidden="true" className="size-3.5 shrink-0 opacity-80" />
+  }
+  return <ChatTabIcon workspaceId={workspaceId} tab={tab} />
 }
 
 type SortableTabProps = {
@@ -95,6 +110,7 @@ function SortableTab({
     disabled: !sortable,
     transition: prefersReducedMotion() ? null : TAB_SWAP_TRANSITION
   })
+  const state = selected ? 'active' : 'inactive'
 
   return (
     <div
@@ -103,12 +119,11 @@ function SortableTab({
       data-tab-kind={tab.kind}
       data-terminal-tab-id={tab.id}
       data-active={selected ? 'true' : 'false'}
+      data-state={state}
+      data-variant="pill"
       data-dragging={isDragging ? 'true' : undefined}
       className={cn(
-        'group/tab app-no-drag flex h-full max-w-48 min-w-0 shrink-0 cursor-grab touch-none items-center gap-1 px-2.5 text-xs select-none',
-        selected
-          ? 'border-b-2 border-b-foreground bg-muted text-foreground'
-          : 'border-b-2 border-b-transparent text-muted-foreground hover:bg-muted/60 hover:text-foreground',
+        'group app-no-drag flex h-full max-w-48 min-w-0 shrink-0 cursor-grab touch-none items-center bg-transparent select-none',
         isDragging && 'relative z-10 cursor-grabbing opacity-60'
       )}
       style={{
@@ -116,69 +131,76 @@ function SortableTab({
         transition
       }}
     >
-      <button
-        type="button"
-        role="tab"
-        aria-selected={selected}
-        aria-roledescription={attributes['aria-roledescription']}
-        aria-describedby={attributes['aria-describedby']}
-        data-terminal-tab-id={tab.id}
-        className="flex h-full min-w-0 flex-1 cursor-inherit items-center gap-1 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
-        onPointerDown={(event): void => {
-          listeners?.onPointerDown?.(event)
-          if (event.button === 0) onSelect(tab.id)
-        }}
-        onKeyDown={(event): void => listeners?.onKeyDown?.(event)}
-        onClick={(event): void => onClick(event, tab.id)}
+      <div
+        data-slot="content-tab-pill"
+        data-state={state}
+        data-variant="pill"
+        className={cn(tabsTriggerVariants({ variant: 'pill' }), 'w-full')}
       >
-        <ChatTabIcon workspaceId={workspaceId} tab={tab} />
+        <button
+          type="button"
+          role="tab"
+          aria-selected={selected}
+          aria-roledescription={attributes['aria-roledescription']}
+          aria-describedby={attributes['aria-describedby']}
+          data-terminal-tab-id={tab.id}
+          className="flex h-full min-w-0 flex-1 cursor-inherit items-center gap-1.5 text-left outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          onPointerDown={(event): void => {
+            listeners?.onPointerDown?.(event)
+            if (event.button === 0) onSelect(tab.id)
+          }}
+          onKeyDown={(event): void => listeners?.onKeyDown?.(event)}
+          onClick={(event): void => onClick(event, tab.id)}
+        >
+          <ContentTabMark workspaceId={workspaceId} tab={tab} />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="min-w-0 flex-1 truncate">{tab.label}</span>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" sideOffset={4} className="max-w-64 text-wrap">
+              {tab.label}
+            </TooltipContent>
+          </Tooltip>
+        </button>
         <Tooltip>
           <TooltipTrigger asChild>
-            <span className="min-w-0 flex-1 truncate">{tab.label}</span>
+            <button
+              type="button"
+              className="inline-flex size-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground opacity-0 transition-opacity [.group:hover_&]:opacity-100 [.group:focus-within_&]:opacity-100 hover:bg-background/80 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
+              aria-label={`Close ${tab.label} (${closeHotkey})`}
+              data-testid="content-tab-close"
+              onPointerDown={(event): void => event.stopPropagation()}
+              onClick={(event): void => {
+                event.stopPropagation()
+                const tablist = event.currentTarget.closest('[role="tablist"]')
+                const tabButtons = Array.from(
+                  tablist?.querySelectorAll<HTMLButtonElement>('[role="tab"]') ?? []
+                )
+                const index = tabButtons.findIndex(
+                  (button) => button.dataset.terminalTabId === String(tab.id)
+                )
+                const nextFocus =
+                  tabButtons[index + 1] ??
+                  tabButtons[index - 1] ??
+                  tablist?.querySelector<HTMLButtonElement>('[data-testid="new-content-tab"]')
+                nextFocus?.focus()
+                onClose(tab.id)
+              }}
+            >
+              <X aria-hidden="true" className="size-3" />
+            </button>
           </TooltipTrigger>
-          <TooltipContent side="bottom" sideOffset={4} className="max-w-64 text-wrap">
-            {tab.label}
+          <TooltipContent side="bottom" sideOffset={4} className="flex items-center gap-2">
+            <span>Close</span>
+            <ShortcutKbd hotkey={closeHotkey} inverted />
           </TooltipContent>
         </Tooltip>
-      </button>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            className="pointer-events-none inline-flex size-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground opacity-0 group-hover/tab:pointer-events-auto group-hover/tab:opacity-100 group-focus-within/tab:pointer-events-auto group-focus-within/tab:opacity-100 hover:bg-background hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
-            aria-label={`Close ${tab.label} (${closeHotkey})`}
-            data-testid="terminal-tab-close"
-            onPointerDown={(event): void => event.stopPropagation()}
-            onClick={(event): void => {
-              event.stopPropagation()
-              const tablist = event.currentTarget.closest('[role="tablist"]')
-              const tabButtons = Array.from(
-                tablist?.querySelectorAll<HTMLButtonElement>('[role="tab"]') ?? []
-              )
-              const index = tabButtons.findIndex(
-                (button) => button.dataset.terminalTabId === String(tab.id)
-              )
-              const nextFocus =
-                tabButtons[index + 1] ??
-                tabButtons[index - 1] ??
-                tablist?.querySelector<HTMLButtonElement>('[data-testid="new-terminal-tab"]')
-              nextFocus?.focus()
-              onClose(tab.id)
-            }}
-          >
-            <X aria-hidden="true" className="size-3" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom" sideOffset={4} className="flex items-center gap-2">
-          <span>Close</span>
-          <ShortcutKbd hotkey={closeHotkey} inverted />
-        </TooltipContent>
-      </Tooltip>
+      </div>
     </div>
   )
 }
 
-export function TerminalTabBar({
+export function ContentTabBar({
   workspaceId,
   tabs,
   activeTabId,
@@ -189,7 +211,7 @@ export function TerminalTabBar({
   onOpenChanges,
   onAddPane,
   onReorder
-}: TerminalTabBarProps): React.JSX.Element {
+}: ContentTabBarProps): React.JSX.Element {
   const closeHotkey = useKeybindBinding('closeTab')
   const chatHotkey = useKeybindBinding('newChat')
   const newHotkey = useKeybindBinding('newTerminal')
@@ -238,9 +260,10 @@ export function TerminalTabBar({
 
   return (
     <div
-      data-testid="terminal-tab-bar"
+      data-testid="content-tab-bar"
       data-dragging={draggingTabId != null ? 'true' : undefined}
-      className="app-drag-region relative z-50 flex shrink-0 items-stretch bg-background pr-2 shadow-[inset_0_-1px_0_0_var(--border)]"
+      data-variant="pill"
+      className="app-drag-region relative z-50 flex shrink-0 items-center bg-background pr-2 shadow-[inset_0_-1px_0_0_var(--border)]"
       style={{ height: TITLEBAR_HEIGHT }}
       role="tablist"
       aria-label="Workspace tabs"
@@ -263,7 +286,14 @@ export function TerminalTabBar({
         onDragCancel={(): void => setDraggingTabId(null)}
       >
         <SortableContext items={tabIds} strategy={horizontalListSortingStrategy}>
-          <div className="flex h-full min-w-0 items-stretch gap-0.5 overflow-x-auto">
+          <div
+            data-slot="tabs-list"
+            data-variant="pill"
+            className={cn(
+              tabsListVariants({ variant: 'pill' }),
+              'h-full w-auto min-w-0 max-w-full justify-start overflow-x-auto rounded-none bg-transparent px-1'
+            )}
+          >
             {tabs.map((tab) => (
               <SortableTab
                 key={tab.id}
@@ -285,7 +315,7 @@ export function TerminalTabBar({
                   size="icon-xs"
                   className="app-no-drag my-auto shrink-0 size-6"
                   aria-label="Add tab"
-                  data-testid="new-terminal-tab"
+                  data-testid="new-content-tab"
                 >
                   <Plus className="size-4" />
                 </Button>

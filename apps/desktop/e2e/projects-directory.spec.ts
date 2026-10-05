@@ -78,12 +78,12 @@ test('adds a local git folder as a directory project', async ({ page, electronAp
     expect(project?.repositories[0]?.localPath).toBe(await realpath(repo))
     expect(project?.workspaces).toHaveLength(1)
     expect(listed.activeWorkspaceId).toBeNull()
-    await expect(page.getByTestId('terminal-tab-bar')).toHaveCount(0)
+    await expect(page.getByTestId('content-tab-bar')).toHaveCount(0)
 
     await page.getByTestId(`workspace-row-${project?.workspaces[0]?.id}`).click()
     const afterSelect = await page.evaluate(async () => window.cerebro.listProjects())
     expect(afterSelect.activeWorkspaceId).toBe(project?.workspaces[0]?.id)
-    await expect(page.getByTestId('terminal-tab-bar')).toBeVisible()
+    await expect(page.getByTestId('content-tab-bar')).toBeVisible()
     await expect(page.locator('[data-terminal-workspace-id]')).toHaveCount(0)
   } finally {
     await rm(root, { recursive: true, force: true })
@@ -210,12 +210,12 @@ test('adds a folder of git repos as a multi-root workspace', async ({ page, elec
     expect(backendWorkspace).toBeTruthy()
     expect(frontendWorkspace).toBeTruthy()
     expect(listed.activeWorkspaceId).toBeNull()
-    await expect(page.getByTestId('terminal-tab-bar')).toHaveCount(0)
+    await expect(page.getByTestId('content-tab-bar')).toHaveCount(0)
 
     await sidebar.getByTestId(`workspace-row-${frontendWorkspace!.id}`).click()
     const afterSelect = await page.evaluate(async () => window.cerebro.listProjects())
     expect(afterSelect.activeWorkspaceId).toBe(frontendWorkspace!.id)
-    await expect(page.getByTestId('terminal-tab-bar')).toBeVisible()
+    await expect(page.getByTestId('content-tab-bar')).toBeVisible()
     await expect(page.locator('[data-terminal-workspace-id]')).toHaveCount(0)
   } finally {
     await rm(root, { recursive: true, force: true })
@@ -313,7 +313,7 @@ test('multi-root repos copy path and branch; only the project can be removed', a
     expect(selectedRoot).toBeTruthy()
     expect(afterRootSelect.activeWorkspaceId).toBe(selectedRoot!.id)
     expect(selectedRoot!.localPath).toBe(parentPath)
-    await expect(page.getByTestId('terminal-tab-bar')).toBeVisible()
+    await expect(page.getByTestId('content-tab-bar')).toBeVisible()
     await expect(page.locator('[data-terminal-workspace-id]')).toHaveCount(0)
     await expect(sidebar.getByTestId(`project-repo-tree-${project!.id}`)).toBeVisible()
 
@@ -347,12 +347,12 @@ test('adds a folder even when it is not a git repository', async ({ page, electr
     expect(project?.repositories[0]?.localPath).toBe(await realpath(folder))
     expect(project?.workspaces).toHaveLength(1)
     expect(listed.activeWorkspaceId).toBeNull()
-    await expect(page.getByTestId('terminal-tab-bar')).toHaveCount(0)
+    await expect(page.getByTestId('content-tab-bar')).toHaveCount(0)
 
     await page.getByTestId(`workspace-row-${project?.workspaces[0]?.id}`).click()
     const afterSelect = await page.evaluate(async () => window.cerebro.listProjects())
     expect(afterSelect.activeWorkspaceId).toBe(project?.workspaces[0]?.id)
-    await expect(page.getByTestId('terminal-tab-bar')).toBeVisible()
+    await expect(page.getByTestId('content-tab-bar')).toBeVisible()
     await expect(page.locator('[data-terminal-workspace-id]')).toHaveCount(0)
   } finally {
     await rm(root, { recursive: true, force: true })

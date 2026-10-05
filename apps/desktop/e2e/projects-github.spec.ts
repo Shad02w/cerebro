@@ -380,7 +380,7 @@ test('GitHub-linked project shows PR state and can create worktree workspaces', 
     'data-pr-state',
     'changes_requested'
   )
-  await expect(page.getByTestId('terminal-tab-bar')).toBeVisible()
+  await expect(page.getByTestId('content-tab-bar')).toBeVisible()
   await expect(page.getByTestId('terminal-tab')).toHaveCount(0)
   await expect(page.locator('[data-terminal-workspace-id]')).toHaveCount(0)
 

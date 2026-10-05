@@ -54,7 +54,7 @@ for (const harness of ['Claude Code', 'Codex', 'Pi']) {
       await expect(changesTab).toBeVisible()
       const changesWidth = (await changesTab.boundingBox())!.width
       expect(changesWidth).toBeGreaterThan(emptyWidth)
-      expect(changesWidth).toBeLessThan(120)
+      expect(changesWidth).toBeLessThan(140)
       const chat = page.locator('[data-pane-kind="chat"]:visible')
       await expect(chat.getByTestId('chat-model-picker')).toContainText('Test Model')
       await chat.getByTestId('chat-model-picker').click()
@@ -82,7 +82,7 @@ for (const harness of ['Claude Code', 'Codex', 'Pi']) {
       expect(await label.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(
         true
       )
-      await expect(tabs.nth(1).getByTestId('terminal-tab-close')).toBeVisible()
+      await expect(tabs.nth(1).getByTestId('content-tab-close')).toBeVisible()
       await mkdir('/tmp/cerebro-tab-width-evidence', { recursive: true })
       await page.mouse.move(1100, 400)
       await page.screenshot({ path: `/tmp/cerebro-tab-width-evidence/${harness}-compact-tabs.png` })
