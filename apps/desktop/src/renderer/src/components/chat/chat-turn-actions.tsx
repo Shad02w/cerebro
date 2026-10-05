@@ -59,6 +59,7 @@ export function ChatTurnActions({
               action: 'create',
               kind: 'chat',
               workspaceId,
+              focus: true,
               ...(repositoryId != null ? { repositoryId } : {})
             })
           : await window.cerebro.layoutCommand({
@@ -67,7 +68,8 @@ export function ChatTurnActions({
               kind: 'chat',
               direction: 'auto',
               workspaceId,
-              paneId
+              paneId,
+              focus: true
             })
       const newPaneId =
         target === 'tab'

@@ -132,20 +132,20 @@ cerebro project delete <project-id>
 cerebro project remove <project-id>
 
 cerebro workspace list [--project <id>]
-cerebro workspace create --project <id> --branch <name>
-cerebro workspace create --project <id> --branch <name> --from <base>
+cerebro workspace create --project <id> --branch <name> [--focus]
+cerebro workspace create --project <id> --branch <name> --from <base> [--focus]
 cerebro workspace path <workspace-id>
 cerebro workspace delete <workspace-id>
 cerebro workspace remove <workspace-id>
 
 cerebro tab list --workspace <id>
-cerebro tab create --workspace <id> --kind terminal
+cerebro tab create --workspace <id> --kind terminal [--focus]
 cerebro tab focus --workspace <id> --tab <id>
 cerebro tab close --workspace <id> --tab <id>
 cerebro tab reorder --workspace <id> --tab <id> --index 0
 
 cerebro pane list --workspace <id> --tab <id>
-cerebro pane split --workspace <id> --pane <id> --kind changes --direction auto
+cerebro pane split --workspace <id> --pane <id> --kind changes --direction auto [--focus]
 cerebro pane focus --workspace <id> --pane <id>
 cerebro pane close --workspace <id> --pane <id>
 cerebro pane resize --workspace <id> --tab <id> --split <id> --ratio 0.6
@@ -161,7 +161,8 @@ cerebro workspace --help
 - Layout IDs and pane state persist in SQLite. Electron quit/reload detaches from live shells. Daemon restart restores output and starts a fresh shell on activation; commands are never replayed. See `docs/mux-runtime.md`.
 - `tab create` starts with one pane (`terminal` by default). `tab list` includes each tab’s BSP tree, split IDs/ratios, and active pane ID.
 - `pane split` targets `--pane`, or the active pane in `--tab` (the active tab when omitted). `--direction` accepts `auto`, `right`, or `down`. `--kind` accepts `terminal` or `changes`.
-- `pane list` lists the selected tab’s panes. Focus commands select the owning workspace in the UI. Creation/splitting selects the new content within its workspace without switching from another workspace.
+- `pane list` lists the selected tab’s panes. `tab focus` and `pane focus` select the owning workspace in the UI.
+- CLI `workspace create`, `tab create`, and `pane split` leave the current workspace, tab, and pane selected. Pass `--focus` to select the new workspace, or the new tab or pane within its workspace. `--focus` on a tab or pane does not switch workspaces. Creating a workspace, tab, or pane in the desktop app still selects it.
 - `pane resize` changes the first child’s share of a split, from `0.1` to `0.9`. Get `--split` IDs from `tab list`.
 - The tab-bar Add menu offers New tab content plus Add pane, Split right, and Split down. Mod+W continues to close the whole tab; multi-pane tabs expose a close control on each pane.
 - `panes.spec.ts` builds the actual CLI and runs it against the isolated Electron fixture, covering both surfaces.

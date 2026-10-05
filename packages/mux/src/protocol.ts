@@ -126,6 +126,7 @@ export type RequestParams = {
   gitUrl: string
   branch: string
   from?: string
+  focus?: boolean
   deleteFiles: boolean
   version: number
   token: string

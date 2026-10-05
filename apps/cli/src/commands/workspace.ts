@@ -11,9 +11,11 @@ Usage: cerebro workspace <command>
 
 Commands:
   list [--project <id>]                  List workspaces, optionally filtered by project id
-  create --project <id> --branch <name> [--from <base>]
+  create --project <id> --branch <name> [--from <base>] [--focus]
                                          Create a worktree for an existing branch, or a new
-                                         branch based on --from
+                                         branch based on --from. Leaves the current workspace
+                                         selected unless --focus is set. The desktop app still
+                                         selects a workspace it creates.
   path <workspace-id>                    Print the local filesystem path for a workspace
   delete <workspace-id>                  Delete a worktree workspace from disk and unregister it
   remove <workspace-id>                  Unregister a worktree workspace; leave the directory
@@ -107,11 +109,10 @@ export async function workspaceCommand(args: string[]): Promise<void> {
     }
 
     try {
-      const workspace = await createWorkspaceFromBranch(
-        projectId,
-        branch,
-        from ? { from } : undefined
-      )
+      const workspace = await createWorkspaceFromBranch(projectId, branch, {
+        ...(from ? { from } : {}),
+        focus: flags.focus != null
+      })
       printJson(workspace)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)

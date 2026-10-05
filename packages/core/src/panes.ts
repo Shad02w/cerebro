@@ -53,5 +53,7 @@ export type LayoutCommand = {
   repositoryId?: number
   toIndex?: number
   label?: string
+  /** When false, create/split/open leaves the current tab and pane selected. */
+  focus?: boolean
 }
 export type LayoutReply = { state: LayoutState; result: unknown }

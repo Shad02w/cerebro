@@ -586,9 +586,9 @@ export function TerminalStack({
   const workspace = activeWorkspaceId == null ? undefined : layout.workspaces[activeWorkspaceId]
   const activeTabId = workspace?.activeTabId ?? null
   const addTab = (workspaceId: number, kind: PaneKind = 'terminal'): void =>
-    command({ target: 'tab', action: 'create', workspaceId, kind })
+    command({ target: 'tab', action: 'create', workspaceId, kind, focus: true })
   const openChanges = (workspaceId: number): void =>
-    command({ target: 'tab', action: 'open-changes', workspaceId })
+    command({ target: 'tab', action: 'open-changes', workspaceId, focus: true })
   useKeybindHandler('newTerminal', () => {
     if (!visible || onStartupReady) return false
     const target = focusedWorkspaceId() ?? activeWorkspaceId
@@ -626,7 +626,8 @@ export function TerminalStack({
       workspaceId: activeWorkspaceId,
       tabId: activeTabId,
       kind,
-      direction
+      direction,
+      focus: true
     })
   }
   return (

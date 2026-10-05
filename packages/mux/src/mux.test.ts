@@ -7,7 +7,13 @@ import { join, resolve } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { connectMux, type TerminalSnapshot, type MuxClient } from './client'
-import type { Project, WorkspaceTab, Workspace } from '@cerebro/core'
+import type {
+  LayoutState,
+  Project,
+  ProjectListResult,
+  WorkspaceTab,
+  Workspace
+} from '@cerebro/core'
 import { VtBoundary } from './vt-boundary'
 
 const exec = promisify(execFile)
@@ -67,6 +73,17 @@ test(
       const tab = (await cli('tab', 'create', '--workspace', String(workspaceId))) as WorkspaceTab
       const paneId = tab.root.id
       client = await connectMux({ runtimeDir })
+      const createdLayout = await client.request<LayoutState>('layout.get')
+      assert.equal(createdLayout.workspaces[workspaceId]?.activeTabId ?? null, null)
+      const focusedTab = (await cli(
+        'tab',
+        'create',
+        '--workspace',
+        String(workspaceId),
+        '--focus'
+      )) as WorkspaceTab
+      const focusedLayout = await client.request<LayoutState>('layout.get')
+      assert.equal(focusedLayout.workspaces[workspaceId].activeTabId, focusedTab.id)
       const target = { workspaceId, paneId }
       let snapshot = await client.request<TerminalSnapshot>('terminal.capture', target)
       assert.equal(snapshot.status, 'running', snapshot.error)
@@ -105,7 +122,17 @@ test(
         'down'
       )) as { id: number; kind: string }
       assert.equal(added.kind, 'changes')
-      const layout = await cli('tab', 'list', '--workspace', String(workspaceId))
+      const layout = (await cli(
+        'tab',
+        'list',
+        '--workspace',
+        String(workspaceId)
+      )) as WorkspaceTab[]
+      assert.equal(layout.find((item) => item.id === tab.id)?.activePaneId, paneId)
+      assert.equal(
+        (await client.request<LayoutState>('layout.get')).workspaces[workspaceId].activeTabId,
+        focusedTab.id
+      )
       await assert.rejects(
         client.request('terminal.write', { ...target, sessionId: 'old', data: 'bad' }),
         /session has changed/
@@ -197,6 +224,35 @@ test(
       )
       assert.equal(workspace.kind, 'worktree')
       assert.equal(workspace.branch, 'feature')
+      const afterQuietCreate = await client.request<ProjectListResult>('registry', {
+        action: 'list'
+      })
+      assert.equal(afterQuietCreate.activeWorkspaceId, null)
+      const focusedWorkspace = (await cli(
+        'workspace',
+        'create',
+        '--project',
+        String(project.id),
+        '--branch',
+        'focused-view',
+        '--from',
+        'main',
+        '--focus'
+      )) as Workspace
+      const afterFocus = await client.request<ProjectListResult>('registry', { action: 'list' })
+      assert.equal(afterFocus.activeWorkspaceId, focusedWorkspace.id)
+      await cli(
+        'workspace',
+        'create',
+        '--project',
+        String(project.id),
+        '--branch',
+        'stay-put',
+        '--from',
+        'main'
+      )
+      const afterAnother = await client.request<ProjectListResult>('registry', { action: 'list' })
+      assert.equal(afterAnother.activeWorkspaceId, focusedWorkspace.id)
       assert.equal(
         await readFile(join(workspace.localPath, 'README.md'), 'utf8'),
         'local fixture\n'

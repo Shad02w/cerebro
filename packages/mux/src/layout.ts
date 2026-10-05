@@ -177,6 +177,9 @@ function applyCommand(raw: unknown): LayoutReply {
     fail('usage', 'Kind must be terminal, changes or chat.')
   if (command.direction !== undefined && !['auto', 'right', 'down'].includes(command.direction))
     fail('usage', 'Direction must be auto, right or down.')
+  if (command.focus !== undefined && typeof command.focus !== 'boolean')
+    fail('usage', 'Focus must be a boolean.')
+  const focus = command.focus !== false
   try {
     getWorkspaceLocalPath(workspaceId)
   } catch {
@@ -194,9 +197,11 @@ function applyCommand(raw: unknown): LayoutReply {
         leaves(tab.root).some((pane) => pane.kind === 'changes')
       )
       if (existing) {
-        workspace.activeTabId = existing.id
-        existing.activePaneId = leaves(existing.root).find((pane) => pane.kind === 'changes')!.id
-        broadcast()
+        if (focus) {
+          workspace.activeTabId = existing.id
+          existing.activePaneId = leaves(existing.root).find((pane) => pane.kind === 'changes')!.id
+          broadcast()
+        }
         return reply(existing)
       }
     }
@@ -221,7 +226,7 @@ function applyCommand(raw: unknown): LayoutReply {
       activePaneId: pane.id
     }
     workspace.tabs.push(tab)
-    workspace.activeTabId = tab.id
+    if (focus) workspace.activeTabId = tab.id
     state.workspaces[workspaceId] = workspace
     broadcast()
     return reply(tab)
@@ -314,8 +319,10 @@ function applyCommand(raw: unknown): LayoutReply {
           first: pane,
           second: added
         })!
-        tab.activePaneId = added.id
-        workspace.activeTabId = tab.id
+        if (focus) {
+          tab.activePaneId = added.id
+          workspace.activeTabId = tab.id
+        }
         result = { ...added, tabId: tab.id }
       } else if (command.action === 'focus') {
         tab.activePaneId = pane.id
