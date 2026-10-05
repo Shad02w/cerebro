@@ -22,7 +22,7 @@ import { cn } from '@/lib/utils'
 const LIGHT_TEAL = 'color-mix(in srgb, var(--sidebar-selected) 48%, white)'
 
 /** Stars per layer (small, medium, large). The field is a 4000px box, so only a slice is on screen. */
-const STAR_COUNTS = [320, 120, 60] as const
+const STAR_COUNTS = [200, 80, 40] as const
 
 type StarLayerProps = HTMLMotionProps<'div'> & {
   count: number
