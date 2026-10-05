@@ -198,12 +198,19 @@ export type FileDiffContents = {
 /** Stored keyboard shortcut overrides keyed by action id (e.g. `closeTab`). */
 export type KeybindOverrides = Partial<Record<string, string>>
 
+/** Empty agent pane background. `stars` is the default. */
+export const AGENT_BACKGROUNDS = ['glow', 'stars', 'off'] as const
+export type AgentBackground = (typeof AGENT_BACKGROUNDS)[number]
+export const DEFAULT_AGENT_BACKGROUND: AgentBackground = 'stars'
+
 export type AppSettings = {
   defaultCloneDir: string
   terminalTheme: TerminalThemeId
   terminalFontSize: number
   /** `'auto'` or a CSS font-family name such as `Cerebro Mono`. */
   terminalFontFamily: string
+  /** Empty agent pane: composer glow, star field, or neither. */
+  agentBackground: AgentBackground
   /** Partial overrides; missing keys use app defaults. */
   keybinds: KeybindOverrides
 }

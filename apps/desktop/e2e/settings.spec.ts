@@ -565,3 +565,35 @@ test('saves the Kanagawa variants and Vercel from the theme picker', async ({ pa
   await page.reload()
   await expect(picker).toHaveText('Vercel')
 })
+
+test('persists the empty agent pane background', async ({ page }) => {
+  await mkdir('/opt/cursor/artifacts', { recursive: true })
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  const background = page.getByTestId('settings-agent-background')
+  await expect(background).toHaveText('Stars')
+  await background.click()
+  await expect(page.getByRole('option', { name: 'Glow', exact: true })).toBeVisible()
+  await expect(page.getByRole('option', { name: 'Stars', exact: true })).toBeVisible()
+  await expect(page.getByRole('option', { name: 'Off', exact: true })).toBeVisible()
+  await page.screenshot({
+    path: '/opt/cursor/artifacts/settings-agent-background-menu.png'
+  })
+  await page.getByRole('option', { name: 'Off', exact: true }).click()
+  await expect(background).toHaveText('Off')
+  expect((await page.evaluate(() => window.cerebro.getSettings())).agentBackground).toBe('off')
+
+  await page.getByRole('button', { name: 'Back' }).click()
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await expect(page.getByTestId('settings-agent-background')).toHaveText('Off')
+
+  const error = await page.evaluate(async () => {
+    try {
+      await window.cerebro.setSettings({ agentBackground: 'sparkles' as never })
+      return ''
+    } catch (err) {
+      return String(err)
+    }
+  })
+  expect(error).toContain('Unknown agent background')
+  expect((await page.evaluate(() => window.cerebro.getSettings())).agentBackground).toBe('off')
+})

@@ -59,7 +59,7 @@ test('chat works through native adapters, survives reload, handles requests, and
     await expect(page.getByTestId('chat-transcript').getByRole('alert')).toHaveCount(0)
     await expect(page.getByTestId('chat-composer')).toHaveAttribute('data-dock', 'center')
     await expect(page.getByTestId('chat-empty-hero')).toBeVisible()
-    await expect(page.getByTestId('chat-composer-glow')).toHaveCSS('opacity', '1')
+    await expect(page.getByTestId('chat-composer-glow')).toHaveCount(0)
     await page.getByTestId('chat-model-picker').click()
     await expect(
       page.getByTestId('model-picker').getByRole('button', { name: 'All', exact: true })
@@ -1158,7 +1158,7 @@ test('agent pane loading does not flash empty placeholder before session is conf
     await expect(page.getByTestId('chat-composer')).toHaveAttribute('data-dock', 'center')
     await expect(page.getByTestId('chat-empty-hero')).toBeVisible()
     await expect(page.getByTestId('chat-empty-hero')).toContainText('What would you like to build?')
-    await expect(page.getByTestId('chat-composer-glow')).toHaveCSS('opacity', '1')
+    await expect(page.getByTestId('chat-composer-glow')).toHaveCount(0)
     const emptyFlash = await readAgentPaneFlash(page)
     expect(emptyFlash.sawLoading).toBe(true)
     await page.screenshot({ path: join(mediaDir, 'agent-section-empty.png') })
@@ -1185,13 +1185,135 @@ test('agent pane loading does not flash empty placeholder before session is conf
     await expect(page.getByTestId('chat-composer')).toHaveAttribute('data-dock', 'bottom')
     await expect(page.getByTestId('chat-composer')).toHaveAttribute('data-motion', 'off')
     await expect(page.getByTestId('chat-empty-hero')).toHaveCSS('visibility', 'hidden')
-    await expect(page.getByTestId('chat-composer-glow')).toHaveCSS('opacity', '0')
+    await expect(page.getByTestId('chat-composer-glow')).toHaveCount(0)
     const loadedFlash = await readAgentPaneFlash(page)
     expect(loadedFlash.sawEmptyCenter).toBe(false)
     await page.screenshot({ path: join(mediaDir, 'agent-section-loaded.png') })
     await page.screenshot({ path: '/opt/cursor/artifacts/agent-section-loaded.png' })
   } finally {
     await setChatGetDelay(electronApp, 0).catch(() => {})
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('empty agent pane shows a light teal star field until the first message', async ({
+  page,
+  electronApp
+}) => {
+  test.setTimeout(90_000)
+  const directory = await mkdtemp(join(tmpdir(), 'cerebro-chat-stars-'))
+  try {
+    await mkdir(optArtifactsDir, { recursive: true })
+    await electronApp.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0].setSize(1250, 900)
+    )
+    const project = await page.evaluate(
+      (folder) => window.cerebro.createProjectFromDirectory(folder),
+      directory
+    )
+    const workspaceId = project.workspaces[0].id
+    await page.reload()
+    const projectRow = page.getByTestId(/project-row-/).first()
+    await expect(projectRow).toBeVisible()
+    if ((await projectRow.getAttribute('aria-expanded')) === 'false') await projectRow.click()
+    await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
+    await page.getByRole('button', { name: /^New Agent tab/ }).click()
+
+    await expect(page.getByTestId('chat-empty-hero')).toBeVisible()
+    const stars = page.getByTestId('chat-stars')
+    await expect(stars).toBeVisible()
+    await expect(stars).toHaveAttribute('data-star-color', /sidebar-selected/)
+    const starDot = stars.locator('[data-slot="star-layer"]').first().locator('div').first()
+    const starShadow = await starDot.evaluate((el) => getComputedStyle(el).boxShadow)
+    // Theme teal lifted toward white, not the near-invisible 16% specks.
+    expect(starShadow).toMatch(/rgb|color\(/)
+    expect(starShadow).not.toMatch(/0\.16/)
+    const background = await stars.evaluate((el) => getComputedStyle(el).backgroundImage)
+    expect(background).toContain('radial-gradient')
+    expect(background).toMatch(/0\.08|8%/)
+    const send = page.getByRole('button', { name: 'Send message', exact: true })
+    const box = await send.boundingBox()
+    expect(box).toBeTruthy()
+    const hit = await page.evaluate(
+      ({ x, y }) => {
+        const node = document.elementFromPoint(x, y)
+        return node?.closest('button')?.getAttribute('aria-label')
+      },
+      { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 }
+    )
+    expect(hit).toBe('Send message')
+    await page.screenshot({
+      path: join(optArtifactsDir, 'agent-pane-stars-bottom-light-softer.png')
+    })
+
+    await page.getByRole('textbox', { name: 'Message agent' }).fill('Hello stars')
+    await expect(page.getByTestId('chat-composer')).toHaveAttribute('data-dock', 'center')
+    await expect(page.getByTestId('chat-stars')).toHaveCount(0)
+    await page.screenshot({ path: join(optArtifactsDir, 'agent-pane-stars-prompt-faded.png') })
+    await send.click()
+    await expect(page.getByTestId('chat-transcript')).toContainText('Adapter connected.')
+    await expect(page.getByTestId('chat-stars')).toHaveCount(0)
+    await expect(page.getByTestId('chat-composer')).toHaveAttribute('data-dock', 'bottom')
+    await page.screenshot({ path: join(optArtifactsDir, 'agent-pane-stars-after-message.png') })
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('empty agent pane switches between stars, glow, and off', async ({ page, electronApp }) => {
+  test.setTimeout(90_000)
+  const directory = await mkdtemp(join(tmpdir(), 'cerebro-chat-background-'))
+  try {
+    await mkdir(optArtifactsDir, { recursive: true })
+    await electronApp.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0].setSize(1250, 900)
+    )
+    const project = await page.evaluate(
+      (folder) => window.cerebro.createProjectFromDirectory(folder),
+      directory
+    )
+    const workspaceId = project.workspaces[0].id
+    await page.reload()
+    const projectRow = page.getByTestId(/project-row-/).first()
+    await expect(projectRow).toBeVisible()
+    if ((await projectRow.getAttribute('aria-expanded')) === 'false') await projectRow.click()
+    await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
+    await page.getByRole('button', { name: /^New Agent tab/ }).click()
+
+    const choose = async (
+      label: 'Glow' | 'Stars' | 'Off',
+      value: 'glow' | 'stars' | 'off'
+    ): Promise<void> => {
+      await page.getByRole('button', { name: 'Settings', exact: true }).click()
+      const background = page.getByTestId('settings-agent-background')
+      await background.click()
+      await page.getByRole('option', { name: label, exact: true }).click()
+      await expect(background).toHaveText(label)
+      await page.getByRole('button', { name: 'Back' }).click()
+      await expect(page.getByTestId('chat-view')).toHaveAttribute('data-agent-background', value)
+    }
+
+    await expect(page.getByTestId('chat-view')).toHaveAttribute('data-agent-background', 'stars')
+    await expect(page.getByTestId('chat-stars')).toBeVisible()
+    await expect(page.getByTestId('chat-composer-glow')).toHaveCount(0)
+    await page.screenshot({ path: join(optArtifactsDir, 'agent-background-stars.png') })
+
+    await choose('Glow', 'glow')
+    await expect(page.getByTestId('chat-stars')).toHaveCount(0)
+    await expect(page.getByTestId('chat-composer-glow')).toBeVisible()
+    await expect(page.getByTestId('chat-composer')).toHaveAttribute('data-dock', 'center')
+    await page.screenshot({ path: join(optArtifactsDir, 'agent-background-glow.png') })
+
+    await choose('Off', 'off')
+    await expect(page.getByTestId('chat-stars')).toHaveCount(0)
+    await expect(page.getByTestId('chat-composer-glow')).toHaveCount(0)
+    await expect(page.getByTestId('chat-empty-hero')).toBeVisible()
+    await page.screenshot({ path: join(optArtifactsDir, 'agent-background-off.png') })
+
+    await choose('Stars', 'stars')
+    await expect(page.getByTestId('chat-stars')).toBeVisible()
+    await expect(page.getByTestId('chat-composer-glow')).toHaveCount(0)
+  } finally {
     await rm(directory, { recursive: true, force: true })
   }
 })

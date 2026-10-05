@@ -40,9 +40,8 @@ test('empty glowing composer centers, then docks after send', async ({ page, ele
 
     const dock = page.getByTestId('chat-composer')
     const form = dock.locator('form.chat-composer-shell')
-    const glow = page.getByTestId('chat-composer-glow')
     await expect(dock).toHaveAttribute('data-dock', 'center')
-    await expect(glow).toHaveCSS('opacity', '1')
+    await expect(page.getByTestId('chat-composer-glow')).toHaveCount(0)
     const hero = page.getByTestId('chat-empty-hero')
     await expect(hero).toBeVisible()
     await expect(hero).toHaveCSS('position', 'absolute')
@@ -151,7 +150,7 @@ test('empty glowing composer centers, then docks after send', async ({ page, ele
       `expected multiple vertical samples during dock, got ${JSON.stringify(pathYs)}`
     ).toBeGreaterThan(2)
 
-    await expect(glow).toHaveCSS('opacity', '0')
+    await expect(page.getByTestId('chat-composer-glow')).toHaveCount(0)
     await expect(page.getByTestId('chat-empty-hero')).toHaveCSS('visibility', 'hidden')
     await page.waitForTimeout(500)
 

@@ -2,7 +2,7 @@ import { TerminalThemeCombobox } from '@/components/terminal-theme-combobox'
 import { CliSettings } from '@/components/cli-settings'
 import type { TerminalThemeId } from '@shared/terminal-themes'
 import { useEffect, useRef, useState } from 'react'
-import type { AppSettings, AppSettingsPatch, GitHubStatus } from '@shared/types'
+import type { AgentBackground, AppSettings, AppSettingsPatch, GitHubStatus } from '@shared/types'
 import {
   MAX_TERMINAL_FONT_SIZE,
   MIN_TERMINAL_FONT_SIZE,
@@ -153,51 +153,102 @@ function GeneralSettings({
     }
   }
 
+  const savingBackground = useRef(false)
+  const persistAgentBackground = async (value: AgentBackground): Promise<void> => {
+    if (savingBackground.current || value === settings.agentBackground) return
+    savingBackground.current = true
+    setLocalError(null)
+    try {
+      await onUpdate({ agentBackground: value })
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : 'Failed to save agent background.')
+    } finally {
+      savingBackground.current = false
+    }
+  }
+
   return (
-    <section className="space-y-3" data-testid="settings-general">
-      <h2 className="text-xs font-medium text-muted-foreground">Projects</h2>
-      <div className="flex items-start justify-between gap-6">
-        <div className="min-w-0 flex-1 space-y-1">
-          <Label htmlFor="clone-location" className="text-[13px] font-medium">
-            Default clone location
-          </Label>
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            New projects are cloned into this folder. Existing checkouts are not moved.
-          </p>
-          {localError || error ? (
-            <p className="text-xs text-destructive">{localError ?? error}</p>
-          ) : null}
-        </div>
-        <div className="flex w-[min(24rem,48%)] shrink-0 items-center gap-2">
-          <Input
-            id="clone-location"
-            value={cloneDir}
-            disabled={saving}
-            className="h-7 font-mono text-xs"
-            data-testid="settings-clone-dir"
-            onChange={(event): void => setCloneDir(event.target.value)}
-            onBlur={(): void => {
-              void persistCloneDir(cloneDir)
-            }}
-            onKeyDown={(event): void => {
-              if (event.key === 'Enter') {
-                event.currentTarget.blur()
+    <section className="space-y-6" data-testid="settings-general">
+      <div className="space-y-3">
+        <h2 className="text-xs font-medium text-muted-foreground">Agent</h2>
+        <div className="flex items-start justify-between gap-6">
+          <div className="min-w-0 flex-1 space-y-1">
+            <Label htmlFor="agent-background" className="text-[13px] font-medium">
+              Background
+            </Label>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              Glow sits behind the composer. Stars fill the empty pane and fade once you start
+              typing. Off leaves the pane plain.
+            </p>
+          </div>
+          <Select
+            value={settings.agentBackground}
+            onValueChange={(value): void => {
+              if (value === 'glow' || value === 'stars' || value === 'off') {
+                void persistAgentBackground(value)
               }
             }}
-          />
-          <Button
-            type="button"
-            variant="outline"
-            size="xs"
-            disabled={saving}
-            onClick={(): void => {
-              void handleChooseFolder()
-            }}
           >
-            Choose folder
-          </Button>
+            <SelectTrigger
+              id="agent-background"
+              className="h-7 w-36"
+              data-testid="settings-agent-background"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="glow">Glow</SelectItem>
+              <SelectItem value="stars">Stars</SelectItem>
+              <SelectItem value="off">Off</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
+      <div className="space-y-3">
+        <h2 className="text-xs font-medium text-muted-foreground">Projects</h2>
+        <div className="flex items-start justify-between gap-6">
+          <div className="min-w-0 flex-1 space-y-1">
+            <Label htmlFor="clone-location" className="text-[13px] font-medium">
+              Default clone location
+            </Label>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              New projects are cloned into this folder. Existing checkouts are not moved.
+            </p>
+          </div>
+          <div className="flex w-[min(24rem,48%)] shrink-0 items-center gap-2">
+            <Input
+              id="clone-location"
+              value={cloneDir}
+              disabled={saving}
+              className="h-7 font-mono text-xs"
+              data-testid="settings-clone-dir"
+              onChange={(event): void => setCloneDir(event.target.value)}
+              onBlur={(): void => {
+                void persistCloneDir(cloneDir)
+              }}
+              onKeyDown={(event): void => {
+                if (event.key === 'Enter') {
+                  event.currentTarget.blur()
+                }
+              }}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="xs"
+              disabled={saving}
+              onClick={(): void => {
+                void handleChooseFolder()
+              }}
+            >
+              Choose folder
+            </Button>
+          </div>
+        </div>
+      </div>
+      {localError || error ? (
+        <p className="text-xs text-destructive">{localError ?? error}</p>
+      ) : null}
     </section>
   )
 }
