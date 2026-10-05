@@ -1195,3 +1195,59 @@ test('agent pane loading does not flash empty placeholder before session is conf
     await rm(directory, { recursive: true, force: true })
   }
 })
+
+test('empty agent pane shows a light teal star field until the first message', async ({
+  page,
+  electronApp
+}) => {
+  test.setTimeout(90_000)
+  const directory = await mkdtemp(join(tmpdir(), 'cerebro-chat-stars-'))
+  try {
+    await mkdir(optArtifactsDir, { recursive: true })
+    await electronApp.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0].setSize(1250, 900)
+    )
+    const project = await page.evaluate(
+      (folder) => window.cerebro.createProjectFromDirectory(folder),
+      directory
+    )
+    const workspaceId = project.workspaces[0].id
+    await page.reload()
+    const projectRow = page.getByTestId(/project-row-/).first()
+    await expect(projectRow).toBeVisible()
+    if ((await projectRow.getAttribute('aria-expanded')) === 'false') await projectRow.click()
+    await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
+    await page.getByRole('button', { name: /^New Agent tab/ }).click()
+
+    await expect(page.getByTestId('chat-empty-hero')).toBeVisible()
+    const stars = page.getByTestId('chat-stars')
+    await expect(stars).toBeVisible()
+    await expect(stars).toHaveAttribute('data-star-color', '#99f6e4')
+    const starDot = stars.locator('[data-slot="star-layer"]').first().locator('div').first()
+    await expect(starDot).toHaveCSS('box-shadow', /rgb\(153,\s*246,\s*228\)/)
+    const background = await stars.evaluate((el) => getComputedStyle(el).backgroundImage)
+    expect(background).toContain('radial-gradient')
+    expect(background).toMatch(/99f6e4|153,\s*246,\s*228|color-mix/i)
+    const send = page.getByRole('button', { name: 'Send message', exact: true })
+    const box = await send.boundingBox()
+    expect(box).toBeTruthy()
+    const hit = await page.evaluate(
+      ({ x, y }) => {
+        const node = document.elementFromPoint(x, y)
+        return node?.closest('button')?.getAttribute('aria-label')
+      },
+      { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 }
+    )
+    expect(hit).toBe('Send message')
+    await page.screenshot({ path: join(optArtifactsDir, 'agent-pane-stars-empty.png') })
+
+    await page.getByRole('textbox', { name: 'Message agent' }).fill('Hello stars')
+    await send.click()
+    await expect(page.getByTestId('chat-transcript')).toContainText('Adapter connected.')
+    await expect(page.getByTestId('chat-stars')).toHaveCount(0)
+    await expect(page.getByTestId('chat-composer')).toHaveAttribute('data-dock', 'bottom')
+    await page.screenshot({ path: join(optArtifactsDir, 'agent-pane-stars-after-message.png') })
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})

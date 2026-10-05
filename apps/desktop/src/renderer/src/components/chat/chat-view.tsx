@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowUp, ImagePlus, MessageSquare, Square } from 'lucide-react'
 import type { AgentAccessMode, AgentAnswer, AgentModel, ChatCommand } from '@cerebro/core'
 import { Button } from '@/components/ui/button'
+import { StarsBackground } from '@/lib/stars-background'
 import { cn } from '@/lib/utils'
 import { ChatItem } from './chat-item'
 import { ChatTurnActions } from './chat-turn-actions'
@@ -256,10 +257,18 @@ export function ChatView({
   return (
     <div
       ref={viewRef}
-      className="chat-scrollbars relative flex h-full min-w-0 flex-col bg-background text-foreground"
+      className="chat-scrollbars relative z-0 flex h-full min-w-0 flex-col bg-background text-foreground"
       data-testid="chat-view"
       data-loading={loading || undefined}
     >
+      {empty ? (
+        <StarsBackground
+          aria-hidden="true"
+          data-testid="chat-stars"
+          pointerEvents={false}
+          className="pointer-events-none absolute inset-0 -z-10"
+        />
+      ) : null}
       {loading ? (
         <div
           data-testid="chat-loading"
