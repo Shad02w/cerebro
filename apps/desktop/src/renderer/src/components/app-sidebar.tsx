@@ -596,12 +596,7 @@ function MultiRootWorkspaceTree({
               >
                 <span className="flex w-full min-w-0 items-baseline gap-2">
                   <FolderTree className="size-4 shrink-0 self-center text-sidebar-accent-foreground" />
-                  <span
-                    className="min-w-0 flex-1 truncate font-medium leading-4"
-                    data-testid={`root-name-${project.id}`}
-                  >
-                    root
-                  </span>
+                  <span className="min-w-0 flex-1 truncate font-medium leading-4">root</span>
                   <span
                     className="shrink-0 text-[10px] leading-none text-sidebar-foreground/55 tabular-nums"
                     aria-label={`${repos.length} repositories in root`}

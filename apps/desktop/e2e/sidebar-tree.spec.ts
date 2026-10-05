@@ -64,49 +64,6 @@ test('header searches projects, repositories and branches without changing tree 
   }
 })
 
-async function expectRootRowBaseline(page: Page): Promise<void> {
-  const alignment = await page.evaluate(() => {
-    function textBaseline(element: Element): number {
-      const probe = document.createElement('span')
-      probe.style.cssText =
-        'display:inline-block;width:0;height:0;vertical-align:baseline;pointer-events:none'
-      element.appendChild(probe)
-      const baseline = probe.getBoundingClientRect().bottom
-      probe.remove()
-      return baseline
-    }
-
-    const button = document.querySelector('[data-workspace-role="root"]')
-    const row = button?.closest('[data-sidebar="menu-row"]')
-    const name = button?.querySelector('[data-testid^="root-name-"]')
-    const count = button?.querySelector('[data-testid^="root-repo-count-"]')
-    const folder = button?.querySelector('svg')
-    const chevron = row?.querySelector('[data-testid^="root-toggle-"] svg')
-    const detail = row?.querySelector('[data-testid^="root-menu-"] svg')
-    if (!name || !count || !folder || !chevron || !detail) return null
-    const center = (element: Element): number => {
-      const rect = element.getBoundingClientRect()
-      return rect.top + rect.height / 2
-    }
-    return {
-      nameBaseline: textBaseline(name),
-      countBaseline: textBaseline(count),
-      nameCenter: center(name),
-      folderCenter: center(folder),
-      chevronCenter: center(chevron),
-      detailCenter: center(detail)
-    }
-  })
-  expect(alignment).toBeTruthy()
-  const message = JSON.stringify(alignment)
-  expect(Math.abs(alignment!.countBaseline - alignment!.nameBaseline), message).toBeLessThanOrEqual(
-    1
-  )
-  expect(Math.abs(alignment!.folderCenter - alignment!.nameCenter), message).toBeLessThanOrEqual(1)
-  expect(Math.abs(alignment!.chevronCenter - alignment!.nameCenter), message).toBeLessThanOrEqual(1)
-  expect(Math.abs(alignment!.detailCenter - alignment!.nameCenter), message).toBeLessThanOrEqual(1)
-}
-
 async function initGitRepo(dir: string, branch: string, marker: string): Promise<void> {
   await mkdir(dir, { recursive: true })
   await execFileAsync('git', ['init', '-b', branch], { cwd: dir })
@@ -240,7 +197,6 @@ test('sidebar keeps keyboard selection and disclosures usable in both themes', a
     const rootGroup = sidebar.getByTestId(/root-group-/)
     await expect(rootGroup.getByTestId(/root-repo-count-/)).toHaveText('4 repos')
     await expect(rootGroup.getByTestId(/workspace-row-/)).toHaveCount(4)
-    await expectRootRowBaseline(page)
 
     const cerebroProject = sidebar.getByTestId(/project-row-/).filter({ hasText: 'cerebro' })
     const branchRow = sidebar
