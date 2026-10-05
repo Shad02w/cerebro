@@ -288,11 +288,13 @@ test('settings reuses the app sidebar and navigates by hash route', async ({ pag
 
   const sidebar = page.locator('[data-slot="sidebar"]')
   const generalNav = sidebar.getByRole('button', { name: 'General' })
+  const providerNav = sidebar.getByRole('button', { name: 'Provider' })
   const terminalNav = sidebar.getByRole('button', { name: 'Terminal' })
   const keyboardNav = sidebar.getByRole('button', { name: 'Keyboard' })
   const integrationsNav = sidebar.getByRole('button', { name: 'Integrations' })
 
   await expect(generalNav).toBeVisible()
+  await expect(providerNav).toBeVisible()
   await expect(terminalNav).toBeVisible()
   await expect(keyboardNav).toBeVisible()
   await expect(integrationsNav).toBeVisible()
@@ -311,6 +313,7 @@ test('settings reuses the app sidebar and navigates by hash route', async ({ pag
   expect(backRadius).toBe(navRadius)
 
   await expect(generalNav.locator('svg')).toHaveCount(1)
+  await expect(providerNav.locator('svg')).toHaveCount(1)
   await expect(terminalNav.locator('svg')).toHaveCount(1)
   await expect(keyboardNav.locator('svg')).toHaveCount(1)
   await expect(integrationsNav.locator('svg')).toHaveCount(1)
@@ -318,6 +321,7 @@ test('settings reuses the app sidebar and navigates by hash route', async ({ pag
   const content = page.locator('[data-slot="sidebar-inset"]')
   await expect(content.getByRole('button', { name: 'Terminal' })).toHaveCount(0)
   await expect(content.getByRole('heading', { name: 'General' })).toBeVisible()
+  await expect(page.getByTestId('settings-agent-models')).toHaveCount(0)
   await expect(content.getByRole('heading', { name: 'Projects' })).toBeVisible()
   await expect(content.getByLabel('Default clone location')).toBeVisible()
   await expect(
@@ -335,6 +339,21 @@ test('settings reuses the app sidebar and navigates by hash route', async ({ pag
     path: path.join(artifactsDir, 'settings-general.png'),
     fullPage: true
   })
+
+  await providerNav.click()
+  await expect.poll(() => page.evaluate(() => window.location.hash)).toBe('#/settings/provider')
+  await expect(providerNav).toHaveAttribute('data-active', 'true')
+  await expect(generalNav).toHaveAttribute('data-active', 'false')
+  await expect(content.getByRole('heading', { name: 'Provider' })).toBeVisible()
+  await expect(page.getByTestId('settings-provider')).toBeVisible()
+  await expect(page.getByTestId('settings-agent-models')).toBeVisible()
+  await page.screenshot({
+    path: path.join(artifactsDir, 'settings-provider.png'),
+    fullPage: true
+  })
+  await page
+    .screenshot({ path: '/opt/cursor/artifacts/settings-provider.png' })
+    .catch(() => undefined)
 
   await terminalNav.click()
   await expect.poll(() => page.evaluate(() => window.location.hash)).toBe('#/settings/terminal')

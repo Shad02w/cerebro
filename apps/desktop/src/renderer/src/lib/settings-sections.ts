@@ -1,4 +1,12 @@
-import { Blocks, Keyboard, Settings, SquareTerminal, Terminal, type LucideIcon } from 'lucide-react'
+import {
+  Blocks,
+  Cpu,
+  Keyboard,
+  Settings,
+  SquareTerminal,
+  Terminal,
+  type LucideIcon
+} from 'lucide-react'
 import type { SettingsSectionId } from '@/lib/app-route'
 
 export type SettingsSection = {
@@ -14,6 +22,12 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     label: 'General',
     description: 'Configure projects and the empty agent pane.',
     icon: Settings
+  },
+  {
+    id: 'provider',
+    label: 'Provider',
+    description: 'Choose the default model for each harness and provider.',
+    icon: Cpu
   },
   {
     id: 'terminal',

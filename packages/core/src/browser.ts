@@ -3,3 +3,4 @@
  * the Node-dependent index; add modules here when the renderer needs their runtime values.
  */
 export * from './chat'
+export * from './agent-defaults'

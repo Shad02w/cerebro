@@ -1,7 +1,8 @@
+import { isAgentHarness } from './chat'
 import { DEFAULT_TERMINAL_THEME, isTerminalThemeId } from './terminal-themes'
 import { existsSync, mkdirSync, statSync } from 'node:fs'
 import { isAbsolute, resolve } from 'node:path'
-import type { AppSettings, AppSettingsPatch } from './types'
+import type { AgentModelDefaults, AppSettings, AppSettingsPatch, LastAgent } from './types'
 import {
   DEFAULT_AGENT_BACKGROUND,
   DEFAULT_TERMINAL_FONT_SIZE,
@@ -23,6 +24,8 @@ type StoredSettings = {
   terminalFontFamily?: string
   agentBackground?: string
   keybinds?: Record<string, string>
+  agentModelDefaults?: AgentModelDefaults
+  lastAgent?: LastAgent | null
 }
 
 function defaultSettings(): AppSettings {
@@ -32,8 +35,85 @@ function defaultSettings(): AppSettings {
     terminalFontSize: DEFAULT_TERMINAL_FONT_SIZE,
     terminalFontFamily: TERMINAL_FONT_FAMILY_AUTO,
     agentBackground: DEFAULT_AGENT_BACKGROUND,
-    keybinds: {}
+    keybinds: {},
+    agentModelDefaults: {},
+    lastAgent: null
   }
+}
+
+function normalizeProvider(value: unknown): string {
+  if (typeof value !== 'string') throw new Error('Unknown agent provider.')
+  const trimmed = value.trim()
+  if (!trimmed || trimmed.length > 200) throw new Error('Unknown agent provider.')
+  return trimmed
+}
+
+function normalizeModelKey(value: unknown): string {
+  if (typeof value !== 'string') throw new Error('Agent model default must be a model key.')
+  const trimmed = value.trim()
+  if (!trimmed || trimmed.length > 1000) throw new Error('Agent model default must be a model key.')
+  return trimmed
+}
+
+function readAgentModelDefaults(value: unknown): AgentModelDefaults {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  const next: AgentModelDefaults = {}
+  for (const [harness, raw] of Object.entries(value)) {
+    if (!isAgentHarness(harness) || !raw || typeof raw !== 'object' || Array.isArray(raw)) continue
+    const providers: Record<string, string> = {}
+    for (const [provider, key] of Object.entries(raw)) {
+      if (typeof provider !== 'string' || typeof key !== 'string') continue
+      try {
+        providers[normalizeProvider(provider)] = normalizeModelKey(key)
+      } catch {
+        // Drop invalid stored entries.
+      }
+    }
+    if (Object.keys(providers).length) next[harness] = providers
+  }
+  return next
+}
+
+function normalizeAgentModelDefaults(value: unknown): AgentModelDefaults {
+  if (value == null) return {}
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Agent model defaults must be an object.')
+  }
+  const next: AgentModelDefaults = {}
+  for (const [harness, raw] of Object.entries(value)) {
+    if (!isAgentHarness(harness)) throw new Error('Unknown agent harness.')
+    if (raw == null) continue
+    if (typeof raw !== 'object' || Array.isArray(raw)) {
+      throw new Error('Agent model defaults must be an object.')
+    }
+    const providers: Record<string, string> = {}
+    for (const [provider, key] of Object.entries(raw)) {
+      providers[normalizeProvider(provider)] = normalizeModelKey(key)
+    }
+    if (Object.keys(providers).length) next[harness] = providers
+  }
+  return next
+}
+
+function readLastAgent(value: unknown): LastAgent | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const harness = (value as { harness?: unknown }).harness
+  const provider = (value as { provider?: unknown }).provider
+  if (!isAgentHarness(harness)) return null
+  try {
+    return { harness, provider: normalizeProvider(provider) }
+  } catch {
+    return null
+  }
+}
+
+function normalizeLastAgent(value: unknown): LastAgent | null {
+  if (value == null) return null
+  if (typeof value !== 'object' || Array.isArray(value))
+    throw new Error('Last agent must be an object.')
+  const harness = (value as { harness?: unknown }).harness
+  if (!isAgentHarness(harness)) throw new Error('Unknown agent harness.')
+  return { harness, provider: normalizeProvider((value as { provider?: unknown }).provider) }
 }
 
 function readLegacyCloneLocation(): string | undefined {
@@ -170,7 +250,9 @@ function mergeSettings(stored: StoredSettings): AppSettings {
     terminalFontFamily,
     terminalTheme,
     agentBackground,
-    keybinds
+    keybinds,
+    agentModelDefaults: readAgentModelDefaults(stored.agentModelDefaults),
+    lastAgent: readLastAgent(stored.lastAgent)
   }
 }
 
@@ -213,6 +295,14 @@ export function setSettings(patch: AppSettingsPatch): AppSettings {
   if (patch.agentBackground !== undefined) {
     if (!isAgentBackground(patch.agentBackground)) throw new Error('Unknown agent background.')
     next.agentBackground = patch.agentBackground
+  }
+
+  if (patch.agentModelDefaults !== undefined) {
+    next.agentModelDefaults = normalizeAgentModelDefaults(patch.agentModelDefaults)
+  }
+
+  if (patch.lastAgent !== undefined) {
+    next.lastAgent = normalizeLastAgent(patch.lastAgent)
   }
 
   writeStored(next)
