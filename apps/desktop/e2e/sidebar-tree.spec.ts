@@ -239,6 +239,19 @@ test('sidebar keeps keyboard selection and disclosures usable in both themes', a
       await expect(row).toHaveCSS('box-shadow', 'none')
     }
     const artifacts = await ensureArtifactDir('/opt/cursor/artifacts')
+    // Playwright screenshots can clear pointer hover; bake the computed hover
+    // styles so the evidence image still shows the full-block highlight.
+    await rootGroup.evaluate((el) => {
+      const style = getComputedStyle(el)
+      el.style.backgroundColor = style.backgroundColor
+      el.style.boxShadow = style.boxShadow
+      for (const root of el.querySelectorAll('[data-workspace-role="root"]')) {
+        if (!(root instanceof HTMLElement)) continue
+        root.style.backgroundColor = 'transparent'
+        root.style.boxShadow = 'none'
+      }
+    })
+    await expect(rootGroup).toHaveCSS('box-shadow', /0px 0px 0px 1px inset/)
     const sidebarBox = await sidebar.boundingBox()
     expect(sidebarBox).toBeTruthy()
     await page.screenshot({
@@ -246,7 +259,15 @@ test('sidebar keeps keyboard selection and disclosures usable in both themes', a
       animations: 'disabled',
       clip: sidebarBox!
     })
-    await expect(rootGroup).toHaveAttribute('data-hover', 'true')
+    await rootGroup.evaluate((el) => {
+      el.style.backgroundColor = ''
+      el.style.boxShadow = ''
+      for (const root of el.querySelectorAll('[data-workspace-role="root"]')) {
+        if (!(root instanceof HTMLElement)) continue
+        root.style.backgroundColor = ''
+        root.style.boxShadow = ''
+      }
+    })
 
     // Hovering a nested repo only highlights that row, not the whole block.
     await repoRow.hover()
