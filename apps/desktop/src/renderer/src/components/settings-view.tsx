@@ -177,8 +177,8 @@ function GeneralSettings({
               Background
             </Label>
             <p className="text-xs leading-relaxed text-muted-foreground">
-              Glow sits behind the composer. Stars fill the empty pane and fade once you start
-              typing. Off leaves the pane plain.
+              Glow sits behind the composer. Stars fill the empty pane until the first message is
+              sent. Off leaves the pane plain.
             </p>
           </div>
           <Select
