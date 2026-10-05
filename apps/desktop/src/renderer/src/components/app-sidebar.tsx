@@ -1022,7 +1022,9 @@ function NavigationHeader({
                 onCloseAutoFocus={(event): void => event.preventDefault()}
               >
                 <DropdownMenuGroup>
-                  <DropdownMenuLabel>Group by</DropdownMenuLabel>
+                  <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">
+                    Group by
+                  </DropdownMenuLabel>
                   <DropdownMenuRadioGroup
                     value={groupBy}
                     onValueChange={(value): void => {
