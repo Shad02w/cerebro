@@ -50,6 +50,11 @@ async function addDirectoryViaUi(
   await page.getByTestId('add-project-choose-folder').click()
 }
 
+async function expandProject(page: Page, projectId: number): Promise<void> {
+  const row = page.getByTestId(`project-row-${projectId}`)
+  if ((await row.getAttribute('aria-expanded')) !== 'true') await row.click()
+}
+
 async function openStatusSubmenu(page: Page, row: Locator, workspaceId: number): Promise<void> {
   await row.click({ button: 'right' })
   const trigger = page.getByTestId(`workspace-move-status-${workspaceId}`)
@@ -116,6 +121,10 @@ test('marks workspace rows and groups the sidebar by project or status', async (
     ] as Workspace[]) {
       expect(workspace.status).toBe('todo')
     }
+
+    await expandProject(page, project!.id)
+    await expandProject(page, notes!.id)
+    await expandProject(page, ledger!.id)
 
     const rootRow = page.getByTestId(`project-root-${project!.id}`)
     const notesRow = page.getByTestId(`workspace-row-${notesWorkspace!.id}`)
@@ -232,6 +241,8 @@ test('marks workspace rows and groups the sidebar by project or status', async (
     await expect(page.getByTestId('status-count-done')).toHaveText('1')
 
     await page.getByTestId('sidebar-group-project').click()
+    await expandProject(page, project!.id)
+    await expandProject(page, notes!.id)
     await expect(notesRow).toHaveAttribute('data-workspace-status', 'in_progress')
     await expect(rootRow).toHaveAttribute('data-workspace-status', 'done')
     await expect(apiRow).not.toHaveAttribute('data-workspace-status')
