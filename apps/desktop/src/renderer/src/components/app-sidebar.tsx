@@ -1262,7 +1262,7 @@ function StatusGroup({
         <CollapsibleTrigger asChild>
           <SidebarMenuButton
             className={cn(
-              'app-no-drag h-8 pr-2! text-[11px] font-semibold tracking-wider uppercase',
+              'group/status-header app-no-drag h-8 pr-2! text-[11px] font-semibold tracking-wider uppercase',
               presentation.headerClassName
             )}
             data-testid={`status-group-${status}`}
@@ -1271,6 +1271,11 @@ function StatusGroup({
           >
             <WorkspaceStatusIcon status={status} />
             <span className="min-w-0 flex-1 truncate">{presentation.label}</span>
+            <ChevronRight
+              aria-hidden
+              data-testid={`status-chevron-${status}`}
+              className="size-3.5 shrink-0 opacity-0 transition-[opacity,transform] group-focus-visible/status-header:opacity-70 group-hover/status-header:opacity-70 group-data-[state=open]/status-header:rotate-90"
+            />
             <span
               className={cn(
                 'min-w-5 rounded-full px-1.5 text-center text-[11px] font-medium tracking-normal tabular-nums',
