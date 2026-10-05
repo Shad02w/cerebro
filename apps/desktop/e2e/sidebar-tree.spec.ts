@@ -197,6 +197,30 @@ test('sidebar keeps keyboard selection and disclosures usable in both themes', a
     const rootGroup = sidebar.getByTestId(/root-group-/)
     await expect(rootGroup.getByTestId(/root-repo-count-/)).toHaveText('4 repos')
     await expect(rootGroup.getByTestId(/workspace-row-/)).toHaveCount(4)
+
+    const cerebroProject = sidebar.getByTestId(/project-row-/).filter({ hasText: 'cerebro' })
+    const branchRow = sidebar
+      .getByTestId(/workspace-row-/)
+      .filter({ hasText: 'feature/sidebar-refinements' })
+    const projectBox = await cerebroProject.boundingBox()
+    const branchBox = await branchRow.boundingBox()
+    expect(projectBox).toBeTruthy()
+    expect(branchBox).toBeTruthy()
+    expect(Math.abs(projectBox!.x - branchBox!.x)).toBeLessThanOrEqual(1)
+
+    for (const subtree of await sidebar.locator('[data-sidebar="menu-sub"]').all()) {
+      await expect(subtree).toHaveCSS('margin-left', '0px')
+      await expect(subtree).toHaveCSS('padding-left', '0px')
+    }
+    const repoTree = sidebar.getByTestId(/project-repo-tree-/)
+    await expect(repoTree).toHaveCSS('margin-left', '24px')
+    const rootButton = sidebar.locator('[data-workspace-role="root"]')
+    const rootBox = await rootButton.boundingBox()
+    const repoBox = await repoRow.boundingBox()
+    expect(rootBox).toBeTruthy()
+    expect(repoBox).toBeTruthy()
+    expect(repoBox!.x - rootBox!.x).toBeGreaterThanOrEqual(20)
+    expect(repoBox!.x - rootBox!.x).toBeLessThanOrEqual(28)
     for (const theme of ['dark', 'light']) {
       await page.evaluate((value) => {
         document.documentElement.classList.toggle('dark', value === 'dark')

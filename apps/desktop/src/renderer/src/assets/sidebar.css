@@ -17,9 +17,10 @@
   color: color-mix(in oklch, var(--sidebar-foreground) 65%, transparent);
 }
 
+/* Workspace rows align with the project row. Nested multi-root repos indent themselves. */
 .cerebro-sidebar [data-sidebar='menu-sub'] {
-  margin-left: 16px;
-  padding-left: 8px;
+  margin-left: 0;
+  padding-left: 0;
   padding-block: 3px;
 }
 
