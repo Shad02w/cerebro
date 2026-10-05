@@ -60,6 +60,10 @@ import {
 const DEFAULT_WORKSPACE_TOOLTIP =
   "Default workspace — can't be deleted. Remove the project instead."
 
+/** In-flow root actions. `static` wins over the shadcn absolute action; `top` from sidebar.css is then ignored. */
+const rootMenuActionClass =
+  'static top-auto right-auto group-hover/root:text-sidebar-accent-foreground group-focus-within/root:text-sidebar-accent-foreground'
+
 type AppSidebarProps = {
   mode: 'projects' | 'settings'
   projects: Project[]
@@ -466,7 +470,7 @@ function RootOverflowMenu({ project }: { project: Project }): React.JSX.Element 
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <SidebarMenuAction
-          className="app-no-drag"
+          className={cn('app-no-drag', rootMenuActionClass)}
           showOnHover
           data-testid={`root-menu-${project.id}`}
           onClick={(event): void => event.stopPropagation()}
@@ -578,10 +582,13 @@ function MultiRootWorkspaceTree({
           aria-label={`${project.name} root workspace`}
         >
           <WorkspaceHoverCard workspace={rootWorkspace ?? undefined}>
-            <SidebarMenuRow data-workspace-id={rootWorkspace?.id}>
+            <SidebarMenuRow
+              className="group/root flex items-start pr-1"
+              data-workspace-id={rootWorkspace?.id}
+            >
               <button
                 type="button"
-                className="app-no-drag peer/menu-button flex h-auto min-h-7 w-full min-w-0 flex-col items-stretch rounded-md px-2 py-1 pr-14 text-left text-xs hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                className="app-no-drag peer/menu-button flex h-auto min-h-7 min-w-0 flex-1 flex-col items-stretch rounded-md px-2 py-1 text-left text-xs hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                 data-testid={`project-root-${project.id}`}
                 data-workspace-role="root"
                 data-workspace-icon="folder-tree"
@@ -594,11 +601,11 @@ function MultiRootWorkspaceTree({
                   if (rootWorkspace) onSelectWorkspace(rootWorkspace.id)
                 }}
               >
-                <span className="flex w-full min-w-0 items-center gap-2">
-                  <FolderTree className="size-4 shrink-0 text-sidebar-accent-foreground" />
-                  <span className="min-w-0 flex-1 truncate font-medium">root</span>
+                <span className="flex w-full min-w-0 items-baseline gap-2">
+                  <FolderTree className="size-4 shrink-0 self-center text-sidebar-accent-foreground" />
+                  <span className="min-w-0 flex-1 truncate font-medium leading-4">root</span>
                   <span
-                    className="shrink-0 text-[10px] text-sidebar-foreground/55 tabular-nums"
+                    className="shrink-0 text-[10px] leading-none text-sidebar-foreground/55 tabular-nums"
                     aria-label={`${repos.length} repositories in root`}
                     data-testid={`root-repo-count-${project.id}`}
                   >
@@ -607,25 +614,27 @@ function MultiRootWorkspaceTree({
                 </span>
                 <WorkspaceAgents agents={rootAgents} onOpenAgent={onOpenAgent} />
               </button>
-              <SidebarMenuAction
-                className="app-no-drag right-6"
-                data-testid={`root-toggle-${project.id}`}
-                aria-expanded={rootOpen}
-                aria-label={rootOpen ? 'Collapse repositories' : 'Expand repositories'}
-                onClick={(event): void => {
-                  event.stopPropagation()
-                  setRootOpen((open) => !open)
-                }}
-                onPointerDown={(event): void => event.stopPropagation()}
-              >
-                <ChevronRight
-                  className={cn('size-4 shrink-0 transition-transform', rootOpen && 'rotate-90')}
-                />
-                <span className="sr-only">
-                  {rootOpen ? 'Collapse repositories' : 'Expand repositories'}
-                </span>
-              </SidebarMenuAction>
-              <RootOverflowMenu project={project} />
+              <div className="mt-1 flex h-4 shrink-0 items-center">
+                <SidebarMenuAction
+                  className={cn('app-no-drag', rootMenuActionClass)}
+                  data-testid={`root-toggle-${project.id}`}
+                  aria-expanded={rootOpen}
+                  aria-label={rootOpen ? 'Collapse repositories' : 'Expand repositories'}
+                  onClick={(event): void => {
+                    event.stopPropagation()
+                    setRootOpen((open) => !open)
+                  }}
+                  onPointerDown={(event): void => event.stopPropagation()}
+                >
+                  <ChevronRight
+                    className={cn('size-4 shrink-0 transition-transform', rootOpen && 'rotate-90')}
+                  />
+                  <span className="sr-only">
+                    {rootOpen ? 'Collapse repositories' : 'Expand repositories'}
+                  </span>
+                </SidebarMenuAction>
+                <RootOverflowMenu project={project} />
+              </div>
             </SidebarMenuRow>
           </WorkspaceHoverCard>
           <CollapsibleContent>
