@@ -16,6 +16,7 @@ import { serverCommand } from './commands/server'
  *   cerebro workspace create --project <id> --branch <name> [--focus]
  *   cerebro workspace create --project <id> --branch <name> --from <base> [--focus]
  *   cerebro workspace path <id>
+ *   cerebro workspace status <id> [todo|in-progress|ready-to-review|done]
  *
  * Run any command with --help for details.
  */
@@ -31,7 +32,7 @@ Usage: cerebro <command> [options]
 
 Commands:
   project    Manage projects (cloned git repositories or opened folders)
-  workspace  Manage workspaces (default branch + git worktrees)
+  workspace  Manage workspaces (default branch + git worktrees) and their status
   tab        Manage persistent workspace tabs
   pane       Manage persistent BSP panes inside tabs
   server     Manage the background terminal server

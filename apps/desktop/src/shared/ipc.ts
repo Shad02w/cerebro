@@ -39,6 +39,7 @@ export const IPC = {
     create: 'cerebro:workspaces:create',
     rename: 'cerebro:workspaces:rename',
     remove: 'cerebro:workspaces:remove',
+    setStatus: 'cerebro:workspaces:set-status',
     listChanges: 'cerebro:workspaces:list-changes',
     getFileDiff: 'cerebro:workspaces:get-file-diff'
   },

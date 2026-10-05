@@ -1,5 +1,5 @@
 import { muxRequest } from '@cerebro/mux'
-import type { Project, ProjectListResult, Workspace } from '@cerebro/core'
+import type { Project, ProjectListResult, Workspace, WorkspaceStatus } from '@cerebro/core'
 export const listProjects = (): Promise<ProjectListResult> =>
   muxRequest('registry', { action: 'list' })
 export const createProjectFromDirectory = (directory: string): Promise<Project> =>
@@ -18,6 +18,10 @@ export const createWorkspaceFromBranch = (
     from: options?.from,
     ...(options?.focus !== undefined ? { focus: options.focus } : {})
   })
+export const setWorkspaceStatus = (
+  workspaceId: number,
+  status: WorkspaceStatus
+): Promise<Workspace> => muxRequest('registry', { action: 'workspace.status', workspaceId, status })
 export const renameWorkspace = (
   workspaceId: number,
   displayName: string | null

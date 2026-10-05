@@ -62,6 +62,9 @@ export async function createWorkspaceFromBranch(
     provider: true
   })
 }
+export async function setWorkspaceStatus(workspaceId: number, status: string): Promise<Workspace> {
+  return muxCall('registry', { action: 'workspace.status', workspaceId, status })
+}
 export async function renameWorkspace(
   workspaceId: number,
   displayName: string | null
