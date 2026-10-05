@@ -8,15 +8,6 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger
 } from '@/components/ui/dropdown-menu'
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSub,
-  ContextMenuSubContent,
-  ContextMenuSubTrigger,
-  ContextMenuTrigger
-} from '@/components/ui/context-menu'
 import { cn } from '@/lib/utils'
 import { WORKSPACE_STATUS_PRESENTATION, workspaceStatus } from '@/lib/workspace-status'
 
@@ -58,12 +49,10 @@ export function WorkspaceRowStatusIcon({
 
 function StatusChoices({
   workspace,
-  onSetStatus,
-  Item
+  onSetStatus
 }: {
   workspace: Workspace
   onSetStatus: (workspaceId: number, status: WorkspaceStatus) => void
-  Item: typeof DropdownMenuItem | typeof ContextMenuItem
 }): React.JSX.Element {
   const current = workspaceStatus(workspace.status)
   return (
@@ -72,7 +61,7 @@ function StatusChoices({
         const presentation = WORKSPACE_STATUS_PRESENTATION[status]
         const selected = status === current
         return (
-          <Item
+          <DropdownMenuItem
             key={status}
             data-testid={`workspace-status-option-${workspace.id}-${status}`}
             data-current={selected ? 'true' : 'false'}
@@ -84,7 +73,7 @@ function StatusChoices({
             <WorkspaceStatusIcon status={status} />
             <span className="min-w-0 flex-1 truncate">{presentation.label}</span>
             {selected ? <Check aria-hidden /> : null}
-          </Item>
+          </DropdownMenuItem>
         )
       })}
     </>
@@ -105,43 +94,10 @@ export function WorkspaceStatusMenu({
           Move to status
         </DropdownMenuSubTrigger>
         <DropdownMenuSubContent className="w-48">
-          <StatusChoices workspace={workspace} onSetStatus={onSetStatus} Item={DropdownMenuItem} />
+          <StatusChoices workspace={workspace} onSetStatus={onSetStatus} />
         </DropdownMenuSubContent>
       </DropdownMenuSub>
       <DropdownMenuSeparator />
     </>
-  )
-}
-
-export function WorkspaceStatusContextMenu({
-  workspace,
-  onSetStatus,
-  children,
-  ...triggerProps
-}: {
-  workspace: Workspace | null
-  onSetStatus: (workspaceId: number, status: WorkspaceStatus) => void
-  children: React.ReactElement
-} & Omit<
-  React.ComponentProps<typeof ContextMenuTrigger>,
-  'asChild' | 'children'
->): React.JSX.Element {
-  if (!workspace) return children
-  return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild {...triggerProps}>
-        {children}
-      </ContextMenuTrigger>
-      <ContextMenuContent className="w-52">
-        <ContextMenuSub>
-          <ContextMenuSubTrigger data-testid={`workspace-move-status-${workspace.id}`}>
-            Move to status
-          </ContextMenuSubTrigger>
-          <ContextMenuSubContent className="w-48">
-            <StatusChoices workspace={workspace} onSetStatus={onSetStatus} Item={ContextMenuItem} />
-          </ContextMenuSubContent>
-        </ContextMenuSub>
-      </ContextMenuContent>
-    </ContextMenu>
   )
 }

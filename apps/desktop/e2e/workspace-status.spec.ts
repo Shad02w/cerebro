@@ -55,9 +55,15 @@ async function expandProject(page: Page, projectId: number): Promise<void> {
   if ((await row.getAttribute('aria-expanded')) !== 'true') await row.click()
 }
 
-async function openStatusSubmenu(page: Page, row: Locator, workspaceId: number): Promise<void> {
-  await row.click({ button: 'right' })
-  const trigger = page.getByTestId(`workspace-move-status-${workspaceId}`)
+async function openStatusSubmenu(
+  page: Page,
+  row: Locator,
+  menuTestId: string,
+  workspaceId: number
+): Promise<void> {
+  await row.hover()
+  await page.getByTestId(menuTestId).click()
+  const trigger = page.getByTestId(`workspace-move-status-menu-${workspaceId}`)
   await expect(trigger).toBeVisible()
   await trigger.hover()
   const option = page.getByTestId(`workspace-status-option-${workspaceId}-todo`)
@@ -145,22 +151,19 @@ test('marks workspace rows and groups the sidebar by project or status', async (
     await expect(page.getByRole('menuitem', { name: 'Copy path' })).toBeVisible()
     await expect(page.getByRole('menuitem', { name: 'Move to status' })).toHaveCount(0)
     await page.keyboard.press('Escape')
-    await storefrontRow.click({ button: 'right' })
+    await notesRow.click({ button: 'right' })
     await expect(page.getByRole('menuitem', { name: 'Move to status' })).toHaveCount(0)
 
-    await notesRow.hover()
-    await page.getByTestId(`workspace-menu-${notesWorkspace!.id}`).click()
-    await page.getByTestId(`workspace-move-status-menu-${notesWorkspace!.id}`).hover()
-    await expect(
-      page.getByTestId(`workspace-status-option-${notesWorkspace!.id}-in_progress`)
-    ).toBeVisible()
-    await page.keyboard.press('Escape')
-
-    await openStatusSubmenu(page, notesRow, notesWorkspace!.id)
+    await openStatusSubmenu(
+      page,
+      notesRow,
+      `workspace-menu-${notesWorkspace!.id}`,
+      notesWorkspace!.id
+    )
     const inProgress = page.getByTestId(`workspace-status-option-${notesWorkspace!.id}-in_progress`)
     await inProgress.hover()
     const sidebarBox = await page.locator('[data-slot="sidebar"]').boundingBox()
-    const submenuBox = await page.locator('[data-slot="context-menu-sub-content"]').boundingBox()
+    const submenuBox = await page.locator('[data-slot="dropdown-menu-sub-content"]').boundingBox()
     expect(sidebarBox && submenuBox).toBeTruthy()
     await page.screenshot({
       path: join(artifacts, 'status-move-menu.png'),
@@ -176,7 +179,7 @@ test('marks workspace rows and groups the sidebar by project or status', async (
     await expect(notesRow).toHaveAttribute('data-workspace-status', 'in_progress')
     await expect(notesRow.locator('[data-workspace-status-icon="in_progress"]')).toBeVisible()
 
-    await openStatusSubmenu(page, rootRow, root!.id)
+    await openStatusSubmenu(page, rootRow, `root-menu-${project!.id}`, root!.id)
     await page.getByTestId(`workspace-status-option-${root!.id}-done`).click()
     await expect(rootRow).toHaveAttribute('data-workspace-status', 'done')
 

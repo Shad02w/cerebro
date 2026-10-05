@@ -45,7 +45,6 @@ import {
 } from '@/components/ui/dropdown-menu'
 import {
   WorkspaceRowStatusIcon,
-  WorkspaceStatusContextMenu,
   WorkspaceStatusIcon,
   WorkspaceStatusMenu
 } from '@/components/workspace-status'
@@ -632,38 +631,36 @@ function MultiRootWorkspaceTree({
         >
           <WorkspaceHoverCard workspace={rootWorkspace ?? undefined}>
             <SidebarMenuRow data-workspace-id={rootWorkspace?.id}>
-              <WorkspaceStatusContextMenu workspace={rootWorkspace} onSetStatus={onSetStatus}>
-                <button
-                  type="button"
-                  className="app-no-drag peer/menu-button flex h-auto min-h-7 w-full min-w-0 flex-col items-stretch rounded-md px-2 py-1 pr-14 text-left text-xs hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                  data-testid={`project-root-${project.id}`}
-                  data-workspace-role="root"
-                  data-workspace-icon="folder-tree"
-                  data-workspace-status={rootStatus}
-                  data-workspace-id={rootWorkspace?.id}
-                  data-active={rootActive ? 'true' : 'false'}
-                  aria-current={rootActive ? 'location' : undefined}
-                  disabled={rootWorkspace == null}
-                  onClick={(event): void => {
-                    event.stopPropagation()
-                    if (rootWorkspace) onSelectWorkspace(rootWorkspace.id)
-                  }}
-                >
-                  <span className="flex w-full min-w-0 items-center gap-2">
-                    <FolderTree className="size-4 shrink-0 text-sidebar-accent-foreground" />
-                    <WorkspaceRowStatusIcon status={rootStatus} />
-                    <span className="min-w-0 flex-1 truncate font-medium">root</span>
-                    <span
-                      className="shrink-0 text-[10px] text-sidebar-foreground/55 tabular-nums"
-                      aria-label={`${repos.length} repositories in root`}
-                      data-testid={`root-repo-count-${project.id}`}
-                    >
-                      {repos.length} {repos.length === 1 ? 'repo' : 'repos'}
-                    </span>
+              <button
+                type="button"
+                className="app-no-drag peer/menu-button flex h-auto min-h-7 w-full min-w-0 flex-col items-stretch rounded-md px-2 py-1 pr-14 text-left text-xs hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                data-testid={`project-root-${project.id}`}
+                data-workspace-role="root"
+                data-workspace-icon="folder-tree"
+                data-workspace-status={rootStatus}
+                data-workspace-id={rootWorkspace?.id}
+                data-active={rootActive ? 'true' : 'false'}
+                aria-current={rootActive ? 'location' : undefined}
+                disabled={rootWorkspace == null}
+                onClick={(event): void => {
+                  event.stopPropagation()
+                  if (rootWorkspace) onSelectWorkspace(rootWorkspace.id)
+                }}
+              >
+                <span className="flex w-full min-w-0 items-center gap-2">
+                  <FolderTree className="size-4 shrink-0 text-sidebar-accent-foreground" />
+                  <WorkspaceRowStatusIcon status={rootStatus} />
+                  <span className="min-w-0 flex-1 truncate font-medium">root</span>
+                  <span
+                    className="shrink-0 text-[10px] text-sidebar-foreground/55 tabular-nums"
+                    aria-label={`${repos.length} repositories in root`}
+                    data-testid={`root-repo-count-${project.id}`}
+                  >
+                    {repos.length} {repos.length === 1 ? 'repo' : 'repos'}
                   </span>
-                  <WorkspaceAgents agents={rootAgents} onOpenAgent={onOpenAgent} />
-                </button>
-              </WorkspaceStatusContextMenu>
+                </span>
+                <WorkspaceAgents agents={rootAgents} onOpenAgent={onOpenAgent} />
+              </button>
               <SidebarMenuAction
                 className="app-no-drag right-6"
                 data-testid={`root-toggle-${project.id}`}
@@ -840,32 +837,28 @@ function ProjectItem({
                         asChild
                         isActive={workspace.id === activeWorkspaceId}
                       >
-                        <WorkspaceStatusContextMenu workspace={workspace} onSetStatus={onSetStatus}>
-                          <button
-                            type="button"
-                            className="app-no-drag flex h-auto! w-full min-w-0 flex-col items-stretch gap-0 py-1.5 pr-8 pl-8"
-                            data-testid={`workspace-row-${workspace.id}`}
-                            data-workspace-id={workspace.id}
-                            aria-current={
-                              workspace.id === activeWorkspaceId ? 'location' : undefined
-                            }
-                            data-workspace-role="branch"
-                            data-workspace-icon="branch"
-                            data-workspace-status={workspaceStatus(workspace.status)}
-                            onClick={(): void => onSelectWorkspace(workspace.id)}
-                          >
-                            <span className="flex min-w-0 items-center gap-1.5 text-left">
-                              <WorkspaceRowStatusIcon status={workspaceStatus(workspace.status)} />
-                              <span className="min-w-0 truncate">
-                                {workspaceLabel(project, workspace)}
-                              </span>
+                        <button
+                          type="button"
+                          className="app-no-drag flex h-auto! w-full min-w-0 flex-col items-stretch gap-0 py-1.5 pr-8 pl-8"
+                          data-testid={`workspace-row-${workspace.id}`}
+                          data-workspace-id={workspace.id}
+                          aria-current={workspace.id === activeWorkspaceId ? 'location' : undefined}
+                          data-workspace-role="branch"
+                          data-workspace-icon="branch"
+                          data-workspace-status={workspaceStatus(workspace.status)}
+                          onClick={(): void => onSelectWorkspace(workspace.id)}
+                        >
+                          <span className="flex min-w-0 items-center gap-1.5 text-left">
+                            <WorkspaceRowStatusIcon status={workspaceStatus(workspace.status)} />
+                            <span className="min-w-0 truncate">
+                              {workspaceLabel(project, workspace)}
                             </span>
-                            <WorkspaceAgents
-                              agents={activity.get(workspace.id) ?? []}
-                              onOpenAgent={onOpenAgent}
-                            />
-                          </button>
-                        </WorkspaceStatusContextMenu>
+                          </span>
+                          <WorkspaceAgents
+                            agents={activity.get(workspace.id) ?? []}
+                            onOpenAgent={onOpenAgent}
+                          />
+                        </button>
                       </SidebarMenuSubButton>
                       <WorkspacePrPopover
                         workspace={workspace}
@@ -1043,15 +1036,13 @@ function WorkspaceSearchResults({
   activeWorkspaceId,
   activity,
   onSelectWorkspace,
-  onOpenAgent,
-  onSetStatus
+  onOpenAgent
 }: {
   results: WorkspaceSearchResult[]
   activeWorkspaceId: number | null
   activity: Map<number, ChatAgentActivity[]>
   onSelectWorkspace: (workspaceId: number) => void
   onOpenAgent: (agent: ChatAgentActivity) => void
-  onSetStatus: (workspaceId: number, status: WorkspaceStatus) => void
 }): React.JSX.Element {
   return (
     <div>
@@ -1098,13 +1089,7 @@ function WorkspaceSearchResults({
           return (
             <SidebarMenuItem key={workspace.id}>
               <WorkspaceHoverCard workspace={workspace} showStatus={carriesStatus}>
-                {carriesStatus ? (
-                  <WorkspaceStatusContextMenu workspace={workspace} onSetStatus={onSetStatus}>
-                    {button}
-                  </WorkspaceStatusContextMenu>
-                ) : (
-                  button
-                )}
+                {button}
               </WorkspaceHoverCard>
             </SidebarMenuItem>
           )
@@ -1224,38 +1209,31 @@ function StatusGroup({
                               asChild
                               isActive={workspace.id === activeWorkspaceId}
                             >
-                              <WorkspaceStatusContextMenu
-                                workspace={workspace}
-                                onSetStatus={onSetStatus}
+                              <button
+                                type="button"
+                                className="app-no-drag flex h-auto! w-full min-w-0 flex-col items-stretch gap-0 py-1.5 pr-8"
+                                data-testid={`workspace-row-${workspace.id}`}
+                                data-workspace-id={workspace.id}
+                                data-workspace-status={workspaceStatus(workspace.status)}
+                                data-workspace-role={workspace.kind === 'root' ? 'root' : 'branch'}
+                                aria-current={
+                                  workspace.id === activeWorkspaceId ? 'location' : undefined
+                                }
+                                onClick={(): void => onSelectWorkspace(workspace.id)}
                               >
-                                <button
-                                  type="button"
-                                  className="app-no-drag flex h-auto! w-full min-w-0 flex-col items-stretch gap-0 py-1.5 pr-8"
-                                  data-testid={`workspace-row-${workspace.id}`}
-                                  data-workspace-id={workspace.id}
-                                  data-workspace-status={workspaceStatus(workspace.status)}
-                                  data-workspace-role={
-                                    workspace.kind === 'root' ? 'root' : 'branch'
-                                  }
-                                  aria-current={
-                                    workspace.id === activeWorkspaceId ? 'location' : undefined
-                                  }
-                                  onClick={(): void => onSelectWorkspace(workspace.id)}
-                                >
-                                  <span className="flex min-w-0 items-center gap-1.5 text-left">
-                                    <WorkspaceRowStatusIcon
-                                      status={workspaceStatus(workspace.status)}
-                                    />
-                                    <span className="min-w-0 flex-1 truncate">
-                                      {statusGroupLabel(project, workspace)}
-                                    </span>
-                                  </span>
-                                  <WorkspaceAgents
-                                    agents={activity.get(workspace.id) ?? []}
-                                    onOpenAgent={onOpenAgent}
+                                <span className="flex min-w-0 items-center gap-1.5 text-left">
+                                  <WorkspaceRowStatusIcon
+                                    status={workspaceStatus(workspace.status)}
                                   />
-                                </button>
-                              </WorkspaceStatusContextMenu>
+                                  <span className="min-w-0 flex-1 truncate">
+                                    {statusGroupLabel(project, workspace)}
+                                  </span>
+                                </span>
+                                <WorkspaceAgents
+                                  agents={activity.get(workspace.id) ?? []}
+                                  onOpenAgent={onOpenAgent}
+                                />
+                              </button>
                             </SidebarMenuSubButton>
                             <WorkspaceOverflowMenu
                               workspace={workspace}
@@ -1417,7 +1395,6 @@ export function AppSidebar({
                   activity={activity}
                   onSelectWorkspace={onSelectWorkspace}
                   onOpenAgent={openAgent}
-                  onSetStatus={onSetWorkspaceStatus}
                 />
               ) : null}
               {projects.length === 0 ? (

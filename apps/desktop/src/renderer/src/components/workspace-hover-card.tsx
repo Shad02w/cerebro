@@ -119,7 +119,7 @@ export function WorkspaceHoverCard({
           (dismissed.current ||
             trigger.current?.querySelector('[aria-expanded="true"][aria-haspopup]') ||
             document.querySelector(
-              '[data-slot="dialog-content"][data-state="open"], [data-slot="dropdown-menu-content"][data-state="open"], [data-slot="dropdown-menu-sub-content"][data-state="open"], [data-slot="context-menu-content"][data-state="open"], [data-slot="context-menu-sub-content"][data-state="open"], [data-slot="popover-content"][data-state="open"]'
+              '[data-slot="dialog-content"][data-state="open"], [data-slot="dropdown-menu-content"][data-state="open"], [data-slot="dropdown-menu-sub-content"][data-state="open"], [data-slot="popover-content"][data-state="open"]'
             ))
         )
           return
