@@ -613,15 +613,6 @@ test('content tabs use pill selection and reveal close on hover or keyboard focu
     expect(leftGap.firstTabMarginLeft).toBe('8px')
     expect(leftGap.tabOffset).toBeGreaterThanOrEqual(8)
 
-    await mkdir(contentTabsMediaDir, { recursive: true })
-    await mkdir(contentTabsArtifactsDir, { recursive: true })
-    await tabBar.screenshot({ path: join(contentTabsMediaDir, 'first-tab-gap-after.png') })
-    await tabBar.screenshot({ path: join(contentTabsArtifactsDir, 'first-tab-gap-after.png') })
-    await page.screenshot({ path: join(contentTabsMediaDir, 'first-tab-gap-after-window.png') })
-    await page.screenshot({
-      path: join(contentTabsArtifactsDir, 'first-tab-gap-after-window.png')
-    })
-
     const activeStyles = await active.locator('[data-slot="content-tab-pill"]').evaluate((el) => {
       const style = getComputedStyle(el)
       return {
@@ -664,6 +655,37 @@ test('content tabs use pill selection and reveal close on hover or keyboard focu
     await expect(close).toBeFocused()
     await expect(close).toHaveCSS('opacity', '1')
     await expect(close).toHaveCSS('outline-style', 'solid')
+
+    // Active first pill makes the left inset obvious against the content-area edge.
+    await inactive.click()
+    await expect(inactive).toHaveAttribute('data-active', 'true')
+
+    await mkdir(contentTabsMediaDir, { recursive: true })
+    await mkdir(contentTabsArtifactsDir, { recursive: true })
+    await tabBar.screenshot({ path: join(contentTabsMediaDir, 'first-tab-gap-after.png') })
+    await tabBar.screenshot({ path: join(contentTabsArtifactsDir, 'first-tab-gap-after.png') })
+    await page.screenshot({ path: join(contentTabsMediaDir, 'first-tab-gap-after-window.png') })
+    await page.screenshot({
+      path: join(contentTabsArtifactsDir, 'first-tab-gap-after-window.png')
+    })
+    const firstTabBox = await inactive.boundingBox()
+    const barBox = await tabBar.boundingBox()
+    if (firstTabBox && barBox) {
+      const edgeClip = {
+        x: Math.max(0, barBox.x - 12),
+        y: Math.max(0, barBox.y - 4),
+        width: Math.min(320, firstTabBox.width + 80),
+        height: barBox.height + 48
+      }
+      await page.screenshot({
+        path: join(contentTabsMediaDir, 'first-tab-gap-after-edge.png'),
+        clip: edgeClip
+      })
+      await page.screenshot({
+        path: join(contentTabsArtifactsDir, 'first-tab-gap-after-edge.png'),
+        clip: edgeClip
+      })
+    }
   } finally {
     await rm(sourcesRoot, { recursive: true, force: true })
   }
