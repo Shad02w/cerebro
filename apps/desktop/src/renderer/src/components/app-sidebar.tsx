@@ -60,6 +60,10 @@ import {
 const DEFAULT_WORKSPACE_TOOLTIP =
   "Default workspace — can't be deleted. Remove the project instead."
 
+/** In-flow root actions. `static` wins over the shadcn absolute action; `top` from sidebar.css is then ignored. */
+const rootMenuActionClass =
+  'static top-auto right-auto group-hover/root:text-sidebar-accent-foreground group-focus-within/root:text-sidebar-accent-foreground'
+
 type AppSidebarProps = {
   mode: 'projects' | 'settings'
   projects: Project[]
@@ -466,7 +470,7 @@ function RootOverflowMenu({ project }: { project: Project }): React.JSX.Element 
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <SidebarMenuAction
-          className="app-no-drag"
+          className={cn('app-no-drag', rootMenuActionClass)}
           showOnHover
           data-testid={`root-menu-${project.id}`}
           onClick={(event): void => event.stopPropagation()}
@@ -578,7 +582,10 @@ function MultiRootWorkspaceTree({
           aria-label={`${project.name} root workspace`}
         >
           <WorkspaceHoverCard workspace={rootWorkspace ?? undefined}>
-            <SidebarMenuRow className="sidebar-root-row" data-workspace-id={rootWorkspace?.id}>
+            <SidebarMenuRow
+              className="group/root flex items-start pr-1"
+              data-workspace-id={rootWorkspace?.id}
+            >
               <button
                 type="button"
                 className="app-no-drag peer/menu-button flex h-auto min-h-7 min-w-0 flex-1 flex-col items-stretch rounded-md px-2 py-1 text-left text-xs hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
@@ -607,9 +614,9 @@ function MultiRootWorkspaceTree({
                 </span>
                 <WorkspaceAgents agents={rootAgents} onOpenAgent={onOpenAgent} />
               </button>
-              <div className="sidebar-root-actions">
+              <div className="mt-1 flex h-4 shrink-0 items-center">
                 <SidebarMenuAction
-                  className="app-no-drag"
+                  className={cn('app-no-drag', rootMenuActionClass)}
                   data-testid={`root-toggle-${project.id}`}
                   aria-expanded={rootOpen}
                   aria-label={rootOpen ? 'Collapse repositories' : 'Expand repositories'}

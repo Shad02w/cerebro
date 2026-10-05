@@ -41,39 +41,6 @@
   height: 22px;
 }
 
-/* Root name and repo count share a text baseline. Disclosure and details sit on that line. */
-.cerebro-sidebar .sidebar-root-row {
-  display: flex;
-  align-items: flex-start;
-  padding-right: 4px;
-}
-
-.cerebro-sidebar .sidebar-root-actions {
-  display: flex;
-  flex: none;
-  align-items: center;
-  height: 1rem;
-  margin-top: 0.25rem;
-}
-
-.cerebro-sidebar .sidebar-root-row:is(:hover, :focus-within) [data-sidebar='menu-action'] {
-  color: var(--sidebar-accent-foreground);
-}
-
-.cerebro-sidebar .sidebar-root-row [data-sidebar='menu-action'] {
-  position: static;
-  top: auto;
-  right: auto;
-  align-self: center;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  aspect-ratio: auto;
-  margin-block: -3px;
-  padding: 0;
-}
-
 .cerebro-sidebar [data-sidebar='menu-action'].right-6 {
   right: 28px;
 }
