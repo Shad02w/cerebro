@@ -224,12 +224,16 @@ test('sidebar keeps keyboard selection and disclosures usable in both themes', a
     expect(repoBox!.x - rootBox!.x).toBeLessThanOrEqual(28)
 
     // Hovering root (while another workspace is selected) paints the whole block.
+    await branchRow.click()
+    await expect(branchRow).toHaveAttribute('data-active', 'true')
     await expect(rootGroup).toHaveAttribute('data-active', 'false')
+    await expect(rootGroup).not.toHaveCSS('box-shadow', /0px 0px 0px 1px inset/)
     await rootButton.hover()
     await expect(rootGroup).toHaveCSS('box-shadow', /0px 0px 0px 1px inset/)
     await expect(rootButton).toHaveCSS('box-shadow', 'none')
     await expect(rootButton).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
     for (const row of await rootGroup.locator('[data-workspace-role="repository"]').all()) {
+      await expect(row).toHaveAttribute('data-active', 'false')
       await expect(row).toHaveCSS('box-shadow', 'none')
     }
     const artifacts = await ensureArtifactDir('/opt/cursor/artifacts')
