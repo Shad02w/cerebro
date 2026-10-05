@@ -244,11 +244,10 @@ test('sidebar keeps keyboard selection and disclosures usable in both themes', a
 test('renames workspace rows from the menu and can reset to the default label', async ({
   page,
   electronApp
-}) => {
+}, testInfo) => {
   const sourcesRoot = await mkdtemp(join(tmpdir(), 'cerebro-rename-workspace-'))
   const alpha = join(sourcesRoot, 'alpha')
   const suite = join(sourcesRoot, 'suite')
-  await mkdir('/opt/cursor/artifacts', { recursive: true })
 
   try {
     await initGitRepo(alpha, 'main', 'alpha')
@@ -295,7 +294,7 @@ test('renames workspace rows from the menu and can reset to the default label', 
     await expect(page.getByTestId('workspace-rename-error')).toHaveText('Enter a name.')
     await input.fill('Alpha checkout')
     await page.screenshot({
-      path: '/opt/cursor/artifacts/workspace-rename-dialog.png',
+      path: testInfo.outputPath('workspace-rename-dialog.png'),
       animations: 'disabled'
     })
     await page.getByTestId('workspace-rename-submit').click()
@@ -310,7 +309,7 @@ test('renames workspace rows from the menu and can reset to the default label', 
       })
       .toBe('Alpha checkout')
     await page.screenshot({
-      path: '/opt/cursor/artifacts/workspace-rename-named.png',
+      path: testInfo.outputPath('workspace-rename-named.png'),
       animations: 'disabled'
     })
 
@@ -319,7 +318,7 @@ test('renames workspace rows from the menu and can reset to the default label', 
     await page.getByTestId(`workspace-rename-${branchWorkspace!.id}`).click()
     await expect(input).toHaveValue('Alpha checkout')
     await page.screenshot({
-      path: '/opt/cursor/artifacts/workspace-rename-reset.png',
+      path: testInfo.outputPath('workspace-rename-reset.png'),
       animations: 'disabled'
     })
     await page.getByTestId('workspace-rename-reset').click()
@@ -343,7 +342,7 @@ test('renames workspace rows from the menu and can reset to the default label', 
     await expect(repoName).toHaveText('Web client')
     await expect(page.getByTestId(`workspace-branch-${frontend!.id}`)).toContainText('main')
     await page.screenshot({
-      path: '/opt/cursor/artifacts/workspace-rename-directory.png',
+      path: testInfo.outputPath('workspace-rename-directory.png'),
       animations: 'disabled'
     })
 

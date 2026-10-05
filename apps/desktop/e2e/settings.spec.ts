@@ -351,9 +351,6 @@ test('settings reuses the app sidebar and navigates by hash route', async ({ pag
     path: path.join(artifactsDir, 'settings-provider.png'),
     fullPage: true
   })
-  await page
-    .screenshot({ path: '/opt/cursor/artifacts/settings-provider.png' })
-    .catch(() => undefined)
 
   await terminalNav.click()
   await expect.poll(() => page.evaluate(() => window.location.hash)).toBe('#/settings/terminal')
@@ -586,7 +583,7 @@ test('saves the Kanagawa variants and Vercel from the theme picker', async ({ pa
 })
 
 test('persists the empty agent pane background', async ({ page }) => {
-  await mkdir('/opt/cursor/artifacts', { recursive: true })
+  await mkdir(artifactsDir, { recursive: true })
   await page.getByRole('button', { name: 'Settings', exact: true }).click()
   const background = page.getByTestId('settings-agent-background')
   await expect(background).toHaveText('Stars')
@@ -595,7 +592,7 @@ test('persists the empty agent pane background', async ({ page }) => {
   await expect(page.getByRole('option', { name: 'Stars', exact: true })).toBeVisible()
   await expect(page.getByRole('option', { name: 'Off', exact: true })).toBeVisible()
   await page.screenshot({
-    path: '/opt/cursor/artifacts/settings-agent-background-menu.png'
+    path: path.join(artifactsDir, 'settings-agent-background-menu.png')
   })
   await page.getByRole('option', { name: 'Off', exact: true }).click()
   await expect(background).toHaveText('Off')
