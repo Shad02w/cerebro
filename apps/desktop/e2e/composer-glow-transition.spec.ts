@@ -1,12 +1,8 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { execFile } from 'node:child_process'
-import { promisify } from 'node:util'
 import { test, expect } from './fixtures'
-import { ensureArtifactDir } from './artifact-dir'
 
-const execFileAsync = promisify(execFile)
 const executable = resolve(__dirname, '../../../packages/mux/src/agents/fixtures/fake-harness.cjs')
 
 test.use({
@@ -17,10 +13,12 @@ test.use({
   }
 })
 
-test('empty glowing composer centers, then docks after send', async ({ page, electronApp }) => {
+test('empty glowing composer centers, then docks after send', async ({
+  page,
+  electronApp
+}, testInfo) => {
   test.setTimeout(90_000)
   const directory = await mkdtemp(join(tmpdir(), 'cerebro-composer-glow-transition-'))
-  const framesDir = await mkdtemp(join(tmpdir(), 'cerebro-composer-glow-frames-'))
   try {
     await electronApp.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0].setSize(1250, 900)
@@ -59,49 +57,9 @@ test('empty glowing composer centers, then docks after send', async ({ page, ele
       })
       .toBeLessThan(16)
 
-    const evidence = await ensureArtifactDir('/opt/cursor/artifacts')
-    const mediaDir = await ensureArtifactDir(
-      '/cursor/stores/bc-ece937fc-5124-4a69-b19a-e93de51a8c0f/media'
-    )
-    await page.screenshot({ path: join(evidence, 'composer-glow-centered-v6.png') })
-    await page.screenshot({ path: join(mediaDir, 'composer-glow-centered-empty.png') })
-    await page.screenshot({ path: join(mediaDir, 'composer-glow-banding-after.png') })
-    await page.screenshot({ path: join(mediaDir, 'composer-glow-aceternity-after.png') })
-    await page.screenshot({ path: join(mediaDir, 'composer-glow-aceternity-lighter.png') })
-    await page.screenshot({ path: join(mediaDir, 'composer-glow-teal-fresh.png') })
-    await page.screenshot({ path: join(mediaDir, 'composer-glow-teal-lighter-bg.png') })
+    await page.screenshot({ path: testInfo.outputPath('composer-glow-centered.png') })
     await page.screenshot({
-      path: join(mediaDir, 'composer-glow-banding-after-crop.png'),
-      clip: { x: 380, y: 280, width: 520, height: 320 }
-    })
-    await page.screenshot({
-      path: join(mediaDir, 'composer-glow-aceternity-after-crop.png'),
-      clip: { x: 380, y: 280, width: 520, height: 320 }
-    })
-    await page.screenshot({
-      path: join(mediaDir, 'composer-glow-aceternity-lighter-crop.png'),
-      clip: { x: 380, y: 280, width: 520, height: 320 }
-    })
-    await page.screenshot({
-      path: join(mediaDir, 'composer-glow-teal-fresh-crop.png'),
-      clip: { x: 380, y: 280, width: 520, height: 320 }
-    })
-    await page.screenshot({
-      path: join(mediaDir, 'composer-glow-teal-lighter-bg-crop.png'),
-      clip: { x: 380, y: 280, width: 520, height: 320 }
-    })
-    await page.screenshot({
-      path: join(evidence, 'composer-glow-teal-fresh.png')
-    })
-    await page.screenshot({
-      path: join(evidence, 'composer-glow-teal-fresh-crop.png'),
-      clip: { x: 380, y: 280, width: 520, height: 320 }
-    })
-    await page.screenshot({
-      path: join(evidence, 'composer-glow-teal-lighter-bg.png')
-    })
-    await page.screenshot({
-      path: join(evidence, 'composer-glow-teal-lighter-bg-crop.png'),
+      path: testInfo.outputPath('composer-glow-centered-crop.png'),
       clip: { x: 380, y: 280, width: 520, height: 320 }
     })
 
@@ -120,7 +78,7 @@ test('empty glowing composer centers, then docks after send', async ({ page, ele
       maxHeight: 900
     })
 
-    // Hold the empty centered+glow state so the video reads clearly.
+    // Hold the empty centered state so the screencast includes it.
     await page.waitForTimeout(900)
 
     const composer = page.getByRole('textbox', { name: 'Message agent' })
@@ -159,37 +117,10 @@ test('empty glowing composer centers, then docks after send', async ({ page, ele
     cdp.off('Page.screencastFrame', onFrame)
     await cdp.detach().catch(() => undefined)
 
-    await page.screenshot({ path: join(evidence, 'composer-glow-docked-v6.png') })
-    await page.screenshot({ path: join(mediaDir, 'composer-glow-docked-v6.png') })
+    await page.screenshot({ path: testInfo.outputPath('composer-glow-docked.png') })
 
     expect(frames.length).toBeGreaterThan(30)
-    for (const [index, frame] of frames.entries()) {
-      await writeFile(join(framesDir, `frame-${String(index).padStart(4, '0')}.jpg`), frame)
-    }
-    const videoPath = join(mediaDir, 'composer-glow-center-transition.mp4')
-    await execFileAsync('ffmpeg', [
-      '-y',
-      '-framerate',
-      '30',
-      '-i',
-      join(framesDir, 'frame-%04d.jpg'),
-      '-vf',
-      'scale=trunc(iw/2)*2:trunc(ih/2)*2',
-      '-c:v',
-      'libx264',
-      '-pix_fmt',
-      'yuv420p',
-      '-movflags',
-      '+faststart',
-      videoPath
-    ])
-    await execFileAsync('cp', [
-      '-f',
-      videoPath,
-      join(evidence, 'composer-glow-center-transition.mp4')
-    ])
   } finally {
     await rm(directory, { recursive: true, force: true })
-    await rm(framesDir, { recursive: true, force: true })
   }
 })

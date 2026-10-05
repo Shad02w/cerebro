@@ -645,8 +645,16 @@ function MultiRootRepoRow({
   )
 }
 
-const rootWorkspaceButtonClass =
-  'app-no-drag peer/menu-button flex h-auto min-h-7 min-w-0 flex-1 flex-col items-stretch rounded-md px-2 py-1 text-left text-xs hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+function rootWorkspaceButtonClass(compact: boolean): string {
+  return cn(
+    'app-no-drag peer/menu-button flex h-auto min-h-7 min-w-0 flex-1 flex-col items-stretch rounded-md px-2 py-1 text-left text-xs hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+    compact && 'justify-center'
+  )
+}
+
+function isCompactRootRow(agents: ChatAgentActivity[]): boolean {
+  return agents.length === 0
+}
 
 function rootWorkspaceRowClass(compact: boolean): string {
   return cn('group/root flex pr-1', compact ? 'items-center' : 'items-start')
@@ -674,6 +682,7 @@ function MultiRootWorkspaceTree({
   onSetStatus: (workspaceId: number, status: WorkspaceStatus) => void
 }): React.JSX.Element {
   const [rootOpen, setRootOpen] = useState(true)
+  const [rootHovered, setRootHovered] = useState(false)
   const rootWorkspace = rootWorkspaceOf(project)
   const repos = repositoryWorkspaces(project)
   const rootActive = rootWorkspace != null && rootWorkspace.id === activeWorkspaceId
@@ -681,7 +690,7 @@ function MultiRootWorkspaceTree({
   const rootStatus = workspaceStatus(rootWorkspace?.status)
   // Agent status stacks under the name, so the disclosure stays on that first line.
   // A single-line row centers the label and actions in the collapsed block.
-  const rootCompact = rootAgents.length === 0
+  const rootCompact = isCompactRootRow(rootAgents)
 
   return (
     <SidebarMenuSub>
@@ -692,17 +701,21 @@ function MultiRootWorkspaceTree({
           className="sidebar-root-group"
           data-testid={`root-group-${project.id}`}
           data-active={rootActive ? 'true' : 'false'}
+          data-hover={rootHovered ? 'true' : 'false'}
           role="group"
           aria-label={`${project.name} root workspace`}
         >
           <WorkspaceHoverCard workspace={rootWorkspace ?? undefined}>
             <SidebarMenuRow
               className={rootWorkspaceRowClass(rootCompact)}
+              data-root-row=""
               data-workspace-id={rootWorkspace?.id}
+              onPointerEnter={(): void => setRootHovered(true)}
+              onPointerLeave={(): void => setRootHovered(false)}
             >
               <button
                 type="button"
-                className={cn(rootWorkspaceButtonClass, rootCompact && 'justify-center')}
+                className={rootWorkspaceButtonClass(rootCompact)}
                 data-testid={`project-root-${project.id}`}
                 data-workspace-role="root"
                 data-workspace-icon="folder-tree"
@@ -1036,7 +1049,9 @@ function NavigationHeader({
                 onCloseAutoFocus={(event): void => event.preventDefault()}
               >
                 <DropdownMenuGroup>
-                  <DropdownMenuLabel>Group by</DropdownMenuLabel>
+                  <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">
+                    Group by
+                  </DropdownMenuLabel>
                   <DropdownMenuRadioGroup
                     value={groupBy}
                     onValueChange={(value): void => {

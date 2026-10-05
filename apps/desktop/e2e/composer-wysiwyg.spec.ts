@@ -3,7 +3,6 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import type { Locator } from '@playwright/test'
 import { test, expect } from './fixtures'
-import { ensureArtifactDir } from './artifact-dir'
 
 const executable = resolve(__dirname, '../../../packages/mux/src/agents/fixtures/fake-harness.cjs')
 
@@ -57,9 +56,8 @@ test.use({
 test('agent composer renders bullets, inline code, a code block, and Add tags', async ({
   page,
   electronApp
-}) => {
+}, testInfo) => {
   const directory = await mkdtemp(join(tmpdir(), 'cerebro-composer-wysiwyg-'))
-  const evidence = await ensureArtifactDir('/opt/cursor/artifacts')
   try {
     await electronApp.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0].setSize(1250, 900)
@@ -92,8 +90,8 @@ test('agent composer renders bullets, inline code, a code block, and Add tags', 
         return Math.abs(formBox.y + formBox.height / 2 - (viewBox.y + viewBox.height / 2))
       })
       .toBeLessThan(24)
-    await page.screenshot({ path: join(evidence, 'composer-glow.png') })
-    await shell.screenshot({ path: join(evidence, 'composer-glow-shell.png') })
+    await page.screenshot({ path: testInfo.outputPath('composer-glow.png') })
+    await shell.screenshot({ path: testInfo.outputPath('composer-glow-shell.png') })
     const composer = page.getByRole('textbox', { name: 'Message agent' })
     await expect(composer).toBeVisible()
     await composer.click()
@@ -101,7 +99,7 @@ test('agent composer renders bullets, inline code, a code block, and Add tags', 
     await expect(composer.locator('li')).toHaveText('Ship the notes')
     await expect(composer.locator('li code')).toHaveText('notes')
     await expect(composer.locator('h1, h2, h3')).toHaveCount(0)
-    await page.screenshot({ path: join(evidence, 'composer-bullet.png') })
+    await page.screenshot({ path: testInfo.outputPath('composer-bullet.png') })
 
     await page.keyboard.press('Shift+Enter')
     await page.keyboard.type('``` ')
@@ -114,17 +112,17 @@ test('agent composer renders bullets, inline code, a code block, and Add tags', 
     await expect(languages.getByRole('option', { name: 'JavaScript', exact: true })).toBeVisible()
     await expect(languages.getByRole('option', { name: 'TypeScript', exact: true })).toBeVisible()
     await expect(languages.getByRole('option', { name: 'Python', exact: true })).toBeVisible()
-    await page.screenshot({ path: join(evidence, 'composer-code-languages.png') })
+    await page.screenshot({ path: testInfo.outputPath('composer-code-languages.png') })
     await page.getByTestId('composer-code-language-javascript').click()
     await expect(code.locator('.hljs-keyword')).toHaveText('const')
-    await page.screenshot({ path: join(evidence, 'composer-code-highlight.png') })
+    await page.screenshot({ path: testInfo.outputPath('composer-code-highlight.png') })
 
     await page.keyboard.press('ArrowDown')
     await page.keyboard.type('@')
     const addMenu = page.getByTestId('composer-add-menu')
     await expect(addMenu).toBeVisible()
     await expect(addMenu.getByRole('option')).toHaveText(['A', 'B', 'C'])
-    await page.screenshot({ path: join(evidence, 'composer-add-menu.png') })
+    await page.screenshot({ path: testInfo.outputPath('composer-add-menu.png') })
     await addMenu.getByTestId('composer-add-option-B').click()
     await expect(composer.getByTestId('composer-tag')).toHaveText('@B')
     const markdown = await composer.getAttribute('data-composer-text')
@@ -133,8 +131,8 @@ test('agent composer renders bullets, inline code, a code block, and Add tags', 
     expect(markdown).toContain('const value = 1')
     expect(markdown).toContain('@B')
     expect(markdown).not.toMatch(/^#{1,3} /m)
-    await page.screenshot({ path: join(evidence, 'composer-tag.png') })
-    await composer.screenshot({ path: join(evidence, 'composer-field.png') })
+    await page.screenshot({ path: testInfo.outputPath('composer-tag.png') })
+    await composer.screenshot({ path: testInfo.outputPath('composer-field.png') })
     const tagColor = await composer.getByTestId('composer-tag').evaluate((element) => {
       const color = getComputedStyle(element).color
       return color
@@ -179,7 +177,7 @@ test('agent composer renders bullets, inline code, a code block, and Add tags', 
       .click()
     await page.getByRole('button', { name: 'Send message', exact: true }).click()
     await expect(dock).toHaveAttribute('data-dock', 'bottom')
-    await expect(glowLayer).toHaveCSS('opacity', '0')
+    await expect(page.getByTestId('chat-composer-glow')).toHaveCount(0)
     const sent = page.getByTestId('chat-user-message').first()
     await expect(sent.locator('li p').first()).toHaveText('Ship the notes')
     await expect(sent.locator('p code')).toHaveText('notes')
@@ -198,8 +196,8 @@ test('agent composer renders bullets, inline code, a code block, and Add tags', 
     expect(sentInk.atBottom).toBeGreaterThanOrEqual(sentInk.labelBottom - 0.5)
     expect(Math.abs(sentInk.labelBottom - sentInk.neighborBottom)).toBeLessThan(1.5)
     await expect(sentDocument).toContainText('@ZZ')
-    await page.screenshot({ path: join(evidence, 'composer-sent.png') })
-    await sentDocument.screenshot({ path: join(evidence, 'composer-sent-document.png') })
+    await page.screenshot({ path: testInfo.outputPath('composer-sent.png') })
+    await sentDocument.screenshot({ path: testInfo.outputPath('composer-sent-document.png') })
   } finally {
     await rm(directory, { recursive: true, force: true })
   }

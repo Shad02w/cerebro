@@ -4,7 +4,6 @@ import { join } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { expect, test, type ElectronApplication, type Page } from './fixtures'
-import { ensureArtifactDir } from './artifact-dir'
 
 const execFileAsync = promisify(execFile)
 
@@ -147,7 +146,7 @@ test('shows the more action only on the hovered sidebar tree row', async ({
 test('sidebar keeps keyboard selection and disclosures usable in both themes', async ({
   page,
   electronApp
-}) => {
+}, testInfo) => {
   const sourcesRoot = await mkdtemp(join(tmpdir(), 'cerebro-sidebar-style-e2e-'))
   try {
     const source = join(sourcesRoot, 'cerebro')
@@ -235,9 +234,8 @@ test('sidebar keeps keyboard selection and disclosures usable in both themes', a
       await expect(row).toHaveAttribute('data-active', 'false')
       await expect(row).toHaveCSS('box-shadow', 'none')
     }
-    await mkdir('/opt/cursor/artifacts', { recursive: true })
     await sidebar.screenshot({
-      path: '/opt/cursor/artifacts/multi-root-block-selected.png',
+      path: testInfo.outputPath('multi-root-block-selected.png'),
       animations: 'disabled'
     })
 
@@ -248,7 +246,7 @@ test('sidebar keeps keyboard selection and disclosures usable in both themes', a
     await expect(rootButton).toHaveAttribute('data-active', 'false')
     await expect(rootGroup).not.toHaveCSS('box-shadow', /0px 0px 0px 1px inset/)
     await sidebar.screenshot({
-      path: '/opt/cursor/artifacts/multi-root-repo-selected.png',
+      path: testInfo.outputPath('multi-root-repo-selected.png'),
       animations: 'disabled'
     })
 
@@ -275,11 +273,10 @@ test('sidebar keeps keyboard selection and disclosures usable in both themes', a
 test('renames workspace rows from the menu and can reset to the default label', async ({
   page,
   electronApp
-}) => {
+}, testInfo) => {
   const sourcesRoot = await mkdtemp(join(tmpdir(), 'cerebro-rename-workspace-'))
   const alpha = join(sourcesRoot, 'alpha')
   const suite = join(sourcesRoot, 'suite')
-  const artifacts = await ensureArtifactDir('/opt/cursor/artifacts')
 
   try {
     await initGitRepo(alpha, 'main', 'alpha')
@@ -326,7 +323,7 @@ test('renames workspace rows from the menu and can reset to the default label', 
     await expect(page.getByTestId('workspace-rename-error')).toHaveText('Enter a name.')
     await input.fill('Alpha checkout')
     await page.screenshot({
-      path: join(artifacts, 'workspace-rename-dialog.png'),
+      path: testInfo.outputPath('workspace-rename-dialog.png'),
       animations: 'disabled'
     })
     await page.getByTestId('workspace-rename-submit').click()
@@ -341,7 +338,7 @@ test('renames workspace rows from the menu and can reset to the default label', 
       })
       .toBe('Alpha checkout')
     await page.screenshot({
-      path: join(artifacts, 'workspace-rename-named.png'),
+      path: testInfo.outputPath('workspace-rename-named.png'),
       animations: 'disabled'
     })
 
@@ -350,7 +347,7 @@ test('renames workspace rows from the menu and can reset to the default label', 
     await page.getByTestId(`workspace-rename-${branchWorkspace!.id}`).click()
     await expect(input).toHaveValue('Alpha checkout')
     await page.screenshot({
-      path: join(artifacts, 'workspace-rename-reset.png'),
+      path: testInfo.outputPath('workspace-rename-reset.png'),
       animations: 'disabled'
     })
     await page.getByTestId('workspace-rename-reset').click()
@@ -374,7 +371,7 @@ test('renames workspace rows from the menu and can reset to the default label', 
     await expect(repoName).toHaveText('Web client')
     await expect(page.getByTestId(`workspace-branch-${frontend!.id}`)).toContainText('main')
     await page.screenshot({
-      path: join(artifacts, 'workspace-rename-directory.png'),
+      path: testInfo.outputPath('workspace-rename-directory.png'),
       animations: 'disabled'
     })
 
