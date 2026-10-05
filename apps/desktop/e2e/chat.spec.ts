@@ -1230,7 +1230,7 @@ test('empty agent pane shows a light teal star field until the first message', a
     expect(starShadow).not.toMatch(/0\.16/)
     const background = await stars.evaluate((el) => getComputedStyle(el).backgroundImage)
     expect(background).toContain('radial-gradient')
-    expect(background).toMatch(/0\.18|18%/)
+    expect(background).toMatch(/0\.28|28%/)
     const send = page.getByRole('button', { name: 'Send message', exact: true })
     const box = await send.boundingBox()
     expect(box).toBeTruthy()
@@ -1242,7 +1242,7 @@ test('empty agent pane shows a light teal star field until the first message', a
       { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 }
     )
     expect(hit).toBe('Send message')
-    await page.screenshot({ path: join(optArtifactsDir, 'agent-pane-stars-theme-teal.png') })
+    await page.screenshot({ path: join(optArtifactsDir, 'agent-pane-stars-bottom-light.png') })
 
     await page.getByRole('textbox', { name: 'Message agent' }).fill('Hello stars')
     await expect(page.getByTestId('chat-composer')).toHaveAttribute('data-dock', 'center')

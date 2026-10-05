@@ -129,7 +129,7 @@ export function StarsBackground({
     '--chat-star': starColor,
     backgroundColor: 'transparent',
     backgroundImage:
-      'radial-gradient(ellipse at center, color-mix(in srgb, var(--sidebar-selected) 18%, transparent) 0%, transparent 72%)'
+      'radial-gradient(ellipse at bottom, color-mix(in srgb, var(--sidebar-selected) 28%, transparent) 0%, transparent 70%)'
   } as CSSProperties
 
   return (
