@@ -206,11 +206,12 @@ test('sidebar keeps keyboard selection and disclosures usable in both themes', a
     const branchBox = await branchRow.boundingBox()
     expect(projectBox).toBeTruthy()
     expect(branchBox).toBeTruthy()
-    expect(Math.abs(projectBox!.x - branchBox!.x)).toBeLessThanOrEqual(1)
+    expect(branchBox!.x - projectBox!.x).toBeGreaterThanOrEqual(20)
+    expect(branchBox!.x - projectBox!.x).toBeLessThanOrEqual(28)
 
     for (const subtree of await sidebar.locator('[data-sidebar="menu-sub"]').all()) {
-      await expect(subtree).toHaveCSS('margin-left', '0px')
-      await expect(subtree).toHaveCSS('padding-left', '0px')
+      await expect(subtree).toHaveCSS('margin-left', '16px')
+      await expect(subtree).toHaveCSS('padding-left', '8px')
     }
     const repoTree = sidebar.getByTestId(/project-repo-tree-/)
     await expect(repoTree).toHaveCSS('margin-left', '24px')
