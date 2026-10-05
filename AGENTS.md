@@ -107,7 +107,8 @@ Pick specs by the flow you touched:
 
 If a change spans several flows, list those specs together (`settings.spec.ts smoke.spec.ts`). Do not add unrelated specs "just in case."
 
-- Add or extend tests under `apps/desktop/e2e/` for the flow you changed. Use the `electronApp` / `page` fixtures from `e2e/fixtures.ts` — they isolate `CEREBRO_HOME` and attach to the first `BrowserWindow`.
+- For small UI tweaks (hover, spacing, chrome, visual polish), you may run Electron Playwright e2e during the work to **verify** the change, but do **not** add or extend lasting e2e specs for those changes — they are slow and wasteful. Prefer screenshots plus scoped lint/format on touched files.
+- Add or extend tests under `apps/desktop/e2e/` for behavioral or flow changes (not small UI chrome polish). Use the `electronApp` / `page` fixtures from `e2e/fixtures.ts` — they isolate `CEREBRO_HOME` and attach to the first `BrowserWindow`.
 - Electron e2e is **headless** by default (no window). To watch a run: `HEADED=1 pnpm --filter desktop test:e2e:repeat <spec>.spec.ts`.
 - Do **not** open the Vite renderer URL in Chrome, Cursor browser tools, or any other web browser. That skips main process, preload, `contextBridge`, native chrome, and window lifecycle.
 - Do **not** launch Playwright's Chromium/Firefox/WebKit against `localhost`. `window.cerebro` and IPC only exist in Electron.
