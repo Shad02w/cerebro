@@ -39,7 +39,9 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
@@ -951,19 +953,22 @@ function NavigationHeader({
                 className="min-w-36"
                 onCloseAutoFocus={(event): void => event.preventDefault()}
               >
-                <DropdownMenuRadioGroup
-                  value={groupBy}
-                  onValueChange={(value): void => {
-                    if (value === 'project' || value === 'status') onGroupBy(value)
-                  }}
-                >
-                  <DropdownMenuRadioItem value="project" data-testid="sidebar-group-project">
-                    Project
-                  </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="status" data-testid="sidebar-group-status">
-                    Status
-                  </DropdownMenuRadioItem>
-                </DropdownMenuRadioGroup>
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>Group by</DropdownMenuLabel>
+                  <DropdownMenuRadioGroup
+                    value={groupBy}
+                    onValueChange={(value): void => {
+                      if (value === 'project' || value === 'status') onGroupBy(value)
+                    }}
+                  >
+                    <DropdownMenuRadioItem value="project" data-testid="sidebar-group-project">
+                      Project
+                    </DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="status" data-testid="sidebar-group-status">
+                      Status
+                    </DropdownMenuRadioItem>
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuGroup>
               </DropdownMenuContent>
             </DropdownMenu>
             <PlusActionTooltip label="Add project">
