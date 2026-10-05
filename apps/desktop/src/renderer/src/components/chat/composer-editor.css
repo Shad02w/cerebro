@@ -1,7 +1,6 @@
-/* Soft highlight back-light behind the agent composer (same token as @-tag ink).
-   Sibling under the opaque shell uses outer box-shadow only — no filter blur that can
-   composite over text/controls. Y-offset shifts the aura slightly downward.
-   Glow is for the empty/centered dock only. */
+/* Soft highlight back-light behind the agent composer (Aceternity Background Gradient
+   principle: saturated corner radials + twin layers — one blurred halo, one near-rim —
+   under the opaque shell. Empty/centered dock only. Teal from --sidebar-selected. */
 .chat-composer-dock {
   position: absolute;
   inset-inline: 0;
@@ -46,18 +45,69 @@
 }
 
 .chat-composer-glow {
+  /* Desaturated teal family — mix with background so the aura stays whisper-soft. */
+  --composer-glow-a: color-mix(
+    in oklch,
+    color-mix(in oklch, var(--sidebar-selected) 42%, white) 55%,
+    var(--background)
+  );
+  --composer-glow-b: color-mix(in oklch, var(--sidebar-selected) 38%, var(--background));
+  --composer-glow-c: color-mix(
+    in oklch,
+    color-mix(in oklch, var(--sidebar-selected) 45%, #0f766e) 50%,
+    var(--background)
+  );
+  --composer-glow-d: color-mix(
+    in oklch,
+    color-mix(in oklch, var(--sidebar-selected) 35%, #67e8f9) 45%,
+    var(--background)
+  );
+  --composer-glow-layers:
+    radial-gradient(circle farthest-side at 0 100%, var(--composer-glow-a), transparent),
+    radial-gradient(circle farthest-side at 100% 0, var(--composer-glow-b), transparent),
+    radial-gradient(circle farthest-side at 100% 100%, var(--composer-glow-c), transparent),
+    radial-gradient(circle farthest-side at 0 0, var(--composer-glow-d), transparent);
   position: absolute;
   z-index: 0;
+  /* Match shell footprint; blur expands the soft aura beyond the opaque card. */
   inset: 0;
   border-radius: 1rem; /* match rounded-2xl */
   background: transparent;
   opacity: 0;
   transition: opacity 400ms ease;
-  /* Wide, low-opacity shadows only — avoid tight/high-opacity layers that read as a hard band. */
-  box-shadow:
-    0 20px 110px 40px
-      color-mix(in oklch, color-mix(in oklch, var(--sidebar-selected) 60%, white) 6%, transparent),
-    0 32px 160px 72px color-mix(in oklch, var(--sidebar-selected) 3.5%, transparent);
+  pointer-events: none;
+  overflow: visible;
+}
+
+/* Wide soft halo — Aceternity blurred twin, substantially lighter for dark UI. */
+.chat-composer-glow::before {
+  content: '';
+  position: absolute;
+  inset: -14% -8% -20%;
+  border-radius: inherit;
+  background-image: var(--composer-glow-layers);
+  background-size: 400% 400%;
+  background-position: 0% 50%;
+  opacity: 0.28;
+  filter: blur(48px);
+  animation: chat-composer-glow-shift 8s ease-in-out infinite alternate;
+  will-change: background-position;
+  pointer-events: none;
+}
+
+/* Closer soft rim — same radials, lower opacity + gentle blur. */
+.chat-composer-glow::after {
+  content: '';
+  position: absolute;
+  inset: -3%;
+  border-radius: inherit;
+  background-image: var(--composer-glow-layers);
+  background-size: 400% 400%;
+  background-position: 0% 50%;
+  opacity: 0.18;
+  filter: blur(18px);
+  animation: chat-composer-glow-shift 8s ease-in-out infinite alternate;
+  will-change: background-position;
   pointer-events: none;
 }
 
@@ -70,11 +120,25 @@
   z-index: 1;
 }
 
+@keyframes chat-composer-glow-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 100% 50%;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .chat-composer-dock,
   .chat-composer-empty,
   .chat-composer-glow {
     transition: none;
+  }
+
+  .chat-composer-glow::before,
+  .chat-composer-glow::after {
+    animation: none;
   }
 }
 
