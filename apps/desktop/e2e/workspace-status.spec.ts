@@ -291,7 +291,7 @@ test('marks workspace rows and groups the sidebar by project or status', async (
       'data-workspace-icon',
       'folder-tree'
     )
-    await expect(group('done').getByText('root')).toBeVisible()
+    await expect(group('done').getByText('root', { exact: true })).toBeVisible()
     await expect(
       group('in_progress').getByTestId(`workspace-row-${notesWorkspace!.id}`)
     ).toHaveAttribute('data-workspace-icon', 'branch')
