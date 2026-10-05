@@ -7,6 +7,8 @@ import { promisify } from 'node:util'
 import { expect, test, stopMux, type ElectronApplication, type Page } from './fixtures'
 
 const execFileAsync = promisify(execFile)
+const contentTabsMediaDir = '/cursor/stores/bc-ece937fc-5124-4a69-b19a-e93de51a8c0f/media'
+const contentTabsArtifactsDir = '/opt/cursor/artifacts'
 
 async function initGitRepo(dir: string, branch: string, marker: string): Promise<void> {
   await mkdir(dir, { recursive: true })
@@ -611,6 +613,15 @@ test('content tabs use pill selection and reveal close on hover or keyboard focu
     })
     expect(leftGap.listPaddingLeft).toBe('8px')
     expect(leftGap.tabOffset).toBeGreaterThanOrEqual(8)
+
+    await mkdir(contentTabsMediaDir, { recursive: true })
+    await mkdir(contentTabsArtifactsDir, { recursive: true })
+    await tabBar.screenshot({ path: join(contentTabsMediaDir, 'content-tabs-left-gap.png') })
+    await tabBar.screenshot({ path: join(contentTabsArtifactsDir, 'content-tabs-left-gap.png') })
+    await page.screenshot({ path: join(contentTabsMediaDir, 'content-tabs-left-gap-window.png') })
+    await page.screenshot({
+      path: join(contentTabsArtifactsDir, 'content-tabs-left-gap-window.png')
+    })
 
     const activeStyles = await active.locator('[data-slot="content-tab-pill"]').evaluate((el) => {
       const style = getComputedStyle(el)
