@@ -947,7 +947,11 @@ function NavigationHeader({
                   </button>
                 </DropdownMenuTrigger>
               </PlusActionTooltip>
-              <DropdownMenuContent align="end" className="min-w-36">
+              <DropdownMenuContent
+                align="end"
+                className="min-w-36"
+                onCloseAutoFocus={(event): void => event.preventDefault()}
+              >
                 <DropdownMenuRadioGroup
                   value={groupBy}
                   onValueChange={(value): void => {
