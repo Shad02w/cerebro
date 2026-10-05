@@ -631,7 +631,7 @@ function MultiRootWorkspaceTree({
           <CollapsibleContent>
             {repos.length > 0 ? (
               <ul
-                className="ml-3 flex min-w-0 flex-col gap-1 pt-1 pb-0.5"
+                className="ml-6 flex min-w-0 flex-col gap-1 pt-1 pb-0.5"
                 aria-label="Repositories in root"
                 data-testid={`project-repo-tree-${project.id}`}
               >
