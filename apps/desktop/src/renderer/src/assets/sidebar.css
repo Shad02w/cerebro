@@ -77,7 +77,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .cerebro-sidebar [data-sidebar='menu-button'],
-  .cerebro-sidebar [data-workspace-role] {
+  .cerebro-sidebar [data-workspace-role],
+  .cerebro-sidebar .sidebar-root-group {
     transition: none;
   }
 }
@@ -101,4 +102,32 @@
   padding: 4px;
   border-radius: 9px;
   background-color: color-mix(in srgb, var(--sidebar-foreground) 4%, transparent);
+  transition:
+    background-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+/* Selecting the root workspace highlights the whole multi-root block, including
+   nested repositories. A nested repo still uses its own row highlight. */
+.cerebro-sidebar .sidebar-root-group[data-active='true'] {
+  background-color: color-mix(in srgb, var(--sidebar-selected) 10%, var(--sidebar));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sidebar-selected) 24%, transparent);
+}
+
+.cerebro-sidebar .sidebar-root-group[data-active='true']:hover {
+  background-color: color-mix(in srgb, var(--sidebar-selected) 16%, var(--sidebar));
+}
+
+.cerebro-sidebar
+  .sidebar-root-group[data-active='true']
+  [data-workspace-role='root'][data-active='true'],
+.cerebro-sidebar
+  .sidebar-root-group[data-active='true']
+  [data-workspace-role='root'][data-active='true']:hover {
+  background-color: transparent;
+  box-shadow: none;
+}
+
+.cerebro-sidebar .sidebar-root-group[data-active='true'] [data-workspace-role='repository']:hover {
+  background-color: color-mix(in srgb, var(--sidebar-selected) 16%, var(--sidebar));
 }
