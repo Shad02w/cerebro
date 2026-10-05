@@ -291,7 +291,7 @@ export function ContentTabBar({
             data-variant="pill"
             className={cn(
               tabsListVariants({ variant: 'pill' }),
-              'h-full w-auto min-w-0 max-w-full justify-start overflow-x-auto rounded-none bg-transparent px-1'
+              'h-full w-auto min-w-0 max-w-full justify-start overflow-x-auto rounded-none bg-transparent pl-2 pr-1'
             )}
           >
             {tabs.map((tab) => (

@@ -597,6 +597,21 @@ test('content tabs use pill selection and reveal close on hover or keyboard focu
     await expect(active).toHaveAttribute('data-variant', 'pill')
     await expect(inactive).toHaveAttribute('data-state', 'inactive')
 
+    const leftGap = await page.evaluate(() => {
+      const bar = document.querySelector('[data-testid="content-tab-bar"]')
+      const firstTab = bar?.querySelector<HTMLElement>('[data-testid$="-tab"]')
+      const tabsList = bar?.querySelector<HTMLElement>('[data-slot="tabs-list"]')
+      if (!bar || !firstTab || !tabsList) {
+        throw new Error('Content tab bar chrome was not found.')
+      }
+      return {
+        tabOffset: firstTab.getBoundingClientRect().left - bar.getBoundingClientRect().left,
+        listPaddingLeft: getComputedStyle(tabsList).paddingLeft
+      }
+    })
+    expect(leftGap.listPaddingLeft).toBe('8px')
+    expect(leftGap.tabOffset).toBeGreaterThanOrEqual(8)
+
     const activeStyles = await active.locator('[data-slot="content-tab-pill"]').evaluate((el) => {
       const style = getComputedStyle(el)
       return {
