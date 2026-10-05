@@ -900,7 +900,6 @@ function searchWorkspaces(projects: Project[], query: string): WorkspaceSearchRe
 
 function NavigationHeader({
   isSettings,
-  projectCount,
   search,
   groupBy,
   onGroupBy,
@@ -910,7 +909,6 @@ function NavigationHeader({
   onSelectWorkspace
 }: {
   isSettings: boolean
-  projectCount: number
   search: string
   groupBy: SidebarGroupBy
   onGroupBy: (groupBy: SidebarGroupBy) => void
@@ -928,12 +926,6 @@ function NavigationHeader({
         </h2>
         {!isSettings ? (
           <>
-            <span
-              className="text-xs text-sidebar-foreground/50 tabular-nums"
-              aria-label={`${projectCount} projects`}
-            >
-              {projectCount}
-            </span>
             <DropdownMenu>
               <PlusActionTooltip label="Group by">
                 <DropdownMenuTrigger asChild>
@@ -1349,7 +1341,6 @@ export function AppSidebar({
     >
       <NavigationHeader
         isSettings={isSettings}
-        projectCount={projects.length}
         search={search}
         groupBy={groupBy}
         onGroupBy={(next): void => {
