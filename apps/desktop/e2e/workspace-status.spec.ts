@@ -84,7 +84,7 @@ test('marks workspace rows and groups the sidebar by project or status', async (
     await initGitRepo(notesDir, 'main', 'notes')
     await initGitRepo(ledgerDir, 'main', 'ledger')
     await electronApp.evaluate(({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows()[0].setSize(1280, 980)
+      BrowserWindow.getAllWindows()[0].setSize(760, 900)
     })
     await addDirectoryViaUi(page, electronApp, source)
     await expect(page.getByTestId(/project-row-/).filter({ hasText: 'design-tools' })).toBeVisible({
@@ -157,11 +157,22 @@ test('marks workspace rows and groups the sidebar by project or status', async (
     await page.keyboard.press('Escape')
 
     await openStatusSubmenu(page, notesRow, notesWorkspace!.id)
+    const inProgress = page.getByTestId(`workspace-status-option-${notesWorkspace!.id}-in_progress`)
+    await inProgress.hover()
+    const sidebarBox = await page.locator('[data-slot="sidebar"]').boundingBox()
+    const submenuBox = await page.locator('[data-slot="context-menu-sub-content"]').boundingBox()
+    expect(sidebarBox && submenuBox).toBeTruthy()
     await page.screenshot({
-      path: join(artifacts, 'workspace-status-menu.png'),
-      animations: 'disabled'
+      path: join(artifacts, 'status-move-menu.png'),
+      animations: 'disabled',
+      clip: {
+        x: 0,
+        y: 0,
+        width: Math.ceil(Math.max(sidebarBox!.width, submenuBox!.x + submenuBox!.width) + 16),
+        height: Math.ceil(Math.max(sidebarBox!.height, submenuBox!.y + submenuBox!.height) + 16)
+      }
     })
-    await page.getByTestId(`workspace-status-option-${notesWorkspace!.id}-in_progress`).click()
+    await inProgress.click()
     await expect(notesRow).toHaveAttribute('data-workspace-status', 'in_progress')
     await expect(notesRow.locator('[data-workspace-status-icon="in_progress"]')).toBeVisible()
 
@@ -186,8 +197,9 @@ test('marks workspace rows and groups the sidebar by project or status', async (
     await expect(apiRow).not.toHaveAttribute('data-workspace-status')
     await expect(storefrontRow).not.toHaveAttribute('data-workspace-status')
 
-    await page.screenshot({
-      path: join(artifacts, 'workspace-status-by-project.png'),
+    await page.mouse.move(700, 20)
+    await page.locator('[data-slot="sidebar"]').screenshot({
+      path: join(artifacts, 'status-by-project.png'),
       animations: 'disabled'
     })
 
@@ -226,8 +238,9 @@ test('marks workspace rows and groups the sidebar by project or status', async (
     await expect(group('done').getByTestId(`workspace-row-${storefront!.id}`)).toHaveCount(0)
     await expect(group('todo').getByTestId(/workspace-row-/)).toHaveCount(0)
 
-    await page.screenshot({
-      path: join(artifacts, 'workspace-status-by-status.png'),
+    await page.mouse.move(700, 20)
+    await page.locator('[data-slot="sidebar"]').screenshot({
+      path: join(artifacts, 'status-by-status.png'),
       animations: 'disabled'
     })
 
