@@ -663,6 +663,7 @@ function MultiRootWorkspaceTree({
   onSetStatus: (workspaceId: number, status: WorkspaceStatus) => void
 }): React.JSX.Element {
   const [rootOpen, setRootOpen] = useState(true)
+  const [rootHovered, setRootHovered] = useState(false)
   const rootWorkspace = rootWorkspaceOf(project)
   const repos = repositoryWorkspaces(project)
   const rootActive = rootWorkspace != null && rootWorkspace.id === activeWorkspaceId
@@ -678,6 +679,7 @@ function MultiRootWorkspaceTree({
           className="sidebar-root-group"
           data-testid={`root-group-${project.id}`}
           data-active={rootActive ? 'true' : 'false'}
+          data-hover={rootHovered ? 'true' : 'false'}
           role="group"
           aria-label={`${project.name} root workspace`}
         >
@@ -686,6 +688,8 @@ function MultiRootWorkspaceTree({
               className="group/root flex items-start pr-1"
               data-root-row=""
               data-workspace-id={rootWorkspace?.id}
+              onPointerEnter={(): void => setRootHovered(true)}
+              onPointerLeave={(): void => setRootHovered(false)}
             >
               <button
                 type="button"

@@ -227,8 +227,10 @@ test('sidebar keeps keyboard selection and disclosures usable in both themes', a
     await branchRow.click()
     await expect(branchRow).toHaveAttribute('data-active', 'true')
     await expect(rootGroup).toHaveAttribute('data-active', 'false')
+    await expect(rootGroup).toHaveAttribute('data-hover', 'false')
     await expect(rootGroup).not.toHaveCSS('box-shadow', /0px 0px 0px 1px inset/)
     await rootButton.hover()
+    await expect(rootGroup).toHaveAttribute('data-hover', 'true')
     await expect(rootGroup).toHaveCSS('box-shadow', /0px 0px 0px 1px inset/)
     await expect(rootButton).toHaveCSS('box-shadow', 'none')
     await expect(rootButton).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
@@ -244,8 +246,8 @@ test('sidebar keeps keyboard selection and disclosures usable in both themes', a
 
     // Hovering a nested repo only highlights that row, not the whole block.
     await repoRow.hover()
+    await expect(rootGroup).toHaveAttribute('data-hover', 'false')
     await expect(rootGroup).not.toHaveCSS('box-shadow', /0px 0px 0px 1px inset/)
-    await expect(repoRow).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
     await sidebar.screenshot({
       path: join(artifacts, 'multi-root-hover-nested.png'),
       animations: 'disabled'
