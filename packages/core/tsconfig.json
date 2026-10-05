@@ -13,5 +13,6 @@
     "forceConsistentCasingInFileNames": true,
     "typeRoots": ["../../apps/desktop/node_modules/@types", "../../node_modules/@types"]
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts"]
 }

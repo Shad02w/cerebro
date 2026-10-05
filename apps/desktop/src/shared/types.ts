@@ -1,9 +1,11 @@
 import type {
   AgentCatalog,
+  AgentModelDefaults,
   ChatActivityOverview,
   ChatAttachmentContent,
   ChatCommand,
-  ChatView
+  ChatView,
+  LastAgent
 } from '@cerebro/core'
 import type { LayoutCommand, LayoutState, LayoutReply } from '@cerebro/core'
 import type { TerminalThemeId } from './terminal-themes'
@@ -231,7 +233,13 @@ export type AppSettings = {
   keybinds: KeybindOverrides
   /** Sidebar lists workspaces under projects, or under their workflow status. */
   sidebarGroupBy: SidebarGroupBy
+  /** Default model key for each harness provider. Missing keys use that provider's current first model. */
+  agentModelDefaults: AgentModelDefaults
+  /** Remembered harness for new agent panes. The model comes from `agentModelDefaults`. */
+  lastAgent: LastAgent | null
 }
+
+export type { AgentModelDefaults, LastAgent }
 
 export type AppSettingsPatch = Partial<AppSettings>
 

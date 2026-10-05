@@ -3,7 +3,13 @@ import { TerminalOutput } from '../lib/terminal-output'
 import { restoreTerminalContinuation } from '@shared/terminal-state'
 import { forwardUserInputOnly } from '@/lib/terminal-input'
 import type { PtyDataEvent, PtyExitEvent } from '@shared/types'
-import type { LayoutState, LayoutCommand, PaneKind, SplitDirection } from '@cerebro/core'
+import type {
+  AgentModel,
+  LayoutState,
+  LayoutCommand,
+  PaneKind,
+  SplitDirection
+} from '@cerebro/core'
 import { PaneFrame, SplitHandle } from './pane-layout'
 import { positionPanes } from '@/lib/pane-layout'
 import { DEFAULT_TERMINAL_THEME, type TerminalThemeId } from '@shared/terminal-themes'
@@ -19,7 +25,9 @@ import '@/assets/terminal.css'
 import {
   DEFAULT_TERMINAL_FONT_SIZE,
   TERMINAL_FONT_FAMILY_AUTO,
-  type AgentBackground
+  type AgentBackground,
+  type AgentModelDefaults,
+  type LastAgent
 } from '@shared/types'
 import { resolveTerminalFontFamily } from '@/lib/terminal-font'
 import { encodeExtendedKey } from '@/lib/terminal-keys'
@@ -537,6 +545,9 @@ type TerminalStackProps = {
   themeId: TerminalThemeId | null
   fontFamily: string | null
   agentBackground: AgentBackground
+  agentModelDefaults: AgentModelDefaults
+  lastAgent: LastAgent | null
+  onRememberAgent: (model: AgentModel) => void
   onSelectWorkspace: (workspaceId: number) => void
   onStartupReady?: () => void
 }
@@ -550,6 +561,9 @@ export function TerminalStack({
   fontFamily,
   themeId,
   agentBackground,
+  agentModelDefaults,
+  lastAgent,
+  onRememberAgent,
   onSelectWorkspace,
   onStartupReady
 }: TerminalStackProps): React.JSX.Element {
@@ -757,6 +771,9 @@ export function TerminalStack({
                           paneId={pane.id}
                           visible={shown}
                           agentBackground={agentBackground}
+                          agentModelDefaults={agentModelDefaults}
+                          lastAgent={lastAgent}
+                          onRememberAgent={onRememberAgent}
                         />
                       ) : pane.kind === 'changes' ? (
                         <ChangesView

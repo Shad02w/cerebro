@@ -1,3 +1,4 @@
+import type { AgentHarness } from './chat'
 import type { TerminalThemeId } from './terminal-themes'
 export type LinkedRepository = {
   id: number
@@ -130,6 +131,11 @@ export function isAgentBackground(value: unknown): value is AgentBackground {
   return typeof value === 'string' && (AGENT_BACKGROUNDS as readonly string[]).includes(value)
 }
 
+/** Model key chosen as the default for one harness provider. */
+export type AgentModelDefaults = Partial<Record<AgentHarness, Record<string, string>>>
+/** Harness and provider last used for a new agent pane. */
+export type LastAgent = { harness: AgentHarness; provider: string }
+
 export type AppSettings = {
   defaultCloneDir: string
   terminalTheme: TerminalThemeId
@@ -141,6 +147,10 @@ export type AppSettings = {
   keybinds: KeybindOverrides
   /** Sidebar lists workspaces under projects, or under their workflow status. */
   sidebarGroupBy: SidebarGroupBy
+  /** Default model key for each harness provider. Missing keys use that provider's current first model. */
+  agentModelDefaults: AgentModelDefaults
+  /** Remembered harness for new agent panes. The model comes from `agentModelDefaults`. */
+  lastAgent: LastAgent | null
 }
 
 export type AppSettingsPatch = Partial<AppSettings>

@@ -1,3 +1,4 @@
+import { AgentModelSettings } from '@/components/agent-model-settings'
 import { TerminalThemeCombobox } from '@/components/terminal-theme-combobox'
 import { CliSettings } from '@/components/cli-settings'
 import type { TerminalThemeId } from '@shared/terminal-themes'
@@ -72,6 +73,12 @@ export function SettingsView({
                 onUpdate={onUpdate}
                 onPickDirectory={onPickDirectory}
               />
+            )
+          ) : section === 'provider' ? (
+            loading || !settings ? (
+              <p className="text-sm text-muted-foreground">Loading settings…</p>
+            ) : (
+              <ProviderSettings settings={settings} onUpdate={onUpdate} />
             )
           ) : section === 'terminal' ? (
             loading || !settings ? (
@@ -249,6 +256,19 @@ function GeneralSettings({
       {localError || error ? (
         <p className="text-xs text-destructive">{localError ?? error}</p>
       ) : null}
+    </section>
+  )
+}
+
+type ProviderSettingsProps = {
+  settings: AppSettings
+  onUpdate: (patch: AppSettingsPatch) => Promise<AppSettings>
+}
+
+function ProviderSettings({ settings, onUpdate }: ProviderSettingsProps): React.JSX.Element {
+  return (
+    <section className="space-y-6" data-testid="settings-provider">
+      <AgentModelSettings settings={settings} onUpdate={onUpdate} />
     </section>
   )
 }

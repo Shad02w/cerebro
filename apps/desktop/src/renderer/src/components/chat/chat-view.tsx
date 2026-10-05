@@ -1,8 +1,19 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowUp, ImagePlus, MessageSquare, Square } from 'lucide-react'
-import type { AgentAccessMode, AgentAnswer, AgentModel, ChatCommand } from '@cerebro/core'
-import { DEFAULT_AGENT_BACKGROUND, type AgentBackground } from '@shared/types'
+import {
+  resolveNewAgentModel,
+  type AgentAccessMode,
+  type AgentAnswer,
+  type AgentModel,
+  type ChatCommand
+} from '@cerebro/core'
+import {
+  DEFAULT_AGENT_BACKGROUND,
+  type AgentBackground,
+  type AgentModelDefaults,
+  type LastAgent
+} from '@shared/types'
 import { Button } from '@/components/ui/button'
 import { StarsBackground } from '@/lib/stars-background'
 import { cn } from '@/lib/utils'
@@ -23,12 +34,18 @@ export function ChatView({
   workspaceId,
   paneId,
   visible = true,
-  agentBackground = DEFAULT_AGENT_BACKGROUND
+  agentBackground = DEFAULT_AGENT_BACKGROUND,
+  agentModelDefaults,
+  lastAgent = null,
+  onRememberAgent
 }: {
   workspaceId: number
   paneId: number
   visible?: boolean
   agentBackground?: AgentBackground
+  agentModelDefaults: AgentModelDefaults
+  lastAgent?: LastAgent | null
+  onRememberAgent?: (model: AgentModel) => void
 }): React.JSX.Element {
   const client = useQueryClient()
   const queryKey = ['chat', workspaceId, paneId]
@@ -53,9 +70,20 @@ export function ChatView({
   const [selection, setSelection] = useState<AgentModel>()
   const [reasoning, setReasoning] = useState('')
   const [accessSelection, setAccessSelection] = useState<AgentAccessMode>()
-  const accessMode = accessSelection ?? session?.accessMode ?? 'full'
-  const selected = selection ?? session?.model ?? catalog.data?.models.find((m) => m.available)
   const [error, setError] = useState<string | null>(null)
+  const catalogModels = catalog.data?.models
+  if (
+    selection &&
+    catalogModels &&
+    !catalogModels.some((model) => model.key === selection.key && model.available)
+  )
+    setSelection(undefined)
+  const accessMode = accessSelection ?? session?.accessMode ?? 'full'
+  const resolved = useMemo(
+    () => resolveNewAgentModel(catalogModels ?? [], agentModelDefaults, lastAgent),
+    [catalogModels, agentModelDefaults, lastAgent]
+  )
+  const selected = selection ?? session?.model ?? resolved
   const inFlight = useRef(false)
   const pendingSend = useRef<{ id: string; text: string; key?: string } | null>(null)
   const viewRef = useRef<HTMLDivElement>(null)
@@ -252,6 +280,7 @@ export function ChatView({
           paneId,
           label: promptLabel
         })
+      if (!lastAgent || lastAgent.harness === selected.harness) onRememberAgent?.(selected)
       clear()
       pendingSend.current = null
     }
@@ -457,6 +486,7 @@ export function ChatView({
                       <ModelPicker
                         selected={selected}
                         onSelect={(model) => {
+                          onRememberAgent?.(model)
                           if (session && session.model.harness !== model.harness) {
                             setError(
                               `Open a new Agent tab or pane to use ${harnessLabels[model.harness]}.`
