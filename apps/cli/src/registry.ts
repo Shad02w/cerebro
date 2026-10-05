@@ -9,9 +9,15 @@ export const createProjectFromGitUrl = (gitUrl: string): Promise<Project> =>
 export const createWorkspaceFromBranch = (
   projectId: number,
   branch: string,
-  options?: { from?: string | null }
+  options?: { from?: string | null; focus?: boolean }
 ): Promise<Workspace> =>
-  muxRequest('registry', { action: 'workspace.create', projectId, branch, from: options?.from })
+  muxRequest('registry', {
+    action: 'workspace.create',
+    projectId,
+    branch,
+    from: options?.from,
+    ...(options?.focus !== undefined ? { focus: options.focus } : {})
+  })
 export const removeWorkspace = (
   workspaceId: number,
   options: { deleteFiles: boolean }

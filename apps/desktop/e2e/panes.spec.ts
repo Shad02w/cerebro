@@ -251,7 +251,14 @@ test('CLI and Electron share pane IDs, focus, BSP ratios and close behavior', as
     const workspaceId = project.workspaces[0].id
     await selectWorkspace(page, workspaceId)
     const ws = String(workspaceId)
-    const tab: WorkspaceTab = await cli<WorkspaceTab>(home, 'tab', 'create', '--workspace', ws)
+    const tab: WorkspaceTab = await cli<WorkspaceTab>(
+      home,
+      'tab',
+      'create',
+      '--workspace',
+      ws,
+      '--focus'
+    )
     await expect(pane(page, tab.activePaneId).locator('.xterm')).toBeVisible()
     await expect(page.getByTestId('content-tab-bar')).toHaveAttribute('data-variant', 'pill')
     await expect(page.getByTestId('terminal-tab')).toHaveAttribute('data-variant', 'pill')
@@ -276,10 +283,20 @@ test('CLI and Electron share pane IDs, focus, BSP ratios and close behavior', as
       '--kind',
       'changes',
       '--direction',
-      'right'
+      'right',
+      '--focus'
     )
     await expect(pane(page, added.id).getByTestId('changes-view')).toBeVisible()
-    const third = await cli<Pane>(home, 'pane', 'split', '--workspace', ws, '--kind', 'terminal')
+    const third = await cli<Pane>(
+      home,
+      'pane',
+      'split',
+      '--workspace',
+      ws,
+      '--kind',
+      'terminal',
+      '--focus'
+    )
     await expect(pane(page, third.id).locator('.xterm')).toBeVisible()
     await expect(page.getByTestId('pane-divider').last()).toHaveAttribute('data-direction', 'down')
     const listing = await cli<(Pane & { active: boolean })[]>(
@@ -326,7 +343,8 @@ test('CLI and Electron share pane IDs, focus, BSP ratios and close behavior', as
       '--workspace',
       ws,
       '--kind',
-      'changes'
+      'changes',
+      '--focus'
     )
     await expect(pane(page, secondTab.activePaneId)).toBeVisible()
     await cli(home, 'tab', 'focus', '--workspace', ws, '--tab', String(tab.id))
@@ -372,6 +390,81 @@ test('CLI and Electron share pane IDs, focus, BSP ratios and close behavior', as
     ).toEqual([secondTab.id])
     await cli(home, 'tab', 'close', '--workspace', ws, '--tab', String(secondTab.id))
     await expect(page.getByRole('tab')).toHaveCount(0)
+    const kept = await cli<WorkspaceTab>(home, 'tab', 'create', '--workspace', ws, '--focus')
+    await expect(page.locator(`[role="tab"][data-terminal-tab-id="${kept.id}"]`)).toHaveAttribute(
+      'aria-selected',
+      'true'
+    )
+    const backgroundTab = await cli<WorkspaceTab>(
+      home,
+      'tab',
+      'create',
+      '--workspace',
+      ws,
+      '--kind',
+      'changes'
+    )
+    await expect(page.locator(`[role="tab"][data-terminal-tab-id="${kept.id}"]`)).toHaveAttribute(
+      'aria-selected',
+      'true'
+    )
+    await expect(
+      page.locator(`[role="tab"][data-terminal-tab-id="${backgroundTab.id}"]`)
+    ).toHaveAttribute('aria-selected', 'false')
+    await expect(pane(page, kept.activePaneId)).toBeVisible()
+    await expect(pane(page, backgroundTab.activePaneId)).toBeHidden()
+    const backgroundPane = await cli<Pane>(
+      home,
+      'pane',
+      'split',
+      '--workspace',
+      ws,
+      '--pane',
+      String(kept.activePaneId),
+      '--kind',
+      'terminal',
+      '--direction',
+      'right'
+    )
+    const stayed = await cli<(Pane & { active: boolean })[]>(
+      home,
+      'pane',
+      'list',
+      '--workspace',
+      ws,
+      '--tab',
+      String(kept.id)
+    )
+    expect(stayed.find((item) => item.active)?.id).toBe(kept.activePaneId)
+    await expect(pane(page, kept.activePaneId)).toHaveAttribute('data-pane-active', 'true')
+    const focusedPane = await cli<Pane>(
+      home,
+      'pane',
+      'split',
+      '--workspace',
+      ws,
+      '--pane',
+      String(backgroundPane.id),
+      '--kind',
+      'terminal',
+      '--direction',
+      'down',
+      '--focus'
+    )
+    expect(
+      (
+        await cli<(Pane & { active: boolean })[]>(
+          home,
+          'pane',
+          'list',
+          '--workspace',
+          ws,
+          '--tab',
+          String(kept.id)
+        )
+      ).find((item) => item.active)?.id
+    ).toBe(focusedPane.id)
+    await expect(pane(page, focusedPane.id)).toHaveAttribute('data-pane-active', 'true')
   } finally {
     await rm(dir, { recursive: true, force: true })
   }
@@ -396,12 +489,15 @@ test('CLI rejects invalid and cross-workspace targets without changing the layou
       '--workspace',
       String(root.id),
       '--kind',
-      'changes'
+      'changes',
+      '--focus'
     )
     await selectWorkspace(page, root.id)
     await expect(pane(page, tab.activePaneId).getByTestId('changes-view')).toContainText('one')
     await expect(pane(page, tab.activePaneId).getByTestId('changes-view')).toContainText('two')
     const other = await cli<WorkspaceTab>(home, 'tab', 'create', '--workspace', String(nested.id))
+    await expect(pane(page, tab.activePaneId)).toBeVisible()
+    await expect(pane(page, other.activePaneId)).toBeHidden()
     await expect
       .poll(async () => {
         const tabs = await cli<WorkspaceTab[]>(home, 'tab', 'list', '--workspace', String(root.id))

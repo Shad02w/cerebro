@@ -162,6 +162,7 @@ async function handle(method: string, p: RequestParams): Promise<unknown> {
         case 'workspace.create':
           return createWorkspaceFromBranch(p.projectId, p.branch, {
             from: p.from,
+            focus: p.focus,
             git,
             onPrepared: (path) => {
               getDb()

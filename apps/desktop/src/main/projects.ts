@@ -58,6 +58,7 @@ export async function createWorkspaceFromBranch(
     projectId,
     branch,
     from,
+    focus: true,
     provider: true
   })
 }

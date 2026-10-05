@@ -13,8 +13,8 @@ import { serverCommand } from './commands/server'
  *   cerebro project create <git-url>
  *   cerebro project create --directory <path>
  *   cerebro workspace list [--project <id>]
- *   cerebro workspace create --project <id> --branch <name>
- *   cerebro workspace create --project <id> --branch <name> --from <base>
+ *   cerebro workspace create --project <id> --branch <name> [--focus]
+ *   cerebro workspace create --project <id> --branch <name> --from <base> [--focus]
  *   cerebro workspace path <id>
  *
  * Run any command with --help for details.

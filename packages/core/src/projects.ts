@@ -753,6 +753,11 @@ export async function createWorkspaceFromBranch(
   branch: string,
   options?: {
     from?: string | null
+    /**
+     * Select the new workspace. Omitted means yes, so desktop creation still focuses it.
+     * The CLI passes false unless the user set --focus.
+     */
+    focus?: boolean
     git?: GitRemoteRunner
     /** Mux operation journal hooks; invoked before Git and within the metadata transaction. */
     onPrepared?: (path: string) => void
@@ -808,7 +813,7 @@ VALUES (?, ?, 'worktree', ?, ?)
       )
       .run(projectId, repository.id, trimmed, dest)
     const workspaceId = toId(insert.lastInsertRowid)
-    setActiveWorkspaceId(workspaceId, db)
+    if (options?.focus !== false) setActiveWorkspaceId(workspaceId, db)
     options?.onCommitted?.(workspaceId)
     db.exec('COMMIT')
 
