@@ -139,8 +139,13 @@ test('marks workspace rows and groups the sidebar by project or status', async (
     const apiRow = page.getByTestId(`workspace-row-${api!.id}`)
     for (const row of [rootRow, notesRow, ledgerRow]) {
       await expect(row).toHaveAttribute('data-workspace-status', 'todo')
-      await expect(row.locator('[data-workspace-status-icon="todo"]')).toBeVisible()
+      await expect(row.locator('[data-workspace-status-icon]')).toHaveCount(0)
     }
+    await expect(rootRow).toHaveAttribute('data-workspace-icon', 'folder-tree')
+    await expect(notesRow).toHaveAttribute('data-workspace-icon', 'branch')
+    await expect(ledgerRow).toHaveAttribute('data-workspace-icon', 'branch')
+    await expect(page.getByTestId(`workspace-default-icon-${notesWorkspace!.id}`)).toBeVisible()
+    await expect(page.getByTestId(`workspace-default-icon-${ledgerWorkspace!.id}`)).toBeVisible()
     for (const row of [storefrontRow, apiRow]) {
       await expect(row).not.toHaveAttribute('data-workspace-status')
       await expect(row.locator('[data-workspace-status-icon]')).toHaveCount(0)
@@ -166,7 +171,7 @@ test('marks workspace rows and groups the sidebar by project or status', async (
     const submenuBox = await page.locator('[data-slot="dropdown-menu-sub-content"]').boundingBox()
     expect(sidebarBox && submenuBox).toBeTruthy()
     await page.screenshot({
-      path: join(artifacts, 'status-colors-menu.png'),
+      path: join(artifacts, 'status-branch-icons-menu.png'),
       animations: 'disabled',
       clip: {
         x: 0,
@@ -177,7 +182,8 @@ test('marks workspace rows and groups the sidebar by project or status', async (
     })
     await inProgress.click()
     await expect(notesRow).toHaveAttribute('data-workspace-status', 'in_progress')
-    await expect(notesRow.locator('[data-workspace-status-icon="in_progress"]')).toBeVisible()
+    await expect(notesRow.locator('[data-workspace-status-icon]')).toHaveCount(0)
+    await expect(page.getByTestId(`workspace-default-icon-${notesWorkspace!.id}`)).toBeVisible()
 
     await openStatusSubmenu(page, rootRow, `root-menu-${project!.id}`, root!.id)
     await page.getByTestId(`workspace-status-option-${root!.id}-done`).click()
@@ -202,7 +208,7 @@ test('marks workspace rows and groups the sidebar by project or status', async (
 
     await page.mouse.move(700, 20)
     await page.locator('[data-slot="sidebar"]').screenshot({
-      path: join(artifacts, 'status-colors-projects.png'),
+      path: join(artifacts, 'status-branch-icons-projects.png'),
       animations: 'disabled'
     })
 
@@ -237,13 +243,30 @@ test('marks workspace rows and groups the sidebar by project or status', async (
     ).toBeVisible()
     await expect(group('done').getByTestId(`status-project-done-${project!.id}`)).toBeVisible()
     await expect(group('done').getByTestId(`workspace-row-${root!.id}`)).toBeVisible()
+    await expect(group('done').getByTestId(`workspace-row-${root!.id}`)).toHaveAttribute(
+      'data-workspace-icon',
+      'folder-tree'
+    )
     await expect(group('done').getByText('root')).toBeVisible()
+    await expect(
+      group('in_progress').getByTestId(`workspace-row-${notesWorkspace!.id}`)
+    ).toHaveAttribute('data-workspace-icon', 'branch')
+    await expect(
+      group('in_progress')
+        .getByTestId(`workspace-row-${notesWorkspace!.id}`)
+        .locator('[data-workspace-status-icon]')
+    ).toHaveCount(0)
+    await expect(page.getByTestId(`workspace-default-icon-${notesWorkspace!.id}`)).toBeVisible()
+    await expect(page.getByTestId(`workspace-default-icon-${ledgerWorkspace!.id}`)).toBeVisible()
+    await expect(
+      page.getByTestId('status-group-todo').locator('[data-workspace-status-icon="todo"]')
+    ).toBeVisible()
     await expect(group('done').getByTestId(`workspace-row-${storefront!.id}`)).toHaveCount(0)
     await expect(group('todo').getByTestId(/workspace-row-/)).toHaveCount(0)
 
     await page.mouse.move(700, 20)
     await page.locator('[data-slot="sidebar"]').screenshot({
-      path: join(artifacts, 'status-colors-groups.png'),
+      path: join(artifacts, 'status-branch-icons-groups.png'),
       animations: 'disabled'
     })
 
