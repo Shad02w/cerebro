@@ -10,6 +10,20 @@ const execFileAsync = promisify(execFile)
 const contentTabsMediaDir = '/cursor/stores/bc-ece937fc-5124-4a69-b19a-e93de51a8c0f/media'
 const contentTabsArtifactsDir = '/opt/cursor/artifacts'
 
+async function captureOptionalScreenshot(
+  dirs: string[],
+  write: (dir: string) => Promise<void>
+): Promise<void> {
+  for (const dir of dirs) {
+    try {
+      await mkdir(dir, { recursive: true })
+      await write(dir)
+    } catch {
+      // Agent-store / local artifact paths are unavailable on GitHub Actions runners.
+    }
+  }
+}
+
 async function initGitRepo(dir: string, branch: string, marker: string): Promise<void> {
   await mkdir(dir, { recursive: true })
   await execFileAsync('git', ['init', '-b', branch], { cwd: dir })
@@ -660,13 +674,12 @@ test('content tabs use pill selection and reveal close on hover or keyboard focu
     await inactive.click()
     await expect(inactive).toHaveAttribute('data-active', 'true')
 
-    await mkdir(contentTabsMediaDir, { recursive: true })
-    await mkdir(contentTabsArtifactsDir, { recursive: true })
-    await tabBar.screenshot({ path: join(contentTabsMediaDir, 'first-tab-gap-after.png') })
-    await tabBar.screenshot({ path: join(contentTabsArtifactsDir, 'first-tab-gap-after.png') })
-    await page.screenshot({ path: join(contentTabsMediaDir, 'first-tab-gap-after-window.png') })
-    await page.screenshot({
-      path: join(contentTabsArtifactsDir, 'first-tab-gap-after-window.png')
+    const evidenceDirs = [contentTabsMediaDir, contentTabsArtifactsDir]
+    await captureOptionalScreenshot(evidenceDirs, async (dir) => {
+      await tabBar.screenshot({ path: join(dir, 'first-tab-gap-after.png') })
+    })
+    await captureOptionalScreenshot(evidenceDirs, async (dir) => {
+      await page.screenshot({ path: join(dir, 'first-tab-gap-after-window.png') })
     })
     const firstTabBox = await inactive.boundingBox()
     const barBox = await tabBar.boundingBox()
@@ -677,13 +690,11 @@ test('content tabs use pill selection and reveal close on hover or keyboard focu
         width: Math.min(320, firstTabBox.width + 80),
         height: barBox.height + 48
       }
-      await page.screenshot({
-        path: join(contentTabsMediaDir, 'first-tab-gap-after-edge.png'),
-        clip: edgeClip
-      })
-      await page.screenshot({
-        path: join(contentTabsArtifactsDir, 'first-tab-gap-after-edge.png'),
-        clip: edgeClip
+      await captureOptionalScreenshot(evidenceDirs, async (dir) => {
+        await page.screenshot({
+          path: join(dir, 'first-tab-gap-after-edge.png'),
+          clip: edgeClip
+        })
       })
     }
   } finally {
