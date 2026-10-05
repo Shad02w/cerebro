@@ -223,6 +223,30 @@ test('sidebar keeps keyboard selection and disclosures usable in both themes', a
     expect(repoBox!.x - rootBox!.x).toBeGreaterThanOrEqual(20)
     expect(repoBox!.x - rootBox!.x).toBeLessThanOrEqual(28)
 
+    // Hovering root (while another workspace is selected) paints the whole block.
+    await expect(rootGroup).toHaveAttribute('data-active', 'false')
+    await rootButton.hover()
+    await expect(rootGroup).toHaveCSS('box-shadow', /0px 0px 0px 1px inset/)
+    await expect(rootButton).toHaveCSS('box-shadow', 'none')
+    await expect(rootButton).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+    for (const row of await rootGroup.locator('[data-workspace-role="repository"]').all()) {
+      await expect(row).toHaveCSS('box-shadow', 'none')
+    }
+    const artifacts = await ensureArtifactDir('/opt/cursor/artifacts')
+    await sidebar.screenshot({
+      path: join(artifacts, 'multi-root-hover-block.png'),
+      animations: 'disabled'
+    })
+
+    // Hovering a nested repo only highlights that row, not the whole block.
+    await repoRow.hover()
+    await expect(rootGroup).not.toHaveCSS('box-shadow', /0px 0px 0px 1px inset/)
+    await expect(repoRow).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+    await sidebar.screenshot({
+      path: join(artifacts, 'multi-root-hover-nested.png'),
+      animations: 'disabled'
+    })
+
     await rootButton.click()
     await expect(rootButton).toHaveAttribute('data-active', 'true')
     await expect(rootGroup).toHaveAttribute('data-active', 'true')
@@ -235,9 +259,8 @@ test('sidebar keeps keyboard selection and disclosures usable in both themes', a
       await expect(row).toHaveAttribute('data-active', 'false')
       await expect(row).toHaveCSS('box-shadow', 'none')
     }
-    await mkdir('/opt/cursor/artifacts', { recursive: true })
     await sidebar.screenshot({
-      path: '/opt/cursor/artifacts/multi-root-block-selected.png',
+      path: join(artifacts, 'multi-root-block-selected.png'),
       animations: 'disabled'
     })
 
@@ -248,7 +271,7 @@ test('sidebar keeps keyboard selection and disclosures usable in both themes', a
     await expect(rootButton).toHaveAttribute('data-active', 'false')
     await expect(rootGroup).not.toHaveCSS('box-shadow', /0px 0px 0px 1px inset/)
     await sidebar.screenshot({
-      path: '/opt/cursor/artifacts/multi-root-repo-selected.png',
+      path: join(artifacts, 'multi-root-repo-selected.png'),
       animations: 'disabled'
     })
 

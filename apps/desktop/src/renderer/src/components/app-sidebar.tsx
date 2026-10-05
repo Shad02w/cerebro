@@ -684,6 +684,7 @@ function MultiRootWorkspaceTree({
           <WorkspaceHoverCard workspace={rootWorkspace ?? undefined}>
             <SidebarMenuRow
               className="group/root flex items-start pr-1"
+              data-root-row=""
               data-workspace-id={rootWorkspace?.id}
             >
               <button
