@@ -224,8 +224,10 @@ test('sidebar keeps keyboard selection and disclosures usable in both themes', a
     expect(repoBox!.x - rootBox!.x).toBeLessThanOrEqual(28)
 
     await rootButton.click()
+    await page.mouse.move(600, 400)
     await expect(rootButton).toHaveAttribute('data-active', 'true')
     await expect(rootGroup).toHaveAttribute('data-active', 'true')
+    await expect(rootGroup).toHaveAttribute('data-hover', 'false')
     await expect(rootGroup).toHaveCSS('box-shadow', /0px 0px 0px 1px inset/)
     await expect(rootButton).toHaveCSS('box-shadow', 'none')
     const groupBox = await rootGroup.boundingBox()
@@ -235,8 +237,33 @@ test('sidebar keeps keyboard selection and disclosures usable in both themes', a
       await expect(row).toHaveAttribute('data-active', 'false')
       await expect(row).toHaveCSS('box-shadow', 'none')
     }
+    await mkdir('/opt/cursor/artifacts', { recursive: true })
     await sidebar.screenshot({
-      path: testInfo.outputPath('multi-root-block-selected.png'),
+      path: '/opt/cursor/artifacts/multi-root-block-selected.png',
+      animations: 'disabled'
+    })
+
+    const accentBackground = await page.evaluate(() => {
+      const probe = document.createElement('div')
+      probe.style.backgroundColor = 'var(--sidebar-accent)'
+      document.body.appendChild(probe)
+      const color = getComputedStyle(probe).backgroundColor
+      probe.remove()
+      return color
+    })
+    await rootButton.hover()
+    await expect(rootGroup).toHaveAttribute('data-hover', 'true')
+    await expect(rootGroup).toHaveCSS('background-color', accentBackground)
+    await sidebar.screenshot({
+      path: '/opt/cursor/artifacts/multi-root-root-hover.png',
+      animations: 'disabled'
+    })
+    await repoRow.hover()
+    await expect(rootGroup).toHaveAttribute('data-hover', 'false')
+    await expect(repoRow).toHaveCSS('background-color', accentBackground)
+    await expect(rootGroup).not.toHaveCSS('background-color', accentBackground)
+    await sidebar.screenshot({
+      path: '/opt/cursor/artifacts/multi-root-repo-hover.png',
       animations: 'disabled'
     })
 
