@@ -578,10 +578,10 @@ function MultiRootWorkspaceTree({
           aria-label={`${project.name} root workspace`}
         >
           <WorkspaceHoverCard workspace={rootWorkspace ?? undefined}>
-            <SidebarMenuRow data-workspace-id={rootWorkspace?.id}>
+            <SidebarMenuRow className="sidebar-root-row" data-workspace-id={rootWorkspace?.id}>
               <button
                 type="button"
-                className="app-no-drag peer/menu-button flex h-auto min-h-7 w-full min-w-0 flex-col items-stretch rounded-md px-2 py-1 pr-14 text-left text-xs hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                className="app-no-drag peer/menu-button flex h-auto min-h-7 min-w-0 flex-1 flex-col items-stretch rounded-md px-2 py-1 text-left text-xs hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                 data-testid={`project-root-${project.id}`}
                 data-workspace-role="root"
                 data-workspace-icon="folder-tree"
@@ -594,11 +594,16 @@ function MultiRootWorkspaceTree({
                   if (rootWorkspace) onSelectWorkspace(rootWorkspace.id)
                 }}
               >
-                <span className="flex w-full min-w-0 items-center gap-2">
-                  <FolderTree className="size-4 shrink-0 text-sidebar-accent-foreground" />
-                  <span className="min-w-0 flex-1 truncate font-medium">root</span>
+                <span className="flex w-full min-w-0 items-baseline gap-2">
+                  <FolderTree className="size-4 shrink-0 self-center text-sidebar-accent-foreground" />
                   <span
-                    className="shrink-0 text-[10px] text-sidebar-foreground/55 tabular-nums"
+                    className="min-w-0 flex-1 truncate font-medium leading-4"
+                    data-testid={`root-name-${project.id}`}
+                  >
+                    root
+                  </span>
+                  <span
+                    className="shrink-0 text-[10px] leading-none text-sidebar-foreground/55 tabular-nums"
                     aria-label={`${repos.length} repositories in root`}
                     data-testid={`root-repo-count-${project.id}`}
                   >
@@ -607,25 +612,27 @@ function MultiRootWorkspaceTree({
                 </span>
                 <WorkspaceAgents agents={rootAgents} onOpenAgent={onOpenAgent} />
               </button>
-              <SidebarMenuAction
-                className="app-no-drag right-6"
-                data-testid={`root-toggle-${project.id}`}
-                aria-expanded={rootOpen}
-                aria-label={rootOpen ? 'Collapse repositories' : 'Expand repositories'}
-                onClick={(event): void => {
-                  event.stopPropagation()
-                  setRootOpen((open) => !open)
-                }}
-                onPointerDown={(event): void => event.stopPropagation()}
-              >
-                <ChevronRight
-                  className={cn('size-4 shrink-0 transition-transform', rootOpen && 'rotate-90')}
-                />
-                <span className="sr-only">
-                  {rootOpen ? 'Collapse repositories' : 'Expand repositories'}
-                </span>
-              </SidebarMenuAction>
-              <RootOverflowMenu project={project} />
+              <div className="sidebar-root-actions">
+                <SidebarMenuAction
+                  className="app-no-drag"
+                  data-testid={`root-toggle-${project.id}`}
+                  aria-expanded={rootOpen}
+                  aria-label={rootOpen ? 'Collapse repositories' : 'Expand repositories'}
+                  onClick={(event): void => {
+                    event.stopPropagation()
+                    setRootOpen((open) => !open)
+                  }}
+                  onPointerDown={(event): void => event.stopPropagation()}
+                >
+                  <ChevronRight
+                    className={cn('size-4 shrink-0 transition-transform', rootOpen && 'rotate-90')}
+                  />
+                  <span className="sr-only">
+                    {rootOpen ? 'Collapse repositories' : 'Expand repositories'}
+                  </span>
+                </SidebarMenuAction>
+                <RootOverflowMenu project={project} />
+              </div>
             </SidebarMenuRow>
           </WorkspaceHoverCard>
           <CollapsibleContent>
