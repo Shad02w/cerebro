@@ -1,6 +1,6 @@
 /* Soft highlight back-light behind the agent composer (Aceternity Background Gradient
    principle: corner radials + twin blurred layers under the opaque shell). Empty/centered
-   dock only. Hue locked to --sidebar-selected teal via srgb mixes with transparent. */
+   dock only. Hue from --sidebar-selected, lifted toward white in srgb for a brighter teal. */
 .chat-composer-dock {
   position: absolute;
   inset-inline: 0;
@@ -45,12 +45,13 @@
 }
 
 .chat-composer-glow {
-  /* Soft teal only — mix --sidebar-selected with transparent in srgb so hue stays teal
-     (oklch+white/background mixes were reading purple/magenta on dark UI). */
-  --composer-glow-a: color-mix(in srgb, var(--sidebar-selected) 42%, transparent);
-  --composer-glow-b: color-mix(in srgb, var(--sidebar-selected) 36%, transparent);
-  --composer-glow-c: color-mix(in srgb, var(--sidebar-selected) 30%, transparent);
-  --composer-glow-d: color-mix(in srgb, var(--sidebar-selected) 38%, transparent);
+  /* Brighter teal from --sidebar-selected (lift toward white in srgb), then soft alpha.
+     Keeps Cerebro teal hue without muddy near-black washes. */
+  --composer-glow-lit: color-mix(in srgb, var(--sidebar-selected) 58%, white);
+  --composer-glow-a: color-mix(in srgb, var(--composer-glow-lit) 48%, transparent);
+  --composer-glow-b: color-mix(in srgb, var(--composer-glow-lit) 40%, transparent);
+  --composer-glow-c: color-mix(in srgb, var(--composer-glow-lit) 34%, transparent);
+  --composer-glow-d: color-mix(in srgb, var(--composer-glow-lit) 44%, transparent);
   --composer-glow-layers:
     radial-gradient(circle farthest-side at 0 100%, var(--composer-glow-a), transparent),
     radial-gradient(circle farthest-side at 100% 0, var(--composer-glow-b), transparent),
@@ -77,14 +78,14 @@
   background-image: var(--composer-glow-layers);
   background-size: 400% 400%;
   background-position: 0% 50%;
-  opacity: 0.32;
+  opacity: 0.3;
   filter: blur(48px);
   animation: chat-composer-glow-shift 8s ease-in-out infinite alternate;
   will-change: background-position;
   pointer-events: none;
 }
 
-/* Closer soft rim — same teal radials, gentler opacity. */
+/* Closer soft rim — same lighter teal radials, gentler opacity. */
 .chat-composer-glow::after {
   content: '';
   position: absolute;
@@ -93,7 +94,7 @@
   background-image: var(--composer-glow-layers);
   background-size: 400% 400%;
   background-position: 0% 50%;
-  opacity: 0.2;
+  opacity: 0.18;
   filter: blur(18px);
   animation: chat-composer-glow-shift 8s ease-in-out infinite alternate;
   will-change: background-position;
