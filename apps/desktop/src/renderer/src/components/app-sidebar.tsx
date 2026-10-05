@@ -1261,7 +1261,7 @@ function StatusGroup({
       <SidebarMenuItem>
         <CollapsibleTrigger asChild>
           <SidebarMenuButton
-            className="app-no-drag h-auto font-medium"
+            className="app-no-drag h-auto pr-2! font-medium"
             data-testid={`status-group-${status}`}
             data-status={status}
             aria-label={`${presentation.label}, ${entries.length} ${entries.length === 1 ? 'workspace' : 'workspaces'}`}
@@ -1285,7 +1285,7 @@ function StatusGroup({
                 <li key={project.id} className="min-w-0">
                   <SidebarMenuButton
                     asChild
-                    className="sidebar-project-button h-auto! cursor-default hover:bg-transparent"
+                    className="sidebar-project-button h-auto! cursor-default pr-2! hover:bg-transparent"
                   >
                     <div
                       data-testid={`status-project-${status}-${project.id}`}
