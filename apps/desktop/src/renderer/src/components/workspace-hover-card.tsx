@@ -97,9 +97,11 @@ function relativeCreatedAt(value: string): string {
 
 export function WorkspaceHoverCard({
   workspace,
+  showStatus = true,
   children
 }: {
   workspace?: Workspace
+  showStatus?: boolean
   children: ReactElement
 }): React.JSX.Element {
   const [open, setOpen] = useState(false)
@@ -117,7 +119,7 @@ export function WorkspaceHoverCard({
           (dismissed.current ||
             trigger.current?.querySelector('[aria-expanded="true"][aria-haspopup]') ||
             document.querySelector(
-              '[data-slot="dialog-content"][data-state="open"], [data-slot="dropdown-menu-content"][data-state="open"], [data-slot="popover-content"][data-state="open"]'
+              '[data-slot="dialog-content"][data-state="open"], [data-slot="dropdown-menu-content"][data-state="open"], [data-slot="dropdown-menu-sub-content"][data-state="open"], [data-slot="context-menu-content"][data-state="open"], [data-slot="context-menu-sub-content"][data-state="open"], [data-slot="popover-content"][data-state="open"]'
             ))
         )
           return
@@ -172,10 +174,12 @@ export function WorkspaceHoverCard({
               {workspace.branch ||
                 (workspace.kind === 'root' ? 'Root workspace' : 'Folder workspace')}
             </p>
-            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <WorkspaceStatusIcon status={workspaceStatus(workspace.status)} />
-              {WORKSPACE_STATUS_PRESENTATION[workspaceStatus(workspace.status)].label}
-            </p>
+            {showStatus ? (
+              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <WorkspaceStatusIcon status={workspaceStatus(workspace.status)} />
+                {WORKSPACE_STATUS_PRESENTATION[workspaceStatus(workspace.status)].label}
+              </p>
+            ) : null}
             <p className="text-xs text-muted-foreground">
               Workspace created {relativeCreatedAt(workspace.createdAt)}
             </p>

@@ -1,5 +1,10 @@
 import { CircleCheck, CircleDashed, CirclePlay, Eye } from 'lucide-react'
-import { isWorkspaceStatus, type WorkspaceStatus } from '@shared/types'
+import {
+  isWorkspaceStatus,
+  type Project,
+  type Workspace,
+  type WorkspaceStatus
+} from '@shared/types'
 
 export const WORKSPACE_STATUS_PRESENTATION: Record<
   WorkspaceStatus,
@@ -33,4 +38,10 @@ export const WORKSPACE_STATUS_PRESENTATION: Record<
 
 export function workspaceStatus(status: unknown): WorkspaceStatus {
   return isWorkspaceStatus(status) ? status : 'todo'
+}
+
+/** Status lives on a normal workspace row, or on the multi-root root row. */
+export function workspaceCarriesStatus(project: Project, workspace: Workspace): boolean {
+  const multiRoot = project.kind === 'multi-root' || project.repositories.length > 1
+  return !multiRoot || workspace.kind === 'root'
 }
