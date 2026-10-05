@@ -801,6 +801,34 @@ function MultiRootWorkspaceTree({
   )
 }
 
+function ProjectIcon({ project }: { project: Project }): React.JSX.Element {
+  if (isMultiRootProject(project)) return <Folders />
+  if (!project.github) return <Folder />
+  return (
+    <Avatar className="size-4" aria-hidden="true">
+      <AvatarImage
+        src={`https://avatars.githubusercontent.com/${encodeURIComponent(project.github.owner)}?s=40`}
+        alt=""
+      />
+      <AvatarFallback className="text-[10px] font-medium">
+        {Array.from(project.name.trim())[0]?.toLocaleUpperCase() ?? '?'}
+      </AvatarFallback>
+    </Avatar>
+  )
+}
+
+function MultiRootBadge({ project }: { project: Project }): React.JSX.Element | null {
+  if (!isMultiRootProject(project)) return null
+  return (
+    <span
+      className="shrink-0 rounded-md bg-[color-mix(in_oklch,var(--sidebar-selected)_15%,transparent)] px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-[var(--sidebar-selected)] uppercase"
+      data-testid={`project-multi-root-${project.id}`}
+    >
+      multi-root
+    </span>
+  )
+}
+
 function collapsedProjectAgents(
   project: Project,
   open: boolean,
@@ -854,21 +882,7 @@ function ProjectItem({
               data-project-icon={multiRoot ? 'folders' : githubLinked ? 'avatar' : 'folder'}
               title={multiRoot ? `${project.name} (multi-root)` : project.name}
             >
-              {multiRoot ? (
-                <Folders />
-              ) : project.github ? (
-                <Avatar className="size-4" aria-hidden="true">
-                  <AvatarImage
-                    src={`https://avatars.githubusercontent.com/${encodeURIComponent(project.github.owner)}?s=40`}
-                    alt=""
-                  />
-                  <AvatarFallback className="text-[10px] font-medium">
-                    {Array.from(project.name.trim())[0]?.toLocaleUpperCase() ?? '?'}
-                  </AvatarFallback>
-                </Avatar>
-              ) : (
-                <Folder />
-              )}
+              <ProjectIcon project={project} />
               <div className="flex min-w-0 flex-1 flex-col">
                 <span className="truncate">{project.name}</span>
                 <WorkspaceAgents
@@ -878,14 +892,7 @@ function ProjectItem({
                   onOpenAgent={onOpenAgent}
                 />
               </div>
-              {multiRoot ? (
-                <span
-                  className="shrink-0 rounded-md bg-[color-mix(in_oklch,var(--sidebar-selected)_15%,transparent)] px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-[var(--sidebar-selected)] uppercase"
-                  data-testid={`project-multi-root-${project.id}`}
-                >
-                  multi-root
-                </span>
-              ) : null}
+              <MultiRootBadge project={project} />
             </SidebarMenuButton>
           </CollapsibleTrigger>
           <ProjectOverflowMenu
@@ -1273,21 +1280,30 @@ function StatusGroup({
           {entries.length === 0 ? (
             <p className="px-2 py-1 text-xs text-sidebar-foreground/50">No workspaces</p>
           ) : (
-            <SidebarMenuSub>
+            <ul className="flex min-w-0 flex-col gap-1 pt-1" data-sidebar="status-projects">
               {projectsWithStatus(entries).map(({ project, workspaces }) => (
                 <li key={project.id} className="min-w-0">
-                  <div
-                    className="flex min-w-0 items-center gap-1.5 px-2 pt-1.5 pb-0.5 text-[11px] font-semibold text-sidebar-foreground/70"
-                    data-testid={`status-project-${status}-${project.id}`}
+                  <SidebarMenuButton
+                    asChild
+                    className="sidebar-project-button h-auto! cursor-default hover:bg-transparent"
                   >
-                    {isMultiRootProject(project) ? (
-                      <Folders className="size-3.5 shrink-0" />
-                    ) : (
-                      <Folder className="size-3.5 shrink-0" />
-                    )}
-                    <span className="min-w-0 truncate">{project.name}</span>
-                  </div>
-                  <ul className="flex min-w-0 flex-col gap-0.5 pl-2">
+                    <div
+                      data-testid={`status-project-${status}-${project.id}`}
+                      data-project-icon={
+                        isMultiRootProject(project)
+                          ? 'folders'
+                          : project.github
+                            ? 'avatar'
+                            : 'folder'
+                      }
+                      title={project.name}
+                    >
+                      <ProjectIcon project={project} />
+                      <span className="min-w-0 flex-1 truncate">{project.name}</span>
+                      <MultiRootBadge project={project} />
+                    </div>
+                  </SidebarMenuButton>
+                  <SidebarMenuSub>
                     {workspaces.map((workspace) => {
                       const rootRow = workspace.kind === 'root'
                       return (
@@ -1349,10 +1365,10 @@ function StatusGroup({
                         </SidebarMenuSubItem>
                       )
                     })}
-                  </ul>
+                  </SidebarMenuSub>
                 </li>
               ))}
-            </SidebarMenuSub>
+            </ul>
           )}
         </CollapsibleContent>
       </SidebarMenuItem>
