@@ -66,10 +66,6 @@ The window is two regions: **sidebar** | **content area**. Use these names, not 
 
 Do not use a left border, accent strip, or one-sided inset shadow to highlight selected or active items, especially on rounded rows or cards. Use a subtle background change and, if needed, a uniform outline around the whole item.
 
-#### Window drag regions
-
-The tab bar and `window-drag-overlay` are `-webkit-app-region: drag`. Electron computes drag/no-drag rects natively, and a stale rect over a tab that moved (dnd-kit transform, reorder, scroll, resize) makes that tab part of the window-drag area. Symptom: the `cursor-grab` hand stays stuck and the tab can't be clicked or dragged, because the page gets no mouse events there. Keep interactive groups (the tab list) inside one stable `app-no-drag` container instead of relying on per-item `app-no-drag`, and never put an interactive element over a drag region without `app-no-drag`.
-
 #### Forms
 
 Never disable a form submit button — not for empty or invalid fields, and not while loading or mutating.
