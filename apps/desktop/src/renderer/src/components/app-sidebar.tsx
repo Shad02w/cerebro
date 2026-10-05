@@ -1261,7 +1261,10 @@ function StatusGroup({
       <SidebarMenuItem>
         <CollapsibleTrigger asChild>
           <SidebarMenuButton
-            className="app-no-drag h-auto pr-2! font-medium"
+            className={cn(
+              'app-no-drag h-8 pr-2! text-[11px] font-semibold tracking-wider uppercase',
+              presentation.headerClassName
+            )}
             data-testid={`status-group-${status}`}
             data-status={status}
             aria-label={`${presentation.label}, ${entries.length} ${entries.length === 1 ? 'workspace' : 'workspaces'}`}
@@ -1269,7 +1272,10 @@ function StatusGroup({
             <WorkspaceStatusIcon status={status} />
             <span className="min-w-0 flex-1 truncate">{presentation.label}</span>
             <span
-              className="text-xs text-sidebar-foreground/55 tabular-nums"
+              className={cn(
+                'min-w-5 rounded-full px-1.5 text-center text-[11px] font-medium tracking-normal tabular-nums',
+                presentation.badgeClassName
+              )}
               data-testid={`status-count-${status}`}
             >
               {entries.length}
