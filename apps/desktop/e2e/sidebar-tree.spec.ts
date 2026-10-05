@@ -239,18 +239,25 @@ test('sidebar keeps keyboard selection and disclosures usable in both themes', a
       await expect(row).toHaveCSS('box-shadow', 'none')
     }
     const artifacts = await ensureArtifactDir('/opt/cursor/artifacts')
-    await sidebar.screenshot({
+    const sidebarBox = await sidebar.boundingBox()
+    expect(sidebarBox).toBeTruthy()
+    await page.screenshot({
       path: join(artifacts, 'multi-root-hover-block.png'),
-      animations: 'disabled'
+      animations: 'disabled',
+      clip: sidebarBox!
     })
+    await expect(rootGroup).toHaveAttribute('data-hover', 'true')
 
     // Hovering a nested repo only highlights that row, not the whole block.
     await repoRow.hover()
     await expect(rootGroup).toHaveAttribute('data-hover', 'false')
     await expect(rootGroup).not.toHaveCSS('box-shadow', /0px 0px 0px 1px inset/)
-    await sidebar.screenshot({
+    const nestedSidebarBox = await sidebar.boundingBox()
+    expect(nestedSidebarBox).toBeTruthy()
+    await page.screenshot({
       path: join(artifacts, 'multi-root-hover-nested.png'),
-      animations: 'disabled'
+      animations: 'disabled',
+      clip: nestedSidebarBox!
     })
 
     await rootButton.click()
