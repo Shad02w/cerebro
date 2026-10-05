@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS workspaces (
   kind TEXT NOT NULL CHECK (kind IN ('default', 'worktree', 'root')),
   branch TEXT NOT NULL,
   local_path TEXT NOT NULL UNIQUE,
+  display_name TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE (repository_id, branch)
 );
@@ -148,6 +149,12 @@ FROM workspaces;
   } finally {
     database.exec('PRAGMA foreign_keys = ON')
   }
+}
+
+function migrateWorkspaceDisplayName(database: DatabaseSync): void {
+  if (!tableExists(database, 'workspaces') || columnExists(database, 'workspaces', 'display_name'))
+    return
+  database.exec('ALTER TABLE workspaces ADD COLUMN display_name TEXT')
 }
 
 function ensureMultiRootRootWorkspaces(database: DatabaseSync): void {
@@ -352,6 +359,7 @@ export function getDb(): DatabaseSync {
   migrateProjectKind(db)
   migrateWorkspaceBranchUniqueness(db)
   migrateWorkspaceRootKind(db)
+  migrateWorkspaceDisplayName(db)
 
   // Fresh DBs never hit the rename path; ensure workspaces exist for any pre-migration repos.
   if (tableExists(db, 'repositories') && tableExists(db, 'workspaces')) {

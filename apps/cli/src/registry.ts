@@ -18,6 +18,11 @@ export const createWorkspaceFromBranch = (
     from: options?.from,
     ...(options?.focus !== undefined ? { focus: options.focus } : {})
   })
+export const renameWorkspace = (
+  workspaceId: number,
+  displayName: string | null
+): Promise<ProjectListResult> =>
+  muxRequest('registry', { action: 'workspace.rename', workspaceId, displayName })
 export const removeWorkspace = (
   workspaceId: number,
   options: { deleteFiles: boolean }

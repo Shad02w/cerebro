@@ -2,14 +2,15 @@ import type { GitRemoteRunner } from './git'
 import { existsSync, readFileSync, readdirSync, realpathSync, rmSync, statSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import type {
-  LinkedRepository,
-  Project,
-  ProjectBranch,
-  ProjectKind,
-  ProjectListResult,
-  Workspace,
-  WorkspaceKind
+import {
+  WORKSPACE_NAME_MAX_LENGTH,
+  type LinkedRepository,
+  type Project,
+  type ProjectBranch,
+  type ProjectKind,
+  type ProjectListResult,
+  type Workspace,
+  type WorkspaceKind
 } from './types'
 import { getDb, toId } from './db'
 import {
@@ -53,6 +54,7 @@ type WorkspaceRow = {
   kind: WorkspaceKind
   branch: string
   local_path: string
+  display_name: string | null
   created_at: string
 }
 
@@ -74,6 +76,7 @@ function mapRepository(row: RepositoryRow): LinkedRepository {
 }
 
 function mapWorkspace(row: WorkspaceRow): Workspace {
+  const displayName = row.display_name?.trim()
   return {
     id: row.id,
     projectId: row.project_id,
@@ -81,6 +84,7 @@ function mapWorkspace(row: WorkspaceRow): Workspace {
     kind: row.kind,
     branch: row.branch,
     localPath: row.local_path,
+    displayName: displayName ? displayName : null,
     createdAt: row.created_at,
     pullRequest: null
   }
@@ -543,7 +547,7 @@ ORDER BY created_at ASC, id ASC
   const workspaceRows = db
     .prepare(
       `
-SELECT id, project_id, repository_id, kind, branch, local_path, created_at
+SELECT id, project_id, repository_id, kind, branch, local_path, display_name, created_at
 FROM workspaces
 ORDER BY
   CASE kind WHEN 'root' THEN 0 WHEN 'default' THEN 1 ELSE 2 END ASC,
@@ -877,6 +881,53 @@ WHERE id = ?
 
   db.prepare('DELETE FROM workspaces WHERE id = ?').run(workspaceId)
   ensureActiveWorkspaceValid(workspace.project_id, db)
+  return listProjects()
+}
+
+function containsControlCharacter(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    if (value.charCodeAt(index) <= 31) return true
+  }
+  return false
+}
+
+/**
+ * Set the sidebar label for a workspace. `null` clears it so the row uses the
+ * default directory name or branch name again.
+ */
+export async function renameWorkspace(
+  workspaceId: number,
+  displayName: string | null
+): Promise<ProjectListResult> {
+  if (!Number.isInteger(workspaceId) || workspaceId <= 0) {
+    throw new Error('Workspace not found.')
+  }
+  if (displayName != null && typeof displayName !== 'string') {
+    throw Object.assign(new Error('Enter a name.'), { code: 'usage' })
+  }
+
+  let stored: string | null = null
+  if (displayName != null) {
+    const trimmed = displayName.trim()
+    if (!trimmed) throw Object.assign(new Error('Enter a name.'), { code: 'usage' })
+    if (containsControlCharacter(trimmed)) {
+      throw Object.assign(new Error('Name cannot include line breaks.'), { code: 'usage' })
+    }
+    if ([...trimmed].length > WORKSPACE_NAME_MAX_LENGTH) {
+      throw Object.assign(
+        new Error(`Name must be ${WORKSPACE_NAME_MAX_LENGTH} characters or fewer.`),
+        { code: 'usage' }
+      )
+    }
+    stored = trimmed
+  }
+
+  const db = getDb()
+  const existing = db.prepare('SELECT id FROM workspaces WHERE id = ?').get(workspaceId) as
+    { id: number } | undefined
+  if (!existing) throw new Error('Workspace not found.')
+
+  db.prepare('UPDATE workspaces SET display_name = ? WHERE id = ?').run(stored, workspaceId)
   return listProjects()
 }
 

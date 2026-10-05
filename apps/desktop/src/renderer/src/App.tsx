@@ -87,6 +87,7 @@ function App(): React.JSX.Element {
     createProjectFromDirectory,
     selectWorkspace,
     createWorkspace,
+    renameWorkspace,
     removeWorkspace,
     removeProject,
     listProjectBranches
@@ -139,6 +140,7 @@ function App(): React.JSX.Element {
             onSelectWorkspace={handleSelectWorkspace}
             onAddProject={(): void => setProjectDialogOpen(true)}
             onAddWorkspace={(project): void => setWorkspaceDialogProject(project)}
+            onRenameWorkspace={renameWorkspace}
             onRemoveProject={(projectId, deleteFiles): void => {
               void removeProject(projectId, deleteFiles)
             }}
