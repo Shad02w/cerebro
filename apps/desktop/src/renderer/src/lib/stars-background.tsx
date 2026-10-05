@@ -18,8 +18,8 @@ import {
 } from 'motion/react'
 import { cn } from '@/lib/utils'
 
-/** Light teal (teal-200). Stars and the bottom wash both use this. */
-const LIGHT_TEAL = '#99f6e4'
+/** Faint light teal. Solid teal-200 read as a bright glow on the empty pane. */
+const LIGHT_TEAL = 'rgba(153, 246, 228, 0.16)'
 
 type StarLayerProps = HTMLMotionProps<'div'> & {
   count: number
@@ -87,7 +87,7 @@ export type StarsBackgroundProps = ComponentProps<'div'> & {
 /**
  * Animate UI stars background (MIT).
  * https://animate-ui.com/docs/components/backgrounds/stars
- * The stock gray-to-black bottom light is a light teal wash so it matches the agent pane.
+ * No bottom wash — the empty pane keeps the app background, with only a faint star field.
  */
 export function StarsBackground({
   children,
@@ -128,8 +128,7 @@ export function StarsBackground({
     ...style,
     '--chat-star': starColor,
     backgroundColor: 'transparent',
-    backgroundImage:
-      'radial-gradient(ellipse at bottom, color-mix(in srgb, var(--chat-star) 55%, transparent) 0%, transparent 68%)'
+    backgroundImage: 'none'
   } as CSSProperties
 
   return (

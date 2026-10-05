@@ -76,46 +76,12 @@ test('agent composer renders bullets, inline code, a code block, and Add tags', 
     await page.getByRole('button', { name: /^New Agent tab/ }).click()
     const dock = page.getByTestId('chat-composer')
     const shell = page.getByTestId('chat-composer-shell')
-    const glowLayer = page.getByTestId('chat-composer-glow')
     const form = shell.locator('form.chat-composer-shell')
     await expect(shell).toBeVisible()
     await expect(dock).toHaveAttribute('data-dock', 'center')
     await expect(page.getByTestId('chat-empty-hero')).toBeVisible()
-    await expect(glowLayer).toBeAttached()
+    await expect(page.getByTestId('chat-composer-glow')).toHaveCount(0)
     await expect(form).toBeVisible()
-    const glow = await glowLayer.evaluate((element) => {
-      const style = getComputedStyle(element)
-      const before = getComputedStyle(element, '::before')
-      const after = getComputedStyle(element, '::after')
-      return {
-        zIndex: Number(style.zIndex),
-        boxShadow: style.boxShadow,
-        filter: style.filter,
-        opacity: style.opacity,
-        beforeContent: before.content,
-        beforeFilter: before.filter,
-        beforeBackgroundImage: before.backgroundImage,
-        beforeOpacity: before.opacity,
-        afterContent: after.content,
-        afterFilter: after.filter,
-        afterBackgroundImage: after.backgroundImage,
-        afterOpacity: after.opacity
-      }
-    })
-    const formZ = await form.evaluate((element) => Number(getComputedStyle(element).zIndex))
-    // Host stays filter-free; Aceternity-style twins live on ::before (blurred) / ::after (rim).
-    expect(glow.filter === 'none' || glow.filter === '').toBeTruthy()
-    expect(glow.boxShadow === 'none' || glow.boxShadow === '').toBeTruthy()
-    expect(glow.beforeContent).not.toBe('none')
-    expect(glow.beforeFilter).toMatch(/blur\(/)
-    expect(glow.beforeBackgroundImage).toMatch(/radial-gradient/)
-    expect(Number(glow.beforeOpacity)).toBeGreaterThan(0)
-    expect(glow.afterContent).not.toBe('none')
-    expect(glow.afterFilter).toMatch(/blur\(/)
-    expect(glow.afterBackgroundImage).toMatch(/radial-gradient/)
-    expect(Number(glow.afterOpacity)).toBeGreaterThan(0)
-    expect(glow.opacity).toBe('1')
-    expect(formZ).toBeGreaterThan(glow.zIndex)
     // Center the shell/form itself — hero copy is absolutely positioned above it.
     await expect
       .poll(async () => {

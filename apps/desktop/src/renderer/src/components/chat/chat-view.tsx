@@ -393,11 +393,6 @@ export function ChatView({
                     Work with Claude Code, Codex, or Pi in this workspace.
                   </p>
                 </div>
-                <div
-                  className="chat-composer-glow"
-                  aria-hidden="true"
-                  data-testid="chat-composer-glow"
-                />
                 <form
                   className="chat-composer-shell relative rounded-2xl border bg-background p-2 shadow-lg"
                   data-dragging={dragging || undefined}

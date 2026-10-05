@@ -1,6 +1,3 @@
-/* Soft highlight back-light behind the agent composer (Aceternity Background Gradient
-   principle: corner radials + twin blurred layers under the opaque shell). Empty/centered
-   dock only. Hue from --sidebar-selected, lifted toward white in srgb for a brighter teal. */
 .chat-composer-dock {
   position: absolute;
   inset-inline: 0;
@@ -41,68 +38,6 @@
 
 .chat-composer-glow-wrap {
   position: relative;
-  isolation: isolate;
-}
-
-.chat-composer-glow {
-  /* Brighter teal from --sidebar-selected (lift toward white in srgb), then soft alpha.
-     Keeps Cerebro teal hue without muddy near-black washes. */
-  --composer-glow-lit: color-mix(in srgb, var(--sidebar-selected) 58%, white);
-  --composer-glow-a: color-mix(in srgb, var(--composer-glow-lit) 48%, transparent);
-  --composer-glow-b: color-mix(in srgb, var(--composer-glow-lit) 40%, transparent);
-  --composer-glow-c: color-mix(in srgb, var(--composer-glow-lit) 34%, transparent);
-  --composer-glow-d: color-mix(in srgb, var(--composer-glow-lit) 44%, transparent);
-  --composer-glow-layers:
-    radial-gradient(circle farthest-side at 0 100%, var(--composer-glow-a), transparent),
-    radial-gradient(circle farthest-side at 100% 0, var(--composer-glow-b), transparent),
-    radial-gradient(circle farthest-side at 100% 100%, var(--composer-glow-c), transparent),
-    radial-gradient(circle farthest-side at 0 0, var(--composer-glow-d), transparent);
-  position: absolute;
-  z-index: 0;
-  /* Match shell footprint; blur expands the soft aura beyond the opaque card. */
-  inset: 0;
-  border-radius: 1rem; /* match rounded-2xl */
-  background: transparent;
-  opacity: 0;
-  transition: opacity 400ms ease;
-  pointer-events: none;
-  overflow: visible;
-}
-
-/* Wide soft halo — Aceternity blurred twin, light teal for dark UI. */
-.chat-composer-glow::before {
-  content: '';
-  position: absolute;
-  inset: -14% -8% -20%;
-  border-radius: inherit;
-  background-image: var(--composer-glow-layers);
-  background-size: 400% 400%;
-  background-position: 0% 50%;
-  opacity: 0.3;
-  filter: blur(48px);
-  animation: chat-composer-glow-shift 8s ease-in-out infinite alternate;
-  will-change: background-position;
-  pointer-events: none;
-}
-
-/* Closer soft rim — same lighter teal radials, gentler opacity. */
-.chat-composer-glow::after {
-  content: '';
-  position: absolute;
-  inset: -3%;
-  border-radius: inherit;
-  background-image: var(--composer-glow-layers);
-  background-size: 400% 400%;
-  background-position: 0% 50%;
-  opacity: 0.18;
-  filter: blur(18px);
-  animation: chat-composer-glow-shift 8s ease-in-out infinite alternate;
-  will-change: background-position;
-  pointer-events: none;
-}
-
-.chat-composer-dock[data-dock='center'] .chat-composer-glow {
-  opacity: 1;
 }
 
 .chat-composer-shell {
@@ -110,25 +45,10 @@
   z-index: 1;
 }
 
-@keyframes chat-composer-glow-shift {
-  0% {
-    background-position: 0% 50%;
-  }
-  100% {
-    background-position: 100% 50%;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .chat-composer-dock,
-  .chat-composer-empty,
-  .chat-composer-glow {
+  .chat-composer-empty {
     transition: none;
-  }
-
-  .chat-composer-glow::before,
-  .chat-composer-glow::after {
-    animation: none;
   }
 }
 
