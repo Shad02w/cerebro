@@ -10,6 +10,7 @@ import {
   Folders,
   FolderTree,
   GitBranch,
+  Group,
   MoreHorizontal,
   Plus,
   Search,
@@ -40,6 +41,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
@@ -930,10 +933,40 @@ function NavigationHeader({
             >
               {projectCount}
             </span>
+            <DropdownMenu>
+              <PlusActionTooltip label="Group by">
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="app-no-drag sidebar-header-action sidebar-header-quiet"
+                    aria-label="Group by"
+                    data-testid="sidebar-group-by"
+                    data-group-by={groupBy}
+                  >
+                    <Group className="size-4" />
+                  </button>
+                </DropdownMenuTrigger>
+              </PlusActionTooltip>
+              <DropdownMenuContent align="end" className="min-w-36">
+                <DropdownMenuRadioGroup
+                  value={groupBy}
+                  onValueChange={(value): void => {
+                    if (value === 'project' || value === 'status') onGroupBy(value)
+                  }}
+                >
+                  <DropdownMenuRadioItem value="project" data-testid="sidebar-group-project">
+                    Project
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="status" data-testid="sidebar-group-status">
+                    Status
+                  </DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <PlusActionTooltip label="Add project">
               <button
                 type="button"
-                className="app-no-drag sidebar-header-action -mr-1"
+                className="app-no-drag sidebar-header-action sidebar-header-quiet -mr-1"
                 onClick={onAddProject}
                 aria-label="Add project"
               >
@@ -944,82 +977,43 @@ function NavigationHeader({
         ) : null}
       </div>
       {!isSettings ? (
-        <>
-          <div className="app-no-drag relative">
-            <Search
-              aria-hidden="true"
-              className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-sidebar-foreground/50"
-            />
-            <Input
-              ref={searchInput}
-              aria-label="Search projects and workspaces"
-              placeholder="Find a workspace…"
-              value={search}
-              className="h-8 rounded-md pr-8 pl-8 text-xs shadow-none md:text-xs"
-              onChange={(event) => onSearchChange(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.nativeEvent.isComposing) return
-                if (event.key === 'Escape') {
-                  event.preventDefault()
-                  onSearchChange('')
-                } else if (event.key === 'Enter' && firstResultId != null) {
-                  event.preventDefault()
-                  onSelectWorkspace(firstResultId)
-                }
+        <div className="app-no-drag relative">
+          <Search
+            aria-hidden="true"
+            className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-sidebar-foreground/50"
+          />
+          <Input
+            ref={searchInput}
+            aria-label="Search projects and workspaces"
+            placeholder="Find a workspace…"
+            value={search}
+            className="h-8 rounded-md pr-8 pl-8 text-xs shadow-none md:text-xs"
+            onChange={(event) => onSearchChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.nativeEvent.isComposing) return
+              if (event.key === 'Escape') {
+                event.preventDefault()
+                onSearchChange('')
+              } else if (event.key === 'Enter' && firstResultId != null) {
+                event.preventDefault()
+                onSelectWorkspace(firstResultId)
+              }
+            }}
+          />
+          {search ? (
+            <button
+              type="button"
+              className="sidebar-header-action absolute top-1/2 right-0.5 -translate-y-1/2"
+              aria-label="Clear search"
+              onClick={() => {
+                onSearchChange('')
+                searchInput.current?.focus()
               }}
-            />
-            {search ? (
-              <button
-                type="button"
-                className="sidebar-header-action absolute top-1/2 right-0.5 -translate-y-1/2"
-                aria-label="Clear search"
-                onClick={() => {
-                  onSearchChange('')
-                  searchInput.current?.focus()
-                }}
-              >
-                <X className="size-3.5" />
-              </button>
-            ) : null}
-          </div>
-          <div className="app-no-drag flex items-center gap-2 px-1">
-            <span className="text-[11px] text-sidebar-foreground/55">Group</span>
-            <div
-              role="group"
-              aria-label="Group workspaces"
-              data-testid="sidebar-group-by"
-              data-group-by={groupBy}
-              className="flex min-w-0 flex-1 rounded-md bg-sidebar-accent p-0.5"
             >
-              {(
-                [
-                  ['project', 'Projects'],
-                  ['status', 'Status']
-                ] as const
-              ).map(([value, label]) => {
-                const selected = groupBy === value
-                return (
-                  <button
-                    key={value}
-                    type="button"
-                    aria-pressed={selected}
-                    data-testid={`sidebar-group-${value}`}
-                    data-active={selected ? 'true' : 'false'}
-                    className={cn(
-                      'min-w-0 flex-1 rounded-[5px] px-2 py-1 text-xs font-medium',
-                      selected
-                        ? 'bg-sidebar text-sidebar-foreground shadow-sm'
-                        : 'text-sidebar-foreground/60 hover:text-sidebar-foreground'
-                    )}
-                    onClick={(): void => onGroupBy(value)}
-                  >
-                    {label}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        </>
+              <X className="size-3.5" />
+            </button>
+          ) : null}
+        </div>
       ) : null}
     </SidebarHeader>
   )

@@ -207,12 +207,39 @@ test('marks workspace rows and groups the sidebar by project or status', async (
     await expect(storefrontRow).not.toHaveAttribute('data-workspace-status')
 
     await page.mouse.move(700, 20)
+    const headingColor = await page
+      .getByTestId('sidebar-heading')
+      .evaluate((element) => getComputedStyle(element).color)
+    for (const name of ['Group by', 'Add project']) {
+      const color = await page
+        .getByRole('button', { name })
+        .first()
+        .evaluate((element) => getComputedStyle(element).color)
+      expect(color).not.toBe(headingColor)
+    }
+
     await page.locator('[data-slot="sidebar"]').screenshot({
-      path: join(artifacts, 'status-branch-icons-projects.png'),
+      path: join(artifacts, 'group-by-projects.png'),
       animations: 'disabled'
     })
 
-    await page.getByTestId('sidebar-group-status').click()
+    await page.getByTestId('sidebar-group-by').click()
+    const groupOption = page.getByTestId('sidebar-group-status')
+    await expect(groupOption).toBeVisible()
+    const menuBox = await page.locator('[data-slot="dropdown-menu-content"]').boundingBox()
+    const sidebarBox = await page.locator('[data-slot="sidebar"]').boundingBox()
+    expect(menuBox && sidebarBox).toBeTruthy()
+    await page.screenshot({
+      path: join(artifacts, 'group-by-menu.png'),
+      animations: 'disabled',
+      clip: {
+        x: 0,
+        y: 0,
+        width: Math.ceil(Math.max(sidebarBox!.width, menuBox!.x + menuBox!.width) + 16),
+        height: Math.ceil(Math.max(sidebarBox!.height, menuBox!.y + menuBox!.height) + 16)
+      }
+    })
+    await groupOption.click()
     await expect(page.getByTestId('sidebar-group-by')).toHaveAttribute('data-group-by', 'status')
     await expect(page.getByTestId(/project-row-/)).toHaveCount(0)
     await expect(page.getByTestId('status-count-todo')).toHaveText('0')
@@ -266,19 +293,20 @@ test('marks workspace rows and groups the sidebar by project or status', async (
 
     await page.mouse.move(700, 20)
     await page.locator('[data-slot="sidebar"]').screenshot({
-      path: join(artifacts, 'status-branch-icons-groups.png'),
+      path: join(artifacts, 'group-by-status.png'),
       animations: 'disabled'
     })
 
     const settings = await page.evaluate(async () => window.cerebro.getSettings())
     expect(settings.sidebarGroupBy).toBe('status')
     await page.reload()
-    await expect(page.getByTestId('sidebar-group-status')).toHaveAttribute('data-active', 'true', {
+    await expect(page.getByTestId('sidebar-group-by')).toHaveAttribute('data-group-by', 'status', {
       timeout: 30_000
     })
     await expect(page.getByTestId('status-count-in_progress')).toHaveText('1')
     await expect(page.getByTestId('status-count-done')).toHaveText('1')
 
+    await page.getByTestId('sidebar-group-by').click()
     await page.getByTestId('sidebar-group-project').click()
     await expandProject(page, project!.id)
     await expandProject(page, notes!.id)

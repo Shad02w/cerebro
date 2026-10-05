@@ -93,7 +93,13 @@
   color: var(--sidebar-foreground);
 }
 
-.cerebro-sidebar .sidebar-header-action:hover {
+.cerebro-sidebar .sidebar-header-action.sidebar-header-quiet {
+  color: color-mix(in oklch, var(--sidebar-foreground) 55%, transparent);
+}
+
+.cerebro-sidebar .sidebar-header-action:hover,
+.cerebro-sidebar .sidebar-header-action[data-state='open'] {
+  color: var(--sidebar-foreground);
   background-color: var(--sidebar-accent);
 }
 
