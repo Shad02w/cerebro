@@ -1,4 +1,4 @@
-import { CircleCheck, CircleDashed, CircleDot, Eye } from 'lucide-react'
+import { Circle, CircleCheck, CircleDot, Eye } from 'lucide-react'
 import {
   isWorkspaceStatus,
   type Project,
@@ -8,30 +8,30 @@ import {
 
 export const WORKSPACE_STATUS_PRESENTATION: Record<
   WorkspaceStatus,
-  { label: string; iconClassName: string; badgeClassName: string; Icon: typeof CircleDashed }
+  { label: string; iconClassName: string; badgeClassName: string; Icon: typeof Circle }
 > = {
   todo: {
     label: 'Todo',
-    iconClassName: 'text-zinc-600 dark:text-zinc-300',
-    badgeClassName: 'bg-zinc-500/15',
-    Icon: CircleDashed
+    iconClassName: 'text-sidebar-foreground/70',
+    badgeClassName: 'bg-sidebar-foreground/10',
+    Icon: Circle
   },
   in_progress: {
     label: 'In progress',
-    iconClassName: 'text-sky-700 dark:text-sky-300',
-    badgeClassName: 'bg-sky-500/15',
+    iconClassName: 'text-amber-500',
+    badgeClassName: 'bg-amber-500/15',
     Icon: CircleDot
   },
   ready_to_review: {
     label: 'Ready to review',
-    iconClassName: 'text-amber-700 dark:text-amber-300',
-    badgeClassName: 'bg-amber-500/15',
+    iconClassName: 'text-emerald-500',
+    badgeClassName: 'bg-emerald-500/15',
     Icon: Eye
   },
   done: {
     label: 'Done',
-    iconClassName: 'text-emerald-700 dark:text-emerald-300',
-    badgeClassName: 'bg-emerald-500/15',
+    iconClassName: 'text-sky-500',
+    badgeClassName: 'bg-sky-500/15',
     Icon: CircleCheck
   }
 }

@@ -139,7 +139,7 @@ test('marks workspace rows and groups the sidebar by project or status', async (
     const apiRow = page.getByTestId(`workspace-row-${api!.id}`)
     for (const row of [rootRow, notesRow, ledgerRow]) {
       await expect(row).toHaveAttribute('data-workspace-status', 'todo')
-      await expect(row.locator('[data-workspace-status-icon]')).toHaveCount(0)
+      await expect(row.locator('[data-workspace-status-icon="todo"]')).toBeVisible()
     }
     for (const row of [storefrontRow, apiRow]) {
       await expect(row).not.toHaveAttribute('data-workspace-status')
@@ -166,7 +166,7 @@ test('marks workspace rows and groups the sidebar by project or status', async (
     const submenuBox = await page.locator('[data-slot="dropdown-menu-sub-content"]').boundingBox()
     expect(sidebarBox && submenuBox).toBeTruthy()
     await page.screenshot({
-      path: join(artifacts, 'overflow-status-menu.png'),
+      path: join(artifacts, 'status-colors-menu.png'),
       animations: 'disabled',
       clip: {
         x: 0,
@@ -202,7 +202,7 @@ test('marks workspace rows and groups the sidebar by project or status', async (
 
     await page.mouse.move(700, 20)
     await page.locator('[data-slot="sidebar"]').screenshot({
-      path: join(artifacts, 'status-projects-current.png'),
+      path: join(artifacts, 'status-colors-projects.png'),
       animations: 'disabled'
     })
 
@@ -243,7 +243,7 @@ test('marks workspace rows and groups the sidebar by project or status', async (
 
     await page.mouse.move(700, 20)
     await page.locator('[data-slot="sidebar"]').screenshot({
-      path: join(artifacts, 'status-groups-current.png'),
+      path: join(artifacts, 'status-colors-groups.png'),
       animations: 'disabled'
     })
 
