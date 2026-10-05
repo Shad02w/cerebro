@@ -1243,7 +1243,7 @@ test('empty agent pane shows a light teal star field until the first message', a
     )
     expect(hit).toBe('Send message')
     await page.screenshot({
-      path: join(optArtifactsDir, 'agent-pane-stars-bottom-light-softer.png')
+      path: join(optArtifactsDir, 'agent-pane-stars-200.png')
     })
 
     await page.getByRole('textbox', { name: 'Message agent' }).fill('Hello stars')

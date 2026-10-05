@@ -21,6 +21,9 @@ import { cn } from '@/lib/utils'
 /** Theme teal lifted toward white, so the dots stay light teal in dark and light UI. */
 const LIGHT_TEAL = 'color-mix(in srgb, var(--sidebar-selected) 48%, white)'
 
+/** Stars per layer (small, medium, large). The field is a 4000px box, so only a slice is on screen. */
+const STAR_COUNTS = [200, 80, 40] as const
+
 type StarLayerProps = HTMLMotionProps<'div'> & {
   count: number
   size: number
@@ -147,19 +150,19 @@ export function StarsBackground({
           className={cn({ 'pointer-events-none': !pointerEvents })}
         >
           <StarLayer
-            count={1000}
+            count={STAR_COUNTS[0]}
             size={1}
             transition={{ repeat: Infinity, duration: speed, ease: 'linear' }}
             starColor={starColor}
           />
           <StarLayer
-            count={400}
+            count={STAR_COUNTS[1]}
             size={2}
             transition={{ repeat: Infinity, duration: speed * 2, ease: 'linear' }}
             starColor={starColor}
           />
           <StarLayer
-            count={200}
+            count={STAR_COUNTS[2]}
             size={3}
             transition={{ repeat: Infinity, duration: speed * 3, ease: 'linear' }}
             starColor={starColor}
