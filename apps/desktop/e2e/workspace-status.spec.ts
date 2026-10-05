@@ -226,17 +226,21 @@ test('marks workspace rows and groups the sidebar by project or status', async (
     await page.getByTestId('sidebar-group-by').click()
     const groupOption = page.getByTestId('sidebar-group-status')
     await expect(groupOption).toBeVisible()
-    const menuBox = await page.locator('[data-slot="dropdown-menu-content"]').boundingBox()
-    const sidebarBox = await page.locator('[data-slot="sidebar"]').boundingBox()
-    expect(menuBox && sidebarBox).toBeTruthy()
+    const groupMenuBox = await page.locator('[data-slot="dropdown-menu-content"]').boundingBox()
+    const groupSidebarBox = await page.locator('[data-slot="sidebar"]').boundingBox()
+    expect(groupMenuBox && groupSidebarBox).toBeTruthy()
     await page.screenshot({
       path: join(artifacts, 'group-by-menu.png'),
       animations: 'disabled',
       clip: {
         x: 0,
         y: 0,
-        width: Math.ceil(Math.max(sidebarBox!.width, menuBox!.x + menuBox!.width) + 16),
-        height: Math.ceil(Math.max(sidebarBox!.height, menuBox!.y + menuBox!.height) + 16)
+        width: Math.ceil(
+          Math.max(groupSidebarBox!.width, groupMenuBox!.x + groupMenuBox!.width) + 16
+        ),
+        height: Math.ceil(
+          Math.max(groupSidebarBox!.height, groupMenuBox!.y + groupMenuBox!.height) + 16
+        )
       }
     })
     await groupOption.click()
