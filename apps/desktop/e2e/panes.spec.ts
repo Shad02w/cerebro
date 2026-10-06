@@ -609,6 +609,57 @@ test('CLI rejects invalid and cross-workspace targets without changing the layou
   }
 })
 
+test('removing a project with several open workspaces leaves layout commands working', async ({
+  page,
+  electronApp
+}) => {
+  const dir = await mkdtemp(join(tmpdir(), 'cerebro-pane-remove-'))
+  try {
+    await repo(join(dir, 'multi', 'one'))
+    await repo(join(dir, 'multi', 'two'))
+    await repo(join(dir, 'solo'))
+    const home = await homeOf(electronApp)
+    const multi = await cli<Project>(home, 'project', 'create', '--directory', join(dir, 'multi'))
+    expect(multi.workspaces.length).toBeGreaterThanOrEqual(3)
+    for (const workspace of multi.workspaces)
+      await cli(home, 'tab', 'create', '--workspace', String(workspace.id))
+    const solo = await cli<Project>(home, 'project', 'create', '--directory', join(dir, 'solo'))
+    const soloId = solo.workspaces[0].id
+    await cli(home, 'tab', 'create', '--workspace', String(soloId))
+
+    await cli(home, 'project', 'remove', String(multi.id))
+
+    for (const workspace of multi.workspaces) {
+      const error = await cli(home, 'tab', 'list', '--workspace', String(workspace.id)).then(
+        () => null,
+        (error) => error
+      )
+      expect(JSON.parse(error.stderr).code).toBe('not_found')
+    }
+    const layout = await page.evaluate(() => window.cerebro.getLayout())
+    expect(Object.keys(layout.workspaces).map(Number)).toEqual([soloId])
+
+    await cli(home, 'tab', 'create', '--workspace', String(soloId))
+    const agent = await page.evaluate(
+      (workspaceId) =>
+        window.cerebro.layoutCommand({
+          workspaceId,
+          target: 'tab',
+          action: 'create',
+          kind: 'chat'
+        }),
+      soloId
+    )
+    const chat = agent.result as WorkspaceTab
+    expect(chat.kind).toBe('chat')
+    await selectWorkspace(page, soloId)
+    await expect(pane(page, chat.activePaneId)).toBeVisible()
+    expect((await cli(home, 'tab', 'list', '--workspace', String(soloId))).length).toBe(3)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
 test('CLI starts mux without the desktop and returns structured workspace errors', async () => {
   const home = await mkdtemp(join(tmpdir(), 'cerebro-pane-offline-'))
   try {

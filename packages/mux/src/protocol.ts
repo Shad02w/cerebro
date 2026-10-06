@@ -115,6 +115,8 @@ export type RequestParams = {
   fingerprint: string
   reply: unknown
   workspaceId: number
+  workspaceIds: number[]
+  paneIds: number[]
   paneId: number
   tabId: number
   projectId: number

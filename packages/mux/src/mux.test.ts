@@ -366,6 +366,99 @@ test(
 )
 
 test(
+  'removing a multi-workspace project keeps the layout store consistent with the database',
+  { timeout: 60000, skip: process.platform === 'win32' },
+  async () => {
+    const home = await mkdtemp(join(tmpdir(), 'cerebro-mux-remove-'))
+    const previous = { home: process.env.CEREBRO_HOME, shell: process.env.SHELL }
+    process.env.CEREBRO_HOME = home
+    process.env.SHELL = '/bin/sh'
+    const cli = async (...args: string[]): Promise<unknown> =>
+      JSON.parse(
+        (
+          await exec(process.execPath, [cliEntry, ...args], {
+            env: { ...process.env, CEREBRO_MUX_RUNTIME: runtimeDir }
+          })
+        ).stdout
+      )
+    const repository = async (...parts: string[]): Promise<string> => {
+      const path = join(home, ...parts)
+      await mkdir(path, { recursive: true })
+      await exec('git', ['init', '-b', 'main'], { cwd: path })
+      await exec(
+        'git',
+        [
+          '-c',
+          'user.email=mux@local',
+          '-c',
+          'user.name=mux',
+          'commit',
+          '--allow-empty',
+          '-m',
+          'init'
+        ],
+        { cwd: path }
+      )
+      return path
+    }
+    let client: MuxClient | undefined
+    try {
+      await repository('multi', 'a')
+      await repository('multi', 'b')
+      const multi = (await cli('project', 'create', '--directory', join(home, 'multi'))) as Project
+      assert.ok(multi.workspaces.length >= 2)
+      for (const workspace of multi.workspaces)
+        await cli('tab', 'create', '--workspace', String(workspace.id))
+      client = await connectMux({ runtimeDir })
+      const before = await client.request<LayoutState>('layout.get')
+      for (const workspace of multi.workspaces) assert.ok(before.workspaces[workspace.id])
+
+      await cli('project', 'remove', String(multi.id))
+      const after = await client.request<LayoutState>('layout.get')
+      for (const workspace of multi.workspaces)
+        assert.equal(after.workspaces[workspace.id], undefined)
+
+      const other = (await cli(
+        'project',
+        'create',
+        '--directory',
+        await repository('other')
+      )) as Project
+      const tab = (await cli(
+        'tab',
+        'create',
+        '--workspace',
+        String(other.workspaces[0].id)
+      )) as WorkspaceTab
+      assert.ok(tab.id > 0)
+      const stored = new DatabaseSync(join(home, 'cerebro.sqlite'))
+      try {
+        assert.deepEqual(
+          stored
+            .prepare('SELECT workspace_id FROM mux_layout')
+            .all()
+            .map((row) => row.workspace_id),
+          [other.workspaces[0].id]
+        )
+      } finally {
+        stored.close()
+      }
+    } finally {
+      if (client) {
+        await client.request('server.stop').catch(() => {})
+        client.close()
+      }
+      await new Promise((resolve) => setTimeout(resolve, 300))
+      await rm(home, { recursive: true, force: true })
+      if (previous.home === undefined) delete process.env.CEREBRO_HOME
+      else process.env.CEREBRO_HOME = previous.home
+      if (previous.shell === undefined) delete process.env.SHELL
+      else process.env.SHELL = previous.shell
+    }
+  }
+)
+
+test(
   'a newer staged build replaces a running host; older builds never downgrade it',
   { timeout: 120000, skip: process.platform === 'win32' },
   async () => {

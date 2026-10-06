@@ -5,70 +5,90 @@ import {
   type LayoutState,
   type Pane,
   type PaneNode,
-  type WorkspaceTab,
-  type LayoutReply
+  type WorkspaceTabs,
+  type WorkspaceTab
 } from '@cerebro/core'
 import { getDb } from '@cerebro/core'
+import type { DatabaseSync } from 'node:sqlite'
 
-const state: LayoutState = { revision: 0, workspaces: {} }
-let nextId = 1
+// SQLite is the source of truth: `workspaces` decides which workspaces exist, `mux_layout` holds
+// one tab/pane JSON record per workspace, and `mux_meta` holds the ID/revision counters. Nothing
+// here is cached between calls, so a deleted workspace can never be written back.
+type Sequence = { nextId: number; revision: number }
+export type LayoutChange = {
+  revision: number
+  workspaceId: number
+  workspace: WorkspaceTabs | null
+  result: unknown
+}
+type LayoutRow = { workspace_id: number; value: string }
+
 export function loadLayout(): LayoutState {
   const db = getDb()
   db.exec(`CREATE TABLE IF NOT EXISTS mux_layout (workspace_id INTEGER PRIMARY KEY REFERENCES workspaces(id) ON DELETE CASCADE, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS mux_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);`)
-  for (const row of db.prepare('SELECT workspace_id, value FROM mux_layout').all() as Array<{
-    workspace_id: number
-    value: string
-  }>) {
-    const record = JSON.parse(row.value)
-    if (record.version !== undefined && record.version !== 1)
-      throw new Error('Unsupported mux layout storage version.')
-    state.workspaces[row.workspace_id] = record.layout ?? record
-  }
+  const workspaces: Record<number, WorkspaceTabs> = {}
+  for (const row of db.prepare('SELECT workspace_id, value FROM mux_layout').all() as LayoutRow[])
+    workspaces[row.workspace_id] = parseLayout(row.value)
+  return { revision: readSequence(db).revision, workspaces }
+}
+function parseLayout(value: string): WorkspaceTabs {
+  const record = JSON.parse(value)
+  if (record.version !== undefined && record.version !== 1)
+    throw new Error('Unsupported mux layout storage version.')
+  return record.layout ?? record
+}
+function readSequence(db: DatabaseSync): Sequence {
   const saved = db.prepare("SELECT value FROM mux_meta WHERE key = 'sequence'").get() as
     { value: string } | undefined
-  if (saved) {
-    const value = JSON.parse(saved.value)
-    nextId = value.nextId
-    state.revision = value.revision
-  }
-  return state
+  return saved ? JSON.parse(saved.value) : { nextId: 1, revision: 0 }
 }
-function saveLayout(): void {
-  const db = getDb()
+function writeSequence(db: DatabaseSync, sequence: Sequence): void {
+  db.prepare("INSERT OR REPLACE INTO mux_meta VALUES ('sequence', ?)").run(JSON.stringify(sequence))
+}
+function readWorkspace(db: DatabaseSync, workspaceId: number): WorkspaceTabs | undefined {
+  const row = db.prepare('SELECT value FROM mux_layout WHERE workspace_id = ?').get(workspaceId) as
+    { value: string } | undefined
+  return row ? parseLayout(row.value) : undefined
+}
+function writeWorkspace(db: DatabaseSync, workspaceId: number, workspace: WorkspaceTabs): void {
+  db.prepare(
+    'INSERT INTO mux_layout VALUES (?, ?) ON CONFLICT(workspace_id) DO UPDATE SET value = excluded.value'
+  ).run(workspaceId, JSON.stringify({ version: 1, layout: workspace }))
+}
+function transaction<T>(db: DatabaseSync, fn: () => T): T {
   db.exec('BEGIN IMMEDIATE')
   try {
-    for (const row of db.prepare('SELECT workspace_id FROM mux_layout').all() as Array<{
-      workspace_id: number
-    }>)
-      if (!state.workspaces[row.workspace_id])
-        db.prepare('DELETE FROM mux_layout WHERE workspace_id = ?').run(row.workspace_id)
-    const insert = db.prepare(
-      'INSERT INTO mux_layout VALUES (?, ?) ON CONFLICT(workspace_id) DO UPDATE SET value = excluded.value WHERE value != excluded.value'
-    )
-    for (const [id, workspace] of Object.entries(state.workspaces))
-      insert.run(Number(id), JSON.stringify({ version: 1, layout: workspace }))
-    db.prepare("INSERT OR REPLACE INTO mux_meta VALUES ('sequence', ?)").run(
-      JSON.stringify({ nextId, revision: state.revision })
-    )
+    const value = fn()
     db.exec('COMMIT')
+    return value
   } catch (error) {
     db.exec('ROLLBACK')
     throw error
   }
 }
-export function getLayout(): LayoutState {
-  return state
+/** Drop layouts whose workspace was already deleted from the database and bump the revision. */
+export function removeWorkspaceLayouts(workspaceIds: number[], paneIds: number[]): LayoutState {
+  const db = getDb()
+  transaction(db, () => {
+    for (const workspaceId of workspaceIds)
+      db.prepare('DELETE FROM mux_layout WHERE workspace_id = ?').run(workspaceId)
+    const sequence = readSequence(db)
+    sequence.revision++
+    writeSequence(db, sequence)
+  })
+  for (const paneId of paneIds) sizes.delete(paneId)
+  return loadLayout()
 }
 export function setPaneState(
   workspaceId: number,
   paneId: number,
   value: Pane['state']
-): LayoutState {
-  const pane = state.workspaces[workspaceId]?.tabs
-    .flatMap((tab) => leaves(tab.root))
-    .find((pane) => pane.id === paneId)
-  if (!pane) fail('not_found', 'Pane not found.')
+): LayoutChange {
+  const db = getDb()
+  const workspace = readWorkspace(db, workspaceId)
+  const pane = workspace?.tabs.flatMap((tab) => leaves(tab.root)).find((pane) => pane.id === paneId)
+  if (!workspace || !pane) fail('not_found', 'Pane not found.')
   if (
     !value ||
     value.version !== 1 ||
@@ -80,32 +100,35 @@ export function setPaneState(
       (!Number.isFinite(value.filesWidth) || value.filesWidth < 160 || value.filesWidth > 480))
   )
     fail('usage', 'Invalid pane state.')
-  if (JSON.stringify(pane.state) === JSON.stringify(value)) return state
-  const previous = pane.state
-  const revision = state.revision
+  if (JSON.stringify(pane.state) === JSON.stringify(value))
+    return { revision: readSequence(db).revision, workspaceId, workspace, result: null }
   pane.state = value
-  try {
-    broadcast()
-  } catch (error) {
-    pane.state = previous
-    state.revision = revision
-    throw error
-  }
-  return state
+  return transaction(db, () => {
+    const sequence = readSequence(db)
+    sequence.revision++
+    writeWorkspace(db, workspaceId, workspace)
+    writeSequence(db, sequence)
+    return { revision: sequence.revision, workspaceId, workspace, result: null }
+  })
 }
+// Pane sizes are renderer measurements, not layout state, so they stay in memory. They are only
+// a hint for choosing a split direction, so the map is bounded instead of validated against the DB.
+const MAX_MEASURED_PANES = 4096
 export function measure(paneId: number, width: number, height: number): void {
   if (
-    Object.values(state.workspaces).some((workspace) =>
-      workspace.tabs.some((tab) => leaves(tab.root).some((pane) => pane.id === paneId))
-    ) &&
+    Number.isSafeInteger(paneId) &&
+    paneId > 0 &&
     width <= 100000 &&
     height <= 100000 &&
     Number.isFinite(width) &&
     Number.isFinite(height) &&
     width > 0 &&
     height > 0
-  )
+  ) {
+    sizes.delete(paneId)
     sizes.set(paneId, { width, height })
+    if (sizes.size > MAX_MEASURED_PANES) sizes.delete(sizes.keys().next().value!)
+  }
 }
 const sizes = new Map<number, { width: number; height: number }>()
 
@@ -142,26 +165,14 @@ function replace(node: PaneNode, target: number, replacement: PaneNode | null): 
   const second = replace(node.second, target, replacement)
   return first && second ? { ...node, first, second } : (first ?? second)
 }
-function broadcast(): void {
-  state.revision++
-  saveLayout()
+type CommandOutcome = {
+  workspaceId: number
+  workspace: WorkspaceTabs
+  result: unknown
+  changed: boolean
 }
-export function removeWorkspaceLayout(workspaceId: number): void {
-  const workspace = state.workspaces[workspaceId]
-  if (!workspace) return
-  for (const tab of workspace.tabs) for (const pane of leaves(tab.root)) sizes.delete(pane.id)
-  const revision = state.revision
-  delete state.workspaces[workspaceId]
-  try {
-    broadcast()
-  } catch (error) {
-    state.workspaces[workspaceId] = workspace
-    state.revision = revision
-    throw error
-  }
-}
-
-function applyCommand(raw: unknown): LayoutReply {
+function applyCommand(raw: unknown, db: DatabaseSync, sequence: Sequence): CommandOutcome {
+  let changed = false
   if (!raw || typeof raw !== 'object') fail('usage', 'Layout command is required.')
   const command = raw as LayoutCommand
   const workspaceId = id(command.workspaceId, 'Workspace ID')
@@ -185,8 +196,13 @@ function applyCommand(raw: unknown): LayoutReply {
   } catch {
     fail('not_found', `Workspace ${workspaceId} not found.`)
   }
-  const workspace = state.workspaces[workspaceId] ?? { tabs: [], activeTabId: null, nextLabel: 1 }
-  const reply = (result: unknown): LayoutReply => ({ state, result })
+  const workspace = readWorkspace(db, workspaceId) ?? { tabs: [], activeTabId: null, nextLabel: 1 }
+  const reply = (result: unknown): CommandOutcome => ({
+    workspaceId,
+    workspace,
+    result,
+    changed
+  })
   if (command.target === 'tab' && command.action === 'list') return reply(workspace.tabs)
   if (
     command.target === 'tab' &&
@@ -200,7 +216,7 @@ function applyCommand(raw: unknown): LayoutReply {
         if (focus) {
           workspace.activeTabId = existing.id
           existing.activePaneId = leaves(existing.root).find((pane) => pane.kind === 'changes')!.id
-          broadcast()
+          changed = true
         }
         return reply(existing)
       }
@@ -209,12 +225,12 @@ function applyCommand(raw: unknown): LayoutReply {
     const kind = command.action === 'open-changes' ? 'changes' : (command.kind ?? 'terminal')
     const pane: Pane = {
       type: 'pane',
-      id: nextId++,
+      id: sequence.nextId++,
       kind,
       repositoryId: command.repositoryId ?? null
     }
     const tab: WorkspaceTab = {
-      id: nextId++,
+      id: sequence.nextId++,
       kind,
       label:
         kind === 'terminal'
@@ -227,8 +243,7 @@ function applyCommand(raw: unknown): LayoutReply {
     }
     workspace.tabs.push(tab)
     if (focus) workspace.activeTabId = tab.id
-    state.workspaces[workspaceId] = workspace
-    broadcast()
+    changed = true
     return reply(tab)
   }
   const tab =
@@ -300,7 +315,7 @@ function applyCommand(raw: unknown): LayoutReply {
             : command.direction
         const added: Pane = {
           type: 'pane',
-          id: nextId++,
+          id: sequence.nextId++,
           kind: command.kind ?? 'terminal',
           repositoryId: command.repositoryId ?? pane.repositoryId ?? null
         }
@@ -313,7 +328,7 @@ function applyCommand(raw: unknown): LayoutReply {
         sizes.set(added.id, childSize)
         tab.root = replace(tab.root, pane.id, {
           type: 'split',
-          id: nextId++,
+          id: sequence.nextId++,
           direction,
           ratio: 0.5,
           first: pane,
@@ -348,20 +363,30 @@ function applyCommand(raw: unknown): LayoutReply {
       }
     }
   }
-  broadcast()
+  changed = true
   return reply(result)
 }
 
-export function layoutCommand(raw: unknown): LayoutReply {
-  const backup = structuredClone(state)
-  const allocation = nextId
+export function layoutCommand(raw: unknown): LayoutChange {
+  const db = getDb()
   const measurements = new Map(sizes)
   try {
-    return applyCommand(raw)
+    return transaction(db, () => {
+      const sequence = readSequence(db)
+      const outcome = applyCommand(raw, db, sequence)
+      if (outcome.changed) {
+        sequence.revision++
+        writeWorkspace(db, outcome.workspaceId, outcome.workspace)
+        writeSequence(db, sequence)
+      }
+      return {
+        revision: sequence.revision,
+        workspaceId: outcome.workspaceId,
+        workspace: outcome.workspace,
+        result: outcome.result
+      }
+    })
   } catch (error) {
-    state.workspaces = backup.workspaces
-    state.revision = backup.revision
-    nextId = allocation
     sizes.clear()
     for (const [key, value] of measurements) sizes.set(key, value)
     throw error

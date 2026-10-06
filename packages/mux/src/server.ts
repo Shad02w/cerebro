@@ -18,6 +18,7 @@ import { StorageWorker } from './worker-client'
 import { AgentSessions } from './agents/service'
 import type { ChatCommand } from '@cerebro/core'
 import { Terminals } from './terminals'
+import type { LayoutChange } from './layout'
 
 const leaves = (node: PaneNode): Pane[] =>
   node.type === 'pane' ? [node] : [...leaves(node.first), ...leaves(node.second)]
@@ -129,19 +130,21 @@ export async function startServer(): Promise<void> {
   }
   const accessTerminal = (p: RequestParams): Promise<number> =>
     terminals.has(positive(p.paneId)) ? ensureTerminal(p) : exclusive(() => ensureTerminal(p))
-  const updateLayout = (state: LayoutState, workspaceId?: number): void => {
-    layout = { ...state, epoch }
-    publish(
-      'layout',
-      workspaceId
-        ? {
-            epoch,
-            revision: layout.revision,
-            workspaceId,
-            workspace: layout.workspaces[workspaceId] ?? null
-          }
-        : { state: layout }
-    )
+  const applyChange = ({ revision, workspaceId, workspace }: LayoutChange): void => {
+    const workspaces = { ...layout.workspaces }
+    if (workspace) workspaces[workspaceId] = workspace
+    else delete workspaces[workspaceId]
+    layout = { revision, workspaces, epoch }
+    publish('layout', { epoch, revision, workspaceId, workspace })
+  }
+  // The database decides which workspaces exist: adopt its layout and announce what vanished.
+  const adoptLayout = (fresh: LayoutState): void => {
+    const gone = Object.keys(layout.workspaces)
+      .map(Number)
+      .filter((workspaceId) => !fresh.workspaces[workspaceId])
+    layout = { ...fresh, epoch }
+    for (const workspaceId of gone)
+      publish('layout', { epoch, revision: layout.revision, workspaceId, workspace: null })
   }
   const providers = new Map<string, Peer>()
   const gitPending = new Map<
@@ -218,11 +221,14 @@ export async function startServer(): Promise<void> {
     if (p.provider) providers.set(operationId, peer)
     try {
       const result = await storage.call('registry', { ...p, operationId })
-      for (const workspaceId of removed) {
-        for (const tab of layout.workspaces[workspaceId]?.tabs ?? [])
-          for (const pane of leaves(tab.root)) await terminals.stop(pane.id, true)
-        updateLayout(await storage.call('layout.remove', { workspaceId }), workspaceId)
-      }
+      for (const paneId of removedPanes) await terminals.stop(paneId, true)
+      if (removed.length)
+        adoptLayout(
+          await storage.call<LayoutState>('layout.remove', {
+            workspaceIds: removed,
+            paneIds: removedPanes
+          })
+        )
       if (p.action !== 'list') publish('projects', {})
       return result
     } finally {
@@ -347,8 +353,7 @@ export async function startServer(): Promise<void> {
             return storage.call('layout.measure', p)
           case 'pane.state':
             return exclusive(async () => {
-              const state = await storage.call<LayoutState>('pane.state', p)
-              updateLayout(state, p.workspaceId)
+              applyChange(await storage.call<LayoutChange>('pane.state', p))
               return layout
             })
           case 'layout.command':
@@ -365,11 +370,8 @@ export async function startServer(): Promise<void> {
                     .flatMap((tab) => leaves(tab.root))
                     .map((pane) => pane.id)
                 )
-                const reply = await storage.call<{ state: LayoutState; result: unknown }>(
-                  'layout.command',
-                  p
-                )
-                updateLayout(reply.state, p.workspaceId)
+                const change = await storage.call<LayoutChange>('layout.command', p)
+                applyChange(change)
                 for (const tab of layout.workspaces[p.workspaceId]?.tabs ?? [])
                   for (const pane of leaves(tab.root)) {
                     if (!before.delete(pane.id) && pane.kind === 'terminal')
@@ -385,7 +387,7 @@ export async function startServer(): Promise<void> {
                   await storage.call('registry', { action: 'select', workspaceId: p.workspaceId })
                   publish('focus', p.workspaceId)
                 }
-                return { ...reply, state: layout }
+                return { result: change.result, state: layout }
               })
             )
           case 'registry': {

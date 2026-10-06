@@ -18,14 +18,7 @@ import {
   listWorkspaceChanges,
   getWorkspaceFileDiff
 } from '@cerebro/core'
-import {
-  loadLayout,
-  layoutCommand,
-  getLayout,
-  removeWorkspaceLayout,
-  setPaneState,
-  measure
-} from './layout'
+import { loadLayout, layoutCommand, removeWorkspaceLayouts, setPaneState, measure } from './layout'
 import { TerminalFiles, type Checkpoint } from './storage'
 
 const port = parentPort!
@@ -119,7 +112,7 @@ async function handle(method: string, p: RequestParams): Promise<unknown> {
     case 'changes.file':
       return getWorkspaceFileDiff(p.workspaceId, Number(p.repositoryId), p.file)
     case 'layout.get':
-      return getLayout()
+      return loadLayout()
     case 'layout.command':
       return layoutCommand(p)
     case 'layout.measure':
@@ -128,8 +121,7 @@ async function handle(method: string, p: RequestParams): Promise<unknown> {
     case 'pane.state':
       return setPaneState(p.workspaceId, p.paneId, p.state)
     case 'layout.remove':
-      removeWorkspaceLayout(p.workspaceId)
-      return getLayout()
+      return removeWorkspaceLayouts(p.workspaceIds, p.paneIds)
     case 'files.load':
       return files.load(p.paneId)
     case 'files.checkpoint':
