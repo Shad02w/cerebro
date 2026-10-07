@@ -1314,69 +1314,81 @@ function StatusGroup({
                       <MultiRootBadge project={project} />
                     </div>
                   </SidebarMenuButton>
-                  <SidebarMenuSub>
-                    {workspaces.map((workspace) => {
-                      const rootRow = workspace.kind === 'root'
-                      return (
-                        <SidebarMenuSubItem key={workspace.id}>
-                          <WorkspaceHoverCard workspace={workspace}>
-                            <SidebarMenuRow data-workspace-id={workspace.id}>
-                              <SidebarMenuSubButton
-                                size="sm"
-                                asChild
-                                isActive={workspace.id === activeWorkspaceId}
-                              >
-                                <button
-                                  type="button"
-                                  className={cn(
-                                    'app-no-drag flex h-auto! w-full min-w-0 flex-col items-stretch gap-0 py-1.5 pr-8',
-                                    rootRow ? undefined : 'pl-8'
-                                  )}
-                                  data-testid={`workspace-row-${workspace.id}`}
-                                  data-workspace-id={workspace.id}
-                                  data-workspace-status={workspaceStatus(workspace.status)}
-                                  data-workspace-role={rootRow ? 'root' : 'branch'}
-                                  data-workspace-icon={rootRow ? 'folder-tree' : 'branch'}
-                                  aria-current={
-                                    workspace.id === activeWorkspaceId ? 'location' : undefined
-                                  }
-                                  onClick={(): void => onSelectWorkspace(workspace.id)}
+                  {isMultiRootProject(project) ? (
+                    <MultiRootWorkspaceTree
+                      project={project}
+                      activeWorkspaceId={activeWorkspaceId}
+                      activity={activity}
+                      onSelectWorkspace={onSelectWorkspace}
+                      onOpenAgent={onOpenAgent}
+                      onRenameWorkspace={(workspace): void => onRenameWorkspace(project, workspace)}
+                      onSetStatus={onSetStatus}
+                    />
+                  ) : (
+                    <SidebarMenuSub>
+                      {workspaces.map((workspace) => {
+                        const rootRow = workspace.kind === 'root'
+                        return (
+                          <SidebarMenuSubItem key={workspace.id}>
+                            <WorkspaceHoverCard workspace={workspace}>
+                              <SidebarMenuRow data-workspace-id={workspace.id}>
+                                <SidebarMenuSubButton
+                                  size="sm"
+                                  asChild
+                                  isActive={workspace.id === activeWorkspaceId}
                                 >
-                                  <span className="flex min-w-0 items-center gap-1.5 text-left">
-                                    {rootRow ? (
-                                      <FolderTree className="size-4 shrink-0 text-sidebar-accent-foreground" />
-                                    ) : null}
-                                    <span className="min-w-0 flex-1 truncate">
-                                      {statusGroupLabel(project, workspace)}
+                                  <button
+                                    type="button"
+                                    className={cn(
+                                      'app-no-drag flex h-auto! w-full min-w-0 flex-col items-stretch gap-0 py-1.5 pr-8',
+                                      rootRow ? undefined : 'pl-8'
+                                    )}
+                                    data-testid={`workspace-row-${workspace.id}`}
+                                    data-workspace-id={workspace.id}
+                                    data-workspace-status={workspaceStatus(workspace.status)}
+                                    data-workspace-role={rootRow ? 'root' : 'branch'}
+                                    data-workspace-icon={rootRow ? 'folder-tree' : 'branch'}
+                                    aria-current={
+                                      workspace.id === activeWorkspaceId ? 'location' : undefined
+                                    }
+                                    onClick={(): void => onSelectWorkspace(workspace.id)}
+                                  >
+                                    <span className="flex min-w-0 items-center gap-1.5 text-left">
+                                      {rootRow ? (
+                                        <FolderTree className="size-4 shrink-0 text-sidebar-accent-foreground" />
+                                      ) : null}
+                                      <span className="min-w-0 flex-1 truncate">
+                                        {statusGroupLabel(project, workspace)}
+                                      </span>
                                     </span>
-                                  </span>
-                                  <WorkspaceAgents
-                                    agents={activity.get(workspace.id) ?? []}
-                                    onOpenAgent={onOpenAgent}
+                                    <WorkspaceAgents
+                                      agents={activity.get(workspace.id) ?? []}
+                                      onOpenAgent={onOpenAgent}
+                                    />
+                                  </button>
+                                </SidebarMenuSubButton>
+                                {rootRow ? null : (
+                                  <WorkspacePrPopover
+                                    workspace={workspace}
+                                    className="absolute top-2 left-2 size-4"
                                   />
-                                </button>
-                              </SidebarMenuSubButton>
-                              {rootRow ? null : (
-                                <WorkspacePrPopover
+                                )}
+                                <WorkspaceOverflowMenu
                                   workspace={workspace}
-                                  className="absolute top-2 left-2 size-4"
+                                  allowRemove={workspace.kind === 'worktree'}
+                                  project={project}
+                                  onAddWorkspace={project.github ? onAddWorkspace : undefined}
+                                  onRename={(): void => onRenameWorkspace(project, workspace)}
+                                  onRemoveWorkspace={onRemoveWorkspace}
+                                  onSetStatus={onSetStatus}
                                 />
-                              )}
-                              <WorkspaceOverflowMenu
-                                workspace={workspace}
-                                allowRemove={workspace.kind === 'worktree'}
-                                project={project}
-                                onAddWorkspace={project.github ? onAddWorkspace : undefined}
-                                onRename={(): void => onRenameWorkspace(project, workspace)}
-                                onRemoveWorkspace={onRemoveWorkspace}
-                                onSetStatus={onSetStatus}
-                              />
-                            </SidebarMenuRow>
-                          </WorkspaceHoverCard>
-                        </SidebarMenuSubItem>
-                      )
-                    })}
-                  </SidebarMenuSub>
+                              </SidebarMenuRow>
+                            </WorkspaceHoverCard>
+                          </SidebarMenuSubItem>
+                        )
+                      })}
+                    </SidebarMenuSub>
+                  )}
                 </li>
               ))}
             </ul>
