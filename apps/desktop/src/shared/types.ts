@@ -295,6 +295,8 @@ export type CerebroApi = {
   listWorkspaceRepositories: () => Promise<WorkspaceRepository[]>
   getRepositoryPullRequests: (owner: string, repo: string) => Promise<RepositoryPullRequests>
   onWindowFocus: (listener: (focused: boolean) => void) => () => void
+  /** Calls back with the current state immediately, then on every change. */
+  onFullScreenChange: (listener: (fullScreen: boolean) => void) => () => void
   getCliStatus: () => Promise<CliInstallStatus>
   installCli: () => Promise<CliInstallStatus>
   removeCli: () => Promise<CliInstallStatus>

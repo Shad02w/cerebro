@@ -10,13 +10,19 @@ import { AppSidebar } from '@/components/app-sidebar'
 import { SettingsView } from '@/components/settings-view'
 import { WorkspaceView } from '@/components/workspace-view'
 import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from '@/components/ui/sidebar'
+import { useFullScreen } from '@/hooks/use-full-screen'
 import { useAppRoute } from '@/hooks/use-app-route'
 import { useGitHub } from '@/hooks/use-github'
 import { useProjects } from '@/hooks/use-projects'
 import { useSettings } from '@/hooks/use-settings'
 import { KeybindProvider, useKeybindHandler } from '@/keybinds'
 import { navigate, projectsPath, settingsPath } from '@/lib/app-route'
-import { TITLEBAR_HEIGHT, TITLEBAR_TRIGGER_LEFT } from '@/lib/titlebar'
+import {
+  TITLEBAR_HEIGHT,
+  TITLEBAR_TRIGGER_LEFT,
+  TITLEBAR_TRIGGER_FULLSCREEN_LEFT,
+  TITLEBAR_TRIGGER_OFFSET_Y
+} from '@/lib/titlebar'
 import {
   DEFAULT_AGENT_BACKGROUND,
   type Project,
@@ -32,6 +38,7 @@ function WindowDragOverlay({
   deferTriggerToTabBar: boolean
 }): React.JSX.Element {
   const { state } = useSidebar()
+  const fullScreen = useFullScreen()
   // When the sidebar is collapsed, a workspace tab bar covers this strip. Electron
   // ignores z-index for -webkit-app-region: a sibling trigger over that drag
   // region is not clickable. ContentTabBar hosts the trigger in that case.
@@ -48,7 +55,11 @@ function WindowDragOverlay({
         <div
           data-testid="titlebar-sidebar-trigger"
           className="app-no-drag fixed top-0 z-[60] flex items-center"
-          style={{ left: TITLEBAR_TRIGGER_LEFT, height: TITLEBAR_HEIGHT }}
+          style={{
+            left: fullScreen ? TITLEBAR_TRIGGER_FULLSCREEN_LEFT : TITLEBAR_TRIGGER_LEFT,
+            height: TITLEBAR_HEIGHT,
+            paddingTop: TITLEBAR_TRIGGER_OFFSET_Y
+          }}
         >
           <SidebarTrigger size="icon-xs" className="app-no-drag size-6" />
         </div>

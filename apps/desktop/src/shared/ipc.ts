@@ -50,6 +50,7 @@ export const IPC = {
   },
   native: {
     focus: 'cerebro:native:focus',
+    fullScreen: 'cerebro:native:full-screen',
     runCommand: 'cerebro:native:run-command'
   },
   keybinds: {

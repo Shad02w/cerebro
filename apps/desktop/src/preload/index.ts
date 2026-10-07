@@ -33,6 +33,14 @@ const api: CerebroApi = {
       ipcRenderer.removeListener(IPC.native.focus, handler)
     }
   },
+  onFullScreenChange: (listener) => {
+    const handler = (_event: IpcRendererEvent, fullScreen: boolean): void => listener(fullScreen)
+    ipcRenderer.on(IPC.native.fullScreen, handler)
+    void ipcRenderer.invoke(IPC.native.fullScreen).then(listener)
+    return () => {
+      ipcRenderer.removeListener(IPC.native.fullScreen, handler)
+    }
+  },
   getCliStatus: () => ipcRenderer.invoke(IPC.cli.status),
   installCli: () => ipcRenderer.invoke(IPC.cli.install),
   removeCli: () => ipcRenderer.invoke(IPC.cli.remove),
