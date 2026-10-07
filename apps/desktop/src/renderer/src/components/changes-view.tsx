@@ -181,30 +181,34 @@ function DiffFoldControls({
   return (
     <>
       <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-xs"
-            aria-label="Collapse all diffs"
-            onClick={onCollapseAll}
-          >
-            <ChevronsDownUp className="size-3.5" />
-          </Button>
+        <TooltipTrigger
+          render={
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              aria-label="Collapse all diffs"
+              onClick={onCollapseAll}
+            />
+          }
+        >
+          <ChevronsDownUp className="size-3.5" />
         </TooltipTrigger>
         <TooltipContent side="bottom">Collapse all diffs</TooltipContent>
       </Tooltip>
       <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-xs"
-            aria-label="Expand all diffs"
-            onClick={onExpandAll}
-          >
-            <ChevronsUpDown className="size-3.5" />
-          </Button>
+        <TooltipTrigger
+          render={
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              aria-label="Expand all diffs"
+              onClick={onExpandAll}
+            />
+          }
+        >
+          <ChevronsUpDown className="size-3.5" />
         </TooltipTrigger>
         <TooltipContent side="bottom">Expand all diffs</TooltipContent>
       </Tooltip>
@@ -390,35 +394,39 @@ export function ChangesView({
                 onExpandAll={() => setCollapsedIds(new Set())}
               />
               <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-xs"
-                    data-testid="changes-refresh"
-                    aria-label="Refresh changes"
-                    aria-busy={query.isFetching}
-                    onClick={(): void => {
-                      if (!query.isFetching) void query.refetch({ cancelRefetch: false })
-                    }}
-                  >
-                    <RefreshCw className={cn('size-3.5', query.isFetching && 'animate-spin')} />
-                  </Button>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-xs"
+                      data-testid="changes-refresh"
+                      aria-label="Refresh changes"
+                      aria-busy={query.isFetching}
+                      onClick={(): void => {
+                        if (!query.isFetching) void query.refetch({ cancelRefetch: false })
+                      }}
+                    />
+                  }
+                >
+                  <RefreshCw className={cn('size-3.5', query.isFetching && 'animate-spin')} />
                 </TooltipTrigger>
                 <TooltipContent side="bottom">Refresh</TooltipContent>
               </Tooltip>
               <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-xs"
-                    data-testid="changes-sidebar-toggle"
-                    aria-label="Collapse files"
-                    onClick={toggleFiles}
-                  >
-                    <PanelRightClose className="size-3.5" />
-                  </Button>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-xs"
+                      data-testid="changes-sidebar-toggle"
+                      aria-label="Collapse files"
+                      onClick={toggleFiles}
+                    />
+                  }
+                >
+                  <PanelRightClose className="size-3.5" />
                 </TooltipTrigger>
                 <TooltipContent side="bottom">Collapse</TooltipContent>
               </Tooltip>
@@ -446,17 +454,19 @@ export function ChangesView({
               style={{ paddingTop: 'calc(var(--pane-controls-height, 0px) + 4px)' }}
             >
               <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-xs"
-                    data-testid="changes-sidebar-toggle"
-                    aria-label="Expand files"
-                    onClick={toggleFiles}
-                  >
-                    <PanelRightOpen className="size-3.5" />
-                  </Button>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-xs"
+                      data-testid="changes-sidebar-toggle"
+                      aria-label="Expand files"
+                      onClick={toggleFiles}
+                    />
+                  }
+                >
+                  <PanelRightOpen className="size-3.5" />
                 </TooltipTrigger>
                 <TooltipContent side="left">Expand files</TooltipContent>
               </Tooltip>

@@ -101,31 +101,33 @@ export function ChatTurnActions({
         </Button>
       ) : null}
       <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-xs"
-            aria-label="Fork conversation"
-            title="Fork conversation"
-            className="text-muted-foreground"
-            data-testid="chat-fork-trigger"
-          >
-            <GitFork aria-hidden="true" />
-          </Button>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              aria-label="Fork conversation"
+              title="Fork conversation"
+              className="text-muted-foreground"
+              data-testid="chat-fork-trigger"
+            />
+          }
+        >
+          <GitFork aria-hidden="true" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" side="bottom" className="w-64">
           <DropdownMenuItem
             className="text-xs"
             data-testid="chat-fork-new-tab"
-            onSelect={() => void fork('tab')}
+            onClick={() => void fork('tab')}
           >
             Fork in a new tab
           </DropdownMenuItem>
           <DropdownMenuItem
             className="text-xs"
             data-testid="chat-fork-new-pane"
-            onSelect={() => void fork('pane')}
+            onClick={() => void fork('pane')}
           >
             Fork in a new pane
           </DropdownMenuItem>

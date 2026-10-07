@@ -56,19 +56,21 @@ export function ModelPicker({
         setOpen(nextOpen)
       }}
     >
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          data-testid="chat-model-picker"
-          className="max-w-full gap-1 text-xs"
-        >
-          <span className="truncate">
-            {selected ? `${selected.label} · ${harnessLabels[selected.harness]}` : 'Choose model'}
-          </span>
-          <ChevronDown className="size-3" />
-        </Button>
+      <PopoverTrigger
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            data-testid="chat-model-picker"
+            className="max-w-full gap-1 text-xs"
+          />
+        }
+      >
+        <span className="truncate">
+          {selected ? `${selected.label} · ${harnessLabels[selected.harness]}` : 'Choose model'}
+        </span>
+        <ChevronDown className="size-3" />
       </PopoverTrigger>
       <PopoverContent
         align="start"

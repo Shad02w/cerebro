@@ -117,6 +117,12 @@ type GeneralSettingsProps = {
   onPickDirectory: () => Promise<string | null>
 }
 
+const AGENT_BACKGROUND_ITEMS = [
+  { value: 'glow', label: 'Glow' },
+  { value: 'stars', label: 'Stars' },
+  { value: 'off', label: 'Off' }
+]
+
 function GeneralSettings({
   settings,
   error,
@@ -189,6 +195,7 @@ function GeneralSettings({
             </p>
           </div>
           <Select
+            items={AGENT_BACKGROUND_ITEMS}
             value={settings.agentBackground}
             onValueChange={(value): void => {
               if (value === 'glow' || value === 'stars' || value === 'off') {
@@ -204,9 +211,11 @@ function GeneralSettings({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="glow">Glow</SelectItem>
-              <SelectItem value="stars">Stars</SelectItem>
-              <SelectItem value="off">Off</SelectItem>
+              {AGENT_BACKGROUND_ITEMS.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
@@ -404,6 +413,7 @@ function TerminalSettings({ settings, error, onUpdate }: TerminalSettingsProps):
           Font family
         </Label>
         <Select
+          items={fontOptions}
           value={familyValue}
           onValueChange={(value): void => {
             if (value) void persistFontFamily(value)
@@ -585,16 +595,21 @@ function IntegrationsSettings({
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button asChild variant="outline" className="app-no-drag">
-                <a
-                  href={status.configureUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  title="Manage which repositories Cerebro can access"
-                  data-testid="github-configure"
-                >
-                  Configure
-                </a>
+              <Button
+                variant="outline"
+                className="app-no-drag"
+                nativeButton={false}
+                render={
+                  <a
+                    href={status.configureUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    title="Manage which repositories Cerebro can access"
+                    data-testid="github-configure"
+                  />
+                }
+              >
+                Configure
               </Button>
               <Button
                 type="button"

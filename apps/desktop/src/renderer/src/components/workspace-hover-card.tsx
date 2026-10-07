@@ -1,6 +1,6 @@
 import { useRef, useState, type ReactElement } from 'react'
 import { GitMerge, GitPullRequest, GitPullRequestClosed, GitPullRequestDraft } from 'lucide-react'
-import { HoverCard } from 'radix-ui'
+import { PreviewCard } from '@base-ui/react/preview-card'
 import type { Workspace, WorkspacePullRequest } from '@shared/types'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
@@ -107,29 +107,33 @@ export function WorkspaceHoverCard({
   const [open, setOpen] = useState(false)
   const trigger = useRef<HTMLElement | null>(null)
   const dismissed = useRef(false)
+  const focusFromPopupTrigger = useRef(false)
   if (!workspace) return children
   const pr = workspace.pullRequest
   return (
-    <HoverCard.Root
+    <PreviewCard.Root
       open={open}
-      onOpenChange={(next) => {
+      onOpenChange={(next, eventDetails) => {
         // Menus and the click-open PR popover take priority over hover details.
         if (
           next &&
           (dismissed.current ||
+            (eventDetails.reason === 'trigger-focus' && focusFromPopupTrigger.current) ||
             trigger.current?.querySelector('[aria-expanded="true"][aria-haspopup]') ||
             document.querySelector(
-              '[data-slot="dialog-content"][data-state="open"], [data-slot="dropdown-menu-content"][data-state="open"], [data-slot="dropdown-menu-sub-content"][data-state="open"], [data-slot="popover-content"][data-state="open"]'
+              '[data-slot="dialog-content"][data-open], [data-slot="dropdown-menu-content"][data-open], [data-slot="dropdown-menu-sub-content"][data-open], [data-slot="popover-content"][data-open]'
             ))
-        )
+        ) {
+          eventDetails.cancel()
           return
+        }
         setOpen(next)
       }}
-      openDelay={350}
-      closeDelay={150}
     >
-      <HoverCard.Trigger
-        asChild
+      <PreviewCard.Trigger
+        delay={350}
+        closeDelay={150}
+        render={children}
         ref={(node) => {
           trigger.current = node
         }}
@@ -137,7 +141,6 @@ export function WorkspaceHoverCard({
           dismissed.current = false
         }}
         onPointerDownCapture={() => {
-          // Closing controlled state alone does not cancel Radix's open timer.
           dismissed.current = true
           setOpen(false)
         }}
@@ -145,81 +148,84 @@ export function WorkspaceHoverCard({
           dismissed.current = true
           setOpen(false)
         }}
-        onFocus={(event) => {
-          // Radix restores focus to menu/popover buttons on close. That focus
-          // bubbles through the row and must not schedule a new hover card.
+        onFocusCapture={(event) => {
+          // Menu/popover buttons get focus back on close. That focus bubbles
+          // through the row and must not schedule a new hover card.
           if (event.target instanceof Element && event.target.closest('[aria-haspopup]')) {
-            event.preventDefault()
+            focusFromPopupTrigger.current = true
           } else {
+            focusFromPopupTrigger.current = false
             dismissed.current = false
           }
         }}
-      >
-        {children}
-      </HoverCard.Trigger>
-      <HoverCard.Portal>
-        <HoverCard.Content
+      />
+      <PreviewCard.Portal>
+        <PreviewCard.Positioner
           side="right"
           align="start"
           sideOffset={8}
           collisionPadding={12}
-          role="dialog"
-          aria-label="Workspace details"
-          data-testid={`workspace-hover-${workspace.id}`}
-          className="app-no-drag z-50 grid w-96 max-w-[calc(100vw-24px)] grid-cols-1 gap-3 rounded-lg border bg-popover p-4 text-sm text-popover-foreground shadow-lg"
-          onClick={(event) => event.stopPropagation()}
+          className="isolate z-50"
         >
-          <div className="space-y-1">
-            <p className="break-words font-medium">
-              {workspace.branch ||
-                (workspace.kind === 'root' ? 'Root workspace' : 'Folder workspace')}
-            </p>
-            {showStatus ? (
-              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <WorkspaceStatusIcon status={workspaceStatus(workspace.status)} />
-                {WORKSPACE_STATUS_PRESENTATION[workspaceStatus(workspace.status)].label}
+          <PreviewCard.Popup
+            role="dialog"
+            aria-label="Workspace details"
+            data-testid={`workspace-hover-${workspace.id}`}
+            className="app-no-drag z-50 grid w-96 max-w-[calc(100vw-24px)] grid-cols-1 gap-3 rounded-lg border bg-popover p-4 text-sm text-popover-foreground shadow-lg"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="space-y-1">
+              <p className="break-words font-medium">
+                {workspace.branch ||
+                  (workspace.kind === 'root' ? 'Root workspace' : 'Folder workspace')}
               </p>
-            ) : null}
-            <p className="text-xs text-muted-foreground">
-              Workspace created {relativeCreatedAt(workspace.createdAt)}
-            </p>
-          </div>
-          {pr ? (
-            <div className="space-y-2 border-t pt-3">
-              <div className="flex items-start justify-between gap-2">
-                <a
-                  href={pr.url}
-                  className="min-w-0 flex-1 break-words font-medium text-primary underline underline-offset-4"
-                  onClick={(event) => {
-                    event.preventDefault()
-                    void window.cerebro.openExternal(pr.url)
-                  }}
-                >
-                  #{pr.number} · {pr.title}
-                </a>
-                <PrStateBadge pr={pr} workspaceId={workspace.id} />
-              </div>
-              <p className="text-xs text-muted-foreground">
-                PR created {relativeCreatedAt(pr.createdAt)}
-              </p>
-              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
-                <dt className="text-muted-foreground">Review</dt>
-                <dd>{reviewLabel(pr)}</dd>
-                <dt className="text-muted-foreground">Mergeable</dt>
-                <dd>{pr.mergeable === null ? 'Unknown' : pr.mergeable ? 'Yes' : 'Conflicts'}</dd>
-                <dt className="text-muted-foreground">CI</dt>
-                <dd>
-                  <CiStatus state={pr.ciStatus ?? 'unavailable'} />
-                </dd>
-              </dl>
-              <CiChecks pr={pr} />
-              {workspace.prStatus?.state === 'stale' ? (
-                <p className="text-xs text-amber-500">Last known status · Refresh failed</p>
+              {showStatus ? (
+                <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <WorkspaceStatusIcon status={workspaceStatus(workspace.status)} />
+                  {WORKSPACE_STATUS_PRESENTATION[workspaceStatus(workspace.status)].label}
+                </p>
               ) : null}
+              <p className="text-xs text-muted-foreground">
+                Workspace created {relativeCreatedAt(workspace.createdAt)}
+              </p>
             </div>
-          ) : null}
-        </HoverCard.Content>
-      </HoverCard.Portal>
-    </HoverCard.Root>
+            {pr ? (
+              <div className="space-y-2 border-t pt-3">
+                <div className="flex items-start justify-between gap-2">
+                  <a
+                    href={pr.url}
+                    className="min-w-0 flex-1 break-words font-medium text-primary underline underline-offset-4"
+                    onClick={(event) => {
+                      event.preventDefault()
+                      void window.cerebro.openExternal(pr.url)
+                    }}
+                  >
+                    #{pr.number} · {pr.title}
+                  </a>
+                  <PrStateBadge pr={pr} workspaceId={workspace.id} />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  PR created {relativeCreatedAt(pr.createdAt)}
+                </p>
+                <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+                  <dt className="text-muted-foreground">Review</dt>
+                  <dd>{reviewLabel(pr)}</dd>
+                  <dt className="text-muted-foreground">Mergeable</dt>
+                  <dd>{pr.mergeable === null ? 'Unknown' : pr.mergeable ? 'Yes' : 'Conflicts'}</dd>
+                  <dt className="text-muted-foreground">CI</dt>
+                  <dd>
+                    <CiStatus state={pr.ciStatus ?? 'unavailable'} />
+                  </dd>
+                </dl>
+                <CiChecks pr={pr} />
+                {workspace.prStatus?.state === 'stale' ? (
+                  <p className="text-xs text-amber-500">Last known status · Refresh failed</p>
+                ) : null}
+              </div>
+            ) : null}
+          </PreviewCard.Popup>
+        </PreviewCard.Positioner>
+      </PreviewCard.Portal>
+    </PreviewCard.Root>
   )
 }

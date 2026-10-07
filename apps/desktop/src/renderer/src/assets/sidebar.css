@@ -99,7 +99,7 @@
 }
 
 .cerebro-sidebar .sidebar-header-action:hover,
-.cerebro-sidebar .sidebar-header-action[data-state='open'] {
+.cerebro-sidebar .sidebar-header-action[data-popup-open] {
   color: var(--sidebar-foreground);
   background-color: var(--sidebar-accent);
 }
