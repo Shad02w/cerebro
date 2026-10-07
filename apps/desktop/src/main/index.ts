@@ -1,5 +1,5 @@
 import './app-environment'
-import { app, shell, BrowserWindow, nativeTheme } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, nativeTheme } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -48,6 +48,11 @@ function createWindow(): void {
   mainWindow.on('focus', () => mainWindow.webContents.send(IPC.native.focus, true))
   mainWindow.on('blur', () => mainWindow.webContents.send(IPC.native.focus, false))
 
+  mainWindow.on('enter-full-screen', () => mainWindow.webContents.send(IPC.native.fullScreen, true))
+  mainWindow.on('leave-full-screen', () =>
+    mainWindow.webContents.send(IPC.native.fullScreen, false)
+  )
+
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
   })
@@ -70,6 +75,10 @@ app.whenReady().then(() => {
   if (is.dev && process.platform === 'darwin') app.dock?.setIcon(icon)
   electronApp.setAppUserModelId('com.cerebro.app')
   setAppMenu()
+  ipcMain.handle(
+    IPC.native.fullScreen,
+    (event) => BrowserWindow.fromWebContents(event.sender)?.isFullScreen() ?? false
+  )
   ensureCerebroHome()
   registerWorkspaceIpc()
   registerSettingsIpc()

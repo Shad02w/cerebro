@@ -33,12 +33,16 @@ import {
   DropdownMenuSubContent,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
+import { useFullScreen } from '@/hooks/use-full-screen'
 import { SidebarTrigger, useSidebar } from '@/components/ui/sidebar'
 import { tabsListVariants, tabsTriggerVariants } from '@/components/ui/tabs'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ShortcutKbd, useKeybindBinding } from '@/keybinds'
 import {
   TITLEBAR_COLLAPSED_INSET_LEFT,
+  TITLEBAR_FULLSCREEN_INSET_LEFT,
+  TITLEBAR_FULLSCREEN_TRIGGER_PAD,
+  TITLEBAR_TRIGGER_OFFSET_Y,
   TITLEBAR_HEIGHT,
   TITLEBAR_TRIGGER_LEFT
 } from '@/lib/titlebar'
@@ -217,7 +221,13 @@ export function ContentTabBar({
   const newHotkey = useKeybindBinding('newTerminal')
   const changesHotkey = useKeybindBinding('openChanges')
   const { state } = useSidebar()
-  const insetLeft = state === 'collapsed' ? TITLEBAR_COLLAPSED_INSET_LEFT : 0
+  const fullScreen = useFullScreen()
+  const insetLeft =
+    state === 'collapsed'
+      ? fullScreen
+        ? TITLEBAR_FULLSCREEN_INSET_LEFT
+        : TITLEBAR_COLLAPSED_INSET_LEFT
+      : 0
   const [addOpen, setAddOpen] = useState(false)
   const [draggingTabId, setDraggingTabId] = useState<number | null>(null)
   const suppressClickRef = useRef(false)
@@ -272,7 +282,11 @@ export function ContentTabBar({
         <div
           data-testid="titlebar-sidebar-trigger"
           className="app-no-drag flex h-full shrink-0 items-center"
-          style={{ width: insetLeft, paddingLeft: TITLEBAR_TRIGGER_LEFT }}
+          style={{
+            width: insetLeft,
+            paddingLeft: fullScreen ? TITLEBAR_FULLSCREEN_TRIGGER_PAD : TITLEBAR_TRIGGER_LEFT,
+            paddingTop: TITLEBAR_TRIGGER_OFFSET_Y
+          }}
         >
           <SidebarTrigger size="icon-xs" className="app-no-drag size-6" />
         </div>
