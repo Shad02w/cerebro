@@ -40,6 +40,7 @@ function ToastList({
             <Toast.Title className="flex-1 text-sm" />
             <Toast.Close
               aria-label="Dismiss notification"
+              aria-hidden={false}
               className="rounded-sm p-1 text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
             >
               <X className="size-4" aria-hidden="true" />

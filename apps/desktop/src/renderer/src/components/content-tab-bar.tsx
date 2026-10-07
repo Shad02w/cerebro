@@ -26,6 +26,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuShortcut,
+  DropdownMenuGroup,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuSub,
@@ -332,49 +333,51 @@ export function ContentTabBar({
                 data-testid="add-tab-menu"
                 finalFocus={false}
               >
-                <DropdownMenuLabel>New tab</DropdownMenuLabel>
-                <DropdownMenuItem
-                  className="text-xs"
-                  data-testid="open-chat-tab"
-                  onClick={() => {
-                    setAddOpen(false)
-                    onOpenChat()
-                  }}
-                >
-                  <MessageSquare />
-                  Agent
-                  <DropdownMenuShortcut className="flex items-center">
-                    <ShortcutKbd hotkey={chatHotkey} />
-                  </DropdownMenuShortcut>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="text-xs"
-                  data-testid="open-terminal-tab"
-                  onClick={(): void => {
-                    setAddOpen(false)
-                    onNewTab()
-                  }}
-                >
-                  <SquareTerminal />
-                  Terminal
-                  <DropdownMenuShortcut className="flex items-center">
-                    <ShortcutKbd hotkey={newHotkey} />
-                  </DropdownMenuShortcut>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="text-xs"
-                  data-testid="open-changes-tab"
-                  onClick={(): void => {
-                    setAddOpen(false)
-                    onOpenChanges()
-                  }}
-                >
-                  <FileDiff />
-                  Changes
-                  <DropdownMenuShortcut className="flex items-center">
-                    <ShortcutKbd hotkey={changesHotkey} />
-                  </DropdownMenuShortcut>
-                </DropdownMenuItem>
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>New tab</DropdownMenuLabel>
+                  <DropdownMenuItem
+                    className="text-xs"
+                    data-testid="open-chat-tab"
+                    onClick={() => {
+                      setAddOpen(false)
+                      onOpenChat()
+                    }}
+                  >
+                    <MessageSquare />
+                    Agent
+                    <DropdownMenuShortcut className="flex items-center">
+                      <ShortcutKbd hotkey={chatHotkey} />
+                    </DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="text-xs"
+                    data-testid="open-terminal-tab"
+                    onClick={(): void => {
+                      setAddOpen(false)
+                      onNewTab()
+                    }}
+                  >
+                    <SquareTerminal />
+                    Terminal
+                    <DropdownMenuShortcut className="flex items-center">
+                      <ShortcutKbd hotkey={newHotkey} />
+                    </DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="text-xs"
+                    data-testid="open-changes-tab"
+                    onClick={(): void => {
+                      setAddOpen(false)
+                      onOpenChanges()
+                    }}
+                  >
+                    <FileDiff />
+                    Changes
+                    <DropdownMenuShortcut className="flex items-center">
+                      <ShortcutKbd hotkey={changesHotkey} />
+                    </DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
                 {activeTabId != null ? (
                   <>
                     <DropdownMenuSeparator />
