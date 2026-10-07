@@ -135,6 +135,7 @@ function SortableTab({
       <div
         data-slot="content-tab-pill"
         data-state={state}
+        data-active={selected ? '' : undefined}
         data-variant="pill"
         className={cn(tabsTriggerVariants({ variant: 'pill' }), 'w-full')}
       >

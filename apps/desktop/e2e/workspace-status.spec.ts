@@ -286,8 +286,8 @@ test('marks workspace rows and groups the sidebar by project or status', async (
       group('ready_to_review').getByTestId(`workspace-row-${ledgerWorkspace!.id}`)
     ).toBeVisible()
     await expect(group('done').getByTestId(`status-project-done-${project!.id}`)).toBeVisible()
-    await expect(group('done').getByTestId(`workspace-row-${root!.id}`)).toBeVisible()
-    await expect(group('done').getByTestId(`workspace-row-${root!.id}`)).toHaveAttribute(
+    await expect(group('done').getByTestId(`project-root-${project!.id}`)).toBeVisible()
+    await expect(group('done').getByTestId(`project-root-${project!.id}`)).toHaveAttribute(
       'data-workspace-icon',
       'folder-tree'
     )
@@ -305,7 +305,8 @@ test('marks workspace rows and groups the sidebar by project or status', async (
     await expect(
       page.getByTestId('status-group-todo').locator('[data-workspace-status-icon="todo"]')
     ).toBeVisible()
-    await expect(group('done').getByTestId(`workspace-row-${storefront!.id}`)).toHaveCount(0)
+    // The multi-root tree lists every repository under its root, whatever the repo's own status.
+    await expect(group('done').getByTestId(`workspace-row-${storefront!.id}`)).toHaveCount(1)
     await expect(group('todo').getByTestId(/workspace-row-/)).toHaveCount(0)
 
     await page.evaluate(() => {
