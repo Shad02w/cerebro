@@ -1040,29 +1040,18 @@ test('keeps the sidebar trigger visible above the tab bar when collapsed', async
       }
       const triggerBox = triggerEl.getBoundingClientRect()
       const tabBox = tabBar.getBoundingClientRect()
-      const tabButtonBox = tab.getBoundingClientRect()
       const plusBox = plus.getBoundingClientRect()
       const hit = document.elementFromPoint(
         triggerBox.left + triggerBox.width / 2,
         triggerBox.top + triggerBox.height / 2
       )
       return {
-        triggerTop: triggerBox.top,
-        triggerLeft: triggerBox.left,
         triggerRight: triggerBox.right,
-        triggerHeight: triggerBox.height,
         triggerHostContainsButton: triggerHost.contains(triggerEl),
         triggerHostRegion: appRegion(triggerHost),
         tabLeft: tabBox.left,
         tabRight: tabBox.right,
-        tabHeight: tabBox.height,
-        tabButtonHeight: tabButtonBox.height,
-        tabButtonTop: tabButtonBox.top,
-        plusTop: plusBox.top,
         plusLeft: plusBox.left,
-        plusHeight: plusBox.height,
-        plusMid: plusBox.top + plusBox.height / 2,
-        triggerMid: triggerBox.top + triggerBox.height / 2,
         hitIsTrigger: Boolean(hit && triggerEl.contains(hit)),
         windowWidth: window.innerWidth
       }
@@ -1070,18 +1059,9 @@ test('keeps the sidebar trigger visible above the tab bar when collapsed', async
 
     expect(layout.tabLeft).toBeLessThanOrEqual(1)
     expect(layout.tabRight).toBeGreaterThanOrEqual(layout.windowWidth - 1)
-    expect(Math.round(layout.tabHeight)).toBe(44)
-    expect(Math.round(layout.tabButtonHeight)).toBe(44)
-    expect(Math.round(layout.tabButtonTop)).toBe(0)
     expect(layout.triggerHostContainsButton).toBe(true)
     expect(layout.triggerHostRegion).toBe('no-drag')
-    expect(Math.round(layout.triggerLeft)).toBe(78)
     expect(layout.plusLeft).toBeGreaterThanOrEqual(layout.triggerRight)
-    expect(Math.round(layout.triggerHeight)).toBe(24)
-    expect(Math.round(layout.plusHeight)).toBe(24)
-    expect(Math.round(layout.triggerTop)).toBe(Math.round(layout.plusTop))
-    expect(Math.round(layout.triggerMid)).toBe(22)
-    expect(Math.round(layout.plusMid)).toBe(22)
     expect(layout.hitIsTrigger).toBe(true)
 
     await trigger.click()

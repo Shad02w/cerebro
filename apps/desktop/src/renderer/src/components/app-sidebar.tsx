@@ -147,7 +147,7 @@ function PlusActionTooltip({
 }): React.JSX.Element {
   return (
     <Tooltip>
-      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipTrigger render={children} />
       <TooltipContent side="right" sideOffset={4}>
         {label}
       </TooltipContent>
@@ -182,46 +182,48 @@ function WorkspaceAgentIcon({
   // Use a span so agent controls can live inside workspace <button> rows without
   // the HTML parser closing the row early and orphaning the status icons.
   return (
-    <Tooltip disableHoverableContent>
-      <TooltipTrigger asChild>
-        <span
-          role="button"
-          tabIndex={0}
-          data-testid="workspace-agent-open"
-          data-agent-title={title}
-          aria-label={title}
-          className="relative inline-flex shrink-0 cursor-pointer rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sidebar-selected"
-          onPointerDown={(event): void => event.stopPropagation()}
-          onClick={(event): void => {
-            event.preventDefault()
-            event.stopPropagation()
-            onOpenAgent(agent)
-          }}
-          onKeyDown={(event): void => {
-            if (event.key !== 'Enter' && event.key !== ' ') return
-            event.preventDefault()
-            event.stopPropagation()
-            onOpenAgent(agent)
-          }}
-        >
-          {agent.status === 'idle' ? (
-            <span
-              className="relative inline-flex size-4 shrink-0 pr-[3px] pb-[3px] box-content"
-              data-agent-harness={agent.harness}
-              data-workspace-agent-status="idle"
-            >
-              <HarnessIcon harness={agent.harness} />
-            </span>
-          ) : (
-            <HarnessStatusIcon harness={agent.harness} status={agent.status} surface="sidebar" />
-          )}
-        </span>
+    <Tooltip disableHoverablePopup>
+      <TooltipTrigger
+        render={
+          <span
+            role="button"
+            tabIndex={0}
+            data-testid="workspace-agent-open"
+            data-agent-title={title}
+            aria-label={title}
+            className="relative inline-flex shrink-0 cursor-pointer rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sidebar-selected"
+            onPointerDown={(event): void => event.stopPropagation()}
+            onClick={(event): void => {
+              event.preventDefault()
+              event.stopPropagation()
+              onOpenAgent(agent)
+            }}
+            onKeyDown={(event): void => {
+              if (event.key !== 'Enter' && event.key !== ' ') return
+              event.preventDefault()
+              event.stopPropagation()
+              onOpenAgent(agent)
+            }}
+          />
+        }
+      >
+        {agent.status === 'idle' ? (
+          <span
+            className="relative inline-flex size-4 shrink-0 pr-[3px] pb-[3px] box-content"
+            data-agent-harness={agent.harness}
+            data-workspace-agent-status="idle"
+          >
+            <HarnessIcon harness={agent.harness} />
+          </span>
+        ) : (
+          <HarnessStatusIcon harness={agent.harness} status={agent.status} surface="sidebar" />
+        )}
       </TooltipTrigger>
       <TooltipContent
         side="bottom"
         align="start"
         sideOffset={4}
-        avoidCollisions={false}
+        collisionAvoidance={{ side: 'none', align: 'none', fallbackAxisSide: 'none' }}
         className="pointer-events-none max-w-64 text-wrap break-words"
       >
         {title}
@@ -305,18 +307,11 @@ function DisabledDestructiveItem({
 }): React.JSX.Element {
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <span className="flex w-full" data-testid={testId}>
-          <DropdownMenuItem
-            variant="destructive"
-            disabled
-            className="w-full"
-            onSelect={(event): void => event.preventDefault()}
-          >
-            <Trash2 />
-            {label}
-          </DropdownMenuItem>
-        </span>
+      <TooltipTrigger render={<span className="flex w-full" data-testid={testId} />}>
+        <DropdownMenuItem variant="destructive" disabled className="w-full">
+          <Trash2 />
+          {label}
+        </DropdownMenuItem>
       </TooltipTrigger>
       <TooltipContent side="right" sideOffset={6}>
         {DEFAULT_WORKSPACE_TOOLTIP}
@@ -374,17 +369,19 @@ function ProjectOverflowMenu({
 }): React.JSX.Element {
   return (
     <DropdownMenu modal={false}>
-      <DropdownMenuTrigger asChild>
-        <SidebarMenuAction
-          className={cn('app-no-drag', offsetForAdd && 'right-6')}
-          showOnHover
-          data-testid={`project-menu-${project.id}`}
-          onClick={(event): void => event.stopPropagation()}
-          onPointerDown={(event): void => event.stopPropagation()}
-        >
-          <MoreHorizontal />
-          <span className="sr-only">Project actions</span>
-        </SidebarMenuAction>
+      <DropdownMenuTrigger
+        render={
+          <SidebarMenuAction
+            className={cn('app-no-drag', offsetForAdd && 'right-6')}
+            showOnHover
+            data-testid={`project-menu-${project.id}`}
+            onClick={(event): void => event.stopPropagation()}
+            onPointerDown={(event): void => event.stopPropagation()}
+          />
+        }
+      >
+        <MoreHorizontal />
+        <span className="sr-only">Project actions</span>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" side="right" className="w-52">
         <DropdownMenuItem
@@ -456,17 +453,19 @@ function WorkspaceOverflowMenu({
 
   return (
     <DropdownMenu modal={false}>
-      <DropdownMenuTrigger asChild>
-        <SidebarMenuAction
-          className="app-no-drag"
-          showOnHover
-          data-testid={`workspace-menu-${workspace.id}`}
-          onClick={(event): void => event.stopPropagation()}
-          onPointerDown={(event): void => event.stopPropagation()}
-        >
-          <MoreHorizontal />
-          <span className="sr-only">Workspace actions</span>
-        </SidebarMenuAction>
+      <DropdownMenuTrigger
+        render={
+          <SidebarMenuAction
+            className="app-no-drag"
+            showOnHover
+            data-testid={`workspace-menu-${workspace.id}`}
+            onClick={(event): void => event.stopPropagation()}
+            onPointerDown={(event): void => event.stopPropagation()}
+          />
+        }
+      >
+        <MoreHorizontal />
+        <span className="sr-only">Workspace actions</span>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" side="right" className="w-56">
         <RenameMenuItem workspaceId={workspace.id} onRename={onRename} />
@@ -551,17 +550,19 @@ function RootOverflowMenu({
   const localPath = root?.localPath || multiRootDirectoryPath(project)
   return (
     <DropdownMenu modal={false}>
-      <DropdownMenuTrigger asChild>
-        <SidebarMenuAction
-          className={cn('app-no-drag', rootMenuActionClass)}
-          showOnHover
-          data-testid={`root-menu-${project.id}`}
-          onClick={(event): void => event.stopPropagation()}
-          onPointerDown={(event): void => event.stopPropagation()}
-        >
-          <MoreHorizontal />
-          <span className="sr-only">Root workspace actions</span>
-        </SidebarMenuAction>
+      <DropdownMenuTrigger
+        render={
+          <SidebarMenuAction
+            className={cn('app-no-drag', rootMenuActionClass)}
+            showOnHover
+            data-testid={`root-menu-${project.id}`}
+            onClick={(event): void => event.stopPropagation()}
+            onPointerDown={(event): void => event.stopPropagation()}
+          />
+        }
+      >
+        <MoreHorizontal />
+        <span className="sr-only">Root workspace actions</span>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" side="right" className="w-56">
         {root ? (
@@ -874,26 +875,31 @@ function ProjectItem({
     <Collapsible open={open} onOpenChange={setOpen} className="group/collapsible">
       <SidebarMenuItem>
         <SidebarMenuRow>
-          <CollapsibleTrigger asChild>
-            <SidebarMenuButton
-              className={cn('app-no-drag sidebar-project-button h-auto!', githubLinked && 'pr-14')}
-              data-testid={`project-row-${project.id}`}
-              data-project-kind={project.kind}
-              data-project-icon={multiRoot ? 'folders' : githubLinked ? 'avatar' : 'folder'}
-              title={multiRoot ? `${project.name} (multi-root)` : project.name}
-            >
-              <ProjectIcon project={project} />
-              <div className="flex min-w-0 flex-1 flex-col">
-                <span className="truncate">{project.name}</span>
-                <WorkspaceAgents
-                  agents={summary}
-                  testId={`project-agent-status-${project.id}`}
-                  className="opacity-60"
-                  onOpenAgent={onOpenAgent}
-                />
-              </div>
-              <MultiRootBadge project={project} />
-            </SidebarMenuButton>
+          <CollapsibleTrigger
+            render={
+              <SidebarMenuButton
+                className={cn(
+                  'app-no-drag sidebar-project-button h-auto!',
+                  githubLinked && 'pr-14'
+                )}
+                data-testid={`project-row-${project.id}`}
+                data-project-kind={project.kind}
+                data-project-icon={multiRoot ? 'folders' : githubLinked ? 'avatar' : 'folder'}
+                title={multiRoot ? `${project.name} (multi-root)` : project.name}
+              />
+            }
+          >
+            <ProjectIcon project={project} />
+            <div className="flex min-w-0 flex-1 flex-col">
+              <span className="truncate">{project.name}</span>
+              <WorkspaceAgents
+                agents={summary}
+                testId={`project-agent-status-${project.id}`}
+                className="opacity-60"
+                onOpenAgent={onOpenAgent}
+              />
+            </div>
+            <MultiRootBadge project={project} />
           </CollapsibleTrigger>
           <ProjectOverflowMenu
             project={project}
@@ -936,28 +942,30 @@ function ProjectItem({
                     <SidebarMenuRow data-workspace-id={workspace.id}>
                       <SidebarMenuSubButton
                         size="sm"
-                        asChild
                         isActive={workspace.id === activeWorkspaceId}
-                      >
-                        <button
-                          type="button"
-                          className="app-no-drag flex h-auto! w-full min-w-0 flex-col items-stretch gap-0 py-1.5 pr-8 pl-8"
-                          data-testid={`workspace-row-${workspace.id}`}
-                          data-workspace-id={workspace.id}
-                          aria-current={workspace.id === activeWorkspaceId ? 'location' : undefined}
-                          data-workspace-role="branch"
-                          data-workspace-icon="branch"
-                          data-workspace-status={workspaceStatus(workspace.status)}
-                          onClick={(): void => onSelectWorkspace(workspace.id)}
-                        >
-                          <span className="min-w-0 truncate text-left">
-                            {workspaceRowLabel(project, workspace)}
-                          </span>
-                          <WorkspaceAgents
-                            agents={activity.get(workspace.id) ?? []}
-                            onOpenAgent={onOpenAgent}
+                        render={
+                          <button
+                            type="button"
+                            className="app-no-drag flex h-auto! w-full min-w-0 flex-col items-stretch gap-0 py-1.5 pr-8 pl-8"
+                            data-testid={`workspace-row-${workspace.id}`}
+                            data-workspace-id={workspace.id}
+                            aria-current={
+                              workspace.id === activeWorkspaceId ? 'location' : undefined
+                            }
+                            data-workspace-role="branch"
+                            data-workspace-icon="branch"
+                            data-workspace-status={workspaceStatus(workspace.status)}
+                            onClick={(): void => onSelectWorkspace(workspace.id)}
                           />
-                        </button>
+                        }
+                      >
+                        <span className="min-w-0 truncate text-left">
+                          {workspaceRowLabel(project, workspace)}
+                        </span>
+                        <WorkspaceAgents
+                          agents={activity.get(workspace.id) ?? []}
+                          onOpenAgent={onOpenAgent}
+                        />
                       </SidebarMenuSubButton>
                       <WorkspacePrPopover
                         workspace={workspace}
@@ -1038,23 +1046,21 @@ function NavigationHeader({
           <>
             <DropdownMenu>
               <PlusActionTooltip label="Group by">
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    className="app-no-drag sidebar-header-action sidebar-header-quiet"
-                    aria-label="Group by"
-                    data-testid="sidebar-group-by"
-                    data-group-by={groupBy}
-                  >
-                    <Settings className="size-4" />
-                  </button>
+                <DropdownMenuTrigger
+                  render={
+                    <button
+                      type="button"
+                      className="app-no-drag sidebar-header-action sidebar-header-quiet"
+                      aria-label="Group by"
+                      data-testid="sidebar-group-by"
+                      data-group-by={groupBy}
+                    />
+                  }
+                >
+                  <Settings className="size-4" />
                 </DropdownMenuTrigger>
               </PlusActionTooltip>
-              <DropdownMenuContent
-                align="end"
-                className="min-w-36"
-                onCloseAutoFocus={(event): void => event.preventDefault()}
-              >
+              <DropdownMenuContent align="end" className="min-w-36" finalFocus={false}>
                 <DropdownMenuGroup>
                   <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">
                     Group by
@@ -1259,33 +1265,35 @@ function StatusGroup({
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="group/collapsible">
       <SidebarMenuItem>
-        <CollapsibleTrigger asChild>
-          <SidebarMenuButton
-            className={cn(
-              'group/status-header app-no-drag h-8 pr-2! text-[11px] font-semibold tracking-wider uppercase',
-              presentation.headerClassName
-            )}
-            data-testid={`status-group-${status}`}
-            data-status={status}
-            aria-label={`${presentation.label}, ${entries.length} ${entries.length === 1 ? 'workspace' : 'workspaces'}`}
-          >
-            <WorkspaceStatusIcon status={status} />
-            <span className="min-w-0 flex-1 truncate">{presentation.label}</span>
-            <ChevronRight
-              aria-hidden
-              data-testid={`status-chevron-${status}`}
-              className="size-3.5 shrink-0 opacity-0 transition-[opacity,transform] group-focus-visible/status-header:opacity-70 group-hover/status-header:opacity-70 group-data-[state=open]/status-header:rotate-90"
-            />
-            <span
+        <CollapsibleTrigger
+          render={
+            <SidebarMenuButton
               className={cn(
-                'min-w-5 rounded-full px-1.5 text-center text-[11px] font-medium tracking-normal tabular-nums',
-                presentation.badgeClassName
+                'group/status-header app-no-drag h-8 pr-2! text-[11px] font-semibold tracking-wider uppercase',
+                presentation.headerClassName
               )}
-              data-testid={`status-count-${status}`}
-            >
-              {entries.length}
-            </span>
-          </SidebarMenuButton>
+              data-testid={`status-group-${status}`}
+              data-status={status}
+              aria-label={`${presentation.label}, ${entries.length} ${entries.length === 1 ? 'workspace' : 'workspaces'}`}
+            />
+          }
+        >
+          <WorkspaceStatusIcon status={status} />
+          <span className="min-w-0 flex-1 truncate">{presentation.label}</span>
+          <ChevronRight
+            aria-hidden
+            data-testid={`status-chevron-${status}`}
+            className="size-3.5 shrink-0 opacity-0 transition-[opacity,transform] group-focus-visible/status-header:opacity-70 group-hover/status-header:opacity-70 group-data-panel-open/status-header:rotate-90"
+          />
+          <span
+            className={cn(
+              'min-w-5 rounded-full px-1.5 text-center text-[11px] font-medium tracking-normal tabular-nums',
+              presentation.badgeClassName
+            )}
+            data-testid={`status-count-${status}`}
+          >
+            {entries.length}
+          </span>
         </CollapsibleTrigger>
         <CollapsibleContent>
           {entries.length === 0 ? (
@@ -1295,24 +1303,24 @@ function StatusGroup({
               {projectsWithStatus(entries).map(({ project, workspaces }) => (
                 <li key={project.id} className="min-w-0">
                   <SidebarMenuButton
-                    asChild
                     className="sidebar-project-button h-auto! cursor-default pr-2! hover:bg-transparent"
+                    render={
+                      <div
+                        data-testid={`status-project-${status}-${project.id}`}
+                        data-project-icon={
+                          isMultiRootProject(project)
+                            ? 'folders'
+                            : project.github
+                              ? 'avatar'
+                              : 'folder'
+                        }
+                        title={project.name}
+                      />
+                    }
                   >
-                    <div
-                      data-testid={`status-project-${status}-${project.id}`}
-                      data-project-icon={
-                        isMultiRootProject(project)
-                          ? 'folders'
-                          : project.github
-                            ? 'avatar'
-                            : 'folder'
-                      }
-                      title={project.name}
-                    >
-                      <ProjectIcon project={project} />
-                      <span className="min-w-0 flex-1 truncate">{project.name}</span>
-                      <MultiRootBadge project={project} />
-                    </div>
+                    <ProjectIcon project={project} />
+                    <span className="min-w-0 flex-1 truncate">{project.name}</span>
+                    <MultiRootBadge project={project} />
                   </SidebarMenuButton>
                   {isMultiRootProject(project) ? (
                     <MultiRootWorkspaceTree
@@ -1334,38 +1342,38 @@ function StatusGroup({
                               <SidebarMenuRow data-workspace-id={workspace.id}>
                                 <SidebarMenuSubButton
                                   size="sm"
-                                  asChild
                                   isActive={workspace.id === activeWorkspaceId}
-                                >
-                                  <button
-                                    type="button"
-                                    className={cn(
-                                      'app-no-drag flex h-auto! w-full min-w-0 flex-col items-stretch gap-0 py-1.5 pr-8',
-                                      rootRow ? undefined : 'pl-8'
-                                    )}
-                                    data-testid={`workspace-row-${workspace.id}`}
-                                    data-workspace-id={workspace.id}
-                                    data-workspace-status={workspaceStatus(workspace.status)}
-                                    data-workspace-role={rootRow ? 'root' : 'branch'}
-                                    data-workspace-icon={rootRow ? 'folder-tree' : 'branch'}
-                                    aria-current={
-                                      workspace.id === activeWorkspaceId ? 'location' : undefined
-                                    }
-                                    onClick={(): void => onSelectWorkspace(workspace.id)}
-                                  >
-                                    <span className="flex min-w-0 items-center gap-1.5 text-left">
-                                      {rootRow ? (
-                                        <FolderTree className="size-4 shrink-0 text-sidebar-accent-foreground" />
-                                      ) : null}
-                                      <span className="min-w-0 flex-1 truncate">
-                                        {statusGroupLabel(project, workspace)}
-                                      </span>
-                                    </span>
-                                    <WorkspaceAgents
-                                      agents={activity.get(workspace.id) ?? []}
-                                      onOpenAgent={onOpenAgent}
+                                  render={
+                                    <button
+                                      type="button"
+                                      className={cn(
+                                        'app-no-drag flex h-auto! w-full min-w-0 flex-col items-stretch gap-0 py-1.5 pr-8',
+                                        rootRow ? undefined : 'pl-8'
+                                      )}
+                                      data-testid={`workspace-row-${workspace.id}`}
+                                      data-workspace-id={workspace.id}
+                                      data-workspace-status={workspaceStatus(workspace.status)}
+                                      data-workspace-role={rootRow ? 'root' : 'branch'}
+                                      data-workspace-icon={rootRow ? 'folder-tree' : 'branch'}
+                                      aria-current={
+                                        workspace.id === activeWorkspaceId ? 'location' : undefined
+                                      }
+                                      onClick={(): void => onSelectWorkspace(workspace.id)}
                                     />
-                                  </button>
+                                  }
+                                >
+                                  <span className="flex min-w-0 items-center gap-1.5 text-left">
+                                    {rootRow ? (
+                                      <FolderTree className="size-4 shrink-0 text-sidebar-accent-foreground" />
+                                    ) : null}
+                                    <span className="min-w-0 flex-1 truncate">
+                                      {statusGroupLabel(project, workspace)}
+                                    </span>
+                                  </span>
+                                  <WorkspaceAgents
+                                    agents={activity.get(workspace.id) ?? []}
+                                    onOpenAgent={onOpenAgent}
+                                  />
                                 </SidebarMenuSubButton>
                                 {rootRow ? null : (
                                   <WorkspacePrPopover

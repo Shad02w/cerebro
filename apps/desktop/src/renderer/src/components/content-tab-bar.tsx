@@ -26,6 +26,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuShortcut,
+  DropdownMenuGroup,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuSub,
@@ -138,6 +139,7 @@ function SortableTab({
       <div
         data-slot="content-tab-pill"
         data-state={state}
+        data-active={selected ? '' : undefined}
         data-variant="pill"
         className={cn(tabsTriggerVariants({ variant: 'pill' }), 'w-full')}
       >
@@ -158,8 +160,8 @@ function SortableTab({
         >
           <ContentTabMark workspaceId={workspaceId} tab={tab} />
           <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="min-w-0 flex-1 truncate">{tab.label}</span>
+            <TooltipTrigger render={<span className="min-w-0 flex-1 truncate" />}>
+              {tab.label}
             </TooltipTrigger>
             <TooltipContent side="bottom" sideOffset={4} className="max-w-64 text-wrap">
               {tab.label}
@@ -167,32 +169,34 @@ function SortableTab({
           </Tooltip>
         </button>
         <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              className="inline-flex size-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground opacity-0 transition-opacity [.group:hover_&]:opacity-100 [.group:focus-within_&]:opacity-100 hover:bg-background/80 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
-              aria-label={`Close ${tab.label} (${closeHotkey})`}
-              data-testid="content-tab-close"
-              onPointerDown={(event): void => event.stopPropagation()}
-              onClick={(event): void => {
-                event.stopPropagation()
-                const tablist = event.currentTarget.closest('[role="tablist"]')
-                const tabButtons = Array.from(
-                  tablist?.querySelectorAll<HTMLButtonElement>('[role="tab"]') ?? []
-                )
-                const index = tabButtons.findIndex(
-                  (button) => button.dataset.terminalTabId === String(tab.id)
-                )
-                const nextFocus =
-                  tabButtons[index + 1] ??
-                  tabButtons[index - 1] ??
-                  tablist?.querySelector<HTMLButtonElement>('[data-testid="new-content-tab"]')
-                nextFocus?.focus()
-                onClose(tab.id)
-              }}
-            >
-              <X aria-hidden="true" className="size-3" />
-            </button>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                className="inline-flex size-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground opacity-0 transition-opacity [.group:hover_&]:opacity-100 [.group:focus-within_&]:opacity-100 hover:bg-background/80 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
+                aria-label={`Close ${tab.label} (${closeHotkey})`}
+                data-testid="content-tab-close"
+                onPointerDown={(event): void => event.stopPropagation()}
+                onClick={(event): void => {
+                  event.stopPropagation()
+                  const tablist = event.currentTarget.closest('[role="tablist"]')
+                  const tabButtons = Array.from(
+                    tablist?.querySelectorAll<HTMLButtonElement>('[role="tab"]') ?? []
+                  )
+                  const index = tabButtons.findIndex(
+                    (button) => button.dataset.terminalTabId === String(tab.id)
+                  )
+                  const nextFocus =
+                    tabButtons[index + 1] ??
+                    tabButtons[index - 1] ??
+                    tablist?.querySelector<HTMLButtonElement>('[data-testid="new-content-tab"]')
+                  nextFocus?.focus()
+                  onClose(tab.id)
+                }}
+              />
+            }
+          >
+            <X aria-hidden="true" className="size-3" />
           </TooltipTrigger>
           <TooltipContent side="bottom" sideOffset={4} className="flex items-center gap-2">
             <span>Close</span>
@@ -323,68 +327,72 @@ export function ContentTabBar({
               />
             ))}
             <DropdownMenu modal={false} open={addOpen} onOpenChange={setAddOpen}>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-xs"
-                  className="app-no-drag my-auto shrink-0 size-6"
-                  aria-label="Add tab"
-                  data-testid="new-content-tab"
-                >
-                  <Plus className="size-4" />
-                </Button>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    className="app-no-drag my-auto shrink-0 size-6"
+                    aria-label="Add tab"
+                    data-testid="new-content-tab"
+                  />
+                }
+              >
+                <Plus className="size-4" />
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="start"
                 side="bottom"
                 className="w-48"
                 data-testid="add-tab-menu"
-                onCloseAutoFocus={(event): void => event.preventDefault()}
+                finalFocus={false}
               >
-                <DropdownMenuLabel>New tab</DropdownMenuLabel>
-                <DropdownMenuItem
-                  className="text-xs"
-                  data-testid="open-chat-tab"
-                  onSelect={() => {
-                    setAddOpen(false)
-                    onOpenChat()
-                  }}
-                >
-                  <MessageSquare />
-                  Agent
-                  <DropdownMenuShortcut className="flex items-center">
-                    <ShortcutKbd hotkey={chatHotkey} />
-                  </DropdownMenuShortcut>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="text-xs"
-                  data-testid="open-terminal-tab"
-                  onSelect={(): void => {
-                    setAddOpen(false)
-                    onNewTab()
-                  }}
-                >
-                  <SquareTerminal />
-                  Terminal
-                  <DropdownMenuShortcut className="flex items-center">
-                    <ShortcutKbd hotkey={newHotkey} />
-                  </DropdownMenuShortcut>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="text-xs"
-                  data-testid="open-changes-tab"
-                  onSelect={(): void => {
-                    setAddOpen(false)
-                    onOpenChanges()
-                  }}
-                >
-                  <FileDiff />
-                  Changes
-                  <DropdownMenuShortcut className="flex items-center">
-                    <ShortcutKbd hotkey={changesHotkey} />
-                  </DropdownMenuShortcut>
-                </DropdownMenuItem>
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>New tab</DropdownMenuLabel>
+                  <DropdownMenuItem
+                    className="text-xs"
+                    data-testid="open-chat-tab"
+                    onClick={() => {
+                      setAddOpen(false)
+                      onOpenChat()
+                    }}
+                  >
+                    <MessageSquare />
+                    Agent
+                    <DropdownMenuShortcut className="flex items-center">
+                      <ShortcutKbd hotkey={chatHotkey} />
+                    </DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="text-xs"
+                    data-testid="open-terminal-tab"
+                    onClick={(): void => {
+                      setAddOpen(false)
+                      onNewTab()
+                    }}
+                  >
+                    <SquareTerminal />
+                    Terminal
+                    <DropdownMenuShortcut className="flex items-center">
+                      <ShortcutKbd hotkey={newHotkey} />
+                    </DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="text-xs"
+                    data-testid="open-changes-tab"
+                    onClick={(): void => {
+                      setAddOpen(false)
+                      onOpenChanges()
+                    }}
+                  >
+                    <FileDiff />
+                    Changes
+                    <DropdownMenuShortcut className="flex items-center">
+                      <ShortcutKbd hotkey={changesHotkey} />
+                    </DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
                 {activeTabId != null ? (
                   <>
                     <DropdownMenuSeparator />
@@ -408,7 +416,7 @@ export function ContentTabBar({
                               key={kind}
                               className="text-xs"
                               data-testid={`add-pane-${direction}-${kind}`}
-                              onSelect={() => {
+                              onClick={() => {
                                 setAddOpen(false)
                                 onAddPane(kind, direction)
                               }}

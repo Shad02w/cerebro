@@ -53,8 +53,8 @@ function StatusChoices({
             key={status}
             data-testid={`workspace-status-option-${workspace.id}-${status}`}
             data-current={selected ? 'true' : 'false'}
-            onClick={(event): void => event.stopPropagation()}
-            onSelect={(): void => {
+            onClick={(event): void => {
+              event.stopPropagation()
               if (!selected) onSetStatus(workspace.id, status)
             }}
           >

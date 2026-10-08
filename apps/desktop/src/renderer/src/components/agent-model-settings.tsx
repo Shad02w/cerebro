@@ -146,6 +146,10 @@ export function AgentModelSettings({
             >
               <Label className="text-[13px] font-medium">{group.label}</Label>
               <Select
+                items={group.models.map((model) => ({
+                  value: model.key,
+                  label: `${model.label}${model.available ? '' : ' (unavailable)'}`
+                }))}
                 value={value}
                 onValueChange={(key): void => {
                   const model = group.models.find((entry) => entry.key === key)

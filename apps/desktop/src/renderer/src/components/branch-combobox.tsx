@@ -90,34 +90,33 @@ export function BranchCombobox({
 
   return (
     <Popover open={open} onOpenChange={handleOpenChange} modal>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          role="combobox"
-          id={id}
-          ref={triggerRef}
-          aria-expanded={open}
-          aria-controls={listboxId}
-          aria-haspopup="listbox"
-          disabled={disabled}
-          data-testid={testId}
-          className="w-full justify-between font-normal"
-        >
-          <span className={cn('truncate', !value && 'text-muted-foreground')}>
-            {value || placeholder}
-          </span>
-          <ChevronsUpDownIcon className="size-4 shrink-0 opacity-50" />
-        </Button>
+      <PopoverTrigger
+        render={
+          <Button
+            type="button"
+            variant="outline"
+            role="combobox"
+            id={id}
+            ref={triggerRef}
+            aria-expanded={open}
+            aria-controls={listboxId}
+            aria-haspopup="listbox"
+            disabled={disabled}
+            data-testid={testId}
+            className="w-full justify-between font-normal"
+          />
+        }
+      >
+        <span className={cn('truncate', !value && 'text-muted-foreground')}>
+          {value || placeholder}
+        </span>
+        <ChevronsUpDownIcon className="size-4 shrink-0 opacity-50" />
       </PopoverTrigger>
       <PopoverContent
         align="start"
         className="z-[70] p-0"
         style={menuWidth ? { width: menuWidth } : undefined}
-        onOpenAutoFocus={(event) => {
-          event.preventDefault()
-          searchRef.current?.focus()
-        }}
+        initialFocus={searchRef}
       >
         <div className="border-b p-2">
           <Input
