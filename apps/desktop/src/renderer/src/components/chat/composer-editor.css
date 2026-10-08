@@ -275,16 +275,17 @@
   flex: none;
   align-items: center;
   justify-content: center;
-  /* Same size and radius as the row's icon-xs buttons; the left margin lines the
-     badge up with the text above (the editor's px-2). */
-  width: 1.5rem;
-  height: 1.5rem;
-  margin-inline: 0.5rem 0.25rem;
-  border-radius: var(--radius-md);
+  /* Same 2rem height as the row's buttons and flush with the shell's padding, mirroring the send
+     button on the right. The shell is rounded-2xl (1rem) with 0.5rem padding, so a concentric
+     inner radius is 0.5rem. */
+  width: 2rem;
+  height: 2rem;
+  margin-inline: 0 0.25rem;
+  border-radius: 0.5rem;
   background: color-mix(in srgb, var(--vim-mode-color) 22%, transparent);
   color: var(--vim-mode-color);
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 0.6875rem;
+  font-size: 0.8125rem;
   font-weight: 700;
   line-height: 1;
   cursor: default;
