@@ -23,6 +23,8 @@ import { ChatTurnActions } from './chat-turn-actions'
 import { ChatQueue } from './chat-queue'
 import { AttachmentStrip, DropOverlay } from './chat-composer-attachments'
 import { ComposerEditor, type ComposerEditorHandle } from './composer-editor'
+import { VimModeBadge } from './vim-mode-badge'
+import type { Mode as VimMode } from 'vim-prosemirror'
 import { chatImageAccept, useComposerDraft } from './use-composer-draft'
 import { ModelPicker } from './model-picker'
 import { ContextUsageRing } from './context-usage-ring'
@@ -53,6 +55,7 @@ export function ChatView({
   onRememberAgent?: (model: AgentModel) => void
 }): React.JSX.Element {
   const client = useQueryClient()
+  const [vimMode, setVimMode] = useState<VimMode | null>(null)
   const vimOptions = useMemo(
     () => ({ enabled: composerVim, initialMode: composerVimMode }),
     [composerVim, composerVimMode]
@@ -471,6 +474,7 @@ export function ChatView({
                     getAttachments={() => readDraft().attachments}
                     onDocument={onDocument}
                     vim={vimOptions}
+                    onVimMode={setVimMode}
                     onAttachFiles={(files) => {
                       void attachFiles(files)
                     }}
@@ -492,6 +496,7 @@ export function ChatView({
                     }}
                   />
                   <div className="flex flex-wrap items-center gap-1">
+                    {composerVim && vimMode ? <VimModeBadge mode={vimMode} /> : null}
                     <div className="min-w-0 flex-1">
                       <ModelPicker
                         selected={selected}

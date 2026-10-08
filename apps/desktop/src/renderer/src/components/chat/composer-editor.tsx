@@ -37,9 +37,9 @@ import {
   composerVimMode,
   createComposerVimPlugin,
   setComposerVimMode,
-  vimModeLabel,
   type ComposerVimOptions
 } from './composer-vim'
+import type { Mode } from 'vim-prosemirror'
 import './composer-editor.css'
 
 const lowlight = createLowlight(common)
@@ -438,7 +438,8 @@ export function ComposerEditor({
   onDocument,
   onAttachFiles,
   onSubmit,
-  vim = { enabled: false, initialMode: 'insert' }
+  vim = { enabled: false, initialMode: 'insert' },
+  onVimMode
 }: {
   ref?: React.Ref<ComposerEditorHandle>
   defaultText: string
@@ -448,6 +449,8 @@ export function ComposerEditor({
   onAttachFiles: (files: File[]) => void
   onSubmit: () => void
   vim?: ComposerVimOptions
+  /** Current vim mode while vim is on, otherwise null. */
+  onVimMode?: (mode: Mode | null) => void
 }): React.JSX.Element {
   const vimRef = useRef(vim)
   const vimPlugin = useRef<Plugin | null>(null)
@@ -600,6 +603,12 @@ export function ComposerEditor({
     selector: ({ editor: current }) =>
       current && vimEnabled ? { mode: composerVimMode(current) } : { mode: null }
   })
+  const onVimModeRef = useRef(onVimMode)
+  const vimMode = vimState?.mode ?? null
+  useEffect(() => {
+    onVimModeRef.current = onVimMode
+    onVimModeRef.current?.(vimMode)
+  }, [onVimMode, vimMode])
   useEffect(() => {
     if (!editor) return
     let tr = editor.state.tr
@@ -671,21 +680,7 @@ export function ComposerEditor({
     }),
     [editor]
   )
-  return (
-    <div className="composer-editor-frame">
-      <EditorContent editor={editor} />
-      {vimState?.mode ? (
-        <span
-          className="composer-vim-mode"
-          data-testid="composer-vim-mode"
-          data-mode={vimState.mode}
-          aria-live="polite"
-        >
-          {vimModeLabel[vimState.mode]}
-        </span>
-      ) : null}
-    </div>
-  )
+  return <EditorContent editor={editor} />
 }
 
 /** The same composer document, without a caret, so a sent message matches what was typed. */

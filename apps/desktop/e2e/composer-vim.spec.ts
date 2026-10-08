@@ -97,7 +97,7 @@ test('composer vim mode edits modally and keeps Enter and @ tags to insert mode'
 
     // On, starting in insert.
     await setVim(page, true)
-    await expect(mode).toHaveText('INSERT')
+    await expect(mode).toHaveText('I')
     await expect(mode).toHaveAttribute('data-mode', 'insert')
     await page.screenshot({ path: join(artifactsDir, 'vim-insert.png') })
 
@@ -108,7 +108,7 @@ test('composer vim mode edits modally and keeps Enter and @ tags to insert mode'
 
     // Escape: normal mode, keys are commands and never insert.
     await page.keyboard.press('Escape')
-    await expect(mode).toHaveText('NORMAL')
+    await expect(mode).toHaveText('N')
     await expect(mode).toHaveAttribute('data-mode', 'normal')
     await page.screenshot({ path: join(artifactsDir, 'vim-normal.png') })
     await page.keyboard.type('0x')
@@ -124,22 +124,22 @@ test('composer vim mode edits modally and keeps Enter and @ tags to insert mode'
 
     // Visual mode has its own indicator.
     await page.keyboard.type('v')
-    await expect(mode).toHaveText('VISUAL')
+    await expect(mode).toHaveText('V')
     await expect(mode).toHaveAttribute('data-mode', 'visual')
     await page.keyboard.type('ll')
     await page.screenshot({ path: join(artifactsDir, 'vim-visual.png') })
     await page.keyboard.press('Escape')
-    await expect(mode).toHaveText('NORMAL')
+    await expect(mode).toHaveText('N')
 
     // Insert again: @ autocomplete works.
     await page.keyboard.type('A')
-    await expect(mode).toHaveText('INSERT')
+    await expect(mode).toHaveText('I')
     await page.keyboard.type(' @')
     await expect(page.getByTestId('composer-add-menu')).toBeVisible()
     await page.screenshot({ path: join(artifactsDir, 'vim-insert-autocomplete.png') })
     await page.keyboard.press('Escape')
     await expect(page.getByTestId('composer-add-menu')).toHaveCount(0)
-    await expect(mode).toHaveText('INSERT')
+    await expect(mode).toHaveText('I')
 
     // Turning it off removes the indicator and the modal behaviour.
     await setVim(page, false)
@@ -159,12 +159,12 @@ test('composer vim mode can start in normal mode', async ({ page }) => {
     await openAgent(page, directory)
     const composer = page.getByRole('textbox', { name: 'Message agent' })
     const mode = page.getByTestId('composer-vim-mode')
-    await expect(mode).toHaveText('NORMAL')
+    await expect(mode).toHaveText('N')
     await composer.click()
     await page.keyboard.type('$0')
     await expect(composer).toHaveAttribute('data-composer-text', '')
     await page.keyboard.type('i')
-    await expect(mode).toHaveText('INSERT')
+    await expect(mode).toHaveText('I')
     await page.keyboard.type('hello')
     await expect(composer).toHaveAttribute('data-composer-text', 'hello')
     await page.screenshot({ path: join(artifactsDir, 'vim-start-normal.png') })
@@ -172,7 +172,7 @@ test('composer vim mode can start in normal mode', async ({ page }) => {
     // Sending returns to the starting mode.
     await page.keyboard.press('Enter')
     await expect(page.getByTestId('chat-empty-hero')).toBeHidden()
-    await expect(mode).toHaveText('NORMAL')
+    await expect(mode).toHaveText('N')
   } finally {
     await rm(directory, { recursive: true, force: true })
   }

@@ -60,10 +60,19 @@ export function setComposerVimMode(editor: Editor, mode: ComposerVimMode): void 
   editor.view.dispatch(editor.state.tr)
 }
 
-export const vimModeLabel: Record<Mode, string> = {
-  normal: 'NORMAL',
-  insert: 'INSERT',
-  visual: 'VISUAL',
-  'visual-line': 'V-LINE',
-  replace: 'REPLACE'
+export const vimModeName: Record<Mode, string> = {
+  normal: 'Normal',
+  insert: 'Insert',
+  visual: 'Visual',
+  'visual-line': 'Visual line',
+  replace: 'Replace'
+}
+
+/** One letter per mode, shown in the composer's bottom row. */
+export const vimModeLetter: Record<Mode, string> = {
+  normal: 'N',
+  insert: 'I',
+  visual: 'V',
+  'visual-line': 'V',
+  replace: 'R'
 }
