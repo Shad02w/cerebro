@@ -11,6 +11,7 @@ import {
 import {
   DEFAULT_AGENT_BACKGROUND,
   type AgentBackground,
+  type ComposerVimMode,
   type AgentModelDefaults,
   type LastAgent
 } from '@shared/types'
@@ -35,6 +36,8 @@ export function ChatView({
   paneId,
   visible = true,
   agentBackground = DEFAULT_AGENT_BACKGROUND,
+  composerVim = false,
+  composerVimMode = 'insert',
   agentModelDefaults,
   lastAgent = null,
   onRememberAgent
@@ -43,11 +46,17 @@ export function ChatView({
   paneId: number
   visible?: boolean
   agentBackground?: AgentBackground
+  composerVim?: boolean
+  composerVimMode?: ComposerVimMode
   agentModelDefaults: AgentModelDefaults
   lastAgent?: LastAgent | null
   onRememberAgent?: (model: AgentModel) => void
 }): React.JSX.Element {
   const client = useQueryClient()
+  const vimOptions = useMemo(
+    () => ({ enabled: composerVim, initialMode: composerVimMode }),
+    [composerVim, composerVimMode]
+  )
   const queryKey = ['chat', workspaceId, paneId]
   const view = useQuery({
     queryKey,
@@ -461,6 +470,7 @@ export function ChatView({
                     attachments={draft.attachments}
                     getAttachments={() => readDraft().attachments}
                     onDocument={onDocument}
+                    vim={vimOptions}
                     onAttachFiles={(files) => {
                       void attachFiles(files)
                     }}

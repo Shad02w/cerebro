@@ -26,6 +26,7 @@ import {
   DEFAULT_TERMINAL_FONT_SIZE,
   TERMINAL_FONT_FAMILY_AUTO,
   type AgentBackground,
+  type ComposerVimMode,
   type AgentModelDefaults,
   type LastAgent
 } from '@shared/types'
@@ -545,6 +546,8 @@ type TerminalStackProps = {
   themeId: TerminalThemeId | null
   fontFamily: string | null
   agentBackground: AgentBackground
+  composerVim: boolean
+  composerVimMode: ComposerVimMode
   agentModelDefaults: AgentModelDefaults
   lastAgent: LastAgent | null
   onRememberAgent: (model: AgentModel) => void
@@ -561,6 +564,8 @@ export function TerminalStack({
   fontFamily,
   themeId,
   agentBackground,
+  composerVim,
+  composerVimMode,
   agentModelDefaults,
   lastAgent,
   onRememberAgent,
@@ -771,6 +776,8 @@ export function TerminalStack({
                           paneId={pane.id}
                           visible={shown}
                           agentBackground={agentBackground}
+                          composerVim={composerVim}
+                          composerVimMode={composerVimMode}
                           agentModelDefaults={agentModelDefaults}
                           lastAgent={lastAgent}
                           onRememberAgent={onRememberAgent}
