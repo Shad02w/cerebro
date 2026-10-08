@@ -2,6 +2,7 @@ import { memo } from 'react'
 import { Streamdown, type ControlsConfig } from 'streamdown'
 import { markdownComponents } from './markdown-components'
 import { markdownPlugins } from './markdown-plugins'
+import './markdown.css'
 
 const controls: ControlsConfig = {
   table: false,
@@ -31,6 +32,7 @@ export const AgentMarkdown = memo(function AgentMarkdown({
         plugins={markdownPlugins}
         components={markdownComponents}
         controls={controls}
+        lineNumbers={false}
         linkSafety={{ enabled: false }}
         urlTransform={keepUrl}
       >
