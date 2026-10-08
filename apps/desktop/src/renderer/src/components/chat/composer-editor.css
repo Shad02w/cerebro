@@ -275,10 +275,12 @@
   flex: none;
   align-items: center;
   justify-content: center;
-  width: 1.25rem;
-  height: 1.25rem;
-  margin-inline: 0.125rem;
-  border-radius: 0.3125rem;
+  /* Same size and radius as the row's icon-xs buttons; the left margin lines the
+     badge up with the text above (the editor's px-2). */
+  width: 1.5rem;
+  height: 1.5rem;
+  margin-inline: 0.5rem 0.25rem;
+  border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--vim-mode-color) 22%, transparent);
   color: var(--vim-mode-color);
   font-family: var(--font-mono, ui-monospace, monospace);
