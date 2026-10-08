@@ -1071,10 +1071,18 @@ function NavigationHeader({
                       if (value === 'project' || value === 'status') onGroupBy(value)
                     }}
                   >
-                    <DropdownMenuRadioItem value="project" data-testid="sidebar-group-project">
+                    <DropdownMenuRadioItem
+                      value="project"
+                      closeOnClick
+                      data-testid="sidebar-group-project"
+                    >
                       Project
                     </DropdownMenuRadioItem>
-                    <DropdownMenuRadioItem value="status" data-testid="sidebar-group-status">
+                    <DropdownMenuRadioItem
+                      value="status"
+                      closeOnClick
+                      data-testid="sidebar-group-status"
+                    >
                       Status
                     </DropdownMenuRadioItem>
                   </DropdownMenuRadioGroup>
