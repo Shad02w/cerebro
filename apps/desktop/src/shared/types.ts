@@ -290,6 +290,8 @@ export type CerebroApi = {
     sessionId: string,
     attachmentId: string
   ) => Promise<ChatAttachmentContent>
+  /** Reads a local image referenced by an agent reply. Remote sources are rejected. */
+  chatImage: (source: string) => Promise<ChatAttachmentContent>
   onChatChanged: (listener: (event: { workspaceId?: number }) => void) => () => void
 
   listWorkspaceRepositories: () => Promise<WorkspaceRepository[]>
