@@ -6,7 +6,8 @@ import {
   NodeViewWrapper,
   ReactNodeViewRenderer,
   ReactRenderer,
-  useEditor
+  useEditor,
+  useEditorState
 } from '@tiptap/react'
 import type { ReactNodeViewProps } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
@@ -30,6 +31,15 @@ import {
   visitAddTagText,
   type TagOption
 } from './composer-document'
+import {
+  composerVimKey,
+  handleComposerVimKey,
+  composerVimMode,
+  createComposerVimPlugin,
+  setComposerVimMode,
+  type ComposerVimOptions
+} from './composer-vim'
+import type { Mode } from 'vim-prosemirror'
 import './composer-editor.css'
 
 const lowlight = createLowlight(common)
@@ -427,7 +437,9 @@ export function ComposerEditor({
   getAttachments,
   onDocument,
   onAttachFiles,
-  onSubmit
+  onSubmit,
+  vim = { enabled: false, initialMode: 'insert' },
+  onVimMode
 }: {
   ref?: React.Ref<ComposerEditorHandle>
   defaultText: string
@@ -436,7 +448,12 @@ export function ComposerEditor({
   onDocument: (text: string, chips: Chip[]) => void
   onAttachFiles: (files: File[]) => void
   onSubmit: () => void
+  vim?: ComposerVimOptions
+  /** Current vim mode while vim is on, otherwise null. */
+  onVimMode?: (mode: Mode | null) => void
 }): React.JSX.Element {
+  const vimRef = useRef(vim)
+  const vimPlugin = useRef<Plugin | null>(null)
   const onSubmitRef = useRef(onSubmit)
   const onDocumentRef = useRef(onDocument)
   const getAttachmentsRef = useRef(getAttachments)
@@ -479,6 +496,12 @@ export function ComposerEditor({
         return true
       },
       handleKeyDown: (view, event) => {
+        // Outside vim insert mode the vim plugin owns every key, so Enter never sends
+        // and the caret, delete and arrow handling below is left to its motions.
+        if (vimRef.current.enabled) {
+          const handled = handleComposerVimKey(vimPlugin.current, view, event)
+          if (handled !== null) return handled
+        }
         if (
           (event.key === 'Home' || event.key === 'End') &&
           !event.shiftKey &&
@@ -560,7 +583,32 @@ export function ComposerEditor({
     getAttachmentsRef.current = getAttachments
     onAttachFilesRef.current = onAttachFiles
     editorBox.current = editor
-  }, [editor, getAttachments, onAttachFiles, onDocument, onSubmit])
+    vimRef.current = vim
+  }, [editor, getAttachments, onAttachFiles, onDocument, onSubmit, vim])
+  const vimEnabled = vim.enabled
+  useEffect(() => {
+    if (!editor || !vimEnabled) return
+    const plugin = createComposerVimPlugin(editor)
+    editor.registerPlugin(plugin)
+    vimPlugin.current = plugin
+    setComposerVimMode(editor, vimRef.current.initialMode)
+    return () => {
+      if (editor.isDestroyed) return
+      vimPlugin.current = null
+      editor.unregisterPlugin(composerVimKey)
+    }
+  }, [editor, vimEnabled])
+  const vimState = useEditorState({
+    editor,
+    selector: ({ editor: current }) =>
+      current && vimEnabled ? { mode: composerVimMode(current) } : { mode: null }
+  })
+  const onVimModeRef = useRef(onVimMode)
+  const vimMode = vimState?.mode ?? null
+  useEffect(() => {
+    onVimModeRef.current = onVimMode
+    onVimModeRef.current?.(vimMode)
+  }, [onVimMode, vimMode])
   useEffect(() => {
     if (!editor) return
     let tr = editor.state.tr
@@ -624,6 +672,7 @@ export function ComposerEditor({
       },
       clear: () => {
         editor?.commands.clearContent(true)
+        if (editor && vimRef.current.enabled) setComposerVimMode(editor, vimRef.current.initialMode)
       },
       focus: () => {
         editor?.commands.focus()

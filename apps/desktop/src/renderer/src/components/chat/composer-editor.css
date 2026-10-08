@@ -267,3 +267,52 @@
 .dark .composer-editor .hljs-function {
   color: #93c5fd;
 }
+
+/* Vim mode (settings: composer vim). The indicator only renders while vim mode is on. */
+.composer-vim-mode {
+  --vim-mode-color: oklch(0.62 0.17 150);
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  /* Same 2rem height as the row's buttons and flush with the shell's padding, mirroring the send
+     button on the right. The shell is rounded-2xl (1rem) with 0.5rem padding, so a concentric
+     inner radius is 0.5rem. */
+  width: 2rem;
+  height: 2rem;
+  margin-inline: 0 0.25rem;
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--vim-mode-color) 22%, transparent);
+  color: var(--vim-mode-color);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: default;
+  user-select: none;
+}
+
+.composer-vim-mode[data-mode='normal'] {
+  --vim-mode-color: oklch(0.65 0.16 250);
+}
+
+.composer-vim-mode[data-mode='visual'],
+.composer-vim-mode[data-mode='visual-line'] {
+  --vim-mode-color: oklch(0.65 0.19 300);
+}
+
+.composer-vim-mode[data-mode='replace'] {
+  --vim-mode-color: oklch(0.65 0.2 25);
+}
+
+/* Theme-aware block cursor and visual selection (the package defaults are fixed colors). */
+.composer-editor .vim-block-cursor,
+.composer-editor .vim-block-cursor-eol {
+  background: var(--foreground);
+  color: var(--background);
+}
+
+.composer-editor .vim-visual-selection,
+.composer-editor .vim-visual-selection-line {
+  background: color-mix(in srgb, var(--sidebar-selected) 40%, transparent);
+}

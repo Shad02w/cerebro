@@ -147,6 +147,9 @@ importers:
       tw-animate-css:
         specifier: ^1.4.0
         version: 1.4.0
+      vim-prosemirror:
+        specifier: ^0.2.1
+        version: 0.2.1(@tiptap/core@3.31.4(@tiptap/pm@3.31.4))(prosemirror-model@1.25.12)(prosemirror-state@1.4.4)(prosemirror-view@1.42.6)
     devDependencies:
       '@electron-toolkit/eslint-config-prettier':
         specifier: ^3.0.0
@@ -4788,6 +4791,17 @@ packages:
 
   vfile@6.0.3:
     resolution: {integrity: sha512-KzIbH/9tXat2u30jf+smMwFCsno4wHVdNmzFyL+T/L3UGqqk6JKfVqOFOZEpZSHADH1k40ab6NUIXZq422ov3Q==}
+
+  vim-prosemirror@0.2.1:
+    resolution: {integrity: sha512-jOIk542ni1BCbnQ2A7W0LN88jyIlzPpNonNknfFWDAT+nNQLqYfIe/xla0pErgcIS9DPYNANpmYOeIg1fawM6g==}
+    peerDependencies:
+      '@tiptap/core': '>=3'
+      prosemirror-model: '>=1'
+      prosemirror-state: '>=1'
+      prosemirror-view: '>=1'
+    peerDependenciesMeta:
+      '@tiptap/core':
+        optional: true
 
   vite@7.3.6:
     resolution: {integrity: sha512-4XP60spRGjSZFf1qYH+dJIkK2znL3zQfl9KkOV9MkkRR/3Dls0dxaBsQPTloEc5BLXWPL9vsOxopxyKoMmDueg==}
@@ -10007,6 +10021,14 @@ snapshots:
     dependencies:
       '@types/unist': 3.0.3
       vfile-message: 4.0.3
+
+  vim-prosemirror@0.2.1(@tiptap/core@3.31.4(@tiptap/pm@3.31.4))(prosemirror-model@1.25.12)(prosemirror-state@1.4.4)(prosemirror-view@1.42.6):
+    dependencies:
+      prosemirror-model: 1.25.12
+      prosemirror-state: 1.4.4
+      prosemirror-view: 1.42.6
+    optionalDependencies:
+      '@tiptap/core': 3.31.4(@tiptap/pm@3.31.4)
 
   vite@7.3.6(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(tsx@4.23.13)(yaml@2.9.1):
     dependencies:
