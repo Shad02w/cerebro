@@ -173,7 +173,7 @@ test('agent composer renders bullets, inline code, a code block, and Add tags', 
       .click()
     await page
       .getByTestId('model-picker')
-      .getByRole('button', { name: /^Test Model.*Codex/ })
+      .getByRole('option', { name: /^Test Model.*Codex/ })
       .click()
     await page.getByRole('button', { name: 'Send message', exact: true }).click()
     await expect(dock).toHaveAttribute('data-dock', 'bottom')

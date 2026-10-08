@@ -770,6 +770,7 @@ export function TerminalStack({
                           workspaceId={workspaceId}
                           paneId={pane.id}
                           visible={shown}
+                          active={active}
                           agentBackground={agentBackground}
                           agentModelDefaults={agentModelDefaults}
                           lastAgent={lastAgent}

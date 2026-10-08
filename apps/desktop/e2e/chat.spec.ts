@@ -62,12 +62,24 @@ test('chat works through native adapters, survives reload, handles requests, and
     await expect(
       page.getByTestId('model-picker').getByRole('button', { name: 'All', exact: true })
     ).toHaveCount(0)
-    await expect(page.getByTestId('model-picker').getByRole('combobox')).toHaveCount(0)
+    await expect(page.getByRole('combobox', { name: 'Search models' })).toBeFocused()
+    await page.keyboard.type('zzz')
+    await expect(page.getByTestId('model-picker')).toContainText('No matching models.')
+    await page.keyboard.press('ControlOrMeta+A')
+    await page.keyboard.type('Test Sonnet 5')
+    await page.keyboard.press('Enter')
+    await expect(page.getByTestId('model-picker')).toBeHidden()
+    await expect(page.getByTestId('chat-model-picker')).toContainText('Test Sonnet 5')
+    await page.getByTestId('chat-model-picker').click()
+    await expect(page.getByRole('combobox', { name: 'Search models' })).toBeFocused()
+    await expect(page.getByRole('combobox', { name: 'Search models' })).toHaveValue('')
+    await expect(page.getByTestId('model-picker')).toHaveCSS('opacity', '1')
+    await page.screenshot({ path: '/tmp/cerebro-chat-evidence/model-picker-combobox.png' })
     await expect(
-      page.getByTestId('model-picker').getByRole('button', { name: /^Test Sonnet 5.*Claude Code/ })
+      page.getByTestId('model-picker').getByRole('option', { name: /^Test Sonnet 5.*Claude Code/ })
     ).toBeVisible()
     await expect(
-      page.getByTestId('model-picker').getByRole('button', { name: /^Test Sonnet 5.*sonnet/ })
+      page.getByTestId('model-picker').getByRole('option', { name: /^Test Sonnet 5.*sonnet/ })
     ).toBeVisible()
     for (const [name, harness] of [
       ['Claude Code', 'claude'],
@@ -84,7 +96,7 @@ test('chat works through native adapters, survives reload, handles requests, and
     }
     await page.getByRole('button', { name: 'Codex', exact: true }).click()
     await expect(
-      page.getByTestId('model-picker').getByRole('button', { name: /^Test Model.*Claude Code/ })
+      page.getByTestId('model-picker').getByRole('option', { name: /^Test Model.*Claude Code/ })
     ).toHaveCount(0)
     await page.getByRole('button', { name: 'Favorite Test Model via Codex', exact: true }).click()
     await expect(page.getByTestId('model-picker')).toBeVisible()
@@ -94,7 +106,7 @@ test('chat works through native adapters, survives reload, handles requests, and
     ).toBeVisible()
     await page
       .getByTestId('model-picker')
-      .getByRole('button', { name: /^Test Model.*Codex/ })
+      .getByRole('option', { name: /^Test Model.*Codex/ })
       .click()
     const userText = 'Build a normalized agent chat\nPreserve spacing:  café 🚀'
     await page.getByRole('textbox', { name: 'Message agent' }).fill(userText)
@@ -517,7 +529,7 @@ test('Claude and Pi keep separate chat sessions, with a mixed Terminal pane', as
     await page.getByTestId('model-picker').getByRole('button', { name: 'Pi', exact: true }).click()
     await page
       .getByTestId('model-picker')
-      .getByRole('button', { name: /^Test Model.*Pi/ })
+      .getByRole('option', { name: /^Test Model.*Pi/ })
       .click()
     await expect(page.getByRole('alert')).toContainText('Open a new Agent tab or pane to use Pi.')
     await expect(chat.getByTestId('chat-model-picker')).toContainText('Claude Code')
@@ -537,7 +549,7 @@ test('Claude and Pi keep separate chat sessions, with a mixed Terminal pane', as
     await page.getByTestId('model-picker').getByRole('button', { name: 'Pi', exact: true }).click()
     await page
       .getByTestId('model-picker')
-      .getByRole('button', { name: /^Test Model.*Pi/ })
+      .getByRole('option', { name: /^Test Model.*Pi/ })
       .click()
     await expect(nextChat.getByTestId('chat-model-picker')).toContainText('Pi')
     await nextChat.getByRole('textbox', { name: 'Message agent' }).fill('hello Pi')
@@ -800,7 +812,7 @@ test('image attachments use atomic chips, reach the harness, render in the trans
       .click()
     await page
       .getByTestId('model-picker')
-      .getByRole('button', { name: /^Test Model.*Codex/ })
+      .getByRole('option', { name: /^Test Model.*Codex/ })
       .click()
     await textbox.fill('attachments here')
     await placeCaret(11)
@@ -871,7 +883,7 @@ test('image attachments use atomic chips, reach the harness, render in the trans
       .click()
     await page
       .getByTestId('model-picker')
-      .getByRole('button', { name: /^Test Model.*Codex/ })
+      .getByRole('option', { name: /^Test Model.*Codex/ })
       .click()
     await chat.getByRole('button', { name: 'Send message', exact: true }).click()
     const transcript = chat.getByTestId('chat-transcript')
@@ -1021,7 +1033,7 @@ test('multi-root root row keeps agent status inside the row chrome', async ({ pa
       .click()
     await page
       .getByTestId('model-picker')
-      .getByRole('button', { name: /^Test Model.*Codex/ })
+      .getByRole('option', { name: /^Test Model.*Codex/ })
       .click()
     await page.getByRole('combobox', { name: 'Access mode' }).selectOption('edit')
     await page.getByRole('textbox', { name: 'Message agent' }).fill('approval')
@@ -1169,7 +1181,7 @@ test('agent pane loading does not flash empty placeholder before session is conf
     await page.getByRole('button', { name: 'Codex', exact: true }).click()
     await page
       .getByTestId('model-picker')
-      .getByRole('button', { name: /^Test Model.*Codex/ })
+      .getByRole('option', { name: /^Test Model.*Codex/ })
       .click()
     await page.getByRole('textbox', { name: 'Message agent' }).fill('Persist through reload')
     await page.getByRole('button', { name: 'Send message', exact: true }).click()
@@ -1348,7 +1360,7 @@ test('new agent panes reuse the last model and settings choose each harness defa
     await first.getByTestId('chat-model-picker').click()
     await page
       .getByTestId('model-picker')
-      .getByRole('button', { name: /^Test Sonnet.*Claude Code/ })
+      .getByRole('option', { name: /^Test Sonnet.*Claude Code/ })
       .click()
     await expect(first.getByTestId('chat-model-picker')).toContainText('Test Sonnet')
     await expect

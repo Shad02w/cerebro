@@ -64,7 +64,7 @@ for (const harness of ['Claude Code', 'Codex', 'Pi']) {
         .click()
       await page
         .getByTestId('model-picker')
-        .getByRole('button', { name: new RegExp(`^Test Model.*${harness}`) })
+        .getByRole('option', { name: new RegExp(`^Test Model.*${harness}`) })
         .click()
       await expect(tabs.getByTestId('chat-tab-agent-icon')).toHaveCount(0)
       const prompt = 'what is the weather today in toronto and for the rest of this week'
