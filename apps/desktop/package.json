@@ -13,12 +13,15 @@
     "start": "electron-vite preview",
     "dev": "electron-vite dev --watch",
     "build": "electron-vite build",
-    "test:integration": "tsx --test src/main/repository-service.test.ts src/main/github-credentials.test.ts",
+    "test:integration": "nr test:integration:main && nr test:integration:renderer",
     "test:e2e": "electron-vite build && node ./scripts/playwright-e2e.mjs",
     "test:e2e:repeat": "node ./scripts/playwright-e2e.mjs",
     "postinstall": "electron-builder install-app-deps",
     "build:unpack": "tsx scripts/package-mac.ts --dir",
-    "build:mac": "tsx scripts/package-mac.ts"
+    "build:mac": "tsx scripts/package-mac.ts",
+    "test:unit": "tsx --test src/renderer/src/lib/*.test.ts src/renderer/src/components/chat/*.test.ts src/renderer/src/assets/*.test.ts",
+    "test:integration:main": "tsx --test src/main/repository-service.test.ts src/main/github-credentials.test.ts",
+    "test:integration:renderer": "vitest run"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
@@ -65,6 +68,9 @@
     "@electron-toolkit/eslint-config-ts": "^3.1.0",
     "@electron-toolkit/tsconfig": "^2.0.0",
     "@playwright/test": "^1.62.1",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.7",
     "@types/node": "^22.19.1",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
@@ -77,11 +83,13 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "graphql": "^16.14.2",
+    "jsdom": "^30.1.2",
     "node-gyp": "12.4.0",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
     "tsx": "^4.23.13",
     "typescript": "^5.9.3",
-    "vite": "^7.2.6"
+    "vite": "^7.2.6",
+    "vitest": "^5.0.3"
   }
 }

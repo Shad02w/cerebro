@@ -9,7 +9,10 @@
     "react:doctor:full": "pnpm run react:doctor apps/desktop/src/renderer",
     "typecheck": "turbo run typecheck",
     "test:e2e": "turbo run test:e2e --filter=desktop",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "test": "turbo run test:unit test:integration",
+    "test:unit": "turbo run test:unit",
+    "test:integration": "turbo run test:integration"
   },
   "devDependencies": {
     "prettier": "^3.7.4",
