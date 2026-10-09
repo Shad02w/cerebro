@@ -226,7 +226,7 @@ for (const renderer of ['auto', 'dom'] as const) {
       expect(recovered.data).toContain(osc('10;rgb:dddd/eeee/ffff'))
     } finally {
       await app?.close()
-      await stopMux(env)
+      await stopMux(home)
       await rm(home, { recursive: true, force: true })
     }
   })

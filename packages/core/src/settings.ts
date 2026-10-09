@@ -11,11 +11,13 @@ import type {
 } from './types'
 import {
   DEFAULT_AGENT_BACKGROUND,
+  DEFAULT_COMPOSER_VIM_MODE,
   DEFAULT_TERMINAL_FONT_SIZE,
   MAX_TERMINAL_FONT_SIZE,
   MIN_TERMINAL_FONT_SIZE,
   TERMINAL_FONT_FAMILY_AUTO,
-  isAgentBackground
+  isAgentBackground,
+  isComposerVimMode
 } from './types'
 import { getDb } from './db'
 import { getCerebroHome } from './paths'
@@ -29,6 +31,8 @@ type StoredSettings = {
   terminalFontSize?: number
   terminalFontFamily?: string
   agentBackground?: string
+  composerVim?: boolean
+  composerVimMode?: string
   keybinds?: Record<string, string>
   sidebarGroupBy?: string
   agentModelDefaults?: AgentModelDefaults
@@ -42,6 +46,8 @@ function defaultSettings(): AppSettings {
     terminalFontSize: DEFAULT_TERMINAL_FONT_SIZE,
     terminalFontFamily: TERMINAL_FONT_FAMILY_AUTO,
     agentBackground: DEFAULT_AGENT_BACKGROUND,
+    composerVim: false,
+    composerVimMode: DEFAULT_COMPOSER_VIM_MODE,
     keybinds: {},
     sidebarGroupBy: 'project',
     agentModelDefaults: {},
@@ -263,6 +269,10 @@ function mergeSettings(stored: StoredSettings): AppSettings {
     terminalFontFamily,
     terminalTheme,
     agentBackground,
+    composerVim: stored.composerVim === true,
+    composerVimMode: isComposerVimMode(stored.composerVimMode)
+      ? stored.composerVimMode
+      : DEFAULT_COMPOSER_VIM_MODE,
     keybinds,
     sidebarGroupBy,
     agentModelDefaults: readAgentModelDefaults(stored.agentModelDefaults),
@@ -316,6 +326,17 @@ export function setSettings(patch: AppSettingsPatch): AppSettings {
   if (patch.agentBackground !== undefined) {
     if (!isAgentBackground(patch.agentBackground)) throw new Error('Unknown agent background.')
     next.agentBackground = patch.agentBackground
+  }
+
+  if (patch.composerVim !== undefined) {
+    if (typeof patch.composerVim !== 'boolean')
+      throw new Error('Composer vim mode must be a boolean.')
+    next.composerVim = patch.composerVim
+  }
+
+  if (patch.composerVimMode !== undefined) {
+    if (!isComposerVimMode(patch.composerVimMode)) throw new Error('Unknown composer vim mode.')
+    next.composerVimMode = patch.composerVimMode
   }
 
   if (patch.agentModelDefaults !== undefined) {

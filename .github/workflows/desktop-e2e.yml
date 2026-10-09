@@ -12,8 +12,12 @@ concurrency:
 
 jobs:
   e2e:
-    name: Playwright (Electron)
+    name: Playwright (${{ matrix.group }})
     runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [app, projects, terminal, chat, changes]
     timeout-minutes: 25
     steps:
       - name: Checkout
@@ -31,14 +35,17 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Run desktop Playwright e2e
-        run: pnpm test:e2e
+      - name: Build desktop
+        run: pnpm turbo run build --filter=desktop
+
+      - name: Run desktop Playwright e2e (${{ matrix.group }})
+        run: pnpm --filter desktop test:e2e:${{ matrix.group }}
 
       - name: Upload Playwright artifacts
         if: failure()
         uses: actions/upload-artifact@v6
         with:
-          name: playwright-results
+          name: playwright-results-${{ matrix.group }}
           path: |
             apps/desktop/test-results
             apps/desktop/playwright-report

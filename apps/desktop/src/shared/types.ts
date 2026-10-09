@@ -221,6 +221,11 @@ export const AGENT_BACKGROUNDS = ['glow', 'stars', 'off'] as const
 export type AgentBackground = (typeof AGENT_BACKGROUNDS)[number]
 export const DEFAULT_AGENT_BACKGROUND: AgentBackground = 'stars'
 
+/** Mode the agent composer starts in (and returns to after sending) when vim mode is on. */
+export const COMPOSER_VIM_MODES = ['insert', 'normal'] as const
+export type ComposerVimMode = (typeof COMPOSER_VIM_MODES)[number]
+export const DEFAULT_COMPOSER_VIM_MODE: ComposerVimMode = 'insert'
+
 export type AppSettings = {
   defaultCloneDir: string
   terminalTheme: TerminalThemeId
@@ -229,6 +234,10 @@ export type AppSettings = {
   terminalFontFamily: string
   /** Empty agent pane: composer glow, star field, or neither. */
   agentBackground: AgentBackground
+  /** Vim keybindings in the agent composer. Off by default. */
+  composerVim: boolean
+  /** Vim mode the composer starts in when `composerVim` is on. */
+  composerVimMode: ComposerVimMode
   /** Partial overrides; missing keys use app defaults. */
   keybinds: KeybindOverrides
   /** Sidebar lists workspaces under projects, or under their workflow status. */
@@ -290,6 +299,8 @@ export type CerebroApi = {
     sessionId: string,
     attachmentId: string
   ) => Promise<ChatAttachmentContent>
+  /** Reads a local image referenced by an agent reply. Remote sources are rejected. */
+  chatImage: (source: string) => Promise<ChatAttachmentContent>
   onChatChanged: (listener: (event: { workspaceId?: number }) => void) => () => void
 
   listWorkspaceRepositories: () => Promise<WorkspaceRepository[]>

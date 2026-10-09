@@ -3,7 +3,13 @@ import { TerminalThemeCombobox } from '@/components/terminal-theme-combobox'
 import { CliSettings } from '@/components/cli-settings'
 import type { TerminalThemeId } from '@shared/terminal-themes'
 import { useEffect, useRef, useState } from 'react'
-import type { AgentBackground, AppSettings, AppSettingsPatch, GitHubStatus } from '@shared/types'
+import type {
+  AgentBackground,
+  AppSettings,
+  AppSettingsPatch,
+  ComposerVimMode,
+  GitHubStatus
+} from '@shared/types'
 import {
   MAX_TERMINAL_FONT_SIZE,
   MIN_TERMINAL_FONT_SIZE,
@@ -123,6 +129,16 @@ const AGENT_BACKGROUND_ITEMS = [
   { value: 'off', label: 'Off' }
 ]
 
+const COMPOSER_VIM_ITEMS = [
+  { value: 'off', label: 'Off' },
+  { value: 'on', label: 'On' }
+]
+
+const COMPOSER_VIM_MODE_ITEMS = [
+  { value: 'insert', label: 'Insert' },
+  { value: 'normal', label: 'Normal' }
+]
+
 function GeneralSettings({
   settings,
   error,
@@ -180,6 +196,23 @@ function GeneralSettings({
     }
   }
 
+  const savingVim = useRef(false)
+  const persistComposerVim = async (patch: {
+    composerVim?: boolean
+    composerVimMode?: ComposerVimMode
+  }): Promise<void> => {
+    if (savingVim.current) return
+    savingVim.current = true
+    setLocalError(null)
+    try {
+      await onUpdate(patch)
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : 'Failed to save vim mode.')
+    } finally {
+      savingVim.current = false
+    }
+  }
+
   return (
     <section className="space-y-6" data-testid="settings-general">
       <div className="space-y-3">
@@ -212,6 +245,75 @@ function GeneralSettings({
             </SelectTrigger>
             <SelectContent>
               {AGENT_BACKGROUND_ITEMS.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-start justify-between gap-6">
+          <div className="min-w-0 flex-1 space-y-1">
+            <Label htmlFor="composer-vim" className="text-[13px] font-medium">
+              Vim mode
+            </Label>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              Modal editing in the agent composer. Enter sends only in insert mode, and @ tags
+              complete only while typing in insert mode.
+            </p>
+          </div>
+          <Select
+            items={COMPOSER_VIM_ITEMS}
+            value={settings.composerVim ? 'on' : 'off'}
+            onValueChange={(value): void => {
+              if (value === 'on' || value === 'off') {
+                void persistComposerVim({ composerVim: value === 'on' })
+              }
+            }}
+          >
+            <SelectTrigger
+              id="composer-vim"
+              className="h-7 w-36"
+              data-testid="settings-composer-vim"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {COMPOSER_VIM_ITEMS.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-start justify-between gap-6">
+          <div className="min-w-0 flex-1 space-y-1">
+            <Label htmlFor="composer-vim-mode" className="text-[13px] font-medium">
+              Starting vim mode
+            </Label>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              The composer opens in this mode and returns to it after a message is sent.
+            </p>
+          </div>
+          <Select
+            items={COMPOSER_VIM_MODE_ITEMS}
+            value={settings.composerVimMode}
+            onValueChange={(value): void => {
+              if (value === 'insert' || value === 'normal') {
+                void persistComposerVim({ composerVimMode: value })
+              }
+            }}
+          >
+            <SelectTrigger
+              id="composer-vim-mode"
+              className="h-7 w-36"
+              data-testid="settings-composer-vim-mode"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {COMPOSER_VIM_MODE_ITEMS.map((item) => (
                 <SelectItem key={item.value} value={item.value}>
                   {item.label}
                 </SelectItem>

@@ -11,6 +11,7 @@ import {
 import {
   DEFAULT_AGENT_BACKGROUND,
   type AgentBackground,
+  type ComposerVimMode,
   type AgentModelDefaults,
   type LastAgent
 } from '@shared/types'
@@ -22,6 +23,8 @@ import { ChatTurnActions } from './chat-turn-actions'
 import { ChatQueue } from './chat-queue'
 import { AttachmentStrip, DropOverlay } from './chat-composer-attachments'
 import { ComposerEditor, type ComposerEditorHandle } from './composer-editor'
+import { VimModeBadge } from './vim-mode-badge'
+import type { Mode as VimMode } from 'vim-prosemirror'
 import { chatImageAccept, useComposerDraft } from './use-composer-draft'
 import { ModelPicker } from './model-picker'
 import { ContextUsageRing } from './context-usage-ring'
@@ -36,6 +39,8 @@ export function ChatView({
   visible = true,
   active = false,
   agentBackground = DEFAULT_AGENT_BACKGROUND,
+  composerVim = false,
+  composerVimMode = 'insert',
   agentModelDefaults,
   lastAgent = null,
   onRememberAgent
@@ -45,11 +50,18 @@ export function ChatView({
   visible?: boolean
   active?: boolean
   agentBackground?: AgentBackground
+  composerVim?: boolean
+  composerVimMode?: ComposerVimMode
   agentModelDefaults: AgentModelDefaults
   lastAgent?: LastAgent | null
   onRememberAgent?: (model: AgentModel) => void
 }): React.JSX.Element {
   const client = useQueryClient()
+  const [vimMode, setVimMode] = useState<VimMode | null>(null)
+  const vimOptions = useMemo(
+    () => ({ enabled: composerVim, initialMode: composerVimMode }),
+    [composerVim, composerVimMode]
+  )
   const queryKey = ['chat', workspaceId, paneId]
   const view = useQuery({
     queryKey,
@@ -347,6 +359,7 @@ export function ChatView({
                         onReply={reply}
                         workspaceId={workspaceId}
                         sessionId={session.id}
+                        streaming={busy && index === session.items.length - 1}
                       />
                       {item.kind !== 'user' &&
                       session.items[index + 1]?.turnId !== item.turnId &&
@@ -466,6 +479,8 @@ export function ChatView({
                     attachments={draft.attachments}
                     getAttachments={() => readDraft().attachments}
                     onDocument={onDocument}
+                    vim={vimOptions}
+                    onVimMode={setVimMode}
                     onAttachFiles={(files) => {
                       void attachFiles(files)
                     }}
@@ -504,6 +519,7 @@ export function ChatView({
                         }}
                       />
                     </div>
+                    {composerVim && vimMode ? <VimModeBadge mode={vimMode} /> : null}
                     <ContextUsageRing usage={session?.contextUsage} effort={session?.reasoning} />
                     <select
                       aria-label="Access mode"

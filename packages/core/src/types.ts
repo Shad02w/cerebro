@@ -131,6 +131,15 @@ export function isAgentBackground(value: unknown): value is AgentBackground {
   return typeof value === 'string' && (AGENT_BACKGROUNDS as readonly string[]).includes(value)
 }
 
+/** Mode the agent composer starts in (and returns to after sending) when vim mode is on. */
+export const COMPOSER_VIM_MODES = ['insert', 'normal'] as const
+export type ComposerVimMode = (typeof COMPOSER_VIM_MODES)[number]
+export const DEFAULT_COMPOSER_VIM_MODE: ComposerVimMode = 'insert'
+
+export function isComposerVimMode(value: unknown): value is ComposerVimMode {
+  return typeof value === 'string' && (COMPOSER_VIM_MODES as readonly string[]).includes(value)
+}
+
 /** Model key chosen as the default for one harness provider. */
 export type AgentModelDefaults = Partial<Record<AgentHarness, Record<string, string>>>
 /** Harness and provider last used for a new agent pane. */
@@ -143,6 +152,10 @@ export type AppSettings = {
   terminalFontFamily: string
   /** Empty agent pane: composer glow, star field, or neither. */
   agentBackground: AgentBackground
+  /** Vim keybindings in the agent composer. Off by default. */
+  composerVim: boolean
+  /** Vim mode the composer starts in when `composerVim` is on. */
+  composerVimMode: ComposerVimMode
   /** Partial overrides; missing keys use app defaults. */
   keybinds: KeybindOverrides
   /** Sidebar lists workspaces under projects, or under their workflow status. */

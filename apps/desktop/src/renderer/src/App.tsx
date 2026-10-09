@@ -25,6 +25,7 @@ import {
 } from '@/lib/titlebar'
 import {
   DEFAULT_AGENT_BACKGROUND,
+  DEFAULT_COMPOSER_VIM_MODE,
   type Project,
   type SidebarGroupBy,
   type WorkspaceStatus
@@ -242,6 +243,8 @@ function App(): React.JSX.Element {
                 terminalFontSize={settings?.terminalFontSize ?? null}
                 terminalFontFamily={settings?.terminalFontFamily ?? null}
                 agentBackground={settings?.agentBackground ?? DEFAULT_AGENT_BACKGROUND}
+                composerVim={settings?.composerVim ?? false}
+                composerVimMode={settings?.composerVimMode ?? DEFAULT_COMPOSER_VIM_MODE}
                 agentModelDefaults={settings?.agentModelDefaults ?? {}}
                 lastAgent={settings?.lastAgent ?? null}
                 onRememberAgent={rememberAgent}

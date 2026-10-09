@@ -5,6 +5,7 @@ export const IPC = {
     catalog: 'cerebro:chat:catalog',
     favorite: 'cerebro:chat:favorite',
     attachment: 'cerebro:chat:attachment',
+    image: 'cerebro:chat:image',
     changed: 'cerebro:chat:changed'
   },
   cli: {
