@@ -354,6 +354,7 @@ export function ChatView({
                         onReply={reply}
                         workspaceId={workspaceId}
                         sessionId={session.id}
+                        streaming={busy && index === session.items.length - 1}
                       />
                       {item.kind !== 'user' &&
                       session.items[index + 1]?.turnId !== item.turnId &&
@@ -496,7 +497,6 @@ export function ChatView({
                     }}
                   />
                   <div className="flex flex-wrap items-center gap-1">
-                    {composerVim && vimMode ? <VimModeBadge mode={vimMode} /> : null}
                     <div className="min-w-0 flex-1">
                       <ModelPicker
                         selected={selected}
@@ -514,6 +514,7 @@ export function ChatView({
                         }}
                       />
                     </div>
+                    {composerVim && vimMode ? <VimModeBadge mode={vimMode} /> : null}
                     <ContextUsageRing usage={session?.contextUsage} effort={session?.reasoning} />
                     <select
                       aria-label="Access mode"

@@ -37,6 +37,31 @@ function codexPrompt(prompt, input) {
     codexDone()
     return
   }
+  if (prompt.startsWith('markdown-rich ')) {
+    const image = prompt.slice('markdown-rich '.length)
+    const rich = [
+      '## Rich reply',
+      '',
+      '| Name | Value |',
+      '| --- | --- |',
+      '| alpha | 1 |',
+      '',
+      '```ts',
+      'const answer: number = 42',
+      '```',
+      '',
+      '```mermaid',
+      'graph TD; A-->B;',
+      '```',
+      '',
+      `![local shot](${image})`,
+      '',
+      '![remote shot](https://example.invalid/remote.png)'
+    ].join('\n')
+    notify('item/completed', { item: { type: 'agentMessage', id: 'rich', text: rich } })
+    codexDone()
+    return
+  }
   if (prompt === 'access-settings') {
     notify('item/completed', {
       item: { type: 'agentMessage', id: 'access', text: JSON.stringify(accessSettings) }

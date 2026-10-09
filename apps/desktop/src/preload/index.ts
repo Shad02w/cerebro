@@ -15,6 +15,7 @@ const api: CerebroApi = {
   agentFavorite: (key, favorite) => ipcRenderer.invoke(IPC.chat.favorite, key, favorite),
   chatAttachment: (workspaceId, sessionId, attachmentId) =>
     ipcRenderer.invoke(IPC.chat.attachment, workspaceId, sessionId, attachmentId),
+  chatImage: (source) => ipcRenderer.invoke(IPC.chat.image, source),
   onChatChanged: (listener) => {
     const handler = (_event: IpcRendererEvent, data: { workspaceId?: number }): void =>
       listener(data)
