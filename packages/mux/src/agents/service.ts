@@ -23,6 +23,7 @@ import {
   type AgentHarness,
   type AgentModel,
   type AgentRequest,
+  type AgentStatusEvent,
   type AgentSession,
   type ChatAttachment,
   type ChatAttachmentContent,
@@ -205,6 +206,11 @@ const readJson = <T>(path: string, fallback: T): T => {
   }
 }
 
+function lastReply(session: AgentSession): string {
+  const text = [...session.items].reverse().find((item) => item.kind === 'text' && item.text.trim())
+  return text ? text.text.trim().replace(/\s+/g, ' ').slice(0, 200) : 'Finished the task.'
+}
+
 /** Persistent logical sessions. UI attachments never own a native process. */
 export class AgentSessions {
   private sessions = new Map<string, AgentSession>()
@@ -218,7 +224,8 @@ export class AgentSessions {
   constructor(
     private directory: string,
     private publish: (workspaceId: number) => void,
-    private drivers: Record<AgentHarness, AgentAdapter> = adapters
+    private drivers: Record<AgentHarness, AgentAdapter> = adapters,
+    private onStatus: (event: AgentStatusEvent) => void = () => {}
   ) {
     mkdirSync(directory, { recursive: true, mode: 0o700 })
     mkdirSync(join(directory, 'attachments'), { recursive: true, mode: 0o700 })
@@ -298,6 +305,33 @@ export class AgentSessions {
     return {
       mimeType: attachment.mimeType,
       data: readFileSync(this.attachmentPath(attachment)).toString('base64')
+    }
+  }
+  private paneFor(sessionId: string): number | null {
+    const key = Object.keys(this.bindings).find((pane) => this.bindings[pane] === sessionId)
+    return key ? Number(key) : null
+  }
+  private notify(
+    session: AgentSession,
+    kind: AgentStatusEvent['kind'],
+    summary: string,
+    request?: AgentStatusEvent['request'],
+    command?: string
+  ): void {
+    try {
+      this.onStatus({
+        kind,
+        workspaceId: session.workspaceId,
+        sessionId: session.id,
+        paneId: this.paneFor(session.id),
+        sessionTitle: session.title,
+        summary,
+        ...(request ? { request } : {}),
+        ...(command ? { command } : {}),
+        at: Date.now()
+      })
+    } catch {
+      // Notification delivery must never affect the agent turn.
     }
   }
   private changed(session: AgentSession, immediate = false): void {
@@ -851,6 +885,14 @@ export class AgentSessions {
         })
         session.status = 'waiting'
         this.changed(session, true)
+        const approval = request.kind === 'approval' && request.text.trim()
+        this.notify(
+          session,
+          'blocked',
+          approval ? request.title : request.text || request.title,
+          { id: request.id, kind: request.kind },
+          approval ? request.text.trim().slice(0, 1000) : undefined
+        )
       })
     }
     const declinePending = (): void => {
@@ -858,6 +900,8 @@ export class AgentSessions {
       runtime.requests.clear()
     }
     runtime.controller.signal.addEventListener('abort', declinePending, { once: true })
+    let finishedNotice: string | undefined
+    let failedNotice: string | undefined
     try {
       await this.drivers[session.model.harness].run({
         session: structuredClone(session),
@@ -876,11 +920,13 @@ export class AgentSessions {
       } else {
         session.status = 'idle'
         session.attention = { kind: 'finished', at: Date.now() }
+        finishedNotice = lastReply(session)
       }
     } catch (error) {
       session.status = runtime.controller.signal.aborted ? 'interrupted' : 'failed'
       session.error = String(error)
       session.attention = undefined
+      if (session.status === 'failed') failedNotice = session.error
     } finally {
       declinePending()
       runtime.controller.signal.removeEventListener('abort', declinePending)
@@ -896,6 +942,9 @@ export class AgentSessions {
         session.error = `Agent storage failed: ${String(error)}`
         this.publish(session.workspaceId)
       }
+      if (failedNotice !== undefined) this.notify(session, 'failed', failedNotice)
+      else if (finishedNotice !== undefined && !session.queue?.length)
+        this.notify(session, 'finished', finishedNotice)
       // A message queued while this turn ran becomes the next turn automatically, unless this one failed
       // (left for the user to act on) or the host is tearing down (stopWorkspace/shutdown own the queue then).
       if (!this.stopping && session.status !== 'failed' && session.queue?.length) {

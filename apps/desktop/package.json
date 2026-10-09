@@ -20,13 +20,13 @@
     "build:unpack": "tsx scripts/package-mac.ts --dir",
     "build:mac": "tsx scripts/package-mac.ts",
     "test:unit": "tsx --test src/renderer/src/lib/*.test.ts src/renderer/src/components/chat/*.test.ts src/renderer/src/assets/*.test.ts",
-    "test:integration:main": "tsx --test src/main/repository-service.test.ts src/main/github-credentials.test.ts src/main/chat-image.test.ts",
+    "test:integration:main": "tsx --test src/main/repository-service.test.ts src/main/github-credentials.test.ts src/main/chat-image.test.ts src/main/notifications/hub.test.ts src/main/notifications/responses.test.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e:app": "node ./scripts/playwright-e2e.mjs smoke.spec.ts settings.spec.ts github.spec.ts startup-splash.spec.ts app-environment.spec.ts",
     "test:e2e:projects": "node ./scripts/playwright-e2e.mjs projects-directory.spec.ts projects-github.spec.ts sidebar-tree.spec.ts workspace-status.spec.ts",
     "test:e2e:terminal": "node ./scripts/playwright-e2e.mjs terminal.spec.ts terminal-background.spec.ts terminal-colors.spec.ts tab-width.spec.ts mux.spec.ts panes.spec.ts",
-    "test:e2e:chat": "node ./scripts/playwright-e2e.mjs chat.spec.ts composer-vim.spec.ts composer-wysiwyg.spec.ts composer-glow-transition.spec.ts",
+    "test:e2e:chat": "node ./scripts/playwright-e2e.mjs chat.spec.ts notifications.spec.ts composer-vim.spec.ts composer-wysiwyg.spec.ts composer-glow-transition.spec.ts",
     "test:e2e:changes": "node ./scripts/playwright-e2e.mjs changes.spec.ts changes-worker.spec.ts"
   },
   "dependencies": {

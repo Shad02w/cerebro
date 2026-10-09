@@ -12,7 +12,7 @@ import {
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { AgentSessions } from './service'
-import type { AgentModel, AgentSession } from '@cerebro/core'
+import type { AgentModel, AgentSession, AgentStatusEvent } from '@cerebro/core'
 import type { AgentAdapter, RunContext } from './adapters'
 const model: AgentModel = {
   key: 'test',
@@ -661,6 +661,33 @@ test('a queued message auto-fires as the next turn once the running turn finishe
     rmSync(f.dir, { recursive: true, force: true })
   }
 })
+test('finished is not announced between turns while a queued message continues', async () => {
+  const events: AgentStatusEvent[] = []
+  const releases: Array<() => void> = []
+  const f = fixture(async () => {
+    await new Promise<void>((resolve) => releases.push(resolve))
+  })
+  const service = new AgentSessions(
+    f.dir,
+    () => {},
+    f.drivers,
+    (e) => events.push(e)
+  )
+  try {
+    await service.command(scope, send)
+    await service.command(scope, { ...send, commandId: 'second', text: 'follow-up' })
+    releases[0]()
+    await waitFor(() => releases.length === 2)
+    assert.equal(events.length, 0)
+    releases[1]()
+    await waitFor(() => events.length === 1)
+    assert.equal(events[0].kind, 'finished')
+  } finally {
+    releases.forEach((release) => release())
+    await service.shutdown()
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
 test('stopWorkspace converges through an auto-flushed queue instead of leaving an orphaned run', async () => {
   const seen: string[] = []
   const f = fixture(async (context) => {
@@ -806,3 +833,59 @@ test('overview lists every open bound pane including idle, and drops closed pane
     rmSync(f.dir, { recursive: true, force: true })
   }
 })
+test('status events fire for blocked, finished and failed turns but not for a user stop', async () => {
+  const events: AgentStatusEvent[] = []
+  const f = fixture(async (context) => {
+    if (context.text === 'ask') {
+      const answer = await context.ask({
+        id: 'p1',
+        title: 'Bash',
+        text: 'git push',
+        kind: 'approval'
+      })
+      context.emit({
+        type: 'item',
+        item: { id: 'a', kind: 'text', text: answer.allow ? 'Pushed it.' : 'Skipped.' }
+      })
+    } else if (context.text === 'boom') throw new Error('model offline')
+    else await new Promise((resolve) => context.signal.addEventListener('abort', resolve))
+  })
+  try {
+    const service = new AgentSessions(
+      f.dir,
+      () => {},
+      f.drivers,
+      (e) => events.push(e)
+    )
+    await service.command(scope, { ...send, commandId: 'a', text: 'ask' })
+    assert.equal(events.length, 1)
+    assert.equal(events[0].kind, 'blocked')
+    assert.equal(events[0].summary, 'Bash')
+    assert.equal(events[0].command, 'git push')
+    assert.deepEqual(events[0].request, { id: 'p1', kind: 'approval' })
+    assert.equal(events[0].paneId, 1)
+    await service.command(scope, { ...send, action: 'reply', requestId: 'p1', allow: true })
+    await waitFor(() => events.length === 2)
+    assert.equal(events[1].kind, 'finished')
+    assert.equal(events[1].summary, 'Pushed it.')
+
+    await service.command(scope, { ...send, action: 'new' })
+    await service.command(scope, { ...send, commandId: 'b', text: 'boom' })
+    await waitFor(() => events.length === 3)
+    assert.equal(events[2].kind, 'failed')
+    assert.match(events[2].summary, /model offline/)
+
+    await service.command(scope, { ...send, action: 'new' })
+    await service.command(scope, { ...send, commandId: 'c', text: 'hang' })
+    await service.command(scope, { ...send, action: 'stop' })
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    assert.equal(events.length, 3)
+    await service.shutdown()
+  } finally {
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
+async function waitFor(condition: () => boolean): Promise<void> {
+  for (let i = 0; i < 100 && !condition(); i++) await new Promise((r) => setTimeout(r, 10))
+  assert(condition(), 'condition not met in time')
+}

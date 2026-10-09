@@ -54,6 +54,13 @@ export const IPC = {
     fullScreen: 'cerebro:native:full-screen',
     runCommand: 'cerebro:native:run-command'
   },
+  notify: {
+    /** Main → renderer: show an in-app notification. */
+    show: 'cerebro:notify:show',
+    dismiss: 'cerebro:notify:dismiss',
+    /** Renderer → main: the user opened or acted on a notification. */
+    respond: 'cerebro:notify:respond'
+  },
   keybinds: {
     /** Main → renderer: File › Close menu item (no accelerator). */
     menuClose: 'cerebro:keybinds:menu-close'

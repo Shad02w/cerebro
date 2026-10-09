@@ -1,7 +1,7 @@
 import { app, BrowserWindow } from 'electron'
 import { join, resolve } from 'node:path'
 import { connectMux, MuxError, type MuxClient, type TerminalEvent } from '@cerebro/mux'
-import type { LayoutState, WorkspaceTabs } from '@cerebro/core'
+import type { AgentStatusEvent, LayoutState, WorkspaceTabs } from '@cerebro/core'
 import { IPC } from '../shared/ipc'
 
 let connection: Promise<MuxClient> | undefined
@@ -10,6 +10,7 @@ let intentionallyStopped = false
 let reconnectTimer: ReturnType<typeof setTimeout> | undefined
 let cached: LayoutState = { revision: -1, workspaces: {} }
 const terminalListeners = new Set<(event: TerminalEvent & { attachmentId: string }) => void>()
+const statusListeners = new Set<(event: AgentStatusEvent) => void>()
 const disconnectListeners = new Set<(stopped: boolean) => void>()
 const broadcast = (channel: string, data?: unknown): void => {
   for (const win of BrowserWindow.getAllWindows())
@@ -22,6 +23,18 @@ export function onTerminal(
   return () => {
     terminalListeners.delete(listener)
   }
+}
+export function onAgentStatus(listener: (event: AgentStatusEvent) => void): () => void {
+  statusListeners.add(listener)
+  return () => {
+    statusListeners.delete(listener)
+  }
+}
+export function getCachedLayout(): LayoutState {
+  return cached
+}
+export function focusWorkspaceInUi(workspaceId: number): void {
+  broadcast(IPC.layout.focusWorkspace, workspaceId)
 }
 export function onMuxDisconnect(listener: (stopped: boolean) => void): () => void {
   disconnectListeners.add(listener)
@@ -73,6 +86,9 @@ export function getMux(): Promise<MuxClient> {
         }
       )
       client.on('chat', (event) => broadcast(IPC.chat.changed, event))
+      client.on('agent.status', (event: AgentStatusEvent) => {
+        for (const listener of statusListeners) listener(event)
+      })
       client.on('projects', () => broadcast(IPC.projects.invalidate))
       client.on('focus', (workspaceId) => broadcast(IPC.layout.focusWorkspace, workspaceId))
       client.on('git', async ({ id, args, cwd }) => {

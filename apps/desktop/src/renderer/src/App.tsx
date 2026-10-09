@@ -4,6 +4,7 @@ import { reconcileAgentPreferences, rememberAgentModel, type AgentModel } from '
 import { catalogOptions } from '@/components/chat/queries'
 import { layoutOptions } from '@/lib/query-client'
 import { StartupGate } from '@/components/startup-splash'
+import { AgentNotifications } from '@/components/agent-notifications'
 import { AddProjectDialog } from '@/components/add-project-dialog'
 import { AddWorkspaceDialog } from '@/components/add-workspace-dialog'
 import { AppSidebar } from '@/components/app-sidebar'
@@ -254,6 +255,7 @@ function App(): React.JSX.Element {
               />
             </div>
           </SidebarInset>
+          <AgentNotifications />
           <AddProjectDialog
             open={projectDialogOpen}
             onOpenChange={setProjectDialogOpen}

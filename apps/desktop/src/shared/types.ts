@@ -7,7 +7,13 @@ import type {
   ChatView,
   LastAgent
 } from '@cerebro/core'
-import type { LayoutCommand, LayoutState, LayoutReply } from '@cerebro/core'
+import type {
+  AppNotification,
+  LayoutCommand,
+  LayoutState,
+  LayoutReply,
+  NotificationResponse
+} from '@cerebro/core'
 import type { TerminalThemeId } from './terminal-themes'
 export type LinkedRepository = {
   id: number
@@ -305,6 +311,12 @@ export type CerebroApi = {
 
   listWorkspaceRepositories: () => Promise<WorkspaceRepository[]>
   getRepositoryPullRequests: (owner: string, repo: string) => Promise<RepositoryPullRequests>
+  onNotification: (
+    listener: (
+      event: { type: 'show'; notification: AppNotification } | { type: 'dismiss'; id: string }
+    ) => void
+  ) => () => void
+  respondToNotification: (response: NotificationResponse) => Promise<void>
   onWindowFocus: (listener: (focused: boolean) => void) => () => void
   /** Calls back with the current state immediately, then on every change. */
   onFullScreenChange: (listener: (fullScreen: boolean) => void) => () => void
