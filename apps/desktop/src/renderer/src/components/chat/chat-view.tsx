@@ -354,6 +354,7 @@ export function ChatView({
                         onReply={reply}
                         workspaceId={workspaceId}
                         sessionId={session.id}
+                        streaming={busy && index === session.items.length - 1}
                       />
                       {item.kind !== 'user' &&
                       session.items[index + 1]?.turnId !== item.turnId &&

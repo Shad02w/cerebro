@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
+import { crc32, deflateSync } from 'node:zlib'
 import type { ElectronApplication, JSHandle, Page } from '@playwright/test'
 import { test, expect, stopMux } from './fixtures'
 
@@ -1421,6 +1422,97 @@ test('new agent panes reuse the last model and settings choose each harness defa
       })
       .toEqual({ codex: secondCodexKey, claude: sonnetKey, harness: 'codex' })
     await page.screenshot({ path: testInfo.outputPath('agent-model-fallback.png') })
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+/** A solid-color PNG large enough to see in a screenshot. */
+function solidPng(width: number, height: number): Buffer {
+  const chunk = (type: string, data: Buffer): Buffer => {
+    const body = Buffer.concat([Buffer.from(type), data])
+    const size = Buffer.alloc(4)
+    size.writeUInt32BE(data.length)
+    const crc = Buffer.alloc(4)
+    crc.writeUInt32BE(crc32(body))
+    return Buffer.concat([size, body, crc])
+  }
+  const header = Buffer.alloc(13)
+  header.writeUInt32BE(width, 0)
+  header.writeUInt32BE(height, 4)
+  header.set([8, 2, 0, 0, 0], 8)
+  const row = Buffer.concat([Buffer.from([0]), Buffer.alloc(width * 3, 0)])
+  for (let x = 0; x < width; x++) row.set([40, 160, 140], 1 + x * 3)
+  const raw = Buffer.concat(Array.from({ length: height }, () => row))
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', header),
+    chunk('IDAT', deflateSync(raw)),
+    chunk('IEND', Buffer.alloc(0))
+  ])
+}
+
+test('agent replies render rich markdown, local images, and never load remote images', async ({
+  page,
+  electronApp
+}) => {
+  const directory = await mkdtemp(join(tmpdir(), 'cerebro-chat-markdown-'))
+  try {
+    await electronApp.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0].setSize(1250, 900)
+    )
+    const imagePath = join(directory, 'shot.png')
+    await writeFile(imagePath, solidPng(240, 120))
+    const project = await page.evaluate(
+      (directory) => window.cerebro.createProjectFromDirectory(directory),
+      directory
+    )
+    const workspaceId = project.workspaces[0].id
+    await page.evaluate(
+      (workspaceId) =>
+        window.cerebro.layoutCommand({
+          target: 'tab',
+          action: 'create',
+          workspaceId,
+          kind: 'chat'
+        }),
+      workspaceId
+    )
+    await page.reload()
+    await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
+    const chat = page.locator('[data-pane-kind="chat"]:visible')
+    const remoteRequests: string[] = []
+    await page.route(/example\.invalid/, (route) => {
+      remoteRequests.push(route.request().url())
+      return route.abort()
+    })
+    await chat.getByTestId('chat-model-picker').click()
+    await page
+      .getByTestId('model-picker')
+      .getByRole('button', { name: 'Codex', exact: true })
+      .click()
+    await page
+      .getByTestId('model-picker')
+      .getByRole('button', { name: /^Test Model.*Codex/ })
+      .click()
+    await chat.getByRole('textbox', { name: 'Message agent' }).fill(`markdown-rich ${imagePath}`)
+    await chat.getByRole('button', { name: 'Send message', exact: true }).click()
+    const transcript = chat.getByTestId('chat-transcript')
+    await expect(transcript.getByRole('heading', { name: 'Rich reply' })).toBeVisible()
+    await expect(transcript.getByRole('table')).toContainText('alpha')
+    await expect(transcript).toContainText('const answer: number = 42')
+    await expect(transcript.getByTestId('code-language')).toHaveText('TypeScript')
+    await transcript.getByTestId('code-language').hover()
+    await transcript.getByRole('button', { name: 'Copy code' }).click()
+    await expect(transcript.getByRole('button', { name: 'Copied' })).toBeVisible()
+    await expect(transcript.locator('svg').getByText('A', { exact: true })).toBeVisible()
+    await expect(transcript.getByRole('img', { name: 'local shot' })).toBeVisible()
+    await expect(transcript).toContainText('https://example.invalid/remote.png')
+    await expect(transcript.getByRole('img', { name: 'remote shot' })).toHaveCount(0)
+    await expect(chat.getByTestId('chat-view').getByRole('status')).toContainText('Ready')
+    await mkdir(chatEvidenceDir, { recursive: true })
+    await screenshotChatEvidence(page, 'markdown-rich.png')
+    expect(remoteRequests).toEqual([])
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
