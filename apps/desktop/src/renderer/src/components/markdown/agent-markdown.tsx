@@ -7,7 +7,7 @@ import './markdown.css'
 const controls: ControlsConfig = {
   table: false,
   image: false,
-  code: { copy: true, download: false },
+  code: false,
   mermaid: { copy: true, download: false, fullscreen: true, panZoom: true }
 }
 
