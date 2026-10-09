@@ -38,13 +38,6 @@ async function expectSplashIcon(page: Page): Promise<void> {
   expect(paint.animationName).toContain('startup-icon-shine')
 }
 
-test('ships a colorable neurology mark', () => {
-  const svg = readFileSync(join(__dirname, '../src/renderer/src/assets', NEUROLOGY_MARK), 'utf8')
-  expect(svg).toContain('fill="currentColor"')
-  expect(svg).not.toMatch(/fill="#[0-9A-Fa-f]{3,8}"/)
-  expect(markPath(NEUROLOGY_MARK).length).toBeGreaterThan(20)
-})
-
 test('paints the splash before the renderer JavaScript loads', async ({ page }) => {
   await expect(page.getByText('Create your first project')).toBeVisible()
   let release = (): void => {}

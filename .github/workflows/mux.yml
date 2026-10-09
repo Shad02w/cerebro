@@ -31,3 +31,7 @@ jobs:
       - run: pnpm --filter @cerebro/mux build
       - run: pnpm --filter desktop build
       - run: pnpm --filter @cerebro/mux test
+        if: runner.os != 'Windows'
+      # agent tests spawn a shebang fixture, which Windows cannot execute
+      - run: pnpm --filter @cerebro/mux test:core
+        if: runner.os == 'Windows'

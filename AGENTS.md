@@ -2,7 +2,7 @@
 
 ## Validation scope
 
-- Every task that changes code must run lint, formatting, and related test cases before completion.
+- Every task that changes code must run lint, formatting, and related test cases before completion. Run the lowest test level that proves the change (see [Testing pyramid](#testing-pyramid)).
 - **Check only files changed by the current task.** Pass explicit changed-file paths to linters and formatters, and run only test cases covering those files. Do not run repository-wide checks or include unrelated files or pre-existing changes.
 - **Do not run tests when the task makes no code changes**, including documentation-only edits and commit/push-only requests. Existing uncommitted code changes do not make a commit/push-only request a code-change task.
 
@@ -12,6 +12,16 @@
 - Review each finding against the source. Fix issues introduced by the task and report remaining findings; Electron IPC and shared query-cache helpers can produce false positives. Do not suppress rules solely to clear the report.
 - `pnpm react:doctor:full` audits all of `apps/desktop/src/renderer`. Run it only when a full React audit is requested. React Doctor supplements the scoped lint, formatting, and Electron tests above.
 - The pinned CLI runs with telemetry/scoring and dependency supply-chain requests disabled. See [React Doctor workflow and baseline](docs/react-doctor.md).
+
+## Testing pyramid
+
+Tests come in three levels. Put each test at the lowest level that can prove the behavior. Commands, the audit of existing tests, and the migration backlog are in [docs/testing-strategy.md](docs/testing-strategy.md).
+
+- **Unit** (`node:test` via `tsx`, `nr test:unit`): pure logic with no DOM, process, or filesystem beyond temp files — parsers, reducers, key encoders, state transitions.
+- **Integration** (Vitest + jsdom for the renderer, `nr --filter desktop test`; `node:test` for services against temp dirs): component, hook, or service behavior with mocked data or IPC (`window.cerebro` stubbed). There is **no layout engine**, so assert DOM and state — for example "is this element rendered" in a virtualized list — not on-screen visibility. Put them in `apps/desktop/tests/integration/`; Playwright specs stay in `apps/desktop/e2e/`.
+- **End-to-end** (Playwright against the real Electron app): only whole user flows with little mocking and real visible checks — for example scrolling a virtualized list until the element is actually visible. Never assert pixels; use screenshots for layout.
+
+A Playwright test that mocks data and checks DOM state is just a slow integration test; write it in Vitest. A new feature needs only a few e2e tests (roughly two is a guide, not a limit) for its main user flow; cover everything else with unit or integration tests. If a bug is only reproducible with real layout, a real PTY, or real main-process wiring, that is when to add e2e.
 
 ## Desktop app (`apps/desktop`)
 
@@ -85,7 +95,7 @@ This applies to form submit controls, not to actions that are structurally unava
 
 ### Verify UI with Playwright against Electron
 
-When changing desktop UI, layout, styling, routing, client state, or rendered data:
+When changing desktop UI, layout, styling, routing, client state, or rendered data, first cover logic and component state with unit or integration tests (see [Testing pyramid](#testing-pyramid)), then verify the visible result in Electron:
 
 - Verify in the **real Electron app** via Playwright. Tests launch this project's Electron binary (`electron .` against `out/`). It is **not** Chromium pointed at the Vite URL.
 - **Never run the full e2e suite locally.** Pass only the spec file(s) that cover the files you changed. The full suite runs on GitHub Actions for pull requests into `main` and for pushes to `main`.
@@ -98,7 +108,7 @@ pnpm --filter desktop test:e2e smoke.spec.ts
 pnpm --filter desktop test:e2e:repeat smoke.spec.ts
 ```
 
-A spec file is required locally. Omitting it (or passing only Playwright flags) exits 2 instead of running the full suite. `pnpm --filter … -- smoke.spec.ts` is fine: the wrapper drops a stray `--` so Playwright still treats the path as a file filter. The full suite runs on CI, or locally with `CEREBRO_E2E_ALL=1`.
+CI runs the specs as five parallel groups (`test:e2e:app|projects|terminal|chat|changes` in `apps/desktop/package.json`); add a new spec to one of them. A spec file is required locally. Omitting it (or passing only Playwright flags) exits 2 instead of running the full suite. `pnpm --filter … -- smoke.spec.ts` is fine: the wrapper drops a stray `--` so Playwright still treats the path as a file filter. The full suite runs on CI, or locally with `CEREBRO_E2E_ALL=1`.
 
 Pick specs by the flow you touched:
 
@@ -116,7 +126,7 @@ Pick specs by the flow you touched:
 If a change spans several flows, list those specs together (`settings.spec.ts smoke.spec.ts`). Do not add unrelated specs "just in case."
 
 - For small UI tweaks (hover, spacing, chrome, visual polish), you may run Electron Playwright e2e during the work to **verify** the change, but do **not** add or extend lasting e2e specs for those changes — they are slow and wasteful. Prefer screenshots plus scoped lint/format on touched files.
-- Add or extend tests under `apps/desktop/e2e/` for behavioral or flow changes (not small UI chrome polish). Use the `electronApp` / `page` fixtures from `e2e/fixtures.ts` — they isolate `CEREBRO_HOME` and attach to the first `BrowserWindow`.
+- Add or extend tests under `apps/desktop/e2e/` only for whole-flow changes that need the real app (not small UI chrome polish, and not state or rendering behavior that Vitest can cover); keep the count small per feature (roughly two is a guide, not a limit). Use the `electronApp` / `page` fixtures from `e2e/fixtures.ts` — they isolate `CEREBRO_HOME` and attach to the first `BrowserWindow`.
 - **E2E tests cover user flows, not pixel-perfect UI.** Assert what users can do and see (visible, clickable, correct text and state), not exact pixel positions, sizes, or bounding-box comparisons — those flake across OS and font rendering and break on every visual fix. Check visual layout with screenshots instead.
 - Electron e2e is **headless** by default (no window). To watch a run: `HEADED=1 pnpm --filter desktop test:e2e:repeat <spec>.spec.ts`.
 - Do **not** open the Vite renderer URL in Chrome, Cursor browser tools, or any other web browser. That skips main process, preload, `contextBridge`, native chrome, and window lifecycle.
