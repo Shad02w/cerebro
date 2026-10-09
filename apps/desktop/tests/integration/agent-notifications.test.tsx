@@ -12,7 +12,8 @@ const blocked: AppNotification = {
   id: 'agent:s1',
   kind: 'blocked',
   title: 'cerebro / notifications',
-  body: 'Cerebro needs you: git push',
+  body: 'Cerebro needs your approval · Bash\ngit push',
+  command: 'git push',
   target: { workspaceId: 2, sessionId: 's1', paneId: 7 },
   request: { id: 'p1', kind: 'approval' },
   actions: [
@@ -55,7 +56,8 @@ describe('AgentNotifications', () => {
     render(<AgentNotifications />)
     show(blocked)
     expect(screen.getByText('cerebro / notifications')).toBeVisible()
-    expect(screen.getByText('Cerebro needs you: git push')).toBeVisible()
+    expect(screen.getByText('Cerebro needs your approval · Bash')).toBeVisible()
+    expect(screen.getByTestId('agent-notification-command')).toHaveTextContent('git push')
     await userEvent.click(screen.getByRole('button', { name: 'Allow' }))
     expect(respond).toHaveBeenCalledWith({
       type: 'action',

@@ -31,6 +31,11 @@ const ALLOW_DENY: NotificationAction[] = [
   { id: 'deny', label: 'Deny' }
 ]
 
+const approvalLabel = (title: string): string =>
+  title.replace(/\s+requests permission$/i, '') || title
+const clip = (text: string, max: number): string =>
+  text.length > max ? `${text.slice(0, max - 1)}…` : text
+
 export function buildNotification(
   event: AgentStatusEvent,
   label: WorkspaceLabel | null
@@ -42,7 +47,9 @@ export function buildNotification(
     : event.sessionTitle
   const body =
     event.kind === 'blocked'
-      ? `Cerebro needs you: ${event.summary}`
+      ? event.command
+        ? `Cerebro needs your approval · ${approvalLabel(event.summary)}\n${clip(event.command, 160)}`
+        : `Cerebro needs you: ${event.summary}`
       : event.kind === 'finished'
         ? `Done: ${event.summary}`
         : `Stopped: ${event.summary}`
@@ -51,6 +58,7 @@ export function buildNotification(
     kind: event.kind,
     title: where,
     body,
+    ...(event.command ? { command: event.command } : {}),
     target: {
       workspaceId: event.workspaceId,
       sessionId: event.sessionId,

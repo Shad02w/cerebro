@@ -8,6 +8,8 @@ export type AgentStatusEvent = {
   sessionTitle: string
   /** Short human text: the request, the last reply, or the error. */
   summary: string
+  /** The exact command or action awaiting approval, shown as code. */
+  command?: string
   /** Set for `blocked`. */
   request?: { id: string; kind: 'approval' | 'question' }
   at: number
@@ -27,6 +29,8 @@ export type AppNotification = {
   kind: AgentStatusEvent['kind']
   title: string
   body: string
+  /** Shown in a code block on in-app cards. */
+  command?: string
   target: NotificationTarget
   request?: AgentStatusEvent['request']
   actions?: NotificationAction[]

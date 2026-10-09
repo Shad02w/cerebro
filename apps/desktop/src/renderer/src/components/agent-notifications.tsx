@@ -67,7 +67,9 @@ export function AgentNotifications(): React.JSX.Element | null {
               }}
             >
               <div className="truncate text-sm font-medium">{n.title}</div>
-              <div className="line-clamp-3 text-sm text-muted-foreground">{n.body}</div>
+              <div className="line-clamp-3 text-sm text-muted-foreground">
+                {n.command ? n.body.split('\n')[0] : n.body}
+              </div>
             </button>
             <button
               type="button"
@@ -78,6 +80,14 @@ export function AgentNotifications(): React.JSX.Element | null {
               <X className="size-4" aria-hidden="true" />
             </button>
           </div>
+          {n.command ? (
+            <pre
+              data-testid="agent-notification-command"
+              className="max-h-32 overflow-auto rounded-md border border-border bg-muted px-3 py-2 font-mono text-xs break-all whitespace-pre-wrap"
+            >
+              <code>{n.command}</code>
+            </pre>
+          ) : null}
           {n.actions ? (
             <div className="flex justify-end gap-2">
               {n.actions.map((action) => (

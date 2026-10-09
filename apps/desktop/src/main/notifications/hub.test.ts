@@ -75,10 +75,16 @@ test('falls back to in-app when the system channel is unavailable', async () => 
 test('blocked approvals carry the project title, a "needs you" body and allow/deny actions', async () => {
   const s = setup({ focused: false })
   const n = await s.hub.handle(
-    event({ kind: 'blocked', summary: 'git push', request: { id: 'p1', kind: 'approval' } })
+    event({
+      kind: 'blocked',
+      summary: 'Bash',
+      command: 'git push',
+      request: { id: 'p1', kind: 'approval' }
+    })
   )
   assert.equal(n?.title, 'cerebro / notifications')
-  assert.equal(n?.body, 'Cerebro needs you: git push')
+  assert.equal(n?.body, 'Cerebro needs your approval · Bash\ngit push')
+  assert.equal(n?.command, 'git push')
   assert.deepEqual(
     n?.actions?.map((a) => a.id),
     ['allow', 'deny']
@@ -114,4 +120,20 @@ test('titles omit an empty or duplicate workspace label', () => {
   assert.equal(buildNotification(e, { project: 'cerebro', workspace: '' }).title, 'cerebro')
   assert.equal(buildNotification(e, { project: 'cerebro', workspace: 'cerebro' }).title, 'cerebro')
   assert.equal(buildNotification(e, null).title, 'Fix login')
+})
+
+test('long commands are clipped in the banner but kept whole for the card', async () => {
+  const s = setup({ focused: false })
+  const command = 'x'.repeat(400)
+  const n = await s.hub.handle(
+    event({
+      kind: 'blocked',
+      summary: 'Codex requests permission',
+      command,
+      request: { id: 'p1', kind: 'approval' }
+    })
+  )
+  assert.equal(n?.body.split('\n')[0], 'Cerebro needs your approval · Codex')
+  assert.equal(n?.body.split('\n')[1].length, 160)
+  assert.equal(n?.command, command)
 })

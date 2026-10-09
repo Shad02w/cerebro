@@ -315,7 +315,8 @@ export class AgentSessions {
     session: AgentSession,
     kind: AgentStatusEvent['kind'],
     summary: string,
-    request?: AgentStatusEvent['request']
+    request?: AgentStatusEvent['request'],
+    command?: string
   ): void {
     try {
       this.onStatus({
@@ -326,6 +327,7 @@ export class AgentSessions {
         sessionTitle: session.title,
         summary,
         ...(request ? { request } : {}),
+        ...(command ? { command } : {}),
         at: Date.now()
       })
     } catch {
@@ -883,10 +885,14 @@ export class AgentSessions {
         })
         session.status = 'waiting'
         this.changed(session, true)
-        this.notify(session, 'blocked', request.text || request.title, {
-          id: request.id,
-          kind: request.kind
-        })
+        const approval = request.kind === 'approval' && request.text.trim()
+        this.notify(
+          session,
+          'blocked',
+          approval ? request.title : request.text || request.title,
+          { id: request.id, kind: request.kind },
+          approval ? request.text.trim().slice(0, 1000) : undefined
+        )
       })
     }
     const declinePending = (): void => {

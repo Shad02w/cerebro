@@ -84,7 +84,8 @@ test('a blocked agent in a background tab raises a card that opens its pane', as
   try {
     await openAgentThenBackground(page, directory)
     const card = page.getByTestId('agent-notification')
-    await expect(card).toContainText('Cerebro needs you: git status --short')
+    await expect(card).toContainText('Cerebro needs your approval')
+    await expect(card.getByTestId('agent-notification-command')).toHaveText('git status --short')
     await page.screenshot({ path: join(evidenceDir, 'blocked-card.png') })
     await card.getByText('Cerebro needs you', { exact: false }).click()
     await expect(page.getByTestId('chat-view')).toBeVisible()
