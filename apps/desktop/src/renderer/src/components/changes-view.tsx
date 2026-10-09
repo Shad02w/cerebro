@@ -30,7 +30,12 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { ChangesFileList } from '@/components/changes-file-list'
 import { ChangesImagePreview } from '@/components/changes-image-preview'
 import { changeItemId } from '@/lib/changes'
-import { changesOptions, changesManifestOptions, type LoadedChange } from '@/lib/changes-query'
+import {
+  changesOptions,
+  changesManifestOptions,
+  changesProgressOptions,
+  type LoadedChange
+} from '@/lib/changes-query'
 import { changesWorkerPool, changesHighlighterOptions } from '@/lib/changes-highlighter'
 import { queryClient } from '@/lib/query-client'
 import { cn } from '@/lib/utils'
@@ -244,8 +249,15 @@ export function ChangesView({
     }
   }, [active, workspaceId, repositoryId])
   const manifest = useQuery(changesManifestOptions(workspaceId, repositoryId))
-  const changes = query.data?.listed ?? manifest.data
-  const loading = !query.data && query.isPending
+  // Until a refresh completes, show the diffs that have finished loading so far.
+  const progress = useQuery({
+    ...changesProgressOptions(workspaceId, repositoryId),
+    notifyOnChangeProps: active && !query.data ? undefined : []
+  })
+  const snapshot = query.data ?? progress.data
+  const changes = snapshot?.listed ?? manifest.data
+  const items = snapshot?.items ?? []
+  const loading = !snapshot && query.isPending
   const [selection, setSelectedId] = useState<string | null>(savedState?.selectedId ?? null)
   const entries = useMemo(
     () =>
@@ -279,8 +291,6 @@ export function ChangesView({
     }, 200)
     return () => clearTimeout(timer)
   }, [workspaceId, paneId, selectedId, filesOpen, filesWidth])
-  const items = query.data?.items ?? []
-
   const fileCount = entries.length
 
   const handleSelect = (itemId: string): void => {
@@ -329,7 +339,7 @@ export function ChangesView({
             <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
               Loading changes…
             </div>
-          ) : error && !query.data ? (
+          ) : error && !snapshot ? (
             <div className="flex h-full items-center justify-center px-6 text-center text-xs text-destructive">
               {error}
             </div>
@@ -380,7 +390,7 @@ export function ChangesView({
               <span className="min-w-0 flex-1 truncate px-1 text-[11px] font-medium text-muted-foreground">
                 Files
               </span>
-              {error && query.data && (
+              {error && snapshot && (
                 <span
                   role="status"
                   className="max-w-48 truncate text-xs text-destructive"

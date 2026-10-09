@@ -12,8 +12,15 @@ export type LoadedChange = {
   fileDiff: FileDiffMetadata | null
 }
 
-type ChangesSnapshot = { listed: WorkspaceChanges; items: LoadedChange[] }
+export type ChangesSnapshot = { listed: WorkspaceChanges; items: LoadedChange[] }
 const LOAD_CONCURRENCY = 4
+// Closing and reopening a Changes pane should reuse its last review instead of reloading.
+const CHANGES_GC_MS = 30 * 60_000
+const PROGRESS_FLUSH_MS = 50
+
+// Progress lives outside the refreshing query, so cancelling that query (hiding or closing
+// the pane) does not revert the diffs that already finished loading.
+queryClient.setQueryDefaults(['changes-progress'], { gcTime: CHANGES_GC_MS })
 
 function sameContents(left: FileDiffContents, right: FileDiffContents): boolean {
   return (
@@ -38,7 +45,24 @@ export function changesManifestOptions(
   return queryOptions<WorkspaceChanges>({
     queryKey: ['changes-files', workspaceId, repositoryId ?? null] as const,
     queryFn: () => window.cerebro.listWorkspaceChanges(workspaceId, repositoryId),
-    enabled: false
+    enabled: false,
+    gcTime: CHANGES_GC_MS
+  })
+}
+
+/** Files loaded so far by the latest refresh, in list order; shown before any refresh finishes. */
+export function changesProgressOptions(
+  workspaceId: number,
+  repositoryId?: number | null
+): UseQueryOptions<ChangesSnapshot> {
+  return queryOptions<ChangesSnapshot>({
+    queryKey: ['changes-progress', workspaceId, repositoryId ?? null] as const,
+    queryFn: () => {
+      throw new Error('Changes progress is written by the changes refresh.')
+    },
+    enabled: false,
+    gcTime: CHANGES_GC_MS,
+    structuralSharing: false
   })
 }
 
@@ -50,11 +74,13 @@ export function changesOptions(
   return queryOptions<ChangesSnapshot>({
     queryKey,
     staleTime: 0,
-    gcTime: 5 * 60_000,
+    gcTime: CHANGES_GC_MS,
     // Reuse files explicitly below instead of walking every parsed line on the UI thread.
     structuralSharing: false,
     queryFn: async ({ signal }): Promise<ChangesSnapshot> => {
       const previous = queryClient.getQueryData<ChangesSnapshot>(queryKey)
+      const progressKey = changesProgressOptions(workspaceId, repositoryId).queryKey
+      const progress = queryClient.getQueryData<ChangesSnapshot>(progressKey)
       const fetched = await window.cerebro.listWorkspaceChanges(workspaceId, repositoryId)
       signal.throwIfAborted()
       // The first visit can show filenames before any file contents have finished loading.
@@ -65,8 +91,21 @@ export function changesOptions(
           fetched
         ) ?? fetched
       const entries = listed.groups.flatMap((group) => group.files.map((file) => ({ group, file })))
+      // Reuse finished work from the last complete refresh and from an interrupted one.
       const byId = new Map(previous?.items.map((item) => [item.id, item]))
+      for (const item of progress?.items ?? []) byId.set(item.id, item)
       const items = new Array<LoadedChange>(entries.length)
+      let flushTimer: ReturnType<typeof setTimeout> | undefined
+      const flushProgress = (): void => {
+        flushTimer = undefined
+        const loaded = items.filter(Boolean)
+        if (loaded.length > 0)
+          queryClient.setQueryData<ChangesSnapshot>(progressKey, { listed, items: loaded })
+      }
+      const loadedItem = (index: number, item: LoadedChange): void => {
+        items[index] = item
+        flushTimer ??= setTimeout(flushProgress, PROGRESS_FLUSH_MS)
+      }
       let parser: ReturnType<typeof createChangesDiffWorker> | undefined
       let nextIndex = 0
       let failed = false
@@ -88,7 +127,7 @@ export function changesOptions(
               listed.groups.length > 1 ? `${group.repositoryName}/${file.path}` : file.path
             const cached = byId.get(id)
             if (cached?.displayName === displayName && sameContents(cached.diff, diff)) {
-              items[index] = cached
+              loadedItem(index, cached)
               continue
             }
             let fileDiff: FileDiffMetadata | null = null
@@ -99,7 +138,7 @@ export function changesOptions(
                 diff.newContents == null ? null : { name: displayName, contents: diff.newContents }
               )
             }
-            items[index] = { id, displayName, diff, fileDiff }
+            loadedItem(index, { id, displayName, diff, fileDiff })
           }
         } catch (error) {
           failed = true
@@ -111,6 +150,9 @@ export function changesOptions(
           Array.from({ length: Math.min(LOAD_CONCURRENCY, entries.length) }, consume)
         )
         signal.throwIfAborted()
+        clearTimeout(flushTimer)
+        flushTimer = undefined
+        queryClient.setQueryData<ChangesSnapshot>(progressKey, { listed, items })
         if (
           previous &&
           items.length === previous.items.length &&
@@ -121,6 +163,11 @@ export function changesOptions(
         }
         return { listed, items }
       } finally {
+        // Keep what finished before a cancellation or failure for the next refresh.
+        if (flushTimer !== undefined) {
+          clearTimeout(flushTimer)
+          flushProgress()
+        }
         parser?.dispose()
       }
     }
