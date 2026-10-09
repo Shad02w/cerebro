@@ -775,7 +775,6 @@ export function TerminalStack({
                           workspaceId={workspaceId}
                           paneId={pane.id}
                           visible={shown}
-                          active={active}
                           agentBackground={agentBackground}
                           composerVim={composerVim}
                           composerVimMode={composerVimMode}

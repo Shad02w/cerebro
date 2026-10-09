@@ -915,7 +915,7 @@ test('image attachments use atomic chips, reach the harness, render in the trans
     await chat.getByTestId('chat-model-picker').click()
     await page
       .getByTestId('model-picker')
-      .getByRole('button', { name: /^Second Model.*Codex/ })
+      .getByRole('option', { name: /^Second Model.*Codex/ })
       .click()
     await paste('refused.png')
     await expect(chat.getByRole('alert')).toContainText('Second Model does not accept images')
@@ -1505,7 +1505,7 @@ test('agent replies render rich markdown, local images, and never load remote im
       .click()
     await page
       .getByTestId('model-picker')
-      .getByRole('button', { name: /^Test Model.*Codex/ })
+      .getByRole('option', { name: /^Test Model.*Codex/ })
       .click()
     await chat.getByRole('textbox', { name: 'Message agent' }).fill(`markdown-rich ${imagePath}`)
     await chat.getByRole('button', { name: 'Send message', exact: true }).click()

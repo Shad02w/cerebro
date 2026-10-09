@@ -37,7 +37,6 @@ export function ChatView({
   workspaceId,
   paneId,
   visible = true,
-  active = false,
   agentBackground = DEFAULT_AGENT_BACKGROUND,
   composerVim = false,
   composerVimMode = 'insert',
@@ -48,7 +47,6 @@ export function ChatView({
   workspaceId: number
   paneId: number
   visible?: boolean
-  active?: boolean
   agentBackground?: AgentBackground
   composerVim?: boolean
   composerVimMode?: ComposerVimMode
@@ -132,9 +130,6 @@ export function ChatView({
     canAttach: imageRejection,
     onError: setError
   })
-  useEffect(() => {
-    if (active && visible && !loading) editorRef.current?.focus()
-  }, [active, visible, loading])
   const stick = useRef(true)
   const busy = session?.status === 'running' || session?.status === 'waiting'
   const { mutateAsync } = useMutation({
