@@ -1,6 +1,9 @@
-/* Flatten Streamdown's code block: one quiet surface, no header, and a copy button on hover. */
+/*
+ * Flatten Streamdown's code block into one quiet surface. `.chat-code` (MarkdownCode) owns the
+ * background and the language header; the copy button shows on hover at the top right of the code.
+ */
 .chat-markdown [data-streamdown='code-block'] {
-  margin: 0.75rem 0;
+  margin: 0;
   gap: 0;
   padding: 0;
   border: 0;
@@ -14,8 +17,8 @@
 .chat-markdown [data-streamdown='code-block-body'] {
   border: 0;
   border-radius: var(--radius-lg);
-  background: color-mix(in oklab, var(--muted) 60%, transparent);
-  padding: 0.75rem;
+  background: transparent;
+  padding: 0 0.75rem 0.75rem;
   font-size: 0.75rem;
   line-height: 1.25rem;
 }
@@ -32,7 +35,7 @@
   transition: opacity 120ms;
 }
 
-.chat-markdown [data-streamdown='code-block']:hover [data-streamdown='code-block-actions'],
-.chat-markdown [data-streamdown='code-block']:focus-within [data-streamdown='code-block-actions'] {
+.chat-markdown .chat-code:hover [data-streamdown='code-block-actions'],
+.chat-markdown .chat-code:focus-within [data-streamdown='code-block-actions'] {
   opacity: 1;
 }

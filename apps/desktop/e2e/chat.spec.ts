@@ -1501,6 +1501,7 @@ test('agent replies render rich markdown, local images, and never load remote im
     await expect(transcript.getByRole('heading', { name: 'Rich reply' })).toBeVisible()
     await expect(transcript.getByRole('table')).toContainText('alpha')
     await expect(transcript).toContainText('const answer: number = 42')
+    await expect(transcript.getByTestId('code-language')).toHaveText('TypeScript')
     await expect(transcript.locator('svg').getByText('A', { exact: true })).toBeVisible()
     await expect(transcript.getByRole('img', { name: 'local shot' })).toBeVisible()
     await expect(transcript).toContainText('https://example.invalid/remote.png')
