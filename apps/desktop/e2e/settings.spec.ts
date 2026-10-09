@@ -152,7 +152,7 @@ test('CLI settings installs a working bundled command, repairs, and removes clea
   await page.getByRole('button', { name: 'Copy command', exact: true }).click()
   await expect(page.getByTestId('cli-success-toast')).toContainText('Command copied to clipboard.')
   // No user-installed Node or inherited data directory is needed by the launcher.
-  const env = { PATH: '/usr/bin:/bin', HOME: path.dirname(initial.profile) }
+  const env = { PATH: '/usr/bin:/bin', HOME: path.dirname(initial.profile), TMPDIR: tmpdir() }
   expect((await runFile(initial.path, ['--version'], { env })).stdout.trim()).toBe(initial.version)
   expect((await runFile(initial.path, ['--help'], { env })).stdout).toContain('Manage projects')
   expect(JSON.parse((await runFile(initial.path, ['project', 'list'], { env })).stdout)).toEqual({

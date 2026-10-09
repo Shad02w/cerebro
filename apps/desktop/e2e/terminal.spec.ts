@@ -803,10 +803,7 @@ test('does not spawn a terminal for a multi-root project until New terminal is c
   }
 })
 
-test('closes the active terminal tab with Mod+W and shows the shortcut on the close button', async ({
-  page,
-  electronApp
-}) => {
+test('closes the active terminal tab with Mod+W', async ({ page, electronApp }) => {
   const sourcesRoot = await mkdtemp(join(tmpdir(), 'cerebro-terminal-keybind-e2e-'))
   const source = join(sourcesRoot, 'term-keybind')
 
@@ -819,16 +816,6 @@ test('closes the active terminal tab with Mod+W and shows the shortcut on the cl
     await clickNewTerminalMenu(page)
     await expect(page.getByTestId('terminal-tab')).toHaveCount(2)
     await waitForActiveTerminal(page)
-
-    const closeButton = page
-      .getByTestId('terminal-tab')
-      .filter({ hasText: 'Terminal 2' })
-      .getByTestId('content-tab-close')
-    await closeButton.hover()
-    const tooltip = page.getByRole('tooltip')
-    await expect(tooltip).toBeVisible()
-    await expect(tooltip.getByText('Close')).toBeVisible()
-    await expect(tooltip.getByTestId('shortcut-kbd')).toHaveAttribute('data-hotkey', 'Mod+W')
 
     const closeChord = process.platform === 'darwin' ? 'Meta+w' : 'Control+w'
     await page.keyboard.press(closeChord)

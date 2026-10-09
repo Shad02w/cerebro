@@ -1,8 +1,7 @@
 import { memo, useState } from 'react'
-import Markdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
 import type { AgentAnswer, ChatItem as Item } from '@cerebro/core'
 import { Button } from '@/components/ui/button'
+import { AgentMarkdown } from '@/components/markdown/agent-markdown'
 import { ChatDiff } from './chat-diff'
 import { ChatUserMessage } from './chat-user-message'
 
@@ -93,12 +92,14 @@ export const ChatItem = memo(function ChatItem({
   item,
   onReply,
   workspaceId,
-  sessionId
+  sessionId,
+  streaming = false
 }: {
   item: Item
   onReply: (id: string, answer: AgentAnswer) => void
   workspaceId: number
   sessionId: string
+  streaming?: boolean
 }): React.JSX.Element {
   if (item.kind === 'request') return <RequestCard item={item} onReply={onReply} />
   if (item.kind === 'user')
@@ -110,48 +111,7 @@ export const ChatItem = memo(function ChatItem({
         sessionId={sessionId}
       />
     )
-  if (item.kind === 'text')
-    return (
-      <div className="chat-markdown text-sm leading-7 break-words">
-        <Markdown
-          remarkPlugins={[remarkGfm]}
-          components={{
-            a: ({ href, children }) => (
-              <a
-                href={href}
-                onClick={(event) => {
-                  event.preventDefault()
-                  if (href && /^https?:\/\//.test(href)) void window.cerebro.openExternal(href)
-                }}
-                className="underline underline-offset-2"
-              >
-                {children}
-              </a>
-            ),
-            img: ({ alt }) => (
-              <span className="text-muted-foreground">[Image: {alt ?? 'image'}]</span>
-            ),
-            pre: ({ children }) => (
-              <pre className="my-3 overflow-x-auto rounded-lg bg-muted/60 p-3 text-xs leading-5">
-                {children}
-              </pre>
-            ),
-            p: ({ children }) => <p className="my-2">{children}</p>,
-            ul: ({ children }) => <ul className="my-2 list-disc pl-5">{children}</ul>,
-            ol: ({ children }) => <ol className="my-2 list-decimal pl-5">{children}</ol>,
-            table: ({ children }) => (
-              <div className="overflow-auto">
-                <table className="my-2 border-collapse text-xs">{children}</table>
-              </div>
-            ),
-            td: ({ children }) => <td className="border px-2 py-1">{children}</td>,
-            th: ({ children }) => <th className="border px-2 py-1 text-left">{children}</th>
-          }}
-        >
-          {item.text}
-        </Markdown>
-      </div>
-    )
+  if (item.kind === 'text') return <AgentMarkdown text={item.text} streaming={streaming} />
   if (item.kind === 'plan')
     return (
       <section className="rounded-xl border p-3">

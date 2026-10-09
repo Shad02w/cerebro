@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron'
 import { IPC } from '../shared/ipc'
+import { readChatImage } from './chat-image'
 import { muxCall } from './mux'
 
 export function registerLayoutIpc(): void {
@@ -28,6 +29,10 @@ export function registerLayoutIpc(): void {
     (_event, workspaceId: number, sessionId: string, attachmentId: string) =>
       muxCall('chat.attachment', { workspaceId, sessionId, attachmentId })
   )
+  ipcMain.handle(IPC.chat.image, (_event, source: unknown) => {
+    if (typeof source !== 'string') throw new Error('Invalid image source.')
+    return readChatImage(source)
+  })
   ipcMain.handle(IPC.layout.get, () => muxCall('layout.get'))
   ipcMain.handle(IPC.layout.command, (_event, command: unknown) =>
     muxCall('layout.command', command)
