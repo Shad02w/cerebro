@@ -23,7 +23,11 @@ export function createMacSystemChannel(
   const live = new Map<string, Notification>()
   return {
     name: 'system',
-    isAvailable: () => process.platform === 'darwin' && Notification.isSupported(),
+    // Playwright cannot observe OS notifications, so e2e runs exercise the in-app path.
+    isAvailable: () =>
+      process.platform === 'darwin' &&
+      process.env.NODE_ENV !== 'test' &&
+      Notification.isSupported(),
     send: (notification) => {
       const native = new Notification({
         title: notification.title,

@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { AgentStatusEvent, AppNotification } from '@cerebro/core'
-import { NotificationHub, type NotificationChannel } from './hub'
+import { NotificationHub, buildNotification, type NotificationChannel } from './hub'
 
 function channel(
   name: string,
@@ -107,4 +107,11 @@ test('responding dismisses the notification and forwards the response', async ()
   await s.hub.respond({ type: 'open', notification: n })
   assert.deepEqual(s.system.dismissed, ['agent:s1'])
   assert.equal(s.responses.length, 1)
+})
+
+test('titles omit an empty or duplicate workspace label', () => {
+  const e = event()
+  assert.equal(buildNotification(e, { project: 'cerebro', workspace: '' }).title, 'cerebro')
+  assert.equal(buildNotification(e, { project: 'cerebro', workspace: 'cerebro' }).title, 'cerebro')
+  assert.equal(buildNotification(e, null).title, 'Fix login')
 })

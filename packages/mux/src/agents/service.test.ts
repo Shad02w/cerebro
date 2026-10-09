@@ -661,6 +661,33 @@ test('a queued message auto-fires as the next turn once the running turn finishe
     rmSync(f.dir, { recursive: true, force: true })
   }
 })
+test('finished is not announced between turns while a queued message continues', async () => {
+  const events: AgentStatusEvent[] = []
+  const releases: Array<() => void> = []
+  const f = fixture(async () => {
+    await new Promise<void>((resolve) => releases.push(resolve))
+  })
+  const service = new AgentSessions(
+    f.dir,
+    () => {},
+    f.drivers,
+    (e) => events.push(e)
+  )
+  try {
+    await service.command(scope, send)
+    await service.command(scope, { ...send, commandId: 'second', text: 'follow-up' })
+    releases[0]()
+    await waitFor(() => releases.length === 2)
+    assert.deepEqual(events, [])
+    releases[1]()
+    await waitFor(() => events.length === 1)
+    assert.equal(events[0].kind, 'finished')
+  } finally {
+    releases.forEach((release) => release())
+    await service.shutdown()
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
 test('stopWorkspace converges through an auto-flushed queue instead of leaving an orphaned run', async () => {
   const seen: string[] = []
   const f = fixture(async (context) => {

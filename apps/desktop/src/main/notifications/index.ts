@@ -1,3 +1,4 @@
+import { basename } from 'node:path'
 import { app, BrowserWindow, ipcMain } from 'electron'
 import type { AppNotification, NotificationResponse } from '@cerebro/core'
 import { IPC } from '../../shared/ipc'
@@ -5,6 +6,7 @@ import { focusWorkspaceInUi, getCachedLayout, muxCall, onAgentStatus } from '../
 import { listProjects, setActiveWorkspace } from '../projects'
 import { createInAppChannel, createMacSystemChannel } from './channels'
 import { NotificationHub, type WorkspaceLabel } from './hub'
+import { createResponseHandler } from './responses'
 
 function appWindow(): BrowserWindow | undefined {
   return BrowserWindow.getAllWindows().find((win) => !win.isDestroyed())
@@ -24,7 +26,10 @@ async function describeWorkspace(workspaceId: number): Promise<WorkspaceLabel | 
   for (const project of projects) {
     const workspace = project.workspaces.find((w) => w.id === workspaceId)
     if (workspace)
-      return { project: project.name, workspace: workspace.displayName ?? workspace.branch }
+      return {
+        project: project.name,
+        workspace: workspace.displayName || workspace.branch || basename(workspace.localPath)
+      }
   }
   return null
 }
@@ -38,37 +43,6 @@ async function isTargetVisible(target: AppNotification['target']): Promise<boole
   return tab?.activePaneId === target.paneId
 }
 
-async function focusTarget(target: AppNotification['target']): Promise<void> {
-  revealWindow()
-  if (target.paneId !== null) {
-    await muxCall('layout.command', {
-      target: 'pane',
-      action: 'focus',
-      workspaceId: target.workspaceId,
-      paneId: target.paneId
-    })
-  } else {
-    await setActiveWorkspace(target.workspaceId)
-    focusWorkspaceInUi(target.workspaceId)
-  }
-}
-
-async function handleResponse(response: NotificationResponse): Promise<void> {
-  const { target, request } = response.notification
-  if (response.type === 'action' && request && target.paneId !== null) {
-    await muxCall('chat.command', {
-      action: 'reply',
-      workspaceId: target.workspaceId,
-      paneId: target.paneId,
-      requestId: request.id,
-      allow: response.actionId === 'allow',
-      answers: {}
-    })
-    return
-  }
-  await focusTarget(target)
-}
-
 function isResponse(value: unknown): value is NotificationResponse {
   const v = value as NotificationResponse | undefined
   return (
@@ -77,6 +51,15 @@ function isResponse(value: unknown): value is NotificationResponse {
     typeof v.notification.target?.workspaceId === 'number'
   )
 }
+
+const handleResponse = createResponseHandler({
+  revealWindow,
+  muxCall,
+  setActiveWorkspace: async (workspaceId) => {
+    await setActiveWorkspace(workspaceId)
+  },
+  focusWorkspaceInUi
+})
 
 export function registerNotifications(): void {
   const hub: NotificationHub = new NotificationHub({

@@ -69,13 +69,13 @@ Rule of thumb: Playwright is only for whole user flows with real visible checks.
 
 ### Integration (real service/store or mocked IPC, no layout, no Electron)
 
-| Test                                                                                                                                                                                    | Where                              | Status                                                           |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- | ---------------------------------------------------------------- |
-| `AgentSessions` emits `blocked`, `finished`, `failed` with pane id, request id and summary; none on user stop                                                                           | `mux/src/agents/service.test.ts`   | Done                                                             |
-| Finished is not emitted when a queued message continues the turn                                                                                                                        | `service.test.ts`                  | To add                                                           |
-| Server publishes `agent.status` to subscribed peers only                                                                                                                                | `mux/src/server` test              | To add                                                           |
-| `handleResponse`: allow sends `chat.command reply` with `allow: true`; open sends `layout.command focus`; closed pane falls back to workspace select (mocked `muxCall`)                 | `main/notifications`               | To add                                                           |
-| `AgentNotifications` component with mocked `window.cerebro`: renders card, Allow/Deny call `respondToNotification`, blocked persists, finished auto-dismisses, dismiss event removes it | renderer, Vitest + Testing Library | To add once the Vitest setup from the test-pyramid session lands |
+| Test                                                                                                                                                                                    | Where                              | Status                                |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- | ------------------------------------- |
+| `AgentSessions` emits `blocked`, `finished`, `failed` with pane id, request id and summary; none on user stop                                                                           | `mux/src/agents/service.test.ts`   | Done                                  |
+| Finished is not emitted when a queued message continues the turn                                                                                                                        | `service.test.ts`                  | Done                                  |
+| Server publishes `agent.status` to subscribed peers only                                                                                                                                | `mux/src/server` test              | To add                                |
+| `handleResponse`: allow sends `chat.command reply` with `allow: true`; open sends `layout.command focus`; closed pane falls back to workspace select (mocked `muxCall`)                 | `main/notifications`               | Done (`responses.test.ts`)            |
+| `AgentNotifications` component with mocked `window.cerebro`: renders card, Allow/Deny call `respondToNotification`, blocked persists, finished auto-dismisses, dismiss event removes it | renderer, Vitest + Testing Library | Done (`agent-notifications.test.tsx`) |
 
 ### End-to-end (real Electron, real flow, visible checks)
 

@@ -35,7 +35,11 @@ export function buildNotification(
   event: AgentStatusEvent,
   label: WorkspaceLabel | null
 ): AppNotification {
-  const where = label ? `${label.project} / ${label.workspace}` : event.sessionTitle
+  const where = label
+    ? label.workspace && label.workspace !== label.project
+      ? `${label.project} / ${label.workspace}`
+      : label.project
+    : event.sessionTitle
   const body =
     event.kind === 'blocked'
       ? `Cerebro needs you: ${event.summary}`
