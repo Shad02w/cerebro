@@ -275,33 +275,31 @@
   flex: none;
   align-items: center;
   justify-content: center;
-  /* Same 2rem height as the row's buttons and flush with the shell's padding, mirroring the send
-     button on the right. The shell is rounded-2xl (1rem) with 0.5rem padding, so a concentric
-     inner radius is 0.5rem. */
-  width: 2rem;
-  height: 2rem;
-  margin-inline: 0 0.25rem;
-  border-radius: 0.5rem;
-  background: color-mix(in srgb, var(--vim-mode-color) 22%, transparent);
+  /* 14px like the context usage ring: a 2px ring in the mode color around a soft fill. */
+  width: 0.875rem;
+  height: 0.875rem;
+  border: 1.5px solid var(--vim-mode-color);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--vim-mode-color) 18%, transparent);
   color: var(--vim-mode-color);
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 0.8125rem;
+  font-size: 0.5625rem;
   font-weight: 700;
   line-height: 1;
   cursor: default;
   user-select: none;
 }
 
-.composer-vim-mode[data-mode='normal'] {
+[data-mode='normal'] > .composer-vim-mode {
   --vim-mode-color: oklch(0.65 0.16 250);
 }
 
-.composer-vim-mode[data-mode='visual'],
-.composer-vim-mode[data-mode='visual-line'] {
+[data-mode='visual'] > .composer-vim-mode,
+[data-mode='visual-line'] > .composer-vim-mode {
   --vim-mode-color: oklch(0.65 0.19 300);
 }
 
-.composer-vim-mode[data-mode='replace'] {
+[data-mode='replace'] > .composer-vim-mode {
   --vim-mode-color: oklch(0.65 0.2 25);
 }
 
