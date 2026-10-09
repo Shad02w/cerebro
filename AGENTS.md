@@ -62,6 +62,14 @@ The window is two regions: **sidebar** | **content area**. Use these names, not 
 
 ### UI conventions
 
+#### Styling
+
+Prefer Tailwind utility classes over custom CSS. Reach for a CSS file only when Tailwind cannot express the style (keyframes, complex selectors, third-party markup you cannot add classes to).
+
+- Override third-party component styles with Tailwind first: pass `className` where the component merges it, or style descendants from your own wrapper with variants such as `**:data-[slot=x]:border-0`, `[&_pre]:bg-transparent!`, or `[&>div:last-child]:border-0`.
+- Use arbitrary values (`bg-[oklch(0.085_0_0)]`, `shadow-[...]`) before adding a CSS variable or rule.
+- Merge conditional or inherited classes with `cn()` from `@/lib/utils` so later classes win.
+
 #### Selection highlights
 
 Do not use a left border, accent strip, or one-sided inset shadow to highlight selected or active items, especially on rounded rows or cards. Use a subtle background change and, if needed, a uniform outline around the whole item.
