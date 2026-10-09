@@ -21,7 +21,7 @@ Tests come in three levels. Put each test at the lowest level that can prove the
 - **Integration** (Vitest + jsdom for the renderer, `nr --filter desktop test`; `node:test` for services against temp dirs): component, hook, or service behavior with mocked data or IPC (`window.cerebro` stubbed). There is **no layout engine**, so assert DOM and state — for example "is this element rendered" in a virtualized list — not on-screen visibility. Put them in `apps/desktop/tests/integration/`; Playwright specs stay in `apps/desktop/e2e/`.
 - **End-to-end** (Playwright against the real Electron app): only whole user flows with little mocking and real visible checks — for example scrolling a virtualized list until the element is actually visible. Never assert pixels; use screenshots for layout.
 
-A Playwright test that mocks data and checks DOM state is just a slow integration test; write it in Vitest. A new feature gets at most 1-2 e2e tests; everything else is unit or integration. If a bug is only reproducible with real layout, a real PTY, or real main-process wiring, that is when to add e2e.
+A Playwright test that mocks data and checks DOM state is just a slow integration test; write it in Vitest. A new feature needs only a few e2e tests (roughly two is a guide, not a limit) for its main user flow; cover everything else with unit or integration tests. If a bug is only reproducible with real layout, a real PTY, or real main-process wiring, that is when to add e2e.
 
 ## Desktop app (`apps/desktop`)
 
@@ -118,7 +118,7 @@ Pick specs by the flow you touched:
 If a change spans several flows, list those specs together (`settings.spec.ts smoke.spec.ts`). Do not add unrelated specs "just in case."
 
 - For small UI tweaks (hover, spacing, chrome, visual polish), you may run Electron Playwright e2e during the work to **verify** the change, but do **not** add or extend lasting e2e specs for those changes — they are slow and wasteful. Prefer screenshots plus scoped lint/format on touched files.
-- Add or extend tests under `apps/desktop/e2e/` only for whole-flow changes that need the real app (not small UI chrome polish, and not state or rendering behavior that Vitest can cover); keep it to 1-2 cases per feature. Use the `electronApp` / `page` fixtures from `e2e/fixtures.ts` — they isolate `CEREBRO_HOME` and attach to the first `BrowserWindow`.
+- Add or extend tests under `apps/desktop/e2e/` only for whole-flow changes that need the real app (not small UI chrome polish, and not state or rendering behavior that Vitest can cover); keep the count small per feature (roughly two is a guide, not a limit). Use the `electronApp` / `page` fixtures from `e2e/fixtures.ts` — they isolate `CEREBRO_HOME` and attach to the first `BrowserWindow`.
 - **E2E tests cover user flows, not pixel-perfect UI.** Assert what users can do and see (visible, clickable, correct text and state), not exact pixel positions, sizes, or bounding-box comparisons — those flake across OS and font rendering and break on every visual fix. Check visual layout with screenshots instead.
 - Electron e2e is **headless** by default (no window). To watch a run: `HEADED=1 pnpm --filter desktop test:e2e:repeat <spec>.spec.ts`.
 - Do **not** open the Vite renderer URL in Chrome, Cursor browser tools, or any other web browser. That skips main process, preload, `contextBridge`, native chrome, and window lifecycle.
