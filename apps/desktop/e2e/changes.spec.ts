@@ -313,6 +313,49 @@ test('keeps the previous review and view state while refreshing after a tab swit
   }
 })
 
+test('reopens a closed Changes tab from its cached review', async ({ page, electronApp }) => {
+  const root = await mkdtemp(join(tmpdir(), 'cerebro-changes-reopen-'))
+  const repo = join(root, 'reopen-review')
+  try {
+    await initGitRepo(repo, 'main', 'reopen-review')
+    await writeFile(join(repo, 'README.md'), 'cached on reopen\n'.repeat(50))
+    await addDirectoryViaUi(page, electronApp, repo)
+    await selectDefaultWorkspace(page, 'reopen-review')
+    await observeChangesWorkers(page)
+    await gateDiffReads(page, electronApp)
+    await openChanges(page)
+    await expect(activeChanges(page).getByTestId('changes-diff')).toContainText('cached on reopen')
+    await expect(activeChanges(page).getByTestId('changes-refresh')).toHaveAttribute(
+      'aria-busy',
+      'false'
+    )
+    const parsed = await page.evaluate(() => (window as ProbeWindow).changesWorkerProbe.requests)
+
+    await page.keyboard.press(closeChord())
+    await expect(page.getByTestId('changes-tab')).toHaveCount(0)
+    await electronApp.evaluate(() => {
+      ;(globalThis as GateGlobal).changesDiffGate.hold = true
+    })
+    await openChanges(page)
+    const pane = activeChanges(page)
+    // The previous review shows while the reopened tab refreshes in the background.
+    await expect(pane.getByTestId('changes-refresh')).toHaveAttribute('aria-busy', 'true')
+    await expect(pane.getByTestId('changes-diff')).toContainText('cached on reopen')
+    await expect(pane.getByText('Loading changes…', { exact: true })).toHaveCount(0)
+    await electronApp.evaluate(() => {
+      const state = (globalThis as GateGlobal).changesDiffGate
+      state.hold = false
+      state.release.splice(0).forEach((release) => release())
+    })
+    await expect(pane.getByTestId('changes-refresh')).toHaveAttribute('aria-busy', 'false')
+    expect(await page.evaluate(() => (window as ProbeWindow).changesWorkerProbe.requests)).toBe(
+      parsed
+    )
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test('parses heavy changes in workers with bounded reads and cancels when hidden', async ({
   page,
   electronApp
@@ -354,6 +397,9 @@ test('parses heavy changes in workers with bounded reads and cancels when hidden
       'data-state',
       'collapsed'
     )
+    await expect
+      .poll(() => page.evaluate(() => (window as ProbeWindow).changesWorkerProbe.completed))
+      .toBeGreaterThan(0)
     await openAddTabMenu(page)
     await page.getByTestId('open-terminal-tab').click()
     await expect
@@ -363,9 +409,20 @@ test('parses heavy changes in workers with bounded reads and cancels when hidden
     expect(cancelled.completed).toBeLessThan(names.length)
     expect(cancelled.pending).toBe(0)
 
+    // Hold the next refresh so only diffs kept from the cancelled one can render.
+    await electronApp.evaluate(() => {
+      ;(globalThis as GateGlobal).changesDiffGate.hold = true
+    })
     await page.getByTestId('changes-tab').click()
     const pane = activeChanges(page)
-    await expect(pane.getByTestId('changes-diff')).toContainText('changed0', { timeout: 30_000 })
+    await expect(pane.getByTestId('changes-refresh')).toHaveAttribute('aria-busy', 'true')
+    await expect(pane.getByTestId('changes-diff')).toContainText('changed0')
+    await expect(pane.getByText('Loading changes…', { exact: true })).toHaveCount(0)
+    await electronApp.evaluate(() => {
+      const state = (globalThis as GateGlobal).changesDiffGate
+      state.hold = false
+      state.release.splice(0).forEach((release) => release())
+    })
     await expect(pane.getByTestId('changes-refresh')).toHaveAttribute('aria-busy', 'false')
     await expect
       .poll(() => page.evaluate(() => (window as ProbeWindow).changesWorkerProbe.highlightRequests))
