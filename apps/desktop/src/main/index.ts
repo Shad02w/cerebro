@@ -10,6 +10,7 @@ import { setAppMenu } from './menu'
 import { registerNativeCommandIpc } from './native-commands'
 import { ensureCerebroHome } from './paths'
 import { registerCliIpc } from './cli-install'
+import { registerNotifications } from './notifications'
 import { IPC } from '../shared/ipc'
 
 function createWindow(): void {
@@ -84,6 +85,7 @@ app.whenReady().then(() => {
   registerSettingsIpc()
   registerCliIpc()
   registerNativeCommandIpc()
+  registerNotifications()
   void getMux().catch((error) => console.error('[mux]', error.message))
 
   app.on('browser-window-created', (_, window) => {

@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import { IPC } from '../shared/ipc'
+import type { AppNotification } from '@cerebro/core'
 import type {
   CerebroApi,
   GitHubStatus,
@@ -26,6 +27,19 @@ const api: CerebroApi = {
   listWorkspaceRepositories: () => ipcRenderer.invoke(IPC.repositories.workspaces),
   getRepositoryPullRequests: (owner, repo) =>
     ipcRenderer.invoke(IPC.repositories.pullRequests, owner, repo),
+  onNotification: (listener) => {
+    const show = (_event: IpcRendererEvent, n: AppNotification): void =>
+      listener({ type: 'show', notification: n })
+    const dismiss = (_event: IpcRendererEvent, id: string): void =>
+      listener({ type: 'dismiss', id })
+    ipcRenderer.on(IPC.notify.show, show)
+    ipcRenderer.on(IPC.notify.dismiss, dismiss)
+    return () => {
+      ipcRenderer.removeListener(IPC.notify.show, show)
+      ipcRenderer.removeListener(IPC.notify.dismiss, dismiss)
+    }
+  },
+  respondToNotification: (response) => ipcRenderer.invoke(IPC.notify.respond, response),
   onWindowFocus: (listener) => {
     const handler = (_event: IpcRendererEvent, focused: boolean): void => listener(focused)
     ipcRenderer.on(IPC.native.focus, handler)

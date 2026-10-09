@@ -100,8 +100,11 @@ export async function startServer(): Promise<void> {
     for (const peer of peers)
       if (peer.authorized && peer.subscribed) peer.wire.send({ event, data })
   }
-  const agents = new AgentSessions(join(muxDirectory(), 'agents'), (workspaceId) =>
-    publish('chat', { workspaceId })
+  const agents = new AgentSessions(
+    join(muxDirectory(), 'agents'),
+    (workspaceId) => publish('chat', { workspaceId }),
+    undefined,
+    (event) => publish('agent.status', event)
   )
   const terminals = new Terminals(storage, (event) => {
     for (const peer of peers) {
