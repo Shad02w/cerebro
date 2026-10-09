@@ -18,7 +18,7 @@
 Tests come in three levels. Put each test at the lowest level that can prove the behavior. Commands, the audit of existing tests, and the migration backlog are in [docs/testing-strategy.md](docs/testing-strategy.md).
 
 - **Unit** (`node:test` via `tsx`, `nr test:unit`): pure logic with no DOM, process, or filesystem beyond temp files — parsers, reducers, key encoders, state transitions.
-- **Integration** (Vitest + jsdom for the renderer, `nr --filter desktop test:integration:renderer`; `node:test` for services against temp dirs): component, hook, or service behavior with mocked data or IPC (`window.cerebro` stubbed). There is **no layout engine**, so assert DOM and state — for example "is this element rendered" in a virtualized list — not on-screen visibility. Name renderer files `*.integration.test.tsx` beside the source.
+- **Integration** (Vitest + jsdom for the renderer, `nr --filter desktop test`; `node:test` for services against temp dirs): component, hook, or service behavior with mocked data or IPC (`window.cerebro` stubbed). There is **no layout engine**, so assert DOM and state — for example "is this element rendered" in a virtualized list — not on-screen visibility. Put them in `apps/desktop/tests/integration/`; Playwright specs stay in `apps/desktop/e2e/`.
 - **End-to-end** (Playwright against the real Electron app): only whole user flows with little mocking and real visible checks — for example scrolling a virtualized list until the element is actually visible. Never assert pixels; use screenshots for layout.
 
 A Playwright test that mocks data and checks DOM state is just a slow integration test; write it in Vitest. A new feature gets at most 1-2 e2e tests; everything else is unit or integration. If a bug is only reproducible with real layout, a real PTY, or real main-process wiring, that is when to add e2e.
@@ -100,7 +100,7 @@ pnpm --filter desktop test:e2e smoke.spec.ts
 pnpm --filter desktop test:e2e:repeat smoke.spec.ts
 ```
 
-A spec file is required locally. Omitting it (or passing only Playwright flags) exits 2 instead of running the full suite. `pnpm --filter … -- smoke.spec.ts` is fine: the wrapper drops a stray `--` so Playwright still treats the path as a file filter. The full suite runs on CI, or locally with `CEREBRO_E2E_ALL=1`.
+CI runs the specs as five parallel groups (`test:e2e:app|projects|terminal|chat|changes` in `apps/desktop/package.json`); add a new spec to one of them. A spec file is required locally. Omitting it (or passing only Playwright flags) exits 2 instead of running the full suite. `pnpm --filter … -- smoke.spec.ts` is fine: the wrapper drops a stray `--` so Playwright still treats the path as a file filter. The full suite runs on CI, or locally with `CEREBRO_E2E_ALL=1`.
 
 Pick specs by the flow you touched:
 

@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { describe, expect, it } from 'vitest'
 import type { TerminalThemeId } from '@shared/terminal-themes'
-import { TerminalThemeCombobox } from './terminal-theme-combobox'
+import { TerminalThemeCombobox } from '@/components/terminal-theme-combobox'
 
 function Harness({ onChange }: { onChange: (id: TerminalThemeId) => void }): React.JSX.Element {
   const [value, setValue] = useState<TerminalThemeId>('cerebro-default')

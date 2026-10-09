@@ -16,8 +16,8 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
-    include: ['src/renderer/**/*.integration.test.{ts,tsx}'],
-    setupFiles: ['src/renderer/test/setup.ts'],
+    include: ['tests/integration/**/*.test.{ts,tsx}'],
+    setupFiles: ['tests/setup.ts'],
     restoreMocks: true
   }
 })

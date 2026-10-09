@@ -10,21 +10,23 @@ Cerebro tests follow a three-level pyramid. The rule itself lives in [AGENTS.md]
 
 ## Commands
 
-| Command                                         | What runs                                                                                    |
-| ----------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `nr test:unit` (root, via turbo)                | Unit tests in every package that defines `test:unit`                                         |
-| `nr test:integration` (root, via turbo)         | Integration tests in every package that defines it                                           |
-| `nr --filter desktop test:unit`                 | `node:test` unit files under `src/renderer`                                                  |
-| `nr --filter desktop test:integration:renderer` | Vitest + jsdom (`src/renderer/**/*.integration.test.{ts,tsx}`), config in `vitest.config.ts` |
-| `nr --filter desktop test:integration:main`     | `node:test` main-process services against temp dirs and local git                            |
-| `nr --filter desktop test:e2e <spec>`           | Playwright + Electron, one spec file at a time                                               |
-| `nr --filter @cerebro/mux test`                 | mux unit + integration (`src/*.test.ts` and `src/agents/*.test.ts`)                          |
+| Command                                     | What runs                                                                                          |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `nr test:unit` (root, via turbo)            | Unit tests in every package that defines `test:unit`                                               |
+| `nr test:integration` (root, via turbo)     | Integration tests in every package that defines it                                                 |
+| `nr --filter desktop test:unit`             | `node:test` unit files under `src/renderer`                                                        |
+| `nr --filter desktop test`                  | Vitest + jsdom (`apps/desktop/tests/integration/**/*.test.{ts,tsx}`), config in `vitest.config.ts` |
+| `nr --filter desktop test:integration:main` | `node:test` main-process services against temp dirs and local git                                  |
+| `nr --filter desktop test:e2e <spec>`       | Playwright + Electron, one spec file at a time                                                     |
+| `nr --filter @cerebro/mux test`             | mux unit + integration (`src/*.test.ts` and `src/agents/*.test.ts`)                                |
+
+E2E groups (`test:e2e:app|projects|terminal|chat|changes`) split the specs so they can run as parallel CI jobs; each job is an isolated Electron/`CEREBRO_HOME`, but only run groups concurrently on one machine after checking they don't fight over ports. `startup.spec.ts` is an opt-in benchmark and belongs to no group. A new spec must be added to a group in `apps/desktop/package.json`.
 
 Run a single Vitest file with `nlx vitest run <path>` from `apps/desktop`. `@cerebro/core` must be built first (`nr --filter @cerebro/core build`) for the `tsx` tests that import it.
 
 ### Writing a renderer integration test
 
-- Name it `<component>.integration.test.tsx` beside the source. Use `@testing-library/react` and `@testing-library/user-event`; matchers from `@testing-library/jest-dom` are registered in `src/renderer/test/setup.ts`.
+- Put it in `apps/desktop/tests/integration/<component>.test.tsx` (Playwright lives in `e2e/`, so the directory tells you the level); import source through the `@/` alias. Use `@testing-library/react` and `@testing-library/user-event`; matchers from `@testing-library/jest-dom` are registered in `tests/setup.ts`.
 - Stub `window.cerebro` (the preload bridge) per test with `vi.stubGlobal` or by assigning `window.cerebro`. Do not reach for a real main process.
 - jsdom has **no layout engine**: no sizes, no scrolling geometry, no `IntersectionObserver` visibility. Assert DOM and state ("is this row rendered", "is the option selected"), never "is it visible on screen". Anything that needs real layout (virtualized list scroll-into-view, resize handles, clipping) is an e2e or screenshot check.
 
@@ -36,7 +38,7 @@ Classification is by content. Verdicts: **U** unit, **I** integration, **E** end
 
 | File                                                                                       | Cases | Level | Notes                                                           |
 | ------------------------------------------------------------------------------------------ | ----- | ----- | --------------------------------------------------------------- |
-| `apps/desktop/src/renderer/src/components/terminal-theme-combobox.integration.test.tsx`    | 3     | I     | New. Migrated from `settings.spec.ts`                           |
+| `apps/desktop/tests/integration/terminal-theme-combobox.test.tsx`                          | 3     | I     | New. Migrated from `settings.spec.ts`                           |
 | `apps/desktop/src/renderer/src/assets/neurology.test.ts`                                   | 1     | U     | New. Migrated from `startup-splash.spec.ts` (never used a page) |
 | `apps/desktop/src/renderer/src/lib/terminal-keys.test.ts`                                  | -     | U     | Pure key encoding                                               |
 | `apps/desktop/src/renderer/src/lib/terminal-output.test.ts`                                | -     | U     | Pure                                                            |
@@ -111,9 +113,9 @@ Classification is by content. Verdicts: **U** unit, **I** integration, **E** end
 
 ## Follow-ups
 
-1. Add a `window.cerebro` test double (typed against the preload API) in `src/renderer/test/` and migrate the _Migrate_ rows above, starting with `github.spec.ts`, `projects-github` PR state, `sidebar-tree` and `workspace-status`.
+1. Add a `window.cerebro` test double (typed against the preload API) in `apps/desktop/tests/` and migrate the _Migrate_ rows above, starting with `github.spec.ts`, `projects-github` PR state, `sidebar-tree` and `workspace-status`.
 2. Spike ProseMirror/tiptap in jsdom for the composer specs.
 3. Move main-process-only cases (`app-environment`, CLI installer in `settings`, theme validation, `panes` CLI errors) to node tests under `src/main` or `packages/*`.
 4. Add `test` scripts for `@cerebro/core` (its four tests are not run today) and split mux/core into `test:unit` and `test:integration` so root `nr test:unit` covers them.
-5. CI: add a job running `nr test:unit` and `nr test:integration` on pull requests; e2e stays on pull requests into `main`.
+5. CI: `.github/workflows/tests.yml` runs desktop unit and integration tests; `desktop-e2e.yml` runs the five e2e groups as a matrix.
 6. After migrating, trim each e2e flow to the 1-2 cases listed as _keep_ above.
