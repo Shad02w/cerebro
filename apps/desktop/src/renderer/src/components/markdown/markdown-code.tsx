@@ -26,28 +26,28 @@ function CopyCodeButton({ code }: { code: string }): React.JSX.Element {
       title="Copy code"
       aria-label={copied ? 'Copied' : 'Copy code'}
       onClick={async () => setCopied(await copy(code.replace(/\n$/, '')))}
-      className="mr-1 flex size-6 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 hover:text-foreground focus-visible:opacity-100"
+      className="ml-auto flex size-6 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 hover:text-foreground focus-visible:opacity-100"
     >
       {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
     </button>
   )
 }
 
-/** Fenced code gets a header at the top right with the language icon and name, plus a copy button on hover. Inline code and Mermaid are untouched. */
+/** Fenced code gets a header with the language icon and name on the left and a copy button on the right. Inline code and Mermaid are untouched. */
 export function MarkdownCode(props: CodeProps): React.JSX.Element {
   const tag = fenceLanguage.exec(props.className ?? '')?.[1]
   if (!('data-block' in props) || tag === 'mermaid') return <DefaultCode {...props} />
   const { label, icon } = codeLanguage(tag)
   return (
-    <div className="chat-code group my-3 rounded-lg bg-muted/60">
-      <div className="flex h-8 items-center justify-end gap-1.5 pr-3 pl-1.5 text-xs text-muted-foreground">
-        <CopyCodeButton code={textOf(props.children)} />
+    <div className="chat-code group my-3 rounded-lg">
+      <div className="flex h-8 items-center gap-1.5 pr-1.5 pl-3 text-xs text-muted-foreground">
         {icon ? (
           <img src={icon} alt="" className="size-3.5" />
         ) : (
           <Code className="size-3.5" aria-hidden />
         )}
         <span data-testid="code-language">{label}</span>
+        <CopyCodeButton code={textOf(props.children)} />
       </div>
       <DefaultCode {...props} />
     </div>
