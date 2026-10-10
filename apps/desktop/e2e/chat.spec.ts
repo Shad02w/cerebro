@@ -350,13 +350,17 @@ test('chat works through native adapters, survives reload, handles requests, and
     await expect(page.getByTestId('chat-view').getByRole('status')).toContainText('interrupted')
     const chatTranscript = page.getByTestId('chat-transcript')
     const composer = page.getByTestId('chat-composer')
-    await expect(chatTranscript.getByRole('alert')).toContainText('interrupted')
+    // A user interrupt is a status, not an error.
+    await expect(chatTranscript.getByRole('alert')).toHaveCount(0)
     await expect(composer.getByRole('status')).toHaveCount(0)
     await expect(composer.getByRole('alert')).toHaveCount(0)
     const clearance = async (): Promise<number> => {
-      const errorBox = await chatTranscript.getByRole('alert').boundingBox()
+      const lastBox = await chatTranscript
+        .getByRole('separator', { name: 'End of response' })
+        .last()
+        .boundingBox()
       const composerBox = await composer.boundingBox()
-      return composerBox!.y - (errorBox!.y + errorBox!.height)
+      return composerBox!.y - (lastBox!.y + lastBox!.height)
     }
     await expect.poll(clearance).toBeGreaterThanOrEqual(23)
     const expectAlignedComposer = async (): Promise<void> => {

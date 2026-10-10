@@ -675,7 +675,8 @@ export function ComposerEditor({
         if (editor && vimRef.current.enabled) setComposerVimMode(editor, vimRef.current.initialMode)
       },
       focus: () => {
-        editor?.commands.focus()
+        // A freshly loaded draft has its caret at the start; resume typing after it instead.
+        if (editor) editor.commands.focus(editor.state.selection.from <= 1 ? 'end' : null)
       }
     }),
     [editor]
