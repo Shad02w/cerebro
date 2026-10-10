@@ -36,7 +36,7 @@ function positive(value: unknown): number {
 }
 export async function startServer(): Promise<void> {
   await mkdir(muxDirectory(), { recursive: true, mode: 0o700 })
-  if (!claimServer()) return
+  if (!(await claimServer())) return
   const token = await readFile(join(muxDirectory(), 'token'), 'utf8')
   const peers = new Set<Peer>()
   const owners = new Map<number, Peer>()

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { cp, mkdtemp, mkdir, rm, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { promisify } from 'node:util'
 import { connectMux, type TerminalSnapshot, type MuxClient } from './client'
 import type {
@@ -454,6 +454,40 @@ test(
       else process.env.CEREBRO_HOME = previous.home
       if (previous.shell === undefined) delete process.env.SHELL
       else process.env.SHELL = previous.shell
+    }
+  }
+)
+
+test(
+  'a stale owner whose PID now belongs to another process does not block startup',
+  { timeout: 60000, skip: process.platform === 'win32' },
+  async () => {
+    const home = await mkdtemp(join(tmpdir(), 'cerebro-mux-owner-'))
+    const previous = process.env.CEREBRO_HOME
+    process.env.CEREBRO_HOME = home
+    // A live process that is not a mux host, standing in for a reused PID after a reboot.
+    const unrelated = spawn('sleep', ['60'], { stdio: 'ignore' })
+    let client: MuxClient | undefined
+    try {
+      await mkdir(join(home, 'mux'), { recursive: true, mode: 0o700 })
+      const db = new DatabaseSync(join(home, 'mux', 'ownership.sqlite'))
+      db.exec('CREATE TABLE owner (id INTEGER PRIMARY KEY CHECK(id=1), pid INTEGER NOT NULL)')
+      db.prepare('INSERT INTO owner VALUES (1, ?)').run(unrelated.pid!)
+      db.close()
+      client = await connectMux({ runtimeDir })
+      const status = await client.request<{ pid: number }>('server.status')
+      assert.notEqual(status.pid, unrelated.pid)
+      assert.match(await readFile(join(home, 'mux', 'server.log'), 'utf8'), /stale mux owner/)
+    } finally {
+      if (client) {
+        const gone = new Promise((resolve) => client!.once('disconnected', resolve))
+        await client.request('server.stop').catch(() => {})
+        await gone
+        client.close()
+      }
+      unrelated.kill()
+      process.env.CEREBRO_HOME = previous
+      await rm(home, { recursive: true, force: true })
     }
   }
 )
