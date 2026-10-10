@@ -300,7 +300,11 @@ export function ChatView({
     }
   }
   useEffect(() => {
-    if (active && !loading) editorRef.current?.focus()
+    if (!active || loading) return
+    // Leave keyboard focus on a tab the user reached by keyboard (e.g. after closing the
+    // tab next to it); a pointer click on a tab still moves focus into the composer.
+    if (document.activeElement?.matches('[role="tablist"] :focus-visible')) return
+    editorRef.current?.focus()
   }, [active, loading])
   const alertText = error ?? session?.error ?? (view.error ? String(view.error) : null)
   const starsWanted = agentBackground === 'stars' && empty
