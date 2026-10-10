@@ -924,9 +924,14 @@ export class AgentSessions {
       }
     } catch (error) {
       session.status = runtime.controller.signal.aborted ? 'interrupted' : 'failed'
-      session.error = String(error)
       session.attention = undefined
-      if (session.status === 'failed') failedNotice = session.error
+      if (session.status === 'failed') {
+        session.error = String(error)
+        failedNotice = session.error
+      } else {
+        // A user interrupt is not an error; the "interrupted" status already tells the story.
+        console.info(`[agents] session ${session.id} interrupted: ${String(error)}`)
+      }
     } finally {
       declinePending()
       runtime.controller.signal.removeEventListener('abort', declinePending)
