@@ -311,6 +311,95 @@ test(
 )
 
 test(
+  'Claude reuses streamed item ids for single-block assistant frames instead of duplicating text',
+  { timeout: 15_000 },
+  async () => {
+    process.env.CEREBRO_CLAUDE_PATH = fixture
+    const model = (await adapters.claude.models('/tmp'))[0]
+    const events: AgentDelta[] = []
+    await adapters.claude.run({
+      session: {
+        version: 1,
+        id: 'logical',
+        workspaceId: 1,
+        repositoryId: null,
+        cwd: '/tmp',
+        title: 'Test',
+        model,
+        status: 'running',
+        generation: 'g',
+        sequence: 0,
+        updatedAt: 0,
+        items: [],
+        commands: []
+      },
+      text: 'thinking-then-text',
+      signal: new AbortController().signal,
+      emit: (e) => events.push(e),
+      ask: async () => ({ allow: false, answers: {} })
+    })
+    const ids = new Map<string, string>()
+    for (const e of events) if (e.type === 'item') ids.set(e.item.id, e.item.kind)
+    assert.deepEqual(
+      [...ids],
+      [
+        ['message-think:0', 'reasoning'],
+        ['message-think:1', 'text']
+      ]
+    )
+  }
+)
+
+test(
+  'Claude keeps later blocks on their streamed ids when an earlier block has no completed frame',
+  { timeout: 15_000 },
+  async () => {
+    process.env.CEREBRO_CLAUDE_PATH = fixture
+    const model = (await adapters.claude.models('/tmp'))[0]
+    const events: AgentDelta[] = []
+    await adapters.claude.run({
+      session: {
+        version: 1,
+        id: 'logical',
+        workspaceId: 1,
+        repositoryId: null,
+        cwd: '/tmp',
+        title: 'Test',
+        model,
+        status: 'running',
+        generation: 'g',
+        sequence: 0,
+        updatedAt: 0,
+        items: [],
+        commands: []
+      },
+      text: 'skipped-block',
+      signal: new AbortController().signal,
+      emit: (e) => events.push(e),
+      ask: async () => ({ allow: false, answers: {} })
+    })
+    // Fold the deltas the way the service does: same id merges, `append` concatenates text.
+    const rows = new Map<string, { kind: string; text: string; status?: string }>()
+    for (const e of events) {
+      if (e.type !== 'item') continue
+      const row = rows.get(e.item.id)
+      rows.set(e.item.id, {
+        kind: e.item.kind,
+        text: e.append ? (row?.text ?? '') + e.item.text : e.item.text,
+        status: e.item.status ?? row?.status
+      })
+    }
+    assert.deepEqual(
+      [...rows],
+      [
+        ['message-skip:0', { kind: 'reasoning', text: 'pondering', status: 'completed' }],
+        ['message-skip:1', { kind: 'text', text: 'ANSWER', status: 'completed' }]
+      ]
+    )
+  }
+)
+
+test(
   'Claude evicts a refused draft superseded by a fallback-model retry',
   { timeout: 15_000 },
   async () => {
