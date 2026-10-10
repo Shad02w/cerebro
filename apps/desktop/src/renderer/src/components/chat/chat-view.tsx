@@ -37,6 +37,7 @@ export function ChatView({
   workspaceId,
   paneId,
   visible = true,
+  active = false,
   agentBackground = DEFAULT_AGENT_BACKGROUND,
   composerVim = false,
   composerVimMode = 'insert',
@@ -47,6 +48,7 @@ export function ChatView({
   workspaceId: number
   paneId: number
   visible?: boolean
+  active?: boolean
   agentBackground?: AgentBackground
   composerVim?: boolean
   composerVimMode?: ComposerVimMode
@@ -297,6 +299,9 @@ export function ChatView({
       pendingSend.current = null
     }
   }
+  useEffect(() => {
+    if (active && !loading) editorRef.current?.focus()
+  }, [active, loading])
   const alertText = error ?? session?.error ?? (view.error ? String(view.error) : null)
   const starsWanted = agentBackground === 'stars' && empty
   const [starPhase, setStarPhase] = useState<'on' | 'out' | 'off'>('off')
