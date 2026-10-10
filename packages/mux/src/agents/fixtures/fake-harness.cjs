@@ -204,6 +204,88 @@ function claudePrompt(prompt, content) {
     })
     return
   }
+  if (prompt.includes('skipped-block')) {
+    // The thinking block closes in the stream but never gets its own completed `assistant` frame.
+    const stream = (event) => send({ type: 'stream_event', session_id: 'claude-test', event })
+    stream({ type: 'message_start', message: { id: 'message-skip' } })
+    stream({
+      type: 'content_block_start',
+      index: 0,
+      content_block: { type: 'thinking', thinking: '' }
+    })
+    stream({
+      type: 'content_block_delta',
+      index: 0,
+      delta: { type: 'thinking_delta', thinking: 'pondering' }
+    })
+    stream({ type: 'content_block_stop', index: 0 })
+    stream({ type: 'content_block_start', index: 1, content_block: { type: 'text', text: '' } })
+    stream({ type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: 'ANSWER' } })
+    stream({ type: 'content_block_stop', index: 1 })
+    send({
+      type: 'assistant',
+      session_id: 'claude-test',
+      uuid: 'skip-1',
+      message: {
+        id: 'message-skip',
+        role: 'assistant',
+        content: [{ type: 'text', text: 'ANSWER' }]
+      }
+    })
+    send({
+      type: 'result',
+      subtype: 'success',
+      is_error: false,
+      result: 'ANSWER',
+      session_id: 'claude-test'
+    })
+    return
+  }
+  if (prompt.includes('thinking-then-text')) {
+    // Real streaming shape: one assistant frame per completed block, each with content[0] only.
+    const stream = (event) => send({ type: 'stream_event', session_id: 'claude-test', event })
+    stream({ type: 'message_start', message: { id: 'message-think' } })
+    stream({
+      type: 'content_block_start',
+      index: 0,
+      content_block: { type: 'thinking', thinking: '' }
+    })
+    stream({
+      type: 'content_block_delta',
+      index: 0,
+      delta: { type: 'thinking_delta', thinking: 'pondering' }
+    })
+    send({
+      type: 'assistant',
+      session_id: 'claude-test',
+      uuid: 'think-1',
+      message: {
+        id: 'message-think',
+        role: 'assistant',
+        content: [{ type: 'thinking', thinking: 'pondering' }]
+      }
+    })
+    stream({ type: 'content_block_start', index: 1, content_block: { type: 'text', text: '' } })
+    stream({ type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: 'ANSWER' } })
+    send({
+      type: 'assistant',
+      session_id: 'claude-test',
+      uuid: 'think-2',
+      message: {
+        id: 'message-think',
+        role: 'assistant',
+        content: [{ type: 'text', text: 'ANSWER' }]
+      }
+    })
+    send({
+      type: 'result',
+      subtype: 'success',
+      is_error: false,
+      result: 'ANSWER',
+      session_id: 'claude-test'
+    })
+    return
+  }
   if (prompt.includes('approval')) {
     finishApproval = () => claudeFinish('Permission resolved.')
     send({
