@@ -5,6 +5,7 @@
 - Every task that changes code must run lint, formatting, and related test cases before completion. Run the lowest test level that proves the change (see [Testing pyramid](#testing-pyramid)).
 - **Check only files changed by the current task.** Pass explicit changed-file paths to linters and formatters, and run only test cases covering those files. Do not run repository-wide checks or include unrelated files or pre-existing changes.
 - **Do not run tests when the task makes no code changes**, including documentation-only edits and commit/push-only requests. Existing uncommitted code changes do not make a commit/push-only request a code-change task.
+- **Verify the fix in the running app.** Beyond tests and lint, a code change to the desktop app, mux, or agents must be shown working in the real Electron app: launch it with Playwright's Electron fixtures, drive it with a custom script that exercises the fix, and return a screenshot. See [Verify a fix in the running app](#verify-a-fix-in-the-running-app).
 
 ### React Doctor
 
@@ -137,6 +138,21 @@ A screenshot or visit of the Vite page is not verification. If Playwright cannot
 For every completed desktop UI change, capture screenshots of the final result in the real Electron app and embed them in the final response as evidence of completion. Show the relevant changed states, including fallbacks when applicable. Use Markdown image embeds with absolute file paths (`![description](/absolute/path.png)`); do not provide only links or a written description. If screenshots cannot be captured, explicitly report the limitation instead of claiming visual verification is complete.
 
 If the task included screenshots, mockups, or other images of the required UI (bug, expected layout, or design), attach those same images in the final response so a human can verify the change against the original requirement. Embed them with markdown (`![description](path)`); do not only describe them.
+
+### Verify a fix in the running app
+
+Passing tests and lint do not prove a fix works for the user. After them, launch the real Electron app with Playwright, drive it with a one-off script that reproduces the original problem, and show the result. This applies to non-UI fixes too (mux, agents, IPC): find the user-visible flow that exposes the behavior and check it there.
+
+Use Playwright's Electron support through the existing fixtures in `e2e/fixtures.ts`, not `nr dev` and not a browser. The `electronApp` fixture runs `_electron.launch` against the built `out/`, isolates `CEREBRO_HOME` in a temp directory, and stops that home's mux on teardown, so the script never touches the user's data or the mux running their agents. `page` is the first `BrowserWindow`, with preload and `window.cerebro`; `electronApp.evaluate(...)` runs code in the main process.
+
+1. **Write a scratch spec** at `apps/desktop/e2e/verify-<topic>.spec.ts` that imports `test` and `expect` from `./fixtures`. Drive the steps a user would (open the tab, pick the agent, send the prompt, and so on) and assert the observable result, such as the text an agent prints or the state a pane shows. Use `data-testid`s and accessible roles. Agent replies stream, so wait for the complete result (for example `toHaveText` with a pattern ending in the last expected line) before reading it, and prefer the tool's raw output in the transcript over the model's restatement.
+2. **Reproduce the conditions of the bug** with fixture options instead of a hand-built launch. `test.use({ agentEnvironment: { ... } })` merges variables into the app's environment, for example `PATH: '/usr/bin:/bin:/usr/sbin:/sbin'` to match an app opened from Finder.
+3. **Capture a screenshot** of the fixed behavior to an absolute path (`page.screenshot({ path: '/tmp/<name>.png' })`).
+4. **Run only that spec:** `pnpm --filter desktop test:e2e verify-<topic>.spec.ts` (builds first), or `test:e2e:repeat` when `out/` is current. Add `HEADED=1` to watch it.
+5. **Report** the asserted output and embed the screenshot in the final response.
+6. **Delete the scratch spec** unless the task calls for a lasting e2e test (see the rules above); it is verification, not part of the change.
+
+If the app cannot be built or launched here, say so instead of claiming the fix is verified.
 
 ## CLI (`apps/cli`)
 
