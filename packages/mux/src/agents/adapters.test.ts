@@ -3,7 +3,13 @@ import assert from 'node:assert/strict'
 import { join, resolve } from 'node:path'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { adapters, claudeModelLabel, type RunAttachment } from './adapters'
+import {
+  adapters,
+  claudeModelLabel,
+  runTurn,
+  type BackgroundTaskUpdate,
+  type RunAttachment
+} from './adapters'
 import type { AgentDelta, AgentHarness, AgentSession } from '@cerebro/core'
 const fixture = resolve(__dirname, 'fixtures/fake-harness.cjs')
 async function waitFor(condition: () => boolean, timeoutMs = 5000): Promise<void> {
@@ -108,7 +114,7 @@ for (const harness of ['claude', 'codex', 'pi'] as AgentHarness[]) {
         items: [],
         commands: []
       }
-      await adapters[harness].run({
+      await runTurn(adapters[harness], {
         session,
         text: 'hello',
         signal: new AbortController().signal,
@@ -163,7 +169,7 @@ test(
     }
     for (const text of ['usage-without-last', 'usage-without-window']) {
       const events: AgentDelta[] = []
-      await adapters.codex.run({
+      await runTurn(adapters.codex, {
         session,
         text,
         signal: new AbortController().signal,
@@ -200,7 +206,7 @@ test(
       accessMode: 'edit'
     } as AgentSession
     let asked = false
-    await adapters.codex.run({
+    await runTurn(adapters.codex, {
       session,
       text: 'approval',
       signal: new AbortController().signal,
@@ -213,7 +219,7 @@ test(
     })
     assert(asked)
     const controller = new AbortController()
-    const running = adapters.codex.run({
+    const running = runTurn(adapters.codex, {
       session,
       text: 'slow',
       signal: controller.signal,
@@ -251,7 +257,7 @@ for (const harness of ['claude', 'codex', 'pi'] as AgentHarness[]) {
       const controller = new AbortController()
       const events: AgentDelta[] = []
       let steer: ((text: string, attachments: RunAttachment[]) => Promise<void>) | undefined
-      const running = adapters[harness].run({
+      const running = runTurn(adapters[harness], {
         session,
         text: 'slow',
         signal: controller.signal,
@@ -279,7 +285,7 @@ test(
   async () => {
     const model = (await adapters.claude.models('/tmp'))[0]
     let asked = false
-    await adapters.claude.run({
+    await runTurn(adapters.claude, {
       session: {
         version: 1,
         id: 'logical',
@@ -317,7 +323,7 @@ test(
     process.env.CEREBRO_CLAUDE_PATH = fixture
     const model = (await adapters.claude.models('/tmp'))[0]
     const events: AgentDelta[] = []
-    await adapters.claude.run({
+    await runTurn(adapters.claude, {
       session: {
         version: 1,
         id: 'logical',
@@ -357,7 +363,7 @@ test(
     process.env.CEREBRO_CLAUDE_PATH = fixture
     const model = (await adapters.claude.models('/tmp'))[0]
     const events: AgentDelta[] = []
-    await adapters.claude.run({
+    await runTurn(adapters.claude, {
       session: {
         version: 1,
         id: 'logical',
@@ -406,7 +412,7 @@ test(
     process.env.CEREBRO_CLAUDE_PATH = fixture
     const model = (await adapters.claude.models('/tmp'))[0]
     const events: AgentDelta[] = []
-    await adapters.claude.run({
+    await runTurn(adapters.claude, {
       session: {
         version: 1,
         id: 'logical',
@@ -451,7 +457,7 @@ for (const harness of ['claude', 'codex', 'pi'] as const) {
     for (const accessMode of [undefined, 'full', 'edit', 'read'] as const) {
       for (const nativeId of [undefined, 'saved-session']) {
         const events: AgentDelta[] = []
-        await adapters[harness].run({
+        await runTurn(adapters[harness], {
           session: {
             version: 1,
             id: 'access',
@@ -534,7 +540,7 @@ for (const harness of ['claude', 'codex', 'pi'] as const) {
     writeFileSync(path, png)
     const events: AgentDelta[] = []
     try {
-      await adapters[harness].run({
+      await runTurn(adapters[harness], {
         session: {
           version: 1,
           id: 'attachments',
@@ -589,3 +595,188 @@ for (const harness of ['claude', 'codex', 'pi'] as const) {
     }
   })
 }
+
+const liveSession = (model: AgentSession['model'], id: string): AgentSession => ({
+  version: 1,
+  id,
+  workspaceId: 1,
+  repositoryId: null,
+  cwd: '/tmp',
+  title: id,
+  model,
+  status: 'running',
+  generation: 'g',
+  sequence: 0,
+  updatedAt: 0,
+  items: [],
+  commands: []
+})
+const idleHost = {
+  autonomous: () => undefined,
+  task: () => {},
+  idle: () => {},
+  exited: () => {}
+}
+const replies = (events: AgentDelta[]): string[] =>
+  events.flatMap((e) => (e.type === 'item' && e.item.kind === 'text' ? [e.item.text] : []))
+const alive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
+for (const harness of ['claude', 'codex', 'pi'] as AgentHarness[]) {
+  test(
+    `${harness}: one connection keeps one native process across turns until closed`,
+    { timeout: 15_000 },
+    async () => {
+      process.env[`CEREBRO_${harness.toUpperCase()}_PATH`] = fixture
+      const model = (await adapters[harness].models('/tmp'))[0]
+      const session = liveSession(model, 'live')
+      const connection = adapters[harness].connect(session, idleHost)
+      const pids: string[] = []
+      for (let turn = 0; turn < 2; turn++) {
+        const events: AgentDelta[] = []
+        await connection.run({
+          session,
+          text: 'pid',
+          signal: new AbortController().signal,
+          emit: (e) => events.push(e),
+          ask: async () => ({ allow: false, answers: {} })
+        })
+        pids.push(replies(events).find((text) => /^\d+$/.test(text))!)
+      }
+      assert.equal(pids[0], pids[1])
+      const pid = Number(pids[0])
+      assert(alive(pid))
+      connection.close()
+      await waitFor(() => !alive(pid))
+    }
+  )
+}
+
+for (const failed of [false, true])
+  test(
+    `Claude: a background task that ${failed ? 'fails' : 'succeeds'} reports its outcome and wakes a follow-up turn`,
+    { timeout: 15_000 },
+    async () => {
+      process.env.CEREBRO_CLAUDE_PATH = fixture
+      const model = (await adapters.claude.models('/tmp'))[0]
+      const session = liveSession(model, 'background')
+      const updates: BackgroundTaskUpdate[] = []
+      const followup: AgentDelta[] = []
+      let settled: (error?: Error) => void = () => {}
+      const finished = new Promise<Error | undefined>((resolve) => {
+        settled = resolve
+      })
+      const connection = adapters.claude.connect(session, {
+        ...idleHost,
+        task: (update) => updates.push(update),
+        autonomous: () => ({
+          context: {
+            session,
+            signal: new AbortController().signal,
+            emit: (e) => followup.push(e),
+            ask: async () => ({ allow: false, answers: {} })
+          },
+          settle: settled
+        })
+      })
+      try {
+        const events: AgentDelta[] = []
+        await connection.run({
+          session,
+          text: failed ? 'background-task-fail' : 'background-task',
+          signal: new AbortController().signal,
+          emit: (e) => events.push(e),
+          ask: async () => ({ allow: false, answers: {} })
+        })
+        assert(replies(events).includes('Background task is running.'))
+        assert.equal(await finished, undefined)
+        assert(
+          replies(followup).includes(
+            failed ? 'Background task failed with exit code 3.' : 'Background task finished: /tmp'
+          )
+        )
+        const { endedAt, ...outcome } = updates[2]
+        assert.deepEqual(updates.slice(0, 2), [
+          { id: 'task-test', title: 'Delayed pwd', status: 'running' },
+          { id: 'task-test', status: 'running', itemId: 'tool-bg' }
+        ])
+        assert.deepEqual(
+          outcome,
+          failed
+            ? {
+                id: 'task-test',
+                status: 'failed',
+                summary: 'Background command "Delayed pwd" failed with exit code 3',
+                exitCode: 3
+              }
+            : {
+                id: 'task-test',
+                status: 'completed',
+                summary: 'Background command "Delayed pwd" completed (exit code 0)',
+                exitCode: 0
+              }
+        )
+        assert.equal(typeof endedAt, 'number')
+        assert.equal(updates.length, 3)
+      } finally {
+        connection.close()
+      }
+    }
+  )
+
+for (const failed of [false, true])
+  test(
+    `Codex: a background terminal that ${failed ? 'fails' : 'succeeds'} keeps its item running and reports its outcome`,
+    { timeout: 15_000 },
+    async () => {
+      process.env.CEREBRO_CODEX_PATH = fixture
+      const model = (await adapters.codex.models('/tmp'))[0]
+      const session = liveSession(model, 'background')
+      const updates: BackgroundTaskUpdate[] = []
+      const idle: AgentDelta[] = []
+      const connection = adapters.codex.connect(session, {
+        ...idleHost,
+        task: (update) => updates.push(update),
+        idle: (e) => idle.push(e)
+      })
+      try {
+        await connection.run({
+          session,
+          text: failed ? 'background-command-fail' : 'background-command',
+          signal: new AbortController().signal,
+          emit: () => {},
+          ask: async () => ({ allow: false, answers: {} })
+        })
+        const { startedAt, ...running } = updates[0]
+        assert.deepEqual(running, {
+          id: 'bg-command',
+          title: 'sleep 1; pwd',
+          status: 'running',
+          itemId: 'bg-command'
+        })
+        assert.equal(typeof startedAt, 'number')
+        await waitFor(() => updates.length === 2)
+        const { endedAt, ...outcome } = updates[1]
+        assert.deepEqual(outcome, {
+          id: 'bg-command',
+          status: failed ? 'failed' : 'completed',
+          exitCode: failed ? 3 : 0
+        })
+        assert.equal(typeof endedAt, 'number')
+        const output = idle.find(
+          (e) => e.type === 'item' && e.item.id === 'bg-command' && e.item.status
+        )
+        assert(output?.type === 'item')
+        assert.equal(output.item.text, '/tmp\n')
+        assert.equal(output.item.status, failed ? 'failed' : 'completed')
+      } finally {
+        connection.close()
+      }
+    }
+  )

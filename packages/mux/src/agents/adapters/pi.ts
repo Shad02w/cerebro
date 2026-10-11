@@ -1,7 +1,8 @@
+import type { AgentDelta } from '@cerebro/core'
 import { randomUUID } from 'node:crypto'
 import { JsonProcess, executable, describe, type Frame } from '../transport'
-import type { AgentAdapter } from './adapter'
-import { inline, item, model, modalities } from './shared'
+import type { AgentAdapter, AutonomousTurn } from './adapter'
+import { activeTurn, inline, item, model, modalities } from './shared'
 
 export const piAdapter: AgentAdapter = {
   async models(cwd) {
@@ -27,8 +28,7 @@ export const piAdapter: AgentAdapter = {
       rpc.close()
     }
   },
-  async run(context) {
-    const { session, signal, emit, ask } = context
+  connect(session, host) {
     const rpc = new JsonProcess(
       executable('pi'),
       [
@@ -44,21 +44,35 @@ export const piAdapter: AgentAdapter = {
       session.cwd,
       true
     )
-    let finish: () => void = () => {}
-    let fail: (error: Error) => void = () => {}
-    const done = new Promise<void>((resolve, reject) => {
-      finish = resolve
-      fail = reject
-    })
-    void done.catch(() => {})
+    let closed = false
+    let current: AutonomousTurn | undefined
     let messageId = ''
-    const abort = (): void => {
-      void rpc.request('abort').catch(() => {})
-      fail(new Error('Turn interrupted.'))
-      rpc.close()
+    // Model and thinking level persist in the process, so they are sent only when they change.
+    const applied: { model?: string; thinking?: string } = {}
+    const emit = (event: AgentDelta): void =>
+      current ? current.context.emit(event) : host.idle(event)
+    const out = { emit }
+    const finish = (error?: Error): void => {
+      const turn = current
+      current = undefined
+      turn?.settle(error)
     }
-    signal.addEventListener('abort', abort, { once: true })
-    rpc.onExit = fail
+    const close = (): void => {
+      if (closed) return
+      closed = true
+      rpc.close()
+      finish(new Error('Agent stopped.'))
+    }
+    const native = {
+      interrupt: (): void => void rpc.request('abort').catch(() => {}),
+      close
+    }
+    rpc.onExit = (error) => {
+      if (closed) return
+      closed = true
+      finish(error)
+      host.exited(error)
+    }
     rpc.onFrame = (frame) => {
       switch (frame.type) {
         case 'message_start':
@@ -68,7 +82,7 @@ export const piAdapter: AgentAdapter = {
           const e: Frame = frame.assistantMessageEvent ?? {}
           if (e.type === 'text_delta' || e.type === 'thinking_delta')
             item(
-              context,
+              out,
               `${messageId}:${e.contentIndex}`,
               e.type === 'text_delta' ? 'text' : 'reasoning',
               e.delta ?? '',
@@ -82,7 +96,7 @@ export const piAdapter: AgentAdapter = {
           for (const [index, block] of (frame.message.content ?? []).entries()) {
             if (block.type === 'text' || block.type === 'thinking')
               item(
-                context,
+                out,
                 `${messageId}:${index}`,
                 block.type === 'text' ? 'text' : 'reasoning',
                 block.text ?? block.thinking ?? '',
@@ -90,22 +104,22 @@ export const piAdapter: AgentAdapter = {
               )
           }
           if (frame.message.stopReason === 'error')
-            fail(new Error(frame.message.errorMessage ?? 'Pi turn failed.'))
-          if (frame.message.stopReason === 'aborted') fail(new Error('Turn interrupted.'))
+            finish(new Error(frame.message.errorMessage ?? 'Pi turn failed.'))
+          if (frame.message.stopReason === 'aborted') finish(new Error('Turn interrupted.'))
           break
         }
         case 'tool_execution_start':
-          item(context, frame.toolCallId, 'tool', '', {
+          item(out, frame.toolCallId, 'tool', '', {
             title: frame.toolName,
             input: describe(frame.args),
             status: 'running'
           })
           break
         case 'tool_execution_update':
-          item(context, frame.toolCallId, 'tool', describe(frame.partialResult))
+          item(out, frame.toolCallId, 'tool', describe(frame.partialResult))
           break
         case 'tool_execution_end':
-          item(context, frame.toolCallId, 'tool', describe(frame.result), {
+          item(out, frame.toolCallId, 'tool', describe(frame.result), {
             status: frame.isError ? 'failed' : 'completed'
           })
           break
@@ -113,17 +127,23 @@ export const piAdapter: AgentAdapter = {
           finish()
           break
         case 'extension_ui_request': {
+          const turn = current
           if (['confirm', 'select', 'input', 'editor'].includes(frame.method)) {
-            void ask({
-              id: frame.id,
-              kind: frame.method === 'confirm' ? 'approval' : 'question',
-              title: frame.title ?? 'Pi extension',
-              text: frame.message ?? '',
-              questions:
-                frame.method === 'confirm'
-                  ? undefined
-                  : [{ id: 'value', label: frame.title ?? 'Answer', options: frame.options }]
-            })
+            if (!turn) {
+              rpc.send({ type: 'extension_ui_response', id: frame.id, cancelled: true })
+              break
+            }
+            void turn.context
+              .ask({
+                id: frame.id,
+                kind: frame.method === 'confirm' ? 'approval' : 'question',
+                title: frame.title ?? 'Pi extension',
+                text: frame.message ?? '',
+                questions:
+                  frame.method === 'confirm'
+                    ? undefined
+                    : [{ id: 'value', label: frame.title ?? 'Answer', options: frame.options }]
+              })
               .then((answer) => {
                 rpc.send({
                   type: 'extension_ui_response',
@@ -135,10 +155,12 @@ export const piAdapter: AgentAdapter = {
                       : { cancelled: true })
                 })
               })
-              .catch(fail)
+              .catch((error) => {
+                if (current === turn) finish(error)
+              })
           } else
             item(
-              context,
+              out,
               `extension:${frame.id ?? randomUUID()}`,
               'notice',
               describe(frame.message ?? frame.text ?? frame),
@@ -148,66 +170,81 @@ export const piAdapter: AgentAdapter = {
         }
       }
     }
-    try {
-      if (signal.aborted) throw new Error('Turn interrupted.')
-      if (session.model.id)
-        await rpc.request('set_model', {
-          provider: session.model.provider,
-          modelId: session.model.id
+    return {
+      async run(context) {
+        if (closed) throw new Error('Pi process is closed.')
+        if (current) throw new Error('Pi is already running a turn.')
+        if (context.signal.aborted) throw new Error('Turn interrupted.')
+        const ended = new Promise<void>((resolve, reject) => {
+          current = activeTurn(context, (error) => (error ? reject(error) : resolve()), native)
         })
-      if (session.reasoning) await rpc.request('set_thinking_level', { level: session.reasoning })
-      const state = await rpc.request('get_state')
-      if (state.sessionFile) emit({ type: 'binding', nativeId: state.sessionFile })
-      if (signal.aborted) throw new Error('Turn interrupted.')
-      await rpc.request('prompt', {
-        message: context.text,
-        ...(context.attachments?.length
-          ? {
-              images: context.attachments.map((attachment) => ({
-                type: 'image',
-                data: inline(attachment),
-                mimeType: attachment.mimeType
-              }))
-            }
-          : {})
-      })
-      context.registerSteer?.(async (text, steerAttachments) => {
-        await rpc.request('prompt', {
-          message: text,
-          streamingBehavior: 'steer',
-          ...(steerAttachments.length
-            ? {
-                images: steerAttachments.map((attachment) => ({
-                  type: 'image',
-                  data: inline(attachment),
-                  mimeType: attachment.mimeType
-                }))
-              }
-            : {})
-        })
-      })
-      await done
-      const finalState = await rpc.request('get_state')
-      if (finalState.sessionFile) emit({ type: 'binding', nativeId: finalState.sessionFile })
-      try {
-        const stats = await rpc.request('get_session_stats')
-        const usage: Frame = stats.contextUsage ?? {}
-        if (usage.tokens != null && usage.contextWindow != null)
-          emit({
-            type: 'usage',
-            usage: {
-              usedTokens: usage.tokens,
-              contextWindow: usage.contextWindow,
-              percentage: usage.percent ?? Math.round((usage.tokens / usage.contextWindow) * 100)
-            }
+        void ended.catch(() => {})
+        const turn = current
+        try {
+          const { model: selected, reasoning } = context.session
+          const modelKey = `${selected.provider}/${selected.id}`
+          if (selected.id && modelKey !== applied.model) {
+            await rpc.request('set_model', { provider: selected.provider, modelId: selected.id })
+            applied.model = modelKey
+          }
+          if (reasoning && reasoning !== applied.thinking) {
+            await rpc.request('set_thinking_level', { level: reasoning })
+            applied.thinking = reasoning
+          }
+          const state = await rpc.request('get_state')
+          if (state.sessionFile) context.emit({ type: 'binding', nativeId: state.sessionFile })
+          if (current !== turn) return await ended
+          await rpc.request('prompt', {
+            message: context.text,
+            ...(context.attachments?.length
+              ? {
+                  images: context.attachments.map((attachment) => ({
+                    type: 'image',
+                    data: inline(attachment),
+                    mimeType: attachment.mimeType
+                  }))
+                }
+              : {})
           })
-      } catch {
-        // Best-effort stats call; a turn's success does not depend on it.
-      }
-    } finally {
-      signal.removeEventListener('abort', abort)
-      rpc.onExit = () => {}
-      rpc.close()
+          context.registerSteer?.(async (text, steerAttachments) => {
+            await rpc.request('prompt', {
+              message: text,
+              streamingBehavior: 'steer',
+              ...(steerAttachments.length
+                ? {
+                    images: steerAttachments.map((attachment) => ({
+                      type: 'image',
+                      data: inline(attachment),
+                      mimeType: attachment.mimeType
+                    }))
+                  }
+                : {})
+            })
+          })
+        } catch (error) {
+          if (current === turn) finish(error instanceof Error ? error : new Error(String(error)))
+        }
+        await ended
+        const finalState = await rpc.request('get_state')
+        if (finalState.sessionFile)
+          context.emit({ type: 'binding', nativeId: finalState.sessionFile })
+        try {
+          const stats = await rpc.request('get_session_stats')
+          const usage: Frame = stats.contextUsage ?? {}
+          if (usage.tokens != null && usage.contextWindow != null)
+            context.emit({
+              type: 'usage',
+              usage: {
+                usedTokens: usage.tokens,
+                contextWindow: usage.contextWindow,
+                percentage: usage.percent ?? Math.round((usage.tokens / usage.contextWindow) * 100)
+              }
+            })
+        } catch {
+          // Best-effort stats call; a turn's success does not depend on it.
+        }
+      },
+      close
     }
   }
 }

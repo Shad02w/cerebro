@@ -74,6 +74,8 @@ export type ChatItem = {
   input?: string
   attachments?: ChatAttachment[]
   status?: 'running' | 'completed' | 'failed' | 'interrupted'
+  /** On a `notice`: how a background task ended. */
+  task?: AgentBackgroundTask
   request?: {
     id: string
     kind: 'approval' | 'question'
@@ -95,6 +97,38 @@ export type AgentContextUsage = {
   usedTokens: number
   contextWindow: number
   percentage: number
+}
+export type AgentBackgroundTaskStatus = 'running' | 'completed' | 'failed' | 'stopped'
+/**
+ * Native work that outlives the turn that started it, owned by the session's live harness
+ * process. Every harness reports it in this shape; `stopped` also covers work Cerebro ended by
+ * closing the process.
+ */
+export type AgentBackgroundTask = {
+  id: string
+  title: string
+  status: AgentBackgroundTaskStatus
+  /** Transcript item that started the task, left running until the task settles. */
+  itemId?: string
+  /** Process exit code, when the harness reports one. */
+  exitCode?: number
+  /** The harness's one-line outcome. */
+  summary?: string
+  startedAt: number
+  endedAt?: number
+}
+/** Plain-text outcome of a settled background task, for when the harness gave no summary. */
+export function backgroundTaskOutcome(task: AgentBackgroundTask): string {
+  const verb =
+    task.status === 'failed'
+      ? 'failed'
+      : task.status === 'stopped'
+        ? 'was stopped'
+        : task.status === 'running'
+          ? 'is running'
+          : 'completed'
+  const exit = task.exitCode === undefined ? '' : ` (exit code ${task.exitCode})`
+  return `Background task ${verb}${exit}: ${task.title || task.id}`
 }
 export type AgentSession = {
   version: 1
@@ -126,6 +160,8 @@ export type AgentSession = {
    * viewing the tab does not clear it.
    */
   attention?: { kind: 'finished'; at: number }
+  /** Running background tasks. Settled ones move into the transcript as `notice` items. */
+  background?: AgentBackgroundTask[]
 }
 export type AgentSessionSummary = Pick<
   AgentSession,

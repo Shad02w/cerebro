@@ -13,7 +13,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { AgentSessions } from './service'
 import type { AgentModel, AgentSession, AgentStatusEvent } from '@cerebro/core'
-import type { AgentAdapter, RunContext } from './adapters'
+import type { AgentAdapter, ConnectionHost, RunContext } from './adapters'
 const model: AgentModel = {
   key: 'test',
   instance: 'local',
@@ -39,7 +39,10 @@ function fixture(run: (context: RunContext) => Promise<void>): {
   drivers: Record<'claude' | 'codex' | 'pi', AgentAdapter>
 } {
   const dir = mkdtempSync(join(tmpdir(), 'cerebro-agents-'))
-  const adapter: AgentAdapter = { models: async () => [model], run }
+  const adapter: AgentAdapter = {
+    models: async () => [model],
+    connect: () => ({ run, close: () => {} })
+  }
   return { dir, drivers: { claude: adapter, codex: adapter, pi: adapter } }
 }
 test('accepted command is durable before dispatch; duplicate sends do not replay; native binding and final replacement survive restart', async () => {
@@ -416,7 +419,7 @@ test('image attachments are validated, stored outside the snapshot, passed to th
     )
     const textOnly: AgentAdapter = {
       models: async () => [{ ...model, modalities: ['text'] }],
-      run: async () => {}
+      connect: () => ({ run: async () => {}, close: () => {} })
     }
     const textOnlyDir = mkdtempSync(join(tmpdir(), 'cerebro-agents-text-'))
     const textOnlyService = new AgentSessions(textOnlyDir, () => {}, {
@@ -732,7 +735,7 @@ test('overview lists every open bound pane including idle, and drops closed pane
     id: 'claude',
     label: 'Claude'
   }
-  const advertised = { models: async () => [model, claude], run: f.drivers.codex.run }
+  const advertised = { models: async () => [model, claude], connect: f.drivers.codex.connect }
   const service = new AgentSessions(f.dir, () => {}, {
     claude: advertised,
     codex: advertised,
@@ -889,3 +892,183 @@ async function waitFor(condition: () => boolean): Promise<void> {
   for (let i = 0; i < 100 && !condition(); i++) await new Promise((r) => setTimeout(r, 10))
   assert(condition(), 'condition not met in time')
 }
+
+function liveFixture(run: (context: RunContext) => Promise<void> = async () => {}): {
+  dir: string
+  opened: Array<{ host: ConnectionHost; closed: boolean }>
+  drivers: Record<'claude' | 'codex' | 'pi', AgentAdapter>
+} {
+  const dir = mkdtempSync(join(tmpdir(), 'cerebro-agents-live-'))
+  const opened: Array<{ host: ConnectionHost; closed: boolean }> = []
+  const adapter: AgentAdapter = {
+    models: async () => [model],
+    connect: (_session, host) => {
+      const live = { host, closed: false }
+      opened.push(live)
+      return {
+        run,
+        close: () => {
+          live.closed = true
+        }
+      }
+    }
+  }
+  return { dir, opened, drivers: { claude: adapter, codex: adapter, pi: adapter } }
+}
+const get = { action: 'get' as const, workspaceId: 1, paneId: 1 }
+
+test('a session reuses one harness process and closes it when no pane shows the session', async () => {
+  const f = liveFixture()
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  const idle = (): Promise<void> => waitFor(() => !service['running'].size)
+  try {
+    await service.command(scope, { ...send, commandId: 'one' })
+    await idle()
+    await service.command(scope, { ...send, commandId: 'two', text: 'again' })
+    await idle()
+    assert.equal(f.opened.length, 1)
+    assert.equal(f.opened[0].closed, false)
+    await service.command(scope, { action: 'new', workspaceId: 1, paneId: 1 })
+    assert.equal(f.opened[0].closed, true)
+    await service.command(scope, { ...send, commandId: 'three' })
+    await idle()
+    service.releasePanes([1])
+    assert.equal(f.opened[1].closed, true)
+    const second = { ...scope, paneId: 2 }
+    await service.command(second, { ...send, paneId: 2, commandId: 'four' })
+    await idle()
+    await service.stopWorkspace(1)
+    assert.equal(f.opened[2].closed, true)
+    await service.shutdown()
+  } finally {
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
+
+test('a background task keeps its item running, records a failed outcome, and its follow-up continues that row', async () => {
+  const f = liveFixture(async (context) => {
+    if (context.text === 'bg') {
+      context.emit({
+        type: 'item',
+        item: { id: 'cmd', kind: 'tool', text: '', title: 'sleep 5; exit 3', status: 'running' }
+      })
+      f.opened[0].host.task({
+        id: 'task',
+        title: 'sleep 5; exit 3',
+        status: 'running',
+        itemId: 'cmd',
+        startedAt: 1
+      })
+    }
+  })
+  const statuses: AgentStatusEvent[] = []
+  const service = new AgentSessions(
+    f.dir,
+    () => {},
+    f.drivers,
+    (event) => statuses.push(event)
+  )
+  try {
+    await service.command(scope, { ...send, commandId: 'bg', text: 'bg' })
+    await waitFor(() => !service['running'].size)
+    let session = (await service.command(scope, get)).session!
+    const started = session.items.find((item) => item.id.endsWith(':cmd'))!
+    assert.equal(started.status, 'running')
+    assert.deepEqual(session.background, [
+      { id: 'task', title: 'sleep 5; exit 3', status: 'running', itemId: 'cmd', startedAt: 1 }
+    ])
+    assert.equal(session.status, 'idle')
+
+    await service.command(scope, { ...send, commandId: 'later', text: 'later' })
+    await waitFor(() => !service['running'].size)
+    const { host } = f.opened[0]
+    host.idle({ type: 'item', item: { id: 'cmd', kind: 'tool', text: 'boom' }, append: true })
+    host.task({ id: 'task', status: 'failed', exitCode: 3, endedAt: 9 })
+    // A repeated outcome for a task that already settled is ignored.
+    host.task({ id: 'task', status: 'completed', endedAt: 10 })
+    session = (await service.command(scope, get)).session!
+    const origin = session.items.filter((item) => item.id.endsWith(':cmd'))
+    assert.equal(origin.length, 1)
+    assert.equal(origin[0].turnId, started.turnId)
+    assert.equal(origin[0].text, 'boom')
+    assert.equal(origin[0].status, 'failed')
+    assert.equal(session.background, undefined)
+    const outcomes = session.items.filter((item) => item.task)
+    assert.equal(outcomes.length, 1)
+    assert.deepEqual(outcomes[0].task, {
+      id: 'task',
+      title: 'sleep 5; exit 3',
+      status: 'failed',
+      itemId: 'cmd',
+      startedAt: 1,
+      exitCode: 3,
+      endedAt: 9
+    })
+    assert.equal(outcomes[0].text, 'Background task failed (exit code 3): sleep 5; exit 3')
+    assert.notEqual(outcomes[0].turnId, session.turnId)
+
+    const turn = host.autonomous()
+    assert(turn)
+    assert.equal(host.autonomous(), undefined)
+    session = (await service.command(scope, get)).session!
+    assert.equal(session.status, 'running')
+    assert.equal(session.turnId, outcomes[0].turnId)
+    turn.context.emit({
+      type: 'item',
+      item: { id: 'reply', kind: 'text', text: 'It exited with 3.', status: 'completed' }
+    })
+    turn.settle()
+    await waitFor(() => !service['running'].size)
+    session = (await service.command(scope, get)).session!
+    assert.deepEqual(
+      session.items
+        .filter((item) => item.turnId === session.turnId)
+        .map((item) => [item.kind, item.task?.status ?? item.text]),
+      [
+        ['notice', 'failed'],
+        ['text', 'It exited with 3.']
+      ]
+    )
+    assert.equal(session.status, 'idle')
+    assert.equal(session.attention?.kind, 'finished')
+    assert.equal(statuses.at(-1)?.summary, 'It exited with 3.')
+    await service.shutdown()
+  } finally {
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
+
+test('tasks still running when Cerebro closes their process are recorded as stopped', async () => {
+  const f = liveFixture()
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    await service.command(scope, { ...send, commandId: 'full', accessMode: 'full' })
+    await waitFor(() => !service['running'].size)
+    f.opened[0].host.task({ id: 'server', title: 'nr dev', status: 'running', startedAt: 1 })
+    await service.command(scope, { ...send, commandId: 'read', accessMode: 'read' })
+    await waitFor(() => !service['running'].size)
+    assert.equal(f.opened.length, 2)
+    assert.equal(f.opened[0].closed, true)
+    let session = (await service.command(scope, get)).session!
+    assert.equal(session.background, undefined)
+    const restarted = session.items.find((item) => item.task?.id === 'server')
+    assert.equal(restarted?.task?.status, 'stopped')
+    assert.equal(restarted?.text, 'Stopped because access settings changed.')
+    // Events from the replaced process are ignored.
+    f.opened[0].host.task({ id: 'stale', title: 'stale', status: 'running' })
+    assert.equal((await service.command(scope, get)).session!.background, undefined)
+
+    f.opened[1].host.task({ id: 'watch', title: 'vitest --watch', status: 'running' })
+    service.releasePanes([1])
+    assert.equal(f.opened[1].closed, true)
+    session = (await service.command(scope, { ...get, action: 'open', sessionId: session.id }))
+      .session!
+    const closed = session.items.find((item) => item.task?.id === 'watch')
+    assert.equal(closed?.task?.status, 'stopped')
+    assert.equal(closed?.text, 'Stopped when the agent closed.')
+    assert.equal(session.background, undefined)
+    await service.shutdown()
+  } finally {
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})

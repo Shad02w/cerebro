@@ -13,6 +13,7 @@ import { join } from 'node:path'
 import { homedir } from 'node:os'
 import {
   agentActivityStatus,
+  backgroundTaskOutcome,
   chatAttachmentLimits,
   chatImageTypes,
   type AgentAccessMode,
@@ -30,12 +31,22 @@ import {
   type ChatCommand,
   type ChatImageType,
   type AgentActivityStatus,
+  type AgentBackgroundTask,
   type ChatActivityOverview,
   type ChatAgentActivity,
   type ChatView,
   type QueuedMessage
 } from '@cerebro/core'
-import { adapters, type AgentAdapter, type RunAttachment } from './adapters'
+import {
+  adapters,
+  type AgentAdapter,
+  type AgentConnection,
+  type AutonomousTurn,
+  type BackgroundTaskUpdate,
+  type ConnectionHost,
+  type RunAttachment,
+  type RunContext
+} from './adapters'
 import { executable } from './transport'
 
 export type AgentScope = {
@@ -50,6 +61,12 @@ type Running = {
   requests: Map<string, (answer: AgentAnswer) => void>
   /** Registered by the adapter once it has a live handle into the running turn. Absent means this harness/run can't be steered right now. */
   steer?: (text: string, attachments: RunAttachment[]) => Promise<void>
+}
+/** A session's live harness process. Access mode and cwd are launch settings; changing either restarts it. */
+type Live = {
+  connection?: AgentConnection
+  accessMode: AgentAccessMode
+  cwd: string
 }
 const harnesses: AgentHarness[] = ['claude', 'codex', 'pi']
 const capabilities: Record<AgentHarness, AgentCapabilities> = {
@@ -217,6 +234,9 @@ export class AgentSessions {
   private bindings: Record<string, string>
   private favorites: AgentModel[]
   private running = new Map<string, Running>()
+  private live = new Map<string, Live>()
+  /** Per session, the trailing turn that holds background outcomes reported while idle. */
+  private events = new Map<string, string>()
   private timers = new Map<string, ReturnType<typeof setTimeout>>()
   private catalog?: AgentCatalog
   private loadingCatalog?: Promise<AgentCatalog>
@@ -243,6 +263,12 @@ export class AgentSessions {
           if (item.status === 'running') item.status = 'interrupted'
           if (item.request) item.request.resolved = true
         }
+        session.sequence++
+        this.persist(session)
+      }
+      if (session.background) {
+        // Background tasks belonged to a harness process that no longer exists.
+        this.stopBackground(session, 'Stopped because the agent host restarted.')
         session.sequence++
         this.persist(session)
       }
@@ -473,31 +499,120 @@ export class AgentSessions {
   }
   /** Drop pane bindings when chat panes close so overview tracks open tabs only. */
   releasePanes(paneIds: Iterable<number>): void {
-    let changed = false
     const next = { ...this.bindings }
     const workspaces = new Set<number>()
+    const released = new Set<string>()
     for (const paneId of paneIds) {
       const key = String(paneId)
       const sessionId = next[key]
       if (!sessionId) continue
       delete next[key]
-      changed = true
+      released.add(sessionId)
       const session = this.sessions.get(sessionId)
       if (session) workspaces.add(session.workspaceId)
     }
-    if (!changed) return
+    if (!released.size) return
     this.atomic('bindings.json', next)
     this.bindings = next
+    for (const sessionId of released) this.releaseIfDetached(sessionId)
     for (const workspaceId of workspaces) this.publish(workspaceId)
+  }
+  private bound(sessionId: string): boolean {
+    return Object.values(this.bindings).includes(sessionId)
+  }
+  /** Closes the session's harness process, which stops every background task it owns. */
+  private release(sessionId: string): void {
+    const entry = this.live.get(sessionId)
+    if (!entry) return
+    this.live.delete(sessionId)
+    entry.connection?.close()
+    const session = this.sessions.get(sessionId)
+    if (session?.background) {
+      this.stopBackground(session, 'Stopped when the agent closed.')
+      this.changed(session, true)
+    }
+  }
+  /** Settles every running task as stopped: its process is gone and will never report back. */
+  private stopBackground(session: AgentSession, summary: string): void {
+    for (const task of [...(session.background ?? [])])
+      this.settleTask(session, { id: task.id, status: 'stopped', summary })
+  }
+  /** Applies one task update. Callers persist and publish. */
+  private updateTask(session: AgentSession, update: BackgroundTaskUpdate): void {
+    if (update.status !== 'running') {
+      this.settleTask(session, update)
+      return
+    }
+    const fields = Object.fromEntries(
+      Object.entries(update).filter(([, value]) => value !== undefined)
+    ) as BackgroundTaskUpdate
+    const list = session.background ?? []
+    const existing = list.find((task) => task.id === update.id)
+    if (existing) Object.assign(existing, fields)
+    else list.push({ title: '', startedAt: Date.now(), ...fields })
+    session.background = list
+  }
+  /**
+   * Moves a task out of the running list and records how it ended as a `notice` carrying the
+   * task. The item that started it takes the matching final status.
+   */
+  private settleTask(session: AgentSession, update: BackgroundTaskUpdate): void {
+    const list = session.background ?? []
+    const existing = list.find((task) => task.id === update.id)
+    if (!existing) return
+    const fields = Object.fromEntries(
+      Object.entries(update).filter(([, value]) => value !== undefined)
+    ) as BackgroundTaskUpdate
+    const task: AgentBackgroundTask = {
+      ...existing,
+      ...fields,
+      endedAt: update.endedAt ?? Date.now()
+    }
+    const rest = list.filter((entry) => entry !== existing)
+    session.background = rest.length ? rest : undefined
+    if (task.itemId) {
+      const origin = session.items.find(
+        (item) => item.id === `${item.turnId}:${task.itemId}` && item.status === 'running'
+      )
+      if (origin)
+        origin.status =
+          task.status === 'failed'
+            ? 'failed'
+            : task.status === 'stopped'
+              ? 'interrupted'
+              : 'completed'
+    }
+    const turnId = busy(session) && session.turnId ? session.turnId : this.eventTurn(session)
+    session.items.push({
+      id: `${turnId}:task:${task.id}`,
+      turnId,
+      kind: 'notice',
+      text: task.summary || backgroundTaskOutcome(task),
+      task
+    })
+  }
+  /** Outcomes reported while idle share one trailing turn until something else is added. */
+  private eventTurn(session: AgentSession): string {
+    const pending = this.events.get(session.id)
+    if (pending && session.items.at(-1)?.turnId === pending) return pending
+    const turnId = randomUUID()
+    this.events.set(session.id, turnId)
+    return turnId
+  }
+  /** A session no pane shows keeps no process. A running turn finishes first. */
+  private releaseIfDetached(sessionId: string | undefined): void {
+    if (sessionId && !this.bound(sessionId) && !this.running.has(sessionId)) this.release(sessionId)
   }
   async command(scope: AgentScope, command: ChatCommand): Promise<ChatView> {
     if (this.stopping) throw new Error('Agent host is stopping.')
     if (command.action === 'get') return this.view(scope)
     if (command.action === 'new') {
+      const previous = this.bindings[String(scope.paneId)]
       const next = { ...this.bindings }
       delete next[String(scope.paneId)]
       this.atomic('bindings.json', next)
       this.bindings = next
+      this.releaseIfDetached(previous)
       this.publish(scope.workspaceId)
       return this.view(scope)
     }
@@ -509,9 +624,11 @@ export class AgentSessions {
         session.repositoryId !== scope.repositoryId
       )
         throw new Error('Conversation not found in this repository.')
+      const previous = this.bindings[String(scope.paneId)]
       const next = { ...this.bindings, [scope.paneId]: session.id }
       this.atomic('bindings.json', next)
       this.bindings = next
+      this.releaseIfDetached(previous)
       this.publish(scope.workspaceId)
       return this.view(scope)
     }
@@ -755,7 +872,143 @@ export class AgentSessions {
       done: Promise.resolve()
     }
     this.running.set(session.id, runtime)
-    runtime.done = this.run(session, text, attachments, runtime)
+    runtime.done = this.run(session, runtime, (context) =>
+      this.connectionFor(session).run({ ...context, text, attachments })
+    )
+  }
+  /** The session's live harness process, opened on first use and reused by every later turn. */
+  private connectionFor(session: AgentSession): AgentConnection {
+    const accessMode = session.accessMode ?? 'full'
+    const existing = this.live.get(session.id)
+    if (existing?.connection && existing.accessMode === accessMode && existing.cwd === session.cwd)
+      return existing.connection
+    if (existing?.connection && session.background) {
+      this.stopBackground(session, 'Stopped because access settings changed.')
+      this.changed(session, true)
+    }
+    this.release(session.id)
+    const entry: Live = { accessMode, cwd: session.cwd }
+    this.live.set(session.id, entry)
+    entry.connection = this.drivers[session.model.harness].connect(
+      structuredClone(session),
+      this.host(session, entry)
+    )
+    return entry.connection
+  }
+  /** Callbacks for one process. Once the session replaces or closes it, its late events are ignored. */
+  private host(session: AgentSession, entry: Live): ConnectionHost {
+    const current = (): boolean => this.live.get(session.id) === entry
+    return {
+      autonomous: () => (current() ? this.autonomous(session) : undefined),
+      task: (update) => {
+        if (!current()) return
+        this.updateTask(session, update)
+        this.changed(session, true)
+      },
+      idle: (event) => {
+        if (!current()) return
+        try {
+          this.apply(session, event, true)
+        } catch {
+          // Display limit reached; the native transcript still has it.
+        }
+      },
+      exited: () => {
+        if (!current()) return
+        this.live.delete(session.id)
+        if (!session.background) return
+        this.stopBackground(session, 'Stopped because the agent process exited.')
+        this.changed(session, true)
+      }
+    }
+  }
+  /**
+   * A turn the harness began itself, typically to follow up on a background task that settled.
+   * It continues the trailing turn of idle outcomes, so the outcome and the follow-up read as one.
+   */
+  private autonomous(session: AgentSession): AutonomousTurn | undefined {
+    if (this.stopping || busy(session)) return undefined
+    const pending = this.events.get(session.id)
+    session.status = 'running'
+    session.error = undefined
+    session.attention = undefined
+    session.generation = randomUUID()
+    session.turnId = pending && session.items.at(-1)?.turnId === pending ? pending : randomUUID()
+    this.events.delete(session.id)
+    this.changed(session, true)
+    const runtime: Running = {
+      controller: new AbortController(),
+      requests: new Map(),
+      done: Promise.resolve()
+    }
+    this.running.set(session.id, runtime)
+    let turn: AutonomousTurn | undefined
+    // `run` hands over the context synchronously, so `turn` is set before this returns.
+    runtime.done = this.run(
+      session,
+      runtime,
+      (context) =>
+        new Promise<void>((resolve, reject) => {
+          turn = { context, settle: (error) => (error ? reject(error) : resolve()) }
+        })
+    )
+    return turn
+  }
+  /**
+   * Folds one adapter event into the session. `idle` events arrive between turns, so an item
+   * updates in whichever turn already owns it rather than the latest one.
+   */
+  private apply(session: AgentSession, event: AgentDelta, idle = false): void {
+    if (event.type === 'binding') {
+      if (session.nativeId !== event.nativeId) {
+        session.nativeId = event.nativeId
+        this.changed(session, true)
+      }
+      return
+    }
+    if (event.type === 'checkpoint') {
+      if (session.checkpoints?.[event.turnId] !== event.chainId) {
+        session.checkpoints = { ...session.checkpoints, [event.turnId]: event.chainId }
+        this.changed(session, true)
+      }
+      return
+    }
+    if (event.type === 'evict') {
+      const ids = new Set(event.ids.map((id) => `${session.turnId}:${id}`))
+      const before = session.items.length
+      session.items = session.items.filter((item) => !ids.has(item.id))
+      if (session.items.length !== before) this.changed(session, true)
+      return
+    }
+    if (event.type === 'usage') {
+      session.contextUsage = event.usage
+      this.changed(session, true)
+      return
+    }
+    const owner = idle
+      ? session.items.find((item) => item.id === `${item.turnId}:${event.item.id}`)?.turnId
+      : undefined
+    const turnId = owner ?? session.turnId ?? randomUUID()
+    const id = `${turnId}:${event.item.id}`
+    const existing = session.items.find((item) => item.id === id)
+    const next = {
+      ...existing,
+      ...event.item,
+      id,
+      turnId,
+      text: event.append ? (existing?.text ?? '') + event.item.text : event.item.text
+    }
+    const projectedSize =
+      JSON.stringify(session).length +
+      JSON.stringify(next).length -
+      (existing ? JSON.stringify(existing).length : 0)
+    if (projectedSize > 2_000_000 || (!existing && session.items.length >= 2000))
+      throw new Error(
+        'Conversation display limit reached. Start a new Agent; native history is retained.'
+      )
+    if (existing) Object.assign(existing, next)
+    else session.items.push(next)
+    this.changed(session, idle)
   }
   /** Branches a completed section into a new, independent session. Native memory carries over only for adapters that support it (currently Claude). */
   private async fork(scope: AgentScope, command: ChatCommand): Promise<ChatView> {
@@ -811,61 +1064,16 @@ export class AgentSessions {
         .map(({ id, title, model, status, updatedAt }) => ({ id, title, model, status, updatedAt }))
     })
   }
+  /** Drives one turn. `start` must receive its context synchronously; `autonomous` relies on it. */
   private async run(
     session: AgentSession,
-    text: string,
-    attachments: RunAttachment[],
-    runtime: Running
+    runtime: Running,
+    start: (context: Omit<RunContext, 'text'>) => Promise<void>
   ): Promise<void> {
     const generation = session.generation
     const emit = (event: AgentDelta): void => {
       if (runtime.controller.signal.aborted || session.generation !== generation) return
-      if (event.type === 'binding') {
-        if (session.nativeId !== event.nativeId) {
-          session.nativeId = event.nativeId
-          this.changed(session, true)
-        }
-        return
-      }
-      if (event.type === 'checkpoint') {
-        if (session.checkpoints?.[event.turnId] !== event.chainId) {
-          session.checkpoints = { ...session.checkpoints, [event.turnId]: event.chainId }
-          this.changed(session, true)
-        }
-        return
-      }
-      if (event.type === 'evict') {
-        const ids = new Set(event.ids.map((id) => `${session.turnId}:${id}`))
-        const before = session.items.length
-        session.items = session.items.filter((item) => !ids.has(item.id))
-        if (session.items.length !== before) this.changed(session, true)
-        return
-      }
-      if (event.type === 'usage') {
-        session.contextUsage = event.usage
-        this.changed(session, true)
-        return
-      }
-      const id = `${session.turnId}:${event.item.id}`
-      const existing = session.items.find((item) => item.id === id)
-      const next = {
-        ...existing,
-        ...event.item,
-        id,
-        turnId: session.turnId!,
-        text: event.append ? (existing?.text ?? '') + event.item.text : event.item.text
-      }
-      const projectedSize =
-        JSON.stringify(session).length +
-        JSON.stringify(next).length -
-        (existing ? JSON.stringify(existing).length : 0)
-      if (projectedSize > 2_000_000 || (!existing && session.items.length >= 2000))
-        throw new Error(
-          'Conversation display limit reached. Start a new Agent; native history is retained.'
-        )
-      if (existing) Object.assign(existing, next)
-      else session.items.push(next)
-      this.changed(session)
+      this.apply(session, event)
     }
     const ask = (request: AgentRequest): Promise<AgentAnswer> => {
       if (runtime.controller.signal.aborted) return Promise.resolve({ allow: false, answers: {} })
@@ -903,10 +1111,8 @@ export class AgentSessions {
     let finishedNotice: string | undefined
     let failedNotice: string | undefined
     try {
-      await this.drivers[session.model.harness].run({
+      await start({
         session: structuredClone(session),
-        text,
-        attachments,
         signal: runtime.controller.signal,
         emit,
         ask,
@@ -935,8 +1141,12 @@ export class AgentSessions {
     } finally {
       declinePending()
       runtime.controller.signal.removeEventListener('abort', declinePending)
+      // Items that started background work stay running until that work settles.
+      const background = new Set(
+        (session.background ?? []).map((task) => `${session.turnId}:${task.itemId}`)
+      )
       for (const entry of session.items.filter((i) => i.turnId === session.turnId)) {
-        if (entry.status === 'running')
+        if (entry.status === 'running' && !background.has(entry.id))
           entry.status = session.status === 'idle' ? 'completed' : 'interrupted'
         if (entry.request) entry.request.resolved = true
       }
@@ -968,28 +1178,38 @@ export class AgentSessions {
           next.accessMode ?? 'full'
         )
       }
+      this.releaseIfDetached(session.id)
     }
   }
   async stopWorkspace(workspaceId: number): Promise<void> {
     // A queued message auto-starts a new run from inside the old one's `finally`, synchronously before
     // its `done` resolves — re-snapshot after each round so an auto-flush spawned mid-teardown gets caught too.
     for (;;) {
-      const active = [...this.running.entries()]
-        .filter(([id]) => this.sessions.get(id)?.workspaceId === workspaceId)
-        .map(([, runtime]) => runtime)
+      const active = [...this.running.entries()].filter(
+        ([id]) => this.sessions.get(id)?.workspaceId === workspaceId
+      )
       if (!active.length) break
-      for (const runtime of active) runtime.controller.abort()
-      await Promise.all(active.map((runtime) => runtime.done))
+      for (const [id, runtime] of active) {
+        runtime.controller.abort()
+        this.release(id)
+      }
+      await Promise.all(active.map(([, runtime]) => runtime.done))
     }
+    for (const id of [...this.live.keys()])
+      if (this.sessions.get(id)?.workspaceId === workspaceId) this.release(id)
   }
   async shutdown(): Promise<void> {
     this.stopping = true
     for (;;) {
-      const active = [...this.running.values()]
+      const active = [...this.running.entries()]
       if (!active.length) break
-      for (const runtime of active) runtime.controller.abort()
-      await Promise.all(active.map((runtime) => runtime.done))
+      for (const [id, runtime] of active) {
+        runtime.controller.abort()
+        this.release(id)
+      }
+      await Promise.all(active.map(([, runtime]) => runtime.done))
     }
+    for (const id of [...this.live.keys()]) this.release(id)
     for (const timer of this.timers.values()) clearTimeout(timer)
     this.timers.clear()
     for (const session of this.sessions.values()) this.persist(session)

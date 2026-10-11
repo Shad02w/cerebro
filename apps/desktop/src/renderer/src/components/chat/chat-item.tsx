@@ -3,6 +3,7 @@ import type { AgentAnswer, ChatItem as Item } from '@cerebro/core'
 import { Button } from '@/components/ui/button'
 import { AgentMarkdown } from '@/components/markdown/agent-markdown'
 import { ChatDiff } from './chat-diff'
+import { ChatTaskOutcome } from './chat-task-outcome'
 import { ChatUserMessage } from './chat-user-message'
 
 function RequestCard({
@@ -119,6 +120,8 @@ export const ChatItem = memo(function ChatItem({
         <pre className="whitespace-pre-wrap text-sm">{item.text}</pre>
       </section>
     )
+  if (item.kind === 'notice' && item.task)
+    return <ChatTaskOutcome task={item.task} text={item.text} />
   if (item.kind === 'notice')
     return (
       <p className="text-xs text-muted-foreground">

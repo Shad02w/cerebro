@@ -9,6 +9,8 @@ const mode = process.argv.includes('app-server')
 const send = (value) => process.stdout.write(JSON.stringify(value) + '\n')
 const notify = (method, params) => send({ method, params })
 let resume = false
+let backgroundStarted = 0
+const backgroundLive = new Map()
 let accessSettings
 let finishApproval
 const text =
@@ -60,6 +62,36 @@ function codexPrompt(prompt, input) {
     ].join('\n')
     notify('item/completed', { item: { type: 'agentMessage', id: 'rich', text: rich } })
     codexDone()
+    return
+  }
+  if (prompt === 'pid') {
+    notify('item/completed', {
+      item: { type: 'agentMessage', id: 'pid', text: String(process.pid) }
+    })
+    codexDone()
+    return
+  }
+  if (prompt === 'background-command' || prompt === 'background-command-fail') {
+    const failed = prompt.endsWith('-fail')
+    // Unified exec yields a long-running command: its item outlives the turn and completes later.
+    const command = { type: 'commandExecution', id: 'bg-command', command: 'sleep 1; pwd' }
+    notify('item/started', { item: { ...command, aggregatedOutput: '' } })
+    notify('item/completed', {
+      item: { type: 'agentMessage', id: 'bg-reply', text: 'Started in the background.' }
+    })
+    codexDone()
+    setTimeout(() => {
+      notify('item/commandExecution/outputDelta', { itemId: 'bg-command', delta: '/tmp\n' })
+      notify('item/completed', {
+        item: {
+          ...command,
+          status: failed ? 'failed' : 'completed',
+          aggregatedOutput: '/tmp\n',
+          exitCode: failed ? 3 : 0,
+          durationMs: 1000
+        }
+      })
+    }, 50)
     return
   }
   if (prompt === 'access-settings') {
@@ -177,6 +209,73 @@ function claudePrompt(prompt, content) {
   }
   if (prompt === 'access-settings') {
     claudeFinish(JSON.stringify(process.argv.slice(2)))
+    return
+  }
+  if (prompt === 'pid') {
+    claudeFinish(String(process.pid))
+    return
+  }
+  const background = /^background-task(-fail)?(?: (\d+))?$/.exec(prompt)
+  if (background) {
+    // Frame order and fields recorded from Claude Code: the full live set, then the task_started
+    // edge. Each message starts one more task, so several can run at once.
+    const failed = Boolean(background[1])
+    const n = ++backgroundStarted
+    const suffix = n === 1 ? '' : `-${n}`
+    const task = {
+      task_id: `task-test${suffix}`,
+      task_type: 'local_bash',
+      description: n === 1 ? 'Delayed pwd' : `Delayed pwd ${n}`
+    }
+    const liveSet = () => ({
+      type: 'system',
+      subtype: 'background_tasks_changed',
+      tasks: [...backgroundLive.values()],
+      session_id: 'claude-test'
+    })
+    backgroundLive.set(task.task_id, task)
+    send({ type: 'system', subtype: 'init', session_id: 'claude-test', tools: [], model: 'test' })
+    send(liveSet())
+    send({
+      type: 'system',
+      subtype: 'task_started',
+      task_id: task.task_id,
+      tool_use_id: `tool-bg${suffix}`,
+      description: task.description,
+      is_backgrounded: true,
+      task_type: 'local_bash',
+      session_id: 'claude-test'
+    })
+    claudeFinish('Background task is running.')
+    // While idle, the settled task wakes Claude for a follow-up turn nobody sent.
+    setTimeout(
+      () => {
+        backgroundLive.delete(task.task_id)
+        send({
+          type: 'system',
+          subtype: 'task_notification',
+          task_id: task.task_id,
+          tool_use_id: `tool-bg${suffix}`,
+          status: failed ? 'failed' : 'completed',
+          summary: failed
+            ? `Background command "${task.description}" failed with exit code 3`
+            : `Background command "${task.description}" completed (exit code 0)`,
+          session_id: 'claude-test'
+        })
+        send(liveSet())
+        send({
+          type: 'system',
+          subtype: 'init',
+          session_id: 'claude-test',
+          tools: [],
+          model: 'test'
+        })
+        claudeFinish(
+          failed ? 'Background task failed with exit code 3.' : 'Background task finished: /tmp'
+        )
+      },
+      Number(background[2] ?? 50)
+    )
     return
   }
   send({ type: 'system', subtype: 'init', session_id: 'claude-test', tools: [], model: 'test' })
@@ -464,8 +563,15 @@ createInterface({ input: process.stdin }).on('line', (line) => {
         break
       case 'set_model':
       case 'set_thinking_level':
+        reply({})
+        break
       case 'abort':
         reply({})
+        send({
+          type: 'message_end',
+          message: { role: 'assistant', content: [], stopReason: 'aborted' }
+        })
+        send({ type: 'agent_end' })
         break
       case 'prompt': {
         if (frame.streamingBehavior === 'steer') {
@@ -483,9 +589,11 @@ createInterface({ input: process.stdin }).on('line', (line) => {
         const responseText =
           frame.message === 'access-settings'
             ? JSON.stringify(process.argv.slice(2))
-            : frame.message.includes('attachments')
-              ? JSON.stringify({ message: frame.message, images: frame.images })
-              : text
+            : frame.message === 'pid'
+              ? String(process.pid)
+              : frame.message.includes('attachments')
+                ? JSON.stringify({ message: frame.message, images: frame.images })
+                : text
         reply({})
         send({ type: 'message_start', message: { role: 'assistant' } })
         if (frame.message.includes('slow')) break
@@ -506,6 +614,20 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       }
     }
   } else {
+    if (frame.type === 'control_request' && frame.request?.subtype === 'interrupt') {
+      send({
+        type: 'control_response',
+        response: { subtype: 'success', request_id: frame.request_id, response: {} }
+      })
+      send({
+        type: 'result',
+        subtype: 'error_during_execution',
+        is_error: true,
+        errors: ['[Request interrupted by user]'],
+        session_id: 'claude-test'
+      })
+      return
+    }
     if (frame.type === 'control_request' && frame.request?.subtype === 'get_context_usage')
       send({
         type: 'control_response',

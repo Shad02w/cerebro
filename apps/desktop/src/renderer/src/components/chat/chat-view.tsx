@@ -21,6 +21,7 @@ import { cn } from '@/lib/utils'
 import { ChatItem } from './chat-item'
 import { ChatTurnActions } from './chat-turn-actions'
 import { ChatQueue } from './chat-queue'
+import { ChatSessionChips } from './chat-session-chips'
 import { AttachmentStrip, DropOverlay } from './chat-composer-attachments'
 import { ComposerEditor, type ComposerEditorHandle } from './composer-editor'
 import { VimModeBadge } from './vim-mode-badge'
@@ -441,6 +442,7 @@ export function ChatView({
             <div className={cn('relative px-5', empty ? 'pb-0' : 'bg-background pb-4')}>
               {session ? (
                 <div className={`mx-auto max-w-3xl ${visible ? 'pointer-events-auto' : ''}`}>
+                  <ChatSessionChips session={session} />
                   <ChatQueue session={session} onSteer={steer} onDequeue={dequeue} />
                 </div>
               ) : null}

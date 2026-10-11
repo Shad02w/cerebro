@@ -1533,3 +1533,78 @@ test('agent replies render rich markdown, local images, and never load remote im
     await rm(directory, { recursive: true, force: true })
   }
 })
+
+test('Claude background jobs outlive their response, list under a chip, and report their outcomes', async ({
+  page,
+  electronApp
+}) => {
+  const directory = await mkdtemp(join(tmpdir(), 'cerebro-chat-background-e2e-'))
+  try {
+    await electronApp.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0].setSize(1250, 900)
+    )
+    const project = await page.evaluate(
+      (directory) => window.cerebro.createProjectFromDirectory(directory),
+      directory
+    )
+    const workspaceId = project.workspaces[0].id
+    await page.reload()
+    const projectRow = page.getByTestId(/project-row-/).first()
+    await expect(projectRow).toBeVisible()
+    if ((await projectRow.getAttribute('aria-expanded')) === 'false') await projectRow.click()
+    await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
+    await page.getByRole('button', { name: /^New Agent tab/ }).click()
+    await page.getByTestId('chat-model-picker').click()
+    await page.keyboard.type('Test Sonnet 5')
+    await page.keyboard.press('Enter')
+    await expect(page.getByTestId('chat-model-picker')).toContainText('Test Sonnet 5')
+    const transcript = page.getByTestId('chat-transcript')
+    const message = page.getByRole('textbox', { name: 'Message agent' })
+    const sendMessage = page.getByRole('button', { name: 'Send message', exact: true })
+    const ended = page.getByRole('separator', { name: 'End of response' })
+    await message.fill('background-task 9000')
+    await sendMessage.click()
+    await expect(ended).toHaveCount(1)
+    await expect(page.getByRole('button', { name: '1 background job' })).toBeVisible()
+    await message.fill('background-task 9000')
+    await sendMessage.click()
+    await expect(ended).toHaveCount(2)
+    const chip = page.getByRole('button', { name: '2 background jobs' })
+    await expect(chip).toHaveText('Background2')
+    await mkdir(chatEvidenceDir, { recursive: true })
+    await screenshotChatEvidence(page, 'background-jobs-chip.png')
+    await chip.click()
+    const jobs = page.getByTestId('chat-background-tasks')
+    await expect(jobs).toBeVisible()
+    await expect(page.getByTestId('chat-background-task')).toHaveText([
+      'Delayed pwd',
+      'Delayed pwd 2'
+    ])
+    await expect(jobs).toHaveCSS('opacity', '1')
+    await screenshotChatEvidence(page, 'background-jobs-open.png')
+    await page.keyboard.press('Escape')
+    await expect(jobs).toBeHidden()
+
+    const outcomes = page.getByTestId('chat-task-outcome')
+    await expect(outcomes).toHaveCount(2, { timeout: 20_000 })
+    await expect(outcomes.nth(0)).toHaveAttribute('data-task-status', 'completed')
+    await expect(outcomes.nth(0)).toContainText('exit 0')
+    await expect(outcomes.nth(1)).toHaveAttribute('data-task-status', 'completed')
+    await expect(page.getByTestId('chat-session-chips')).toHaveCount(0)
+    await expect(ended).toHaveCount(4)
+    await expect(transcript).toContainText('Background task finished: /tmp')
+    await screenshotChatEvidence(page, 'background-task-followup.png')
+
+    await message.fill('background-task-fail 1500')
+    await sendMessage.click()
+    await expect(transcript).toContainText('Background task failed with exit code 3.', {
+      timeout: 15_000
+    })
+    await expect(outcomes.nth(2)).toHaveAttribute('data-task-status', 'failed')
+    await expect(outcomes.nth(2)).toContainText('failed with exit code 3')
+    await expect(outcomes.nth(2)).toContainText('exit 3')
+    await screenshotChatEvidence(page, 'background-task-failed.png')
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
