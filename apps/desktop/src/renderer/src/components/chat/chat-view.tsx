@@ -22,7 +22,6 @@ import { ChatItem } from './chat-item'
 import { ChatTurnActions } from './chat-turn-actions'
 import { ChatQueue } from './chat-queue'
 import { ChatSessionChips } from './chat-session-chips'
-import { ChatTodo } from './chat-todo'
 import { AttachmentStrip, DropOverlay } from './chat-composer-attachments'
 import { ComposerEditor, type ComposerEditorHandle } from './composer-editor'
 import { VimModeBadge } from './vim-mode-badge'
@@ -352,10 +351,7 @@ export function ChatView({
               const node = scrolling.current
               if (node) stick.current = node.scrollHeight - node.scrollTop - node.clientHeight < 80
             }}
-            className={cn(
-              'min-h-0 flex-1 overflow-y-auto px-5 pt-5',
-              empty ? 'pb-5' : session?.todo?.items.length ? 'pb-72' : 'pb-40'
-            )}
+            className={cn('min-h-0 flex-1 overflow-y-auto px-5 pt-5', empty ? 'pb-5' : 'pb-40')}
             data-testid="chat-transcript"
             aria-label="Conversation"
           >
@@ -448,7 +444,6 @@ export function ChatView({
                 <div className={`mx-auto max-w-3xl ${visible ? 'pointer-events-auto' : ''}`}>
                   <ChatSessionChips session={session} />
                   <ChatQueue session={session} onSteer={steer} onDequeue={dequeue} />
-                  <ChatTodo todo={session.todo} />
                 </div>
               ) : null}
               <div
