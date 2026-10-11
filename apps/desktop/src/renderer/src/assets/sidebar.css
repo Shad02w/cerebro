@@ -67,7 +67,7 @@
 
 .cerebro-sidebar
   [data-active='true']:is([data-sidebar='menu-button'], [data-workspace-role]):hover {
-  background-color: color-mix(in srgb, var(--sidebar-selected) 16%, var(--sidebar));
+  background-color: var(--sidebar-accent);
 }
 
 .cerebro-sidebar button:focus-visible {
@@ -114,21 +114,21 @@
 }
 
 /* Selecting the root workspace highlights the whole multi-root block,
-   including nested repositories (teal selected wash). Hovering the root uses
-   the normal sidebar row hover background instead of teal. A nested repo still
-   uses its own row highlight when hovered or selected. */
+   including nested repositories (teal selected wash). Hover uses the normal
+   sidebar accent background, including while that block is selected. A nested
+   repo still uses its own row highlight when hovered or selected. */
 .cerebro-sidebar .sidebar-root-group[data-active='true'] {
   background-color: color-mix(in srgb, var(--sidebar-selected) 10%, var(--sidebar));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sidebar-selected) 24%, transparent);
 }
 
-.cerebro-sidebar .sidebar-root-group[data-active='true']:hover {
-  background-color: color-mix(in srgb, var(--sidebar-selected) 16%, var(--sidebar));
-}
-
 .cerebro-sidebar .sidebar-root-group[data-hover='true']:not([data-active='true']) {
   background-color: var(--sidebar-accent);
   box-shadow: none;
+}
+
+.cerebro-sidebar .sidebar-root-group[data-hover='true'][data-active='true'] {
+  background-color: var(--sidebar-accent);
 }
 
 .cerebro-sidebar
@@ -144,5 +144,5 @@
 }
 
 .cerebro-sidebar .sidebar-root-group[data-active='true'] [data-workspace-role='repository']:hover {
-  background-color: color-mix(in srgb, var(--sidebar-selected) 16%, var(--sidebar));
+  background-color: var(--sidebar-accent);
 }
