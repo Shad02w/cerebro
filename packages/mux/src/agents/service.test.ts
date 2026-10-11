@@ -1129,3 +1129,66 @@ test('a todo snapshot replaces the session checklist and survives restart', asyn
     rmSync(f.dir, { recursive: true, force: true })
   }
 })
+
+test('a thread title starts as the slice, then the prompt pass, then the first response', async () => {
+  const calls: Array<{ user: string; response?: string }> = []
+  const gates: Array<(title: string | null) => void> = []
+  const f = fixture(async (context) => {
+    context.emit({
+      type: 'item',
+      item: { id: 'answer', kind: 'text', text: 'The button is now called Save.' }
+    })
+  })
+  const suggest = (input: { user: string; response?: string }) => {
+    calls.push({
+      user: input.user,
+      ...(input.response === undefined ? {} : { response: input.response })
+    })
+    return new Promise<string | null>((resolve) => gates.push(resolve))
+  }
+  try {
+    const service = new AgentSessions(
+      f.dir,
+      () => {},
+      f.drivers,
+      () => {},
+      suggest
+    )
+    const prompt = 'please rename the save button'
+    const created = await service.command(scope, { ...send, text: prompt })
+    assert.equal(created.session?.title, prompt)
+    for (let i = 0; gates.length < 2 && i < 10; i++)
+      await new Promise((resolve) => setImmediate(resolve))
+    assert.equal(calls.length, 2)
+    assert.equal(calls[0].response, undefined)
+    assert.equal(calls[0].user, prompt)
+    assert.equal(calls[1].response, 'The button is now called Save.')
+    gates[1]('Save button')
+    await new Promise((resolve) => setImmediate(resolve))
+    assert.equal(
+      (await service.command(scope, { ...send, action: 'get' })).session?.title,
+      'Save button'
+    )
+    gates[0]('Only the prompt')
+    await new Promise((resolve) => setImmediate(resolve))
+    assert.equal(
+      (await service.command(scope, { ...send, action: 'get' })).session?.title,
+      'Save button'
+    )
+    const sourceId = created.session!.id
+    const turnId = created.session!.items[0].turnId
+    const forked = await service.command(scope, {
+      ...send,
+      action: 'fork',
+      sessionId: sourceId,
+      turnId
+    })
+    assert.equal(forked.session?.title, 'Save button (fork)')
+    await service.command(scope, { ...send, commandId: 'second', text: 'another message' })
+    await new Promise((resolve) => setImmediate(resolve))
+    assert.equal(calls.length, 2)
+    await service.shutdown()
+  } finally {
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
