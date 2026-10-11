@@ -101,6 +101,44 @@ function codexPrompt(prompt, input) {
     codexDone()
     return
   }
+  if (prompt === 'plan-foreign') {
+    notify('turn/plan/updated', {
+      threadId: 'thread-other',
+      explanation: 'Ignore this plan.',
+      plan: [{ step: 'Do not keep', status: 'pending' }]
+    })
+    codexDone()
+    return
+  }
+  if (prompt === 'plan-replace') {
+    notify('turn/plan/updated', {
+      threadId: 'thread-test',
+      explanation: 'First pass.',
+      plan: [{ step: 'One', status: 'pending' }]
+    })
+    notify('turn/plan/updated', {
+      threadId: 'thread-test',
+      explanation: 'Second pass.',
+      plan: [
+        { step: 'One', status: 'completed' },
+        { step: 'Two', status: 'inProgress' }
+      ]
+    })
+    notify('turn/plan/updated', {
+      threadId: 'thread-other',
+      plan: [{ step: 'Ignored', status: 'pending' }]
+    })
+    codexDone()
+    return
+  }
+  if (prompt === 'plan-clear') {
+    notify('turn/plan/updated', {
+      threadId: 'thread-test',
+      plan: []
+    })
+    codexDone()
+    return
+  }
   if (prompt === 'usage-without-last' || prompt === 'usage-without-window') {
     notify('thread/tokenUsage/updated', {
       threadId: 'thread-test',
@@ -192,6 +230,9 @@ function codexPrompt(prompt, input) {
     }
   })
   notify('turn/plan/updated', {
+    threadId: 'thread-test',
+    turnId: 'turn-test',
+    explanation: 'Connecting the adapters next.',
     plan: [
       { step: 'Inspect the workspace', status: 'completed' },
       { step: 'Connect the adapters', status: 'inProgress' }
@@ -213,6 +254,72 @@ function claudePrompt(prompt, content) {
   }
   if (prompt === 'pid') {
     claudeFinish(String(process.pid))
+    return
+  }
+  if (prompt === 'todo-opt-in') {
+    claudeFinish(process.env.CLAUDE_CODE_ENABLE_TODO_TOOLS ?? 'unset')
+    return
+  }
+  if (prompt === 'tasks') {
+    send({ type: 'system', subtype: 'init', session_id: 'claude-test', tools: [], model: 'test' })
+    send({
+      type: 'assistant',
+      session_id: 'claude-test',
+      uuid: 'task-create',
+      message: {
+        id: 'msg-create',
+        role: 'assistant',
+        content: [
+          {
+            type: 'tool_use',
+            id: 'toolu_create',
+            name: 'TaskCreate',
+            input: { subject: 'Inspect', activeForm: 'Inspecting the workspace' }
+          }
+        ]
+      }
+    })
+    send({
+      type: 'user',
+      session_id: 'claude-test',
+      message: {
+        role: 'user',
+        content: [{ type: 'tool_result', tool_use_id: 'toolu_create', content: 'created' }]
+      },
+      tool_use_result: { task: { id: '1', subject: 'Inspect' } }
+    })
+    send({
+      type: 'assistant',
+      session_id: 'claude-test',
+      uuid: 'task-update',
+      message: {
+        id: 'msg-update',
+        role: 'assistant',
+        content: [
+          {
+            type: 'tool_use',
+            id: 'toolu_update',
+            name: 'TaskUpdate',
+            input: { taskId: '1', status: 'in_progress', activeForm: 'Inspecting the workspace' }
+          }
+        ]
+      }
+    })
+    send({
+      type: 'user',
+      session_id: 'claude-test',
+      message: {
+        role: 'user',
+        content: [{ type: 'tool_result', tool_use_id: 'toolu_update', content: 'updated' }]
+      },
+      tool_use_result: {
+        success: true,
+        taskId: '1',
+        updatedFields: ['status', 'activeForm'],
+        statusChange: { from: 'pending', to: 'in_progress' }
+      }
+    })
+    claudeFinish('Tasks updated.')
     return
   }
   const background = /^background-task(-fail)?(?: (\d+))?$/.exec(prompt)
