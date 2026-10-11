@@ -51,6 +51,12 @@ import {
   type RunContext
 } from './adapters'
 import { executable } from './transport'
+import {
+  nextThreadTitle,
+  suggestThreadTitle,
+  threadTitleSlice,
+  type ThreadTitleInput
+} from './title'
 
 export type AgentScope = {
   workspaceId: number
@@ -244,11 +250,14 @@ export class AgentSessions {
   private catalog?: AgentCatalog
   private loadingCatalog?: Promise<AgentCatalog>
   private stopping = false
+  /** Titles this process wrote for a thread, so a rename is left alone. */
+  private autoTitle = new Map<string, { slice: string; first: string | null; settled: boolean }>()
   constructor(
     private directory: string,
     private publish: (workspaceId: number) => void,
     private drivers: Record<AgentHarness, AgentAdapter> = adapters,
-    private onStatus: (event: AgentStatusEvent) => void = () => {}
+    private onStatus: (event: AgentStatusEvent) => void = () => {},
+    private suggestTitle: (input: ThreadTitleInput) => Promise<string | null> = suggestThreadTitle
   ) {
     mkdirSync(directory, { recursive: true, mode: 0o700 })
     mkdirSync(join(directory, 'attachments'), { recursive: true, mode: 0o700 })
@@ -796,14 +805,16 @@ export class AgentSessions {
       throw new Error(
         'This conversation reached its display limit. Start a new Agent; the saved transcript is retained.'
       )
+    let created = false
     if (!session) {
+      const slice = threadTitleSlice(command.text)
       session = {
         version: 1,
         id: randomUUID(),
         workspaceId: scope.workspaceId,
         repositoryId: scope.repositoryId,
         cwd: scope.cwd,
-        title: command.text.trim().slice(0, 70),
+        title: slice,
         model: selected,
         status: 'idle',
         generation: '',
@@ -812,11 +823,13 @@ export class AgentSessions {
         items: [],
         commands: []
       }
+      this.autoTitle.set(session.id, { slice, first: null, settled: false })
       this.sessions.set(session.id, session)
       this.persist(session)
       const next = { ...this.bindings, [scope.paneId]: session.id }
       this.atomic('bindings.json', next)
       this.bindings = next
+      created = true
     }
     session.cwd = scope.cwd
     session.commands.push(command.commandId)
@@ -829,6 +842,7 @@ export class AgentSessions {
       throw error
     }
     this.beginTurn(session, command.text, stored, selected, command.reasoning, accessMode)
+    if (created) this.scheduleTitle(session.id, 'prompt', command.text)
     return this.view(scope)
   }
   /** Writes attachment bytes to disk and returns their host-owned paths. Pure I/O — callers decide how to handle failure. */
@@ -1104,6 +1118,62 @@ export class AgentSessions {
         .map(({ id, title, model, status, updatedAt }) => ({ id, title, model, status, updatedAt }))
     })
   }
+  /** Asks the cheap model for a thread title without holding the send or the turn. */
+  private scheduleTitle(
+    sessionId: string,
+    pass: 'prompt' | 'response',
+    user: string,
+    response?: string
+  ): void {
+    const session = this.sessions.get(sessionId)
+    if (!session || !this.autoTitle.has(sessionId)) return
+    const harness = session.model.harness
+    void (async () => {
+      try {
+        const catalog = await this.models()
+        const suggestion = await this.suggestTitle({
+          harness,
+          models: catalog.models,
+          user,
+          ...(response === undefined ? {} : { response })
+        })
+        this.applyTitle(sessionId, pass, suggestion)
+      } catch {
+        // The slice already names the thread. A title failure is not a failed turn.
+      }
+    })()
+  }
+  private applyTitle(
+    sessionId: string,
+    pass: 'prompt' | 'response',
+    suggestion: string | null
+  ): void {
+    const session = this.sessions.get(sessionId)
+    const record = this.autoTitle.get(sessionId)
+    if (!session || !record) return
+    const next = nextThreadTitle({
+      current: session.title,
+      slice: record.slice,
+      firstPass: record.first,
+      suggestion,
+      pass
+    })
+    if (!next) return
+    session.title = next
+    if (pass === 'prompt') record.first = next
+    this.changed(session, true)
+  }
+  /** Second pass, once, when this thread's first turn settles with assistant text. */
+  private noteFirstTurn(session: AgentSession): void {
+    const record = this.autoTitle.get(session.id)
+    if (!record || record.settled) return
+    record.settled = true
+    if (this.stopping || session.status !== 'idle') return
+    const user = session.items.find((item) => item.kind === 'user' && item.text.trim())
+    const reply = session.items.find((item) => item.kind === 'text' && item.text.trim())
+    if (!user || !reply) return
+    this.scheduleTitle(session.id, 'response', user.text, reply.text)
+  }
   /** Drives one turn. `start` must receive its context synchronously; `autonomous` relies on it. */
   private async run(
     session: AgentSession,
@@ -1179,6 +1249,7 @@ export class AgentSessions {
         console.info(`[agents] session ${session.id} interrupted: ${String(error)}`)
       }
     } finally {
+      this.noteFirstTurn(session)
       declinePending()
       runtime.controller.signal.removeEventListener('abort', declinePending)
       // Items that started background work stay running until that work settles.
