@@ -9,7 +9,8 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
-  type DragStartEvent
+  type DragStartEvent,
+  type KeyboardSensorProps
 } from '@dnd-kit/core'
 import { restrictToHorizontalAxis } from '@dnd-kit/modifiers'
 import {
@@ -66,6 +67,30 @@ type ContentTabBarProps = {
   onOpenChat: () => void
   onOpenChanges: () => void
   onAddPane: (kind: PaneKind, direction: SplitDirection) => void
+}
+
+/**
+ * dnd-kit's keyboard drag (Space/Enter on a focused tab) listens for keys on the whole
+ * document. If the user clicks into a pane mid-drag, the next Space there drops the tab
+ * and moves focus back to it. Cancel the drag as soon as the pointer goes down anywhere.
+ */
+class TabKeyboardSensor extends KeyboardSensor {
+  constructor(props: KeyboardSensorProps) {
+    super(props)
+    // handleCancel/detach are private in the typings but are the sensor's own teardown.
+    const sensor = this as unknown as { handleCancel: (event: Event) => void; detach: () => void }
+    const target = props.event.target as Node | null
+    const doc = target?.ownerDocument ?? document
+    // A fresh event: cancelling with the pointerdown itself would preventDefault the click
+    // and keep focus from moving into the pane.
+    const cancel = (): void => sensor.handleCancel(new Event('cancel'))
+    doc.addEventListener('pointerdown', cancel, true)
+    const detach = sensor.detach.bind(this)
+    sensor.detach = (): void => {
+      doc.removeEventListener('pointerdown', cancel, true)
+      detach()
+    }
+  }
 }
 
 function prefersReducedMotion(): boolean {
@@ -223,7 +248,7 @@ export function ContentTabBar({
     useSensor(PointerSensor, {
       activationConstraint: { distance: TAB_DRAG_THRESHOLD_PX }
     }),
-    useSensor(KeyboardSensor, {
+    useSensor(TabKeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates
     })
   )
