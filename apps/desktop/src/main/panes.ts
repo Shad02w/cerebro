@@ -18,6 +18,7 @@ export function registerLayoutIpc(): void {
     return muxCall('chat.command', command)
   })
   ipcMain.handle(IPC.chat.overview, () => muxCall('chat.overview'))
+  ipcMain.handle(IPC.chat.threads, () => muxCall('chat.threads'))
   ipcMain.handle(IPC.chat.catalog, (_event, refresh: boolean) =>
     muxCall('chat.catalog', { refresh })
   )

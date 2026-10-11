@@ -18,7 +18,15 @@ import {
   Trash2,
   X
 } from 'lucide-react'
-import type { ChatAgentActivity, LayoutState, PaneNode } from '@cerebro/core'
+import {
+  filterThreadRows,
+  groupThreadRows,
+  sidebarThreadRows,
+  type ChatAgentActivity,
+  type LayoutState,
+  type PaneNode,
+  type ThreadRow
+} from '@cerebro/core'
 import {
   WORKSPACE_STATUSES,
   type Project,
@@ -29,7 +37,9 @@ import {
 import type { SettingsSectionId } from '@/lib/app-route'
 import { HarnessIcon, HarnessStatusIcon } from '@/components/harness-icon'
 import { harnessLabels } from '@/components/chat/queries'
-import { sortAgentActivity, useAgentActivity } from '@/lib/agent-activity'
+import { sortAgentActivity, useAgentActivity, useChatThreads } from '@/lib/agent-activity'
+import { ThreadList } from '@/components/thread-list'
+import { activePaneIdFor, openSavedThread } from '@/lib/thread-open'
 import { acceptLayout, layoutOptions } from '@/lib/query-client'
 import { SETTINGS_SECTIONS } from '@/lib/settings-sections'
 import { Input } from '@/components/ui/input'
@@ -1018,29 +1028,33 @@ function searchWorkspaces(projects: Project[], query: string): WorkspaceSearchRe
 
 function NavigationHeader({
   isSettings,
+  heading,
+  searchLabel,
+  searchPlaceholder,
   search,
   groupBy,
   onGroupBy,
   onSearchChange,
   onAddProject,
-  firstResultId,
-  onSelectWorkspace
+  onSubmitSearch
 }: {
   isSettings: boolean
+  heading: string
+  searchLabel: string
+  searchPlaceholder: string
   search: string
   groupBy: SidebarGroupBy
   onGroupBy: (groupBy: SidebarGroupBy) => void
   onSearchChange: (value: string) => void
   onAddProject: () => void
-  firstResultId: number | undefined
-  onSelectWorkspace: (workspaceId: number) => void
+  onSubmitSearch: () => void
 }): React.JSX.Element {
   const searchInput = useRef<HTMLInputElement>(null)
   return (
     <SidebarHeader className="gap-2 px-3 pt-12 pb-1">
       <div className="app-drag-region flex h-8 items-center gap-2 px-2">
         <h2 className="flex-1 text-sm font-semibold" data-testid="sidebar-heading">
-          {isSettings ? 'Settings' : 'Projects'}
+          {heading}
         </h2>
         {!isSettings ? (
           <>
@@ -1068,7 +1082,8 @@ function NavigationHeader({
                   <DropdownMenuRadioGroup
                     value={groupBy}
                     onValueChange={(value): void => {
-                      if (value === 'project' || value === 'status') onGroupBy(value)
+                      if (value === 'project' || value === 'status' || value === 'threads')
+                        onGroupBy(value)
                     }}
                   >
                     <DropdownMenuRadioItem
@@ -1084,6 +1099,13 @@ function NavigationHeader({
                       data-testid="sidebar-group-status"
                     >
                       Status
+                    </DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem
+                      value="threads"
+                      closeOnClick
+                      data-testid="sidebar-group-threads"
+                    >
+                      Threads
                     </DropdownMenuRadioItem>
                   </DropdownMenuRadioGroup>
                 </DropdownMenuGroup>
@@ -1110,8 +1132,8 @@ function NavigationHeader({
           />
           <Input
             ref={searchInput}
-            aria-label="Search projects and workspaces"
-            placeholder="Find a workspace…"
+            aria-label={searchLabel}
+            placeholder={searchPlaceholder}
             value={search}
             className="h-8 rounded-md pr-8 pl-8 text-xs shadow-none md:text-xs"
             onChange={(event) => onSearchChange(event.target.value)}
@@ -1120,9 +1142,9 @@ function NavigationHeader({
               if (event.key === 'Escape') {
                 event.preventDefault()
                 onSearchChange('')
-              } else if (event.key === 'Enter' && firstResultId != null) {
+              } else if (event.key === 'Enter') {
                 event.preventDefault()
-                onSelectWorkspace(firstResultId)
+                onSubmitSearch()
               }
             }}
           />
@@ -1501,6 +1523,21 @@ export function AppSidebar({
   const query = search.trim().toLowerCase()
   const results = searchWorkspaces(projects, query)
   const activity = useAgentActivity()
+  const threads = useChatThreads()
+  const threadRows = filterThreadRows(sidebarThreadRows(projects, threads), search)
+  const layout = useQuery(layoutOptions).data
+  const activePaneId = activePaneIdFor(layout, activeWorkspaceId)
+  const openingThread = useRef(false)
+  const openThread = (row: ThreadRow): void => {
+    if (openingThread.current) return
+    openingThread.current = true
+    onSelectWorkspace(row.workspaceId)
+    void openSavedThread(row)
+      .catch(() => {})
+      .finally(() => {
+        openingThread.current = false
+      })
+  }
   const openAgent = (agent: ChatAgentActivity): void => {
     onSelectWorkspace(agent.workspaceId)
     if (agent.paneId == null) return
@@ -1523,6 +1560,9 @@ export function AppSidebar({
       >
         <NavigationHeader
           isSettings={isSettings}
+          heading={isSettings ? 'Settings' : groupBy === 'threads' ? 'Threads' : 'Projects'}
+          searchLabel={groupBy === 'threads' ? 'Search threads' : 'Search projects and workspaces'}
+          searchPlaceholder={groupBy === 'threads' ? 'Find a thread…' : 'Find a workspace…'}
           search={search}
           groupBy={groupBy}
           onGroupBy={(next): void => {
@@ -1533,8 +1573,15 @@ export function AppSidebar({
           }}
           onSearchChange={setSearch}
           onAddProject={onAddProject}
-          firstResultId={results[0]?.workspace.id}
-          onSelectWorkspace={onSelectWorkspace}
+          onSubmitSearch={(): void => {
+            if (groupBy === 'threads') {
+              const first = groupThreadRows(threadRows)[0]?.rows[0]
+              if (first) openThread(first)
+              return
+            }
+            const firstWorkspace = results[0]?.workspace.id
+            if (firstWorkspace != null) onSelectWorkspace(firstWorkspace)
+          }}
         />
         <SidebarContent>
           {isSettings ? (
@@ -1564,7 +1611,7 @@ export function AppSidebar({
           ) : (
             <SidebarGroup>
               <SidebarGroupContent>
-                {query ? (
+                {query && groupBy !== 'threads' ? (
                   <WorkspaceSearchResults
                     results={results}
                     activeWorkspaceId={activeWorkspaceId}
@@ -1573,7 +1620,15 @@ export function AppSidebar({
                     onOpenAgent={openAgent}
                   />
                 ) : null}
-                {projects.length === 0 ? (
+                {groupBy === 'threads' ? (
+                  <ThreadList
+                    rows={threadRows}
+                    projects={projects}
+                    activePaneId={activePaneId}
+                    searching={query.length > 0}
+                    onOpen={openThread}
+                  />
+                ) : projects.length === 0 ? (
                   <p
                     className={cn(
                       'px-2 py-1.5 text-xs text-sidebar-foreground/60',

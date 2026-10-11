@@ -58,7 +58,14 @@ export const WORKSPACE_STATUSES = ['todo', 'in_progress', 'ready_to_review', 'do
 
 export type WorkspaceStatus = (typeof WORKSPACE_STATUSES)[number]
 
-export type SidebarGroupBy = 'project' | 'status'
+/** Project tree, status groups, or a flat list of agent threads. */
+export const SIDEBAR_GROUPINGS = ['project', 'status', 'threads'] as const
+
+export type SidebarGroupBy = (typeof SIDEBAR_GROUPINGS)[number]
+
+export function isSidebarGroupBy(value: unknown): value is SidebarGroupBy {
+  return typeof value === 'string' && (SIDEBAR_GROUPINGS as readonly string[]).includes(value)
+}
 
 export function isWorkspaceStatus(value: unknown): value is WorkspaceStatus {
   return typeof value === 'string' && (WORKSPACE_STATUSES as readonly string[]).includes(value)
@@ -158,7 +165,7 @@ export type AppSettings = {
   composerVimMode: ComposerVimMode
   /** Partial overrides; missing keys use app defaults. */
   keybinds: KeybindOverrides
-  /** Sidebar lists workspaces under projects, or under their workflow status. */
+  /** Sidebar lists workspaces under projects, under workflow status, or as agent threads. */
   sidebarGroupBy: SidebarGroupBy
   /** Default model key for each harness provider. Missing keys use that provider's current first model. */
   agentModelDefaults: AgentModelDefaults

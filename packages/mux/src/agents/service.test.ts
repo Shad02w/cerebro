@@ -1129,3 +1129,29 @@ test('a todo snapshot replaces the session checklist and survives restart', asyn
     rmSync(f.dir, { recursive: true, force: true })
   }
 })
+
+test('thread list keeps stored reply text and the open pane', async () => {
+  const f = fixture(async (context) => {
+    context.emit({
+      type: 'item',
+      item: { id: 'answer', kind: 'text', text: 'latest reply' }
+    })
+  })
+  try {
+    const service = new AgentSessions(f.dir, () => {}, f.drivers)
+    const state = await service.command(scope, send)
+    const open = service.threads([scope.paneId])
+    assert.equal(open.length, 1)
+    assert.equal(open[0]?.id, state.session?.id)
+    assert.equal(open[0]?.description, 'latest reply')
+    assert.equal(open[0]?.paneId, scope.paneId)
+    assert.equal(open[0]?.status, 'idle')
+    assert.equal(open[0]?.workspaceId, scope.workspaceId)
+    const closed = service.threads([])
+    assert.equal(closed[0]?.paneId, null)
+    assert.equal(closed[0]?.description, 'latest reply')
+    await service.shutdown()
+  } finally {
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})

@@ -109,6 +109,7 @@ export function connectQueryEvents(): () => void {
     void queryClient.invalidateQueries({ queryKey: workspaceId ? ['chat', workspaceId] : ['chat'] })
     // ['chat', workspaceId] does not match the sidebar aggregate at ['chat', 'overview'].
     void queryClient.invalidateQueries({ queryKey: ['chat', 'overview'] })
+    void queryClient.invalidateQueries({ queryKey: ['chat', 'threads'] })
   })
   const unsubscribeLayout = window.cerebro.onLayoutChanged(acceptLayout)
   focusManager.setEventListener((handleFocus) => window.cerebro.onWindowFocus(handleFocus))

@@ -35,8 +35,10 @@ import {
   type AgentBackgroundTask,
   type ChatActivityOverview,
   type ChatAgentActivity,
+  type ChatThread,
   type ChatView,
-  type QueuedMessage
+  type QueuedMessage,
+  threadDescription
 } from '@cerebro/core'
 import {
   adapters,
@@ -497,6 +499,37 @@ export class AgentSessions {
     })
     workspaces.sort((a, b) => a.workspaceId - b.workspaceId)
     return { workspaces }
+  }
+  /**
+   * Every saved session, open or closed. Description is text already on the session.
+   * A pane id is set only while that chat pane is still in the layout.
+   */
+  threads(liveChatPanes: Iterable<number>): ChatThread[] {
+    const live = new Set<number>()
+    for (const paneId of liveChatPanes) {
+      if (Number.isInteger(paneId) && paneId > 0) live.add(paneId)
+    }
+    const paneBySession = new Map<string, number>()
+    for (const [key, sessionId] of Object.entries(this.bindings)) {
+      const paneId = Number(key)
+      if (!live.has(paneId)) continue
+      const current = paneBySession.get(sessionId)
+      if (current == null || paneId > current) paneBySession.set(sessionId, paneId)
+    }
+    return [...this.sessions.values()]
+      .map((session) => ({
+        id: session.id,
+        workspaceId: session.workspaceId,
+        repositoryId: session.repositoryId,
+        title: session.title,
+        harness: session.model.harness,
+        status: session.status,
+        attention: session.attention,
+        updatedAt: session.updatedAt,
+        description: threadDescription(session.items),
+        paneId: paneBySession.get(session.id) ?? null
+      }))
+      .sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id))
   }
   /** Drop pane bindings when chat panes close so overview tracks open tabs only. */
   releasePanes(paneIds: Iterable<number>): void {

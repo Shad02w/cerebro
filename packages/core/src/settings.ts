@@ -17,7 +17,8 @@ import {
   MIN_TERMINAL_FONT_SIZE,
   TERMINAL_FONT_FAMILY_AUTO,
   isAgentBackground,
-  isComposerVimMode
+  isComposerVimMode,
+  isSidebarGroupBy
 } from './types'
 import { getDb } from './db'
 import { getCerebroHome } from './paths'
@@ -197,7 +198,7 @@ function normalizeFontFamily(value: string): string {
 }
 
 function normalizeSidebarGroupBy(value: unknown): SidebarGroupBy {
-  return value === 'status' ? 'status' : 'project'
+  return isSidebarGroupBy(value) ? value : 'project'
 }
 
 function normalizeKeybinds(value: unknown): Record<string, string> {
@@ -317,8 +318,8 @@ export function setSettings(patch: AppSettingsPatch): AppSettings {
   }
 
   if (patch.sidebarGroupBy !== undefined) {
-    if (patch.sidebarGroupBy !== 'project' && patch.sidebarGroupBy !== 'status') {
-      throw new Error('Sidebar grouping must be project or status.')
+    if (!isSidebarGroupBy(patch.sidebarGroupBy)) {
+      throw new Error('Sidebar grouping must be project, status, or threads.')
     }
     next.sidebarGroupBy = patch.sidebarGroupBy
   }
