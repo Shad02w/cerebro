@@ -969,7 +969,7 @@ function ProjectItem({
                       </SidebarMenuSubButton>
                       <WorkspacePrPopover
                         workspace={workspace}
-                        className="absolute top-2 left-2 size-4"
+                        className="absolute top-1.5 left-2 size-4"
                       />
                       <WorkspaceOverflowMenu
                         workspace={workspace}
@@ -1386,7 +1386,7 @@ function StatusGroup({
                                 {rootRow ? null : (
                                   <WorkspacePrPopover
                                     workspace={workspace}
-                                    className="absolute top-2 left-2 size-4"
+                                    className="absolute top-1.5 left-2 size-4"
                                   />
                                 )}
                                 <WorkspaceOverflowMenu
