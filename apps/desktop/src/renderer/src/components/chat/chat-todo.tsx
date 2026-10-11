@@ -31,7 +31,8 @@ export function ChatTodo({ todo }: { todo: TodoSnapshot | undefined }): React.JS
         side="top"
         align="start"
         sideOffset={8}
-        className="w-80 p-1.5"
+        positionerClassName="z-[80]"
+        className="z-[80] w-80 bg-popover p-1.5 data-starting-style:opacity-100!"
         data-testid="chat-todo"
       >
         <p className="px-2 pt-1 pb-1.5 text-xs font-medium text-muted-foreground">
