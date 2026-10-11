@@ -180,14 +180,10 @@ export const codexAdapter: AgentAdapter = {
           // replaces the one checklist, and older turns do not keep their own copy.
           const snapshot = codexTodoSnapshot(session.id, threadId, p)
           if (snapshot) emit({ type: 'todo', todo: snapshot })
-          item(
-            out,
-            'plan',
-            'plan',
-            (p.plan ?? [])
-              .map((step: Frame) => `${step.status === 'completed' ? '✓' : '○'} ${step.step}`)
-              .join('\n')
-          )
+          const plan = (p.plan ?? [])
+            .map((step: Frame) => `${step.status === 'completed' ? '✓' : '○'} ${step.step}`)
+            .join('\n')
+          if (plan) item(out, 'plan', 'plan', plan)
           break
         }
         case 'turn/diff/updated':

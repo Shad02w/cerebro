@@ -839,6 +839,21 @@ test(
       foreign.some((event) => event.type === 'todo'),
       false
     )
+    const cleared: AgentDelta[] = []
+    await runTurn(adapters.codex, {
+      session: liveSession(model, 'cleared'),
+      text: 'plan-clear',
+      signal: new AbortController().signal,
+      emit: (event) => cleared.push(event),
+      ask: async () => ({ allow: false, answers: {} })
+    })
+    const empty = cleared.find((event) => event.type === 'todo')
+    assert(empty?.type === 'todo')
+    assert.deepEqual(empty.todo.items, [])
+    assert.equal(
+      cleared.some((event) => event.type === 'item' && event.item.kind === 'plan'),
+      false
+    )
   }
 )
 
