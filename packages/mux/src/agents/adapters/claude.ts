@@ -1,6 +1,7 @@
 import type { AgentDelta, ChatItem } from '@cerebro/core'
 import { randomUUID } from 'node:crypto'
 import type { Query, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
+import { shellEnv } from '../../shell-env'
 import { executable, describe, type Frame } from '../transport'
 import type { AgentAdapter, AutonomousTurn, RunAttachment } from './adapter'
 import { activeTurn, inline, item, model } from './shared'
@@ -114,7 +115,7 @@ export const claudeAdapter: AgentAdapter = {
         abortController,
         cwd,
         pathToClaudeCodeExecutable: binary,
-        env: { ...process.env },
+        env: { ...shellEnv() },
         settingSources: ['user', 'project', 'local']
       }
     })
@@ -388,7 +389,7 @@ export const claudeAdapter: AgentAdapter = {
         options: {
           cwd: session.cwd,
           pathToClaudeCodeExecutable: executable('claude'),
-          env: { ...process.env },
+          env: { ...shellEnv() },
           model: session.model.id || undefined,
           ...(effort ? { effort } : {}),
           resume: session.nativeId,

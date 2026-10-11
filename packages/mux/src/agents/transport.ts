@@ -4,6 +4,7 @@ import { accessSync, constants } from 'node:fs'
 import { delimiter, join, isAbsolute } from 'node:path'
 import { homedir } from 'node:os'
 import type { AgentHarness } from '@cerebro/core'
+import { shellEnv } from '../shell-env'
 
 // Native protocols are versioned externally. Keep their permissive boundary inside adapters.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -20,7 +21,7 @@ export function executable(harness: AgentHarness): string {
   const override = process.env[`CEREBRO_${harness.toUpperCase()}_PATH`]
   const paths = override
     ? [override]
-    : (process.env.PATH ?? '').split(delimiter).map((p) => join(p, name))
+    : (shellEnv().PATH ?? '').split(delimiter).map((p) => join(p, name))
   if (!override)
     paths.push(
       join(homedir(), '.local/bin', name),
@@ -64,7 +65,7 @@ export class JsonProcess {
   ) {
     this.child = spawn(binary, args, {
       cwd,
-      env: process.env,
+      env: shellEnv(),
       stdio: 'pipe',
       windowsHide: true,
       detached: process.platform !== 'win32'

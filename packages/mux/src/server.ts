@@ -18,6 +18,7 @@ import { StorageWorker } from './worker-client'
 import { AgentSessions } from './agents/service'
 import type { ChatCommand } from '@cerebro/core'
 import { Terminals } from './terminals'
+import { loadShellEnv } from './shell-env'
 import type { LayoutChange } from './layout'
 
 const leaves = (node: PaneNode): Pane[] =>
@@ -37,6 +38,8 @@ function positive(value: unknown): number {
 export async function startServer(): Promise<void> {
   await mkdir(muxDirectory(), { recursive: true, mode: 0o700 })
   if (!(await claimServer())) return
+  // GUI launches inherit launchd's minimal PATH; agents need what a terminal pane builds.
+  const environment = loadShellEnv()
   const token = await readFile(join(muxDirectory(), 'token'), 'utf8')
   const peers = new Set<Peer>()
   const owners = new Map<number, Peer>()
@@ -319,6 +322,7 @@ export async function startServer(): Promise<void> {
             return agents.overview(liveChatPanes)
           }
           case 'chat.catalog':
+            await environment
             return agents.models(Boolean((p as unknown as { refresh?: boolean }).refresh))
           case 'chat.favorite': {
             const favorite = p as unknown as { key: string; favorite: boolean }
@@ -333,6 +337,7 @@ export async function startServer(): Promise<void> {
               String(p.attachmentId ?? '')
             )
           case 'chat.command':
+            await environment
             return exclusive(async () => {
               const workspaceId = positive(p.workspaceId),
                 paneId = positive(p.paneId)
