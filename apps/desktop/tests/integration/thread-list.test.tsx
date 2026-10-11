@@ -37,7 +37,9 @@ describe('ThreadList status groups', () => {
     expect(screen.queryByTestId('thread-count-waiting-for-review')).toBeNull()
     const row = screen.getByTestId('thread-row-review')
     expect(row).toBeInTheDocument()
-    expect(row).not.toHaveClass('border')
+    expect(row).toHaveClass('border-0')
+    expect(row).toHaveClass('bg-transparent')
+    expect(row.className).not.toMatch(/rounded|bg-sidebar-accent/)
     expect(row).toHaveTextContent('Check the notes')
     expect(row).toHaveTextContent('notes / main')
 

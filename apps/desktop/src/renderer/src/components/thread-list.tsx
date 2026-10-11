@@ -89,11 +89,7 @@ function ThreadGroup({
               const button = (
                 <button
                   type="button"
-                  className={cn(
-                    'app-no-drag flex w-full min-w-0 flex-col gap-0.5 rounded-md px-2 py-1.5 text-left',
-                    'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
-                    active && 'bg-sidebar-accent'
-                  )}
+                  className="app-no-drag flex w-full min-w-0 flex-col gap-0.5 border-0 bg-transparent px-2 py-1.5 text-left shadow-none"
                   data-testid={`thread-row-${row.id}`}
                   data-thread-status={row.status}
                   data-thread-open={row.open ? 'true' : 'false'}
