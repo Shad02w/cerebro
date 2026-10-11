@@ -1072,3 +1072,60 @@ test('tasks still running when Cerebro closes their process are recorded as stop
     rmSync(f.dir, { recursive: true, force: true })
   }
 })
+
+test('a todo snapshot replaces the session checklist and survives restart', async () => {
+  const f = fixture(async (context) => {
+    const listId = `session:${context.session.id}:todo`
+    if (context.text === 'clear') {
+      context.emit({ type: 'todo', todo: { kind: 'todo', listId, items: [] } })
+      return
+    }
+    context.emit({
+      type: 'todo',
+      todo: {
+        kind: 'todo',
+        listId,
+        explanation: 'first',
+        items: [{ id: '0', label: 'Old', status: 'pending' }]
+      }
+    })
+    context.emit({
+      type: 'todo',
+      todo: {
+        kind: 'todo',
+        listId,
+        items: [{ id: '1', label: 'New', status: 'in_progress', activeLabel: 'Doing it' }]
+      }
+    })
+  })
+  try {
+    const service = new AgentSessions(f.dir, () => {}, f.drivers)
+    const state = await service.command(scope, send)
+    const sessionId = state.session!.id
+    assert.deepEqual(state.session?.todo, {
+      kind: 'todo',
+      listId: `session:${sessionId}:todo`,
+      items: [{ id: '1', label: 'New', status: 'in_progress', activeLabel: 'Doing it' }]
+    })
+    const turnId = state.session!.items[0].turnId
+    const forked = await service.command(scope, {
+      ...send,
+      action: 'fork',
+      sessionId,
+      turnId
+    })
+    assert.equal(forked.session!.todo?.listId, `session:${forked.session!.id}:todo`)
+    assert.deepEqual(forked.session!.todo?.items, state.session!.todo?.items)
+    const source = await service.command(scope, { ...send, action: 'open', sessionId })
+    assert.equal(source.session!.todo?.listId, `session:${sessionId}:todo`)
+    const cleared = await service.command(scope, { ...send, commandId: 'clear', text: 'clear' })
+    assert.deepEqual(cleared.session?.todo?.items, [])
+    await service.shutdown()
+    const restored = new AgentSessions(f.dir, () => {}, f.drivers)
+    const again = await restored.command(scope, { ...send, action: 'get' })
+    assert.deepEqual(again.session?.todo?.items, [])
+    await restored.shutdown()
+  } finally {
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})

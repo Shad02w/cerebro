@@ -65,6 +65,22 @@ export type AgentQuestion = {
   options?: string[]
   multiple?: boolean
 }
+export type TodoStatus = 'pending' | 'in_progress' | 'completed'
+export type TodoItem = {
+  id: string
+  label: string
+  status: TodoStatus
+  /** Present-continuous phrase. The card shows it on an in-progress row. */
+  activeLabel?: string
+}
+/** One full checklist. Adapters emit this; the session replaces its list. The UI never sees a patch. */
+export type TodoSnapshot = {
+  kind: 'todo'
+  listId: string
+  items: TodoItem[]
+  explanation?: string
+}
+export const todoListId = (sessionId: string): string => `session:${sessionId}:todo`
 export type ChatItem = {
   id: string
   turnId: string
@@ -148,6 +164,8 @@ export type AgentSession = {
   nativeId?: string
   error?: string
   items: ChatItem[]
+  /** The one checklist for this chat. The latest snapshot replaces it. */
+  todo?: TodoSnapshot
   /** Persisted before dispatch. Never replay an uncertain accepted command. */
   commands: string[]
   forkedFrom?: { sessionId: string; turnId: string }
@@ -222,5 +240,7 @@ export type AgentDelta =
   /** A refusal-fallback retry superseded these already-emitted items; remove them from the transcript. */
   | { type: 'evict'; ids: string[] }
   | { type: 'usage'; usage: AgentContextUsage }
+  /** Replaces the session checklist. Not a patch and not a provider event. */
+  | { type: 'todo'; todo: TodoSnapshot }
 export type AgentAnswer = { allow: boolean; answers: Record<string, string[]> }
 export type AgentRequest = NonNullable<ChatItem['request']> & { title: string; text: string }

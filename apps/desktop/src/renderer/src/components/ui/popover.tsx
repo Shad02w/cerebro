@@ -13,16 +13,16 @@ function PopoverTrigger({ ...props }: PopoverPrimitive.Trigger.Props): React.JSX
 
 function PopoverContent({
   className,
+  positionerClassName,
   align = 'center',
   alignOffset = 0,
   side = 'bottom',
   sideOffset = 4,
   ...props
 }: PopoverPrimitive.Popup.Props &
-  Pick<
-    PopoverPrimitive.Positioner.Props,
-    'align' | 'alignOffset' | 'side' | 'sideOffset'
-  >): React.JSX.Element {
+  Pick<PopoverPrimitive.Positioner.Props, 'align' | 'alignOffset' | 'side' | 'sideOffset'> & {
+    positionerClassName?: string
+  }): React.JSX.Element {
   return (
     <PopoverPrimitive.Portal>
       <PopoverPrimitive.Positioner
@@ -30,7 +30,7 @@ function PopoverContent({
         alignOffset={alignOffset}
         side={side}
         sideOffset={sideOffset}
-        className="isolate z-50"
+        className={cn('isolate z-50', positionerClassName)}
       >
         <PopoverPrimitive.Popup
           data-slot="popover-content"

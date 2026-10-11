@@ -5,6 +5,7 @@ import { shellEnv } from '../../shell-env'
 import { executable, describe, type Frame } from '../transport'
 import type { AgentAdapter, AutonomousTurn, RunAttachment } from './adapter'
 import { activeTurn, inline, item, model } from './shared'
+import { ClaudeTodoList } from '../todo'
 
 /** Capability blurbs Claude sometimes puts first in `description` — never use these as titles. */
 const claudeCapabilityBlurb =
@@ -177,6 +178,7 @@ export const claudeAdapter: AgentAdapter = {
     const emit = (event: AgentDelta): void =>
       current ? current.context.emit(event) : host.idle(event)
     const effort = session.reasoning as 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined
+    const todos = new ClaudeTodoList(session.id, session.todo?.items)
     const streams = new Map<
       string,
       {
@@ -262,13 +264,19 @@ export const claudeAdapter: AgentAdapter = {
         for (const block of (frame.message.content ?? []) as Frame[]) {
           const id = claimBlockId(frame.message.id, block)
           ids.push(id)
-          if (block.type === 'tool_use')
+          if (block.type === 'tool_use') {
             item(turn.context, id, 'tool', '', {
               title: block.name,
               input: describe(block.input),
               status: 'running'
             })
-          else if (block.type === 'text' || block.type === 'thinking')
+            const snapshot = todos.input(
+              String(block.id ?? id),
+              String(block.name ?? ''),
+              block.input
+            )
+            if (snapshot) emit({ type: 'todo', todo: snapshot })
+          } else if (block.type === 'text' || block.type === 'thinking')
             item(
               turn.context,
               id,
@@ -283,11 +291,23 @@ export const claudeAdapter: AgentAdapter = {
         if (!blocks.some((block: Frame) => block.type === 'tool_result')) return
         const turn = turnFor()
         if (!turn) return
-        for (const block of blocks)
-          if (block.type === 'tool_result')
-            item(turn.context, block.tool_use_id, 'tool', describe(block.content), {
-              status: block.is_error ? 'failed' : 'completed'
-            })
+        const results = blocks.filter((block: Frame) => block.type === 'tool_result')
+        for (const block of results)
+          item(turn.context, block.tool_use_id, 'tool', describe(block.content), {
+            status: block.is_error ? 'failed' : 'completed'
+          })
+        // The assigned task id lives on tool_use_result, not in the tool input.
+        const known = results.filter((block: Frame) => todos.known(String(block.tool_use_id)))
+        const target =
+          known.length === 1
+            ? known[0]
+            : known.length === 0 && results.length === 1
+              ? results[0]
+              : undefined
+        if (target && frame.tool_use_result != null) {
+          const snapshot = todos.result(String(target.tool_use_id), frame.tool_use_result)
+          if (snapshot) emit({ type: 'todo', todo: snapshot })
+        }
       } else if (frame.type === 'result') {
         const turn = current
         if (!turn) return
@@ -389,7 +409,8 @@ export const claudeAdapter: AgentAdapter = {
         options: {
           cwd: session.cwd,
           pathToClaudeCodeExecutable: executable('claude'),
-          env: { ...shellEnv() },
+          // Models Claude Code does not recognize omit Task tools unless the session opts in.
+          env: { ...shellEnv(), CLAUDE_CODE_ENABLE_TODO_TOOLS: '1' },
           model: session.model.id || undefined,
           ...(effort ? { effort } : {}),
           resume: session.nativeId,

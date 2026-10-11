@@ -143,6 +143,23 @@ for (const harness of ['claude', 'codex', 'pi'] as AgentHarness[]) {
           chainId: 'chain-test'
         })
       else assert.equal(checkpoint, undefined)
+      if (harness === 'codex') {
+        const todo = events.find((event) => event.type === 'todo')
+        assert(todo?.type === 'todo')
+        assert.deepEqual(todo.todo, {
+          kind: 'todo',
+          listId: 'session:logical:todo',
+          explanation: 'Connecting the adapters next.',
+          items: [
+            { id: '0', label: 'Inspect the workspace', status: 'completed' },
+            { id: '1', label: 'Connect the adapters', status: 'in_progress' }
+          ]
+        })
+      } else
+        assert.equal(
+          events.some((event) => event.type === 'todo'),
+          false
+        )
     }
   )
 }
@@ -780,3 +797,107 @@ for (const failed of [false, true])
       }
     }
   )
+
+test(
+  'codex plan updates replace the checklist and ignore another thread',
+  { timeout: 15_000 },
+  async () => {
+    process.env.CEREBRO_CODEX_PATH = fixture
+    const model = (await adapters.codex.models('/tmp'))[0]
+    const events: AgentDelta[] = []
+    await runTurn(adapters.codex, {
+      session: liveSession(model, 'plans'),
+      text: 'plan-replace',
+      signal: new AbortController().signal,
+      emit: (event) => events.push(event),
+      ask: async () => ({ allow: false, answers: {} })
+    })
+    const todos = events.flatMap((event) => (event.type === 'todo' ? [event.todo] : []))
+    assert.deepEqual(
+      todos.map((todo) => todo.items.map((item) => item.label)),
+      [['One'], ['One', 'Two']]
+    )
+    assert.equal(todos[0]?.explanation, 'First pass.')
+    assert.deepEqual(todos[1], {
+      kind: 'todo',
+      listId: 'session:plans:todo',
+      explanation: 'Second pass.',
+      items: [
+        { id: '0', label: 'One', status: 'completed' },
+        { id: '1', label: 'Two', status: 'in_progress' }
+      ]
+    })
+    const foreign: AgentDelta[] = []
+    await runTurn(adapters.codex, {
+      session: liveSession(model, 'foreign'),
+      text: 'plan-foreign',
+      signal: new AbortController().signal,
+      emit: (event) => foreign.push(event),
+      ask: async () => ({ allow: false, answers: {} })
+    })
+    assert.equal(
+      foreign.some((event) => event.type === 'todo'),
+      false
+    )
+    const cleared: AgentDelta[] = []
+    await runTurn(adapters.codex, {
+      session: liveSession(model, 'cleared'),
+      text: 'plan-clear',
+      signal: new AbortController().signal,
+      emit: (event) => cleared.push(event),
+      ask: async () => ({ allow: false, answers: {} })
+    })
+    const empty = cleared.find((event) => event.type === 'todo')
+    assert(empty?.type === 'todo')
+    assert.deepEqual(empty.todo.items, [])
+    assert.equal(
+      cleared.some((event) => event.type === 'item' && event.item.kind === 'plan'),
+      false
+    )
+  }
+)
+
+test(
+  'claude task results keep the task id and the session opts into Task tools',
+  { timeout: 15_000 },
+  async () => {
+    process.env.CEREBRO_CLAUDE_PATH = fixture
+    const model = (await adapters.claude.models('/tmp'))[0]
+    const events: AgentDelta[] = []
+    await runTurn(adapters.claude, {
+      session: liveSession(model, 'tasks'),
+      text: 'tasks',
+      signal: new AbortController().signal,
+      emit: (event) => events.push(event),
+      ask: async () => ({ allow: false, answers: {} })
+    })
+    const todos = events.flatMap((event) => (event.type === 'todo' ? [event.todo] : []))
+    assert.equal(todos[0]?.items[0]?.id, 'toolu_create')
+    assert.deepEqual(todos.at(-1), {
+      kind: 'todo',
+      listId: 'session:tasks:todo',
+      items: [
+        {
+          id: '1',
+          label: 'Inspect',
+          status: 'in_progress',
+          activeLabel: 'Inspecting the workspace'
+        }
+      ]
+    })
+    const opted: AgentDelta[] = []
+    await runTurn(adapters.claude, {
+      session: liveSession(model, 'opt-in'),
+      text: 'todo-opt-in',
+      signal: new AbortController().signal,
+      emit: (event) => opted.push(event),
+      ask: async () => ({ allow: false, answers: {} })
+    })
+    const replies = opted.flatMap((event) =>
+      event.type === 'item' && event.item.kind === 'text' && event.item.text
+        ? [event.item.text]
+        : []
+    )
+    assert.equal(replies.at(-1), '1')
+  }
+)

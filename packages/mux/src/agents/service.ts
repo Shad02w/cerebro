@@ -14,6 +14,7 @@ import { homedir } from 'node:os'
 import {
   agentActivityStatus,
   backgroundTaskOutcome,
+  todoListId,
   chatAttachmentLimits,
   chatImageTypes,
   type AgentAccessMode,
@@ -985,6 +986,11 @@ export class AgentSessions {
       this.changed(session, true)
       return
     }
+    if (event.type === 'todo') {
+      session.todo = event.todo
+      this.changed(session, idle)
+      return
+    }
     const owner = idle
       ? session.items.find((item) => item.id === `${item.turnId}:${event.item.id}`)?.turnId
       : undefined
@@ -1039,6 +1045,7 @@ export class AgentSessions {
       nativeId: undefined,
       checkpoints: undefined
     }
+    if (next.todo) next.todo = { ...next.todo, listId: todoListId(next.id) }
     const checkpoint = source.checkpoints?.[command.turnId]
     if (source.model.harness === 'claude' && checkpoint && source.nativeId) {
       try {

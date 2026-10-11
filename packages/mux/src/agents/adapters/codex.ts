@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { JsonProcess, executable, describe, type Frame } from '../transport'
 import type { AgentAdapter, AutonomousTurn } from './adapter'
 import { activeTurn, item, model, modalities } from './shared'
+import { codexTodoSnapshot } from '../todo'
 
 /** Byte spans of `[Image #N]` markers, the shape Codex clients use for UI-owned text elements. */
 const textElements = (
@@ -174,16 +175,17 @@ export const codexAdapter: AgentAdapter = {
             })
           else item(out, p.itemId, 'tool', p.delta, {}, true)
           break
-        case 'turn/plan/updated':
-          item(
-            out,
-            'plan',
-            'plan',
-            (p.plan ?? [])
-              .map((step: Frame) => `${step.status === 'completed' ? '✓' : '○'} ${step.step}`)
-              .join('\n')
-          )
+        case 'turn/plan/updated': {
+          // Codex has a per-turn plan. This session list ignores it: the latest plan
+          // replaces the one checklist, and older turns do not keep their own copy.
+          const snapshot = codexTodoSnapshot(session.id, threadId, p)
+          if (snapshot) emit({ type: 'todo', todo: snapshot })
+          const plan = (p.plan ?? [])
+            .map((step: Frame) => `${step.status === 'completed' ? '✓' : '○'} ${step.step}`)
+            .join('\n')
+          if (plan) item(out, 'plan', 'plan', plan)
           break
+        }
         case 'turn/diff/updated':
           item(out, 'turn-diff', 'diff', p.diff ?? '')
           break
