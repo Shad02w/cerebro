@@ -12,7 +12,7 @@ import {
   type DragStartEvent,
   type KeyboardSensorProps
 } from '@dnd-kit/core'
-import { restrictToHorizontalAxis } from '@dnd-kit/modifiers'
+import { restrictToFirstScrollableAncestor, restrictToHorizontalAxis } from '@dnd-kit/modifiers'
 import {
   SortableContext,
   horizontalListSortingStrategy,
@@ -55,6 +55,9 @@ export type ContentTab = WorkspaceTab
 
 const TAB_DRAG_THRESHOLD_PX = 6
 const TAB_SWAP_TRANSITION = { duration: 200, easing: 'cubic-bezier(0.2, 0, 0, 1)' } as const
+// Keep the dragged tab inside the tab list; past its edge the translated tab widens the
+// scroll area, which auto-scroll then chases.
+const TAB_DRAG_MODIFIERS = [restrictToHorizontalAxis, restrictToFirstScrollableAncestor]
 
 type ContentTabBarProps = {
   workspaceId: number
@@ -156,7 +159,9 @@ function SortableTab({
         isDragging && 'relative z-10 cursor-grabbing opacity-60'
       )}
       style={{
-        transform: CSS.Transform.toString(transform),
+        // Translate only: the sortable strategy also scales the dragged tab to the width
+        // of the slot it is over, stretching it instead of keeping its own width.
+        transform: CSS.Translate.toString(transform),
         transition
       }}
     >
@@ -305,7 +310,7 @@ export function ContentTabBar({
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
-        modifiers={[restrictToHorizontalAxis]}
+        modifiers={TAB_DRAG_MODIFIERS}
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
         onDragCancel={(): void => setDraggingTabId(null)}

@@ -78,7 +78,7 @@ async function dragTabTo(
   page: Page,
   sourceLabel: string,
   targetLabel: string,
-  edge: 'start' | 'end'
+  edge: 'start' | 'past-end'
 ): Promise<void> {
   const source = contentTabs(page).filter({ hasText: sourceLabel })
   const target = contentTabs(page).filter({ hasText: targetLabel })
@@ -92,22 +92,37 @@ async function dragTabTo(
     if (!bar) {
       return Promise.resolve({
         seenTransform: false,
+        seenScale: false,
+        listGrew: false,
         reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches
       })
     }
+    const list = bar.querySelector<HTMLElement>('[data-slot="tabs-list"]')
+    const scrollWidth = list?.scrollWidth ?? 0
     return new Promise<{
       seenTransform: boolean
+      seenScale: boolean
+      listGrew: boolean
       reducedMotion: boolean
     }>((resolve) => {
       const seen = {
         seenTransform: false,
+        seenScale: false,
+        listGrew: false,
         reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches
       }
       const observe = (): void => {
+        if ((list?.scrollWidth ?? 0) > scrollWidth) {
+          seen.listGrew = true
+        }
         for (const el of bar.querySelectorAll('[data-testid$="-tab"]')) {
           try {
-            if (Math.abs(new DOMMatrix(getComputedStyle(el).transform).m41) > 0.5) {
+            const matrix = new DOMMatrix(getComputedStyle(el).transform)
+            if (Math.abs(matrix.m41) > 0.5) {
               seen.seenTransform = true
+            }
+            if (matrix.a !== 1 || matrix.d !== 1) {
+              seen.seenScale = true
             }
           } catch {
             /* ignore */
@@ -129,13 +144,16 @@ async function dragTabTo(
 
   await page.mouse.move(from!.x + from!.width / 2, from!.y + from!.height / 2)
   await page.mouse.down()
-  const endX = edge === 'start' ? to!.x + 8 : to!.x + to!.width - 8
+  const endX = edge === 'start' ? to!.x + 8 : to!.x + to!.width + 300
   await page.mouse.move(endX, to!.y + to!.height / 2, { steps: 20 })
   await page.mouse.up()
   const probe = await swapProbe
   if (!probe.reducedMotion) {
     expect(probe.seenTransform).toBe(true)
   }
+  // The dragged tab keeps its own width and stays inside the tab list.
+  expect(probe.seenScale).toBe(false)
+  expect(probe.listGrew).toBe(false)
   await expect
     .poll(async () =>
       page.locator('[data-testid="content-tab-bar"] [data-testid$="-tab"]').evaluateAll((tabs) =>
@@ -1222,6 +1240,9 @@ test('reorders content tabs by dragging', async ({ page }) => {
       .getByTestId('content-tab-close')
       .click()
     await expect.poll(() => contentTabLabels(page)).toEqual(['Terminal 2', 'Changes'])
+
+    await dragTabTo(page, 'Terminal 2', 'Changes', 'past-end')
+    await expect.poll(() => contentTabLabels(page)).toEqual(['Changes', 'Terminal 2'])
   } finally {
     await rm(sourcesRoot, { recursive: true, force: true })
   }
