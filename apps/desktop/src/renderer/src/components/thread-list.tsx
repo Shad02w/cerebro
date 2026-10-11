@@ -90,9 +90,9 @@ function ThreadGroup({
                 <button
                   type="button"
                   className={cn(
-                    'app-no-drag flex w-full min-w-0 flex-col gap-0.5 rounded-md border border-sidebar-border/80 bg-sidebar px-2.5 py-2 text-left',
+                    'app-no-drag flex w-full min-w-0 flex-col gap-0.5 rounded-md px-2 py-1.5 text-left',
                     'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
-                    active && 'bg-sidebar-accent ring-1 ring-sidebar-ring'
+                    active && 'bg-sidebar-accent'
                   )}
                   data-testid={`thread-row-${row.id}`}
                   data-thread-status={row.status}

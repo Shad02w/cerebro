@@ -35,7 +35,11 @@ describe('ThreadList status groups', () => {
     expect(header).toHaveTextContent('Waiting for review')
     expect(header.querySelector('svg')).not.toBeNull()
     expect(screen.queryByTestId('thread-count-waiting-for-review')).toBeNull()
-    expect(screen.getByTestId('thread-row-review')).toBeInTheDocument()
+    const row = screen.getByTestId('thread-row-review')
+    expect(row).toBeInTheDocument()
+    expect(row).not.toHaveClass('border')
+    expect(row).toHaveTextContent('Check the notes')
+    expect(row).toHaveTextContent('notes / main')
 
     await userEvent.setup().click(header)
 
