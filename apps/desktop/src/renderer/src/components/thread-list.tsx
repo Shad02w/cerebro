@@ -1,51 +1,37 @@
 import { useState } from 'react'
-import { ChevronRight } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 import { groupThreadRows, type ThreadRow, type ThreadRowStatus } from '@cerebro/core'
 import type { Project, Workspace } from '@shared/types'
 import { HarnessIcon } from '@/components/harness-icon'
 import { WorkspaceHoverCard } from '@/components/workspace-hover-card'
+import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar'
+import { SidebarMenu, SidebarMenuItem } from '@/components/ui/sidebar'
 import { cn } from '@/lib/utils'
 
 const THREAD_STATUS_PRESENTATION: Record<
   ThreadRowStatus,
-  { label: string; headerClassName: string; labelClassName: string; dotClassName: string }
+  { label: string; labelClassName: string }
 > = {
   'request user': {
     label: 'Request user',
-    headerClassName:
-      'bg-sidebar-foreground/[0.04] text-amber-700 hover:bg-sidebar-foreground/[0.08] dark:text-amber-400',
-    labelClassName: 'text-amber-700 dark:text-amber-400',
-    dotClassName: 'bg-amber-500'
+    labelClassName: 'text-amber-700 dark:text-amber-400'
   },
   'agent working': {
     label: 'Agent working',
-    headerClassName:
-      'bg-sidebar-foreground/[0.04] text-sky-700 hover:bg-sidebar-foreground/[0.08] dark:text-sky-400',
-    labelClassName: 'text-sky-700 dark:text-sky-400',
-    dotClassName: 'bg-sky-500'
+    labelClassName: 'text-sky-700 dark:text-sky-400'
   },
   'waiting for review': {
     label: 'Waiting for review',
-    headerClassName:
-      'bg-sidebar-foreground/[0.04] text-emerald-700 hover:bg-sidebar-foreground/[0.08] dark:text-emerald-400',
-    labelClassName: 'text-emerald-700 dark:text-emerald-400',
-    dotClassName: 'bg-emerald-500'
+    labelClassName: 'text-emerald-700 dark:text-emerald-400'
   },
   'in progress': {
     label: 'In progress',
-    headerClassName:
-      'bg-sidebar-foreground/[0.04] text-amber-700 hover:bg-sidebar-foreground/[0.08] dark:text-amber-400',
-    labelClassName: 'text-amber-700 dark:text-amber-400',
-    dotClassName: 'bg-amber-400'
+    labelClassName: 'text-amber-700 dark:text-amber-400'
   },
   done: {
     label: 'Done',
-    headerClassName:
-      'bg-sidebar-foreground/[0.04] text-sidebar-foreground/80 hover:bg-sidebar-foreground/[0.08]',
-    labelClassName: 'text-sidebar-foreground/70',
-    dotClassName: 'bg-sky-500'
+    labelClassName: 'text-sidebar-foreground/70'
   }
 }
 
@@ -78,36 +64,23 @@ function ThreadGroup({
   const [open, setOpen] = useState(true)
   const slug = statusSlug(status)
   return (
-    <Collapsible open={open} onOpenChange={setOpen} className="group/collapsible">
+    <Collapsible open={open} onOpenChange={setOpen} className="w-full">
       <SidebarMenuItem>
         <CollapsibleTrigger
           render={
-            <SidebarMenuButton
-              className={cn(
-                'group/status-header app-no-drag h-8 pr-2! text-[11px] font-semibold tracking-wider uppercase',
-                presentation.headerClassName
-              )}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="app-no-drag h-8 w-full justify-start gap-1.5 px-2 font-normal text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
               data-testid={`thread-group-${slug}`}
               data-thread-status={status}
               aria-label={`${presentation.label}, ${rows.length} ${rows.length === 1 ? 'thread' : 'threads'}`}
             />
           }
         >
-          <span
-            aria-hidden
-            className={cn('size-1.5 shrink-0 rounded-full', presentation.dotClassName)}
-          />
-          <span className="min-w-0 flex-1 truncate">{presentation.label}</span>
-          <ChevronRight
-            aria-hidden
-            className="size-3.5 shrink-0 opacity-0 transition-[opacity,transform] group-focus-visible/status-header:opacity-70 group-hover/status-header:opacity-70 group-data-panel-open/status-header:rotate-90"
-          />
-          <span
-            className="min-w-5 rounded-full bg-sidebar-foreground/10 px-1.5 text-center text-[11px] font-medium tracking-normal text-sidebar-foreground tabular-nums"
-            data-testid={`thread-count-${slug}`}
-          >
-            {rows.length}
-          </span>
+          <span className="truncate">{presentation.label}</span>
+          <ChevronDown aria-hidden className="size-3.5 shrink-0 opacity-70" />
         </CollapsibleTrigger>
         <CollapsibleContent>
           <ul className="flex min-w-0 flex-col gap-1.5 py-1" data-testid={`thread-rows-${slug}`}>
