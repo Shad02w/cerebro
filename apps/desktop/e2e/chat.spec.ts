@@ -903,13 +903,13 @@ test('image attachments use atomic chips, reach the harness, render in the trans
     await expect(message.getByTestId('chat-image-chip')).toHaveCount(2)
     await expect(message).toContainText('[Image #1] [Image #1]')
     await message.getByTestId('chat-image-chip').first().click()
-    await expect(page.getByTestId('chat-image-preview')).toBeVisible()
+    await expect(page.getByTestId('image-preview')).toBeVisible()
     await expect(
-      page.getByTestId('chat-image-preview').getByRole('img', { name: 'sent.png' })
+      page.getByTestId('image-preview').getByRole('img', { name: 'sent.png' })
     ).toBeVisible()
     await page.screenshot({ path: '/tmp/cerebro-chat-evidence/attachments-preview.png' })
     await page.keyboard.press('Escape')
-    await expect(page.getByTestId('chat-image-preview')).toHaveCount(0)
+    await expect(page.getByTestId('image-preview')).toHaveCount(0)
     await page.screenshot({ path: '/tmp/cerebro-chat-evidence/attachments-transcript.png' })
     await page.reload()
     await expect(

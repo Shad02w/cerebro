@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { PreviewableImage } from '@/components/image-preview-dialog'
 import type { FileDiffContents, FileImageContents } from '@shared/types'
 
 function ImageVersion({
@@ -36,11 +37,10 @@ function ImageVersion({
               : 'This image could not be displayed.'}
           </p>
         ) : (
-          <img
+          <PreviewableImage
             src={image.dataUrl}
             alt={`${label}: ${path}`}
             className="max-h-[65vh] max-w-full object-contain"
-            loading="lazy"
             onError={() => setFailedSrc(image.dataUrl)}
           />
         )}

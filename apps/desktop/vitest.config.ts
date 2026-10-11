@@ -18,6 +18,8 @@ export default defineConfig({
     environment: 'jsdom',
     include: ['tests/integration/**/*.test.{ts,tsx}'],
     setupFiles: ['tests/setup.ts'],
-    restoreMocks: true
+    restoreMocks: true,
+    // Its `main` is UMD under `"type": "module"`, so Node's loader drops the default export.
+    server: { deps: { inline: ['@panzoom/panzoom'] } }
   }
 })

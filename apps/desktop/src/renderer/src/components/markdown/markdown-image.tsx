@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { PreviewableImage } from '@/components/image-preview-dialog'
 
 const remoteSource = /^(?:https?:)?\/\//i
 const dataImage = /^data:image\//i
@@ -20,7 +21,7 @@ function LocalImage({ alt, src }: { alt?: string; src: string }): React.JSX.Elem
   })
   if (image.data)
     return (
-      <img
+      <PreviewableImage
         src={`data:${image.data.mimeType};base64,${image.data.data}`}
         alt={alt}
         className="my-2 h-auto max-w-full rounded-lg border"
@@ -42,7 +43,8 @@ export function MarkdownImage({
   alt?: string
 }): React.JSX.Element | null {
   if (typeof src !== 'string' || !src) return null
-  if (dataImage.test(src)) return <img src={src} alt={alt} className="my-2 h-auto max-w-full" />
+  if (dataImage.test(src))
+    return <PreviewableImage src={src} alt={alt} className="my-2 h-auto max-w-full" />
   if (remoteSource.test(src)) return <Placeholder alt={alt} src={src} />
   return <LocalImage alt={alt} src={src} />
 }

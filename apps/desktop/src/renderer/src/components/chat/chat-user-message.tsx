@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
+import { useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Copy } from 'lucide-react'
 import type { ChatAttachment } from '@cerebro/core'
 import { Button } from '@/components/ui/button'
+import { ImagePreviewDialog } from '@/components/image-preview-dialog'
 import { SuccessToast } from '@/components/success-toast'
 import { useClipboard } from '@/hooks/use-clipboard'
 import { dataUrl } from './chat-attachments'
@@ -54,14 +54,6 @@ export function ChatUserMessage({
   const [error, setError] = useState(false)
   const [preview, setPreview] = useState<ChatAttachment | null>(null)
   const toastId = useRef(0)
-  useEffect(() => {
-    if (!preview) return
-    const close = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') setPreview(null)
-    }
-    window.addEventListener('keydown', close)
-    return () => window.removeEventListener('keydown', close)
-  }, [preview])
   const copyMessage = async (): Promise<void> => {
     setToast(null)
     setError(false)
@@ -127,35 +119,16 @@ export function ChatUserMessage({
         </p>
       ) : null}
       <SuccessToast toast={toast} onDismiss={() => setToast(null)} testId="chat-copy-toast" />
-      {preview
-        ? createPortal(
-            <dialog
-              open
-              aria-label={preview.name}
-              data-testid="chat-image-preview"
-              className="fixed inset-0 z-50 m-0 flex h-full max-h-none w-full max-w-none cursor-zoom-out items-center justify-center border-0 bg-background/80 p-8 text-foreground"
-              onClick={() => setPreview(null)}
-            >
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                aria-label="Close preview"
-                className="absolute top-4 right-4"
-                onClick={() => setPreview(null)}
-              >
-                Close
-              </Button>
-              <AttachmentImage
-                workspaceId={workspaceId}
-                sessionId={sessionId}
-                attachment={preview}
-                className="max-h-full min-h-24 max-w-full min-w-24 rounded-lg object-contain shadow-lg"
-              />
-            </dialog>,
-            document.body
-          )
-        : null}
+      {preview ? (
+        <ImagePreviewDialog title={preview.name} onClose={() => setPreview(null)}>
+          <AttachmentImage
+            workspaceId={workspaceId}
+            sessionId={sessionId}
+            attachment={preview}
+            className="min-h-24 min-w-24"
+          />
+        </ImagePreviewDialog>
+      ) : null}
     </div>
   )
 }
