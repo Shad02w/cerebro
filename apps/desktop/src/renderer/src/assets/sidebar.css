@@ -53,8 +53,19 @@
   min-height: 32px;
   height: auto;
   font-size: 12px;
-  line-height: 16px;
-  justify-content: center;
+}
+
+/* Single-line rows center the letters themselves, not the font's em box.
+   The em box leaves the extra leading under the glyphs, so "main" sits high. */
+.cerebro-sidebar [data-workspace-lines='1'] [data-workspace-label] {
+  line-height: 1;
+  text-box-trim: trim-both;
+  text-box-edge: ex alphabetic;
+}
+
+.cerebro-sidebar [data-workspace-lines='1'] [data-sidebar='menu-action'].workspace-row-menu {
+  top: 50%;
+  translate: 0 -50%;
 }
 
 .cerebro-sidebar [data-workspace-role='repository'] {
