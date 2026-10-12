@@ -415,11 +415,7 @@ export function ChatView({
           <div
             ref={scrolling}
             onScroll={readScroll}
-            className={cn(
-              'min-h-0 flex-1 overflow-y-auto px-5 pt-5',
-              empty ? 'pb-5' : 'pb-40',
-              turns.length > 1 && 'pl-16'
-            )}
+            className={cn('min-h-0 flex-1 overflow-y-auto px-5 pt-5', empty ? 'pb-5' : 'pb-40')}
             data-testid="chat-transcript"
             aria-label="Conversation"
           >

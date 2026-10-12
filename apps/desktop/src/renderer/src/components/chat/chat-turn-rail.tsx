@@ -26,7 +26,7 @@ function TurnMarker({
           data-open={open ? 'true' : 'false'}
           aria-current={active ? 'true' : undefined}
           aria-label={`Go to turn ${index + 1}: ${title}`}
-          className="flex h-6 w-12 items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex h-1.5 w-6 items-center outline-none focus-visible:ring-2 focus-visible:ring-ring"
           onMouseEnter={() => setOpen(true)}
           onMouseLeave={() => setOpen(false)}
           onFocus={() => setOpen(true)}
@@ -37,9 +37,9 @@ function TurnMarker({
             aria-hidden
             data-testid="chat-turn-bar"
             className={cn(
-              'block origin-left rounded-full transition-all duration-150 ease-out motion-reduce:transition-none',
-              active ? 'h-1.5 w-8 bg-foreground' : 'h-1 w-5 bg-muted-foreground/55',
-              open && 'h-2.5 w-11 scale-110 bg-foreground'
+              'block rounded-full transition-all duration-150 ease-out motion-reduce:transition-none',
+              active ? 'h-0.5 w-3.5 bg-foreground/80' : 'h-0.5 w-3 bg-muted-foreground/45',
+              open && 'h-1 w-5 bg-foreground'
             )}
           />
         </PopoverTrigger>
@@ -79,9 +79,9 @@ export function ChatTurnRail({
     <nav
       aria-label="Conversation turns"
       data-testid="chat-turn-rail"
-      className="pointer-events-auto absolute top-5 left-2 z-20 max-h-[calc(100%-8.5rem)]"
+      className="pointer-events-auto absolute top-1/2 left-2 z-20 -translate-y-1/2"
     >
-      <ol className="flex max-h-full flex-col gap-2.5 rounded-full bg-background/75 px-1.5 py-2.5 shadow-sm ring-1 ring-border/70 backdrop-blur-md">
+      <ol className="flex flex-col items-start gap-px">
         {turns.map((turn, index) => (
           <TurnMarker
             key={turn.turnId}
