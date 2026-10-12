@@ -53,6 +53,8 @@
   min-height: 32px;
   height: auto;
   font-size: 12px;
+  line-height: 16px;
+  justify-content: center;
 }
 
 .cerebro-sidebar [data-workspace-role='repository'] {

@@ -605,7 +605,7 @@ function MultiRootRepoRow({
           <button
             type="button"
             className={cn(
-              'app-no-drag peer/menu-button flex w-full min-w-0 flex-col items-stretch rounded-md px-2 py-1.5 pr-8 text-left',
+              'app-no-drag peer/menu-button flex w-full min-w-0 flex-col items-stretch justify-center rounded-md px-2 py-1.5 pr-8 text-left',
               'text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
             )}
             data-testid={`workspace-row-${workspace.id}`}
@@ -646,11 +646,12 @@ function MultiRootRepoRow({
   )
 }
 
-function rootWorkspaceButtonClass(compact: boolean): string {
-  return cn(
-    'app-no-drag peer/menu-button flex h-auto min-h-7 min-w-0 flex-1 flex-col items-stretch rounded-md px-2 py-1 text-left text-xs hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
-    compact && 'justify-center'
-  )
+function workspaceBranchIconClass(singleLine: boolean): string {
+  return cn('absolute left-2 size-4', singleLine ? 'top-1/2 -translate-y-1/2' : 'top-1.5')
+}
+
+function rootWorkspaceButtonClass(): string {
+  return 'app-no-drag peer/menu-button flex h-auto min-h-7 min-w-0 flex-1 flex-col items-stretch justify-center rounded-md px-2 py-1 text-left text-xs hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
 }
 
 function isCompactRootRow(agents: ChatAgentActivity[]): boolean {
@@ -716,7 +717,7 @@ function MultiRootWorkspaceTree({
             >
               <button
                 type="button"
-                className={rootWorkspaceButtonClass(rootCompact)}
+                className={rootWorkspaceButtonClass()}
                 data-testid={`project-root-${project.id}`}
                 data-workspace-role="root"
                 data-workspace-icon="folder-tree"
@@ -946,7 +947,7 @@ function ProjectItem({
                         render={
                           <button
                             type="button"
-                            className="app-no-drag flex h-auto! w-full min-w-0 flex-col items-stretch gap-0 py-1.5 pr-8 pl-8"
+                            className="app-no-drag flex h-auto! w-full min-w-0 flex-col items-stretch justify-center gap-0 py-1.5 pr-8 pl-8"
                             data-testid={`workspace-row-${workspace.id}`}
                             data-workspace-id={workspace.id}
                             aria-current={
@@ -959,7 +960,7 @@ function ProjectItem({
                           />
                         }
                       >
-                        <span className="min-w-0 truncate text-left">
+                        <span className="min-w-0 truncate text-left leading-4">
                           {workspaceRowLabel(project, workspace)}
                         </span>
                         <WorkspaceAgents
@@ -969,7 +970,9 @@ function ProjectItem({
                       </SidebarMenuSubButton>
                       <WorkspacePrPopover
                         workspace={workspace}
-                        className="absolute top-1.5 left-2 size-4"
+                        className={workspaceBranchIconClass(
+                          (activity.get(workspace.id) ?? []).length === 0
+                        )}
                       />
                       <WorkspaceOverflowMenu
                         workspace={workspace}
@@ -1355,7 +1358,7 @@ function StatusGroup({
                                     <button
                                       type="button"
                                       className={cn(
-                                        'app-no-drag flex h-auto! w-full min-w-0 flex-col items-stretch gap-0 py-1.5 pr-8',
+                                        'app-no-drag flex h-auto! w-full min-w-0 flex-col items-stretch justify-center gap-0 py-1.5 pr-8',
                                         rootRow ? undefined : 'pl-8'
                                       )}
                                       data-testid={`workspace-row-${workspace.id}`}
@@ -1386,7 +1389,9 @@ function StatusGroup({
                                 {rootRow ? null : (
                                   <WorkspacePrPopover
                                     workspace={workspace}
-                                    className="absolute top-1.5 left-2 size-4"
+                                    className={workspaceBranchIconClass(
+                                      (activity.get(workspace.id) ?? []).length === 0
+                                    )}
                                   />
                                 )}
                                 <WorkspaceOverflowMenu
