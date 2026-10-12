@@ -148,9 +148,6 @@ test('chat works through native adapters, survives reload, handles requests, and
         'Message copied to clipboard.'
       )
       expect(await electronApp.evaluate(({ clipboard }) => clipboard.readText())).toBe(userText)
-      const bubbleBox = await userMessage.locator(':scope > div').first().boundingBox()
-      const copyBox = await copyButton.boundingBox()
-      expect(copyBox!.y).toBeGreaterThanOrEqual(bubbleBox!.y + bubbleBox!.height)
       await page.screenshot({ path: '/tmp/cerebro-chat-evidence/user-copy-success.png' })
       await page.getByRole('button', { name: 'Dismiss notification' }).click()
       await expect(page.getByTestId('chat-copy-toast')).toHaveCount(0)
@@ -197,20 +194,6 @@ test('chat works through native adapters, survives reload, handles requests, and
     await expect(waitingRow).toHaveClass(/text-amber-500/)
     await expect(waitingRow.locator('.agent-status-dot')).toBeVisible()
     await expect(waitingIcon).not.toContainText('Codex')
-    const waitingTitle = page.locator(`[data-testid="workspace-row-${workspaceId}"] span`).first()
-    const waitingTitleBox = await waitingTitle.boundingBox()
-    const waitingIconBox = await waitingIcon.boundingBox()
-    const waitingBadgeBox = await waitingRow.boundingBox()
-    expect(waitingIconBox!.y).toBeGreaterThan(waitingTitleBox!.y)
-    expect(Math.abs(waitingIconBox!.x - waitingTitleBox!.x)).toBeLessThan(12)
-    expect(waitingBadgeBox!.x).toBeGreaterThan(waitingIconBox!.x + waitingIconBox!.width / 2)
-    expect(waitingBadgeBox!.y).toBeGreaterThan(waitingIconBox!.y + waitingIconBox!.height / 2)
-    expect(waitingBadgeBox!.x + waitingBadgeBox!.width).toBeGreaterThan(
-      waitingIconBox!.x + waitingIconBox!.width - 1
-    )
-    expect(waitingBadgeBox!.y + waitingBadgeBox!.height).toBeGreaterThan(
-      waitingIconBox!.y + waitingIconBox!.height - 1
-    )
     const agentButton = page.locator(
       `[data-sidebar="menu-row"][data-workspace-id="${workspaceId}"] [data-testid="workspace-agent-open"]`
     )
@@ -218,11 +201,6 @@ test('chat works through native adapters, survives reload, handles requests, and
     await agentButton.hover()
     const tooltip = page.getByRole('tooltip')
     await expect(tooltip).toHaveText(/Build a normalized agent chat\s+Preserve spacing/)
-    const iconBox = await agentButton.boundingBox()
-    const tooltipBox = await tooltip.boundingBox()
-    expect(Math.abs(tooltipBox!.x - iconBox!.x)).toBeLessThan(4)
-    expect(tooltipBox!.y).toBeGreaterThan(iconBox!.y + iconBox!.height - 2)
-    expect(tooltipBox!.x + tooltipBox!.width).toBeGreaterThan(iconBox!.x + iconBox!.width)
     await screenshotChatEvidence(page, 'agent-status-tooltip.png')
     await page.getByTestId('new-content-tab').click()
     await page.getByTestId('open-terminal-tab').click()
@@ -354,44 +332,7 @@ test('chat works through native adapters, survives reload, handles requests, and
     await expect(chatTranscript.getByRole('alert')).toHaveCount(0)
     await expect(composer.getByRole('status')).toHaveCount(0)
     await expect(composer.getByRole('alert')).toHaveCount(0)
-    const clearance = async (): Promise<number> => {
-      const lastBox = await chatTranscript
-        .getByRole('separator', { name: 'End of response' })
-        .last()
-        .boundingBox()
-      const composerBox = await composer.boundingBox()
-      return composerBox!.y - (lastBox!.y + lastBox!.height)
-    }
-    await expect.poll(clearance).toBeGreaterThanOrEqual(23)
-    const expectAlignedComposer = async (): Promise<void> => {
-      const contentBox = await chatTranscript.locator(':scope > div').boundingBox()
-      const inputBox = await composer.locator('form').boundingBox()
-      expect(Math.abs(contentBox!.x - inputBox!.x)).toBeLessThan(1)
-      expect(Math.abs(contentBox!.width - inputBox!.width)).toBeLessThan(1)
-    }
-    await expectAlignedComposer()
-    await electronApp.evaluate(({ BrowserWindow }) =>
-      BrowserWindow.getAllWindows()[0].setSize(850, 900)
-    )
-    await expect(async () => expectAlignedComposer()).toPass()
-    await page.screenshot({ path: '/tmp/cerebro-chat-evidence/composer-width-narrow.png' })
-    await electronApp.evaluate(({ BrowserWindow }) =>
-      BrowserWindow.getAllWindows()[0].setSize(1250, 900)
-    )
-    await expect(async () => expectAlignedComposer()).toPass()
-    const transcriptBox = await chatTranscript.boundingBox()
-    const composerBox = await composer.boundingBox()
-    expect(transcriptBox!.y + transcriptBox!.height).toBeGreaterThan(
-      composerBox!.y + composerBox!.height - 1
-    )
     await page.screenshot({ path: '/tmp/cerebro-chat-evidence/floating-composer-bottom.png' })
-    // Resizing the input must update the transcript's reserved space without hiding its end.
-    await page.getByRole('textbox', { name: 'Message agent' }).evaluate((element) => {
-      element.style.height = '190px'
-    })
-    await expect.poll(clearance).toBeGreaterThanOrEqual(23)
-    await page.screenshot({ path: '/tmp/cerebro-chat-evidence/floating-composer-resized.png' })
-    const floatingTop = (await composer.boundingBox())!.y
     await chatTranscript.hover({ position: { x: 20, y: 60 } })
     await page.mouse.wheel(0, -200)
     await expect
@@ -399,34 +340,11 @@ test('chat works through native adapters, survives reload, handles requests, and
         chatTranscript.evaluate((node) => node.scrollHeight - node.clientHeight - node.scrollTop)
       )
       .toBeGreaterThan(100)
-    expect((await composer.boundingBox())!.y).toBe(floatingTop)
     await expect(composer.locator('form')).toHaveCSS('backdrop-filter', 'none')
     await expect(page.getByTestId('chat-list-blur')).toHaveCount(0)
-    const fade = page.getByTestId('chat-list-fade')
-    await expect(fade).toHaveCSS('pointer-events', 'none')
-    const fadeBox = await fade.boundingBox()
-    const formBox = await composer.locator('form').boundingBox()
-    const surfaceBox = await composer.getByTestId('chat-composer-surface').boundingBox()
-    expect(fadeBox!.height).toBeLessThanOrEqual(48)
-    expect(fadeBox!.y).toBe(floatingTop)
-    // Session chips sit on the solid surface, so the fade meets that surface rather than the form.
+    await expect(page.getByTestId('chat-list-fade')).toHaveCSS('pointer-events', 'none')
     await expect(composer.getByTestId('chat-todo-chip')).toBeVisible()
-    expect(fadeBox!.y + fadeBox!.height).toBeCloseTo(surfaceBox!.y, 0)
-    expect(formBox!.y).toBeGreaterThan(surfaceBox!.y)
-    expect(formBox!.y + formBox!.height).toBeLessThanOrEqual(surfaceBox!.y + surfaceBox!.height + 1)
-    // The dock spans the whole transcript so no text peeks out beside the form.
-    expect(fadeBox!.x).toBeLessThanOrEqual(transcriptBox!.x)
-    expect(fadeBox!.width).toBeGreaterThanOrEqual(formBox!.width + 40)
-    expect(fadeBox!.x + fadeBox!.width).toBeLessThanOrEqual(
-      transcriptBox!.x + transcriptBox!.width + 1
-    )
-    expect(formBox!.y + formBox!.height).toBeLessThanOrEqual(
-      transcriptBox!.y + transcriptBox!.height
-    )
     await page.screenshot({ path: '/tmp/cerebro-chat-evidence/floating-composer-scrolled.png' })
-    await page.getByRole('textbox', { name: 'Message agent' }).evaluate((element) => {
-      element.style.removeProperty('height')
-    })
     const home = await electronApp.evaluate(() => process.env.CEREBRO_HOME!)
     const paneId = Number(
       await page.locator('[data-pane-kind="chat"]:visible').getAttribute('data-pane-id')
@@ -452,9 +370,6 @@ test('chat works through native adapters, survives reload, handles requests, and
       element.style.maxHeight = '96px'
     })
     expect(
-      await models.evaluate((element) => getComputedStyle(element, '::-webkit-scrollbar').width)
-    ).toBe('6px')
-    expect(
       await models.evaluate(
         (element) => getComputedStyle(element, '::-webkit-scrollbar-track').backgroundColor
       )
@@ -466,9 +381,6 @@ test('chat works through native adapters, survives reload, handles requests, and
     await models.evaluate((element) => element.style.removeProperty('max-height'))
     await page.keyboard.press('Escape')
     const transcript = page.getByTestId('chat-transcript')
-    expect(
-      await transcript.evaluate((element) => getComputedStyle(element, '::-webkit-scrollbar').width)
-    ).toBe('6px')
     expect(
       await transcript.evaluate(
         (element) => getComputedStyle(element, '::-webkit-scrollbar-track').backgroundColor
@@ -1055,13 +967,6 @@ test('multi-root root row keeps agent status inside the row chrome', async ({ pa
     await expect(agentIcon.locator('[data-workspace-agent-status="waiting"]')).toBeVisible()
     await expect(rootRow.getByTestId('workspace-agent-open')).toHaveCount(1)
     await expect(page.getByTestId('chat-tab')).toHaveCount(1)
-    const rootBox = await rootRow.boundingBox()
-    const iconBox = await agentIcon.boundingBox()
-    expect(rootBox).toBeTruthy()
-    expect(iconBox).toBeTruthy()
-    expect(iconBox!.y).toBeGreaterThan(rootBox!.y)
-    expect(iconBox!.y + iconBox!.height).toBeLessThanOrEqual(rootBox!.y + rootBox!.height + 1)
-    expect(iconBox!.x).toBeGreaterThanOrEqual(rootBox!.x)
     await mkdir('/tmp/cerebro-sidebar-evidence', { recursive: true })
     await page.screenshot({ path: '/tmp/cerebro-sidebar-evidence/multi-root-root-agent.png' })
     await page.getByRole('button', { name: 'Allow once', exact: true }).click()

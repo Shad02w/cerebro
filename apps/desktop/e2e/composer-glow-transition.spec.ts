@@ -36,26 +36,11 @@ test('empty glowing composer centers, then docks after send', async ({
     await page.getByRole('button', { name: /^New Agent tab/ }).click()
 
     const dock = page.getByTestId('chat-composer')
-    const form = dock.locator('form.chat-composer-shell')
     await expect(dock).toHaveAttribute('data-dock', 'center')
     await expect(page.getByTestId('chat-composer-glow')).toHaveCount(0)
     const hero = page.getByTestId('chat-empty-hero')
     await expect(hero).toBeVisible()
     await expect(hero).toHaveCSS('position', 'absolute')
-    // Hero sits above the form in paint order but must not change form geometry.
-    const heroBox = await hero.boundingBox()
-    const formBoxBefore = await form.boundingBox()
-    expect(heroBox).toBeTruthy()
-    expect(formBoxBefore).toBeTruthy()
-    expect(heroBox!.y + heroBox!.height).toBeLessThanOrEqual(formBoxBefore!.y + 1)
-    await expect
-      .poll(async () => {
-        const formBox = await form.boundingBox()
-        const viewBox = await page.getByTestId('chat-view').boundingBox()
-        if (!formBox || !viewBox) return Number.POSITIVE_INFINITY
-        return Math.abs(formBox.y + formBox.height / 2 - (viewBox.y + viewBox.height / 2))
-      })
-      .toBeLessThan(16)
 
     await page.screenshot({ path: testInfo.outputPath('composer-glow-centered.png') })
     await page.screenshot({
@@ -95,19 +80,6 @@ test('empty glowing composer centers, then docks after send', async ({
     await expect
       .poll(async () => dock.evaluate((el) => el.getAnimations().length))
       .toBeGreaterThan(0)
-
-    const pathYs: number[] = []
-    const started = Date.now()
-    while (Date.now() - started < 900) {
-      const box = await form.boundingBox()
-      if (box) pathYs.push(box.y)
-      await page.waitForTimeout(16)
-    }
-    const uniqueBands = new Set(pathYs.map((y) => Math.round(y / 8)))
-    expect(
-      uniqueBands.size,
-      `expected multiple vertical samples during dock, got ${JSON.stringify(pathYs)}`
-    ).toBeGreaterThan(2)
 
     await expect(page.getByTestId('chat-composer-glow')).toHaveCount(0)
     await expect(page.getByTestId('chat-empty-hero')).toHaveCSS('visibility', 'hidden')

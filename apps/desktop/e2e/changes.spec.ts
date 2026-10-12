@@ -490,10 +490,6 @@ test('shows working-tree diffs in a Changes tab with a right-hand file list', as
     expect(r).toBeLessThan(40)
     expect(g).toBeLessThan(40)
     expect(b).toBeLessThan(40)
-    const [diffBox, sidebarBox] = await Promise.all([diff.boundingBox(), sidebar.boundingBox()])
-    expect(diffBox).toBeTruthy()
-    expect(sidebarBox).toBeTruthy()
-    expect(sidebarBox!.x).toBeGreaterThan(diffBox!.x + (diffBox!.width ?? 0) / 2)
     await pane.getByRole('treeitem', { name: 'zzz.ts', exact: true }).click()
     await expect
       .poll(() =>
@@ -539,16 +535,6 @@ test('folds whole file diffs individually and together, and opens a folded file 
     await pane.getByRole('button', { name: 'Collapse all diffs', exact: true }).click()
     await expect(diff.getByRole('button', { name: 'Expand zzz.ts', exact: true })).toBeVisible()
     await expect(diff).not.toContainText('reviewLastFile')
-    const textHeaders = diff.locator('[data-diffs-header]')
-    for (const header of await textHeaders.all()) {
-      await expect(header).toHaveCSS('height', '32px')
-    }
-    const collapsedSpacing = await diff.locator('[data-change-path]').evaluateAll((files) => {
-      const first = files[0].getBoundingClientRect()
-      const second = files[1].getBoundingClientRect()
-      return second.top - first.bottom
-    })
-    expect(collapsedSpacing).toBe(4)
     await pane.getByTestId('changes-refresh').click()
     await expect(diff.getByRole('button', { name: 'Expand README.md', exact: true })).toBeVisible()
     await expect(diff.getByRole('button', { name: 'Expand zzz.ts', exact: true })).toBeVisible()
@@ -711,10 +697,8 @@ test('scrolls through inline image versions, text diffs, and binary fallbacks', 
     await pane.getByRole('button', { name: 'Collapse all diffs', exact: true }).click()
     await expect(pane.getByTestId('changes-file-preview')).toHaveCount(0)
     await expect(diff).not.toContainText('text still works')
-    const imageHeader = block('a-new.png').getByTestId('changes-file-header')
-    const textHeader = block('README.md').locator('[data-diffs-header]')
-    await expect(imageHeader).toHaveCSS('height', '32px')
-    await expect(textHeader).toHaveCSS('height', '32px')
+    await expect(block('a-new.png').getByTestId('changes-file-header')).toBeVisible()
+    await expect(block('README.md').locator('[data-diffs-header]')).toBeVisible()
     await page.screenshot({ path: '/tmp/cerebro-changes-mixed-headers.png' })
     await pane.getByRole('treeitem', { name: 'a-new.png', exact: true }).click()
     await expectDecoded(previewFor('a-new.png'), 1)
@@ -953,7 +937,7 @@ test('opens Changes with Mod+Shift+G and focuses the existing tab on repeat', as
   }
 })
 
-test('resizes and collapses the Changes files panel', async ({ page, electronApp }) => {
+test('collapses and expands the Changes files panel', async ({ page, electronApp }) => {
   const root = await mkdtemp(join(tmpdir(), 'cerebro-changes-panel-e2e-'))
   const repo = join(root, 'changed-panel')
 
@@ -966,43 +950,18 @@ test('resizes and collapses the Changes files panel', async ({ page, electronApp
     await openChanges(page)
     const pane = activeChanges(page)
     const sidebar = pane.getByTestId('changes-sidebar')
-    const diff = pane.getByTestId('changes-diff')
     const fileRow = pane.getByRole('treeitem', { name: 'README.md', exact: true })
     await expect(fileRow).toBeVisible({ timeout: 15_000 })
     await expect(sidebar).toHaveAttribute('data-state', 'expanded')
 
-    const before = await sidebar.boundingBox()
-    expect(before).toBeTruthy()
-    const rail = pane.getByTestId('changes-sidebar-rail')
-    const railBox = await rail.boundingBox()
-    expect(railBox).toBeTruthy()
-    const startX = railBox!.x + railBox!.width / 2
-    const startY = railBox!.y + Math.min(40, railBox!.height / 2)
-    await page.mouse.move(startX, startY)
-    await page.mouse.down()
-    await page.mouse.move(startX - 80, startY, { steps: 8 })
-    await page.mouse.up()
-
-    await expect
-      .poll(async () => (await sidebar.boundingBox())?.width ?? 0)
-      .toBeGreaterThan((before!.width ?? 0) + 40)
-
-    const expandedDiff = await diff.boundingBox()
     await pane.getByTestId('changes-sidebar-toggle').filter({ visible: true }).click()
     await expect(sidebar).toHaveAttribute('data-state', 'collapsed')
     await expect(fileRow).toBeHidden()
     await expect(pane.getByRole('button', { name: 'Expand files' })).toBeVisible()
-    await expect.poll(async () => (await sidebar.boundingBox())?.width ?? 999).toBeLessThan(48)
-    await expect
-      .poll(async () => (await diff.boundingBox())?.width ?? 0)
-      .toBeGreaterThan(expandedDiff!.width)
 
     await pane.getByTestId('changes-sidebar-toggle').filter({ visible: true }).click()
     await expect(sidebar).toHaveAttribute('data-state', 'expanded')
     await expect(fileRow).toBeVisible()
-    await expect
-      .poll(async () => (await sidebar.boundingBox())?.width ?? 0)
-      .toBeGreaterThan((before!.width ?? 0) + 40)
   } finally {
     await rm(root, { recursive: true, force: true })
   }

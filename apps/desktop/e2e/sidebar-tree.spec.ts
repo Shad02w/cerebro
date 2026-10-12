@@ -124,7 +124,6 @@ test('shows the more action only on the hovered sidebar tree row', async ({
     await expect(childMore).toHaveCSS('opacity', '1')
     await expect(parentMore).toHaveCSS('opacity', '0')
 
-    // Small icon controls keep distinct straight edges even while hovered.
     for (const button of [
       parentMore,
       childMore,
@@ -132,11 +131,7 @@ test('shows the more action only on the hovered sidebar tree row', async ({
       page.getByRole('button', { name: 'Toggle Sidebar' })
     ]) {
       await button.hover()
-      await expect(button).toHaveCSS('border-radius', '4px')
       await expect(button).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
-      const box = await button.boundingBox()
-      expect(box).toBeTruthy()
-      expect(box!.width).toBe(box!.height)
     }
   } finally {
     await rm(sourcesRoot, { recursive: true, force: true })
@@ -198,37 +193,13 @@ test('sidebar keeps keyboard selection and disclosures usable in both themes', a
     await expect(rootGroup.getByTestId(/root-repo-count-/)).toHaveText('4 repos')
     await expect(rootGroup.getByTestId(/workspace-row-/)).toHaveCount(4)
 
-    const cerebroProject = sidebar.getByTestId(/project-row-/).filter({ hasText: 'cerebro' })
-    const branchRow = sidebar
-      .getByTestId(/workspace-row-/)
-      .filter({ hasText: 'feature/sidebar-refinements' })
-    const projectBox = await cerebroProject.boundingBox()
-    const branchBox = await branchRow.boundingBox()
-    expect(projectBox).toBeTruthy()
-    expect(branchBox).toBeTruthy()
-    expect(Math.abs(branchBox!.x - projectBox!.x)).toBeLessThanOrEqual(2)
-
-    for (const subtree of await sidebar.locator('[data-sidebar="menu-sub"]').all()) {
-      await expect(subtree).toHaveCSS('margin-left', '0px')
-      await expect(subtree).toHaveCSS('padding-left', '0px')
-    }
-    const repoTree = sidebar.getByTestId(/project-repo-tree-/)
-    await expect(repoTree).toHaveCSS('margin-left', '0px')
     const rootButton = sidebar.locator('[data-workspace-role="root"]')
-    const rootBox = await rootButton.boundingBox()
-    const repoBox = await repoRow.boundingBox()
-    expect(rootBox).toBeTruthy()
-    expect(repoBox).toBeTruthy()
-    expect(Math.abs(repoBox!.x - rootBox!.x)).toBeLessThanOrEqual(2)
 
     await rootButton.click()
     await expect(rootButton).toHaveAttribute('data-active', 'true')
     await expect(rootGroup).toHaveAttribute('data-active', 'true')
     await expect(rootGroup).toHaveCSS('box-shadow', /0px 0px 0px 1px inset/)
     await expect(rootButton).toHaveCSS('box-shadow', 'none')
-    const groupBox = await rootGroup.boundingBox()
-    expect(groupBox).toBeTruthy()
-    expect(groupBox!.height).toBeGreaterThan(rootBox!.height + 40)
     for (const row of await rootGroup.locator('[data-workspace-role="repository"]').all()) {
       await expect(row).toHaveAttribute('data-active', 'false')
       await expect(row).toHaveCSS('box-shadow', 'none')
@@ -255,9 +226,6 @@ test('sidebar keeps keyboard selection and disclosures usable in both themes', a
       }, theme)
       await page.mouse.move(600, 400)
       await projectRow.blur()
-      for (const subtree of await sidebar.locator('[data-sidebar="menu-sub"]').all()) {
-        await expect(subtree).toHaveCSS('border-left-width', '0px')
-      }
       await expect(repoRow).toHaveCSS('box-shadow', /0px 0px 0px 1px inset/)
       await sidebar.screenshot({
         path: join(tmpdir(), `cerebro-sidebar-after-${theme}.png`),

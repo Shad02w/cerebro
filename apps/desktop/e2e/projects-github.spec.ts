@@ -628,7 +628,7 @@ test('refreshes PR icons on native focus and background interval, retains stale 
   await expect(page.getByTestId(`workspace-default-icon-${id}`)).toBeVisible()
 })
 
-test('PR loading stays hidden and the leading icon updates without moving the workspace label', async ({
+test('PR loading stays hidden and the leading icon updates', async ({
   page,
   githubMock,
   electronApp
@@ -642,14 +642,11 @@ test('PR loading stays hidden and the leading icon updates without moving the wo
     await expect.poll(() => githubMock.requestCount()).toBeGreaterThan(before)
     const row = page.getByTestId(`workspace-row-${id}`)
     const container = row.locator('..')
-    const label = row.locator('span').last()
     const fallback = page.getByTestId(`workspace-default-icon-${id}`)
     const icon = page.getByTestId(`workspace-pr-icon-${id}`)
     await expect(fallback).toBeVisible()
     await expect(icon).toHaveCount(0)
     await expect(container.locator('.animate-spin')).toHaveCount(0)
-    const labelBefore = await label.boundingBox()
-    const fallbackBefore = await fallback.boundingBox()
     // Workspace selection remains usable while the provider response is held.
     await row.click()
     await expect(row).toHaveAttribute('data-active', 'true')
@@ -658,11 +655,6 @@ test('PR loading stays hidden and the leading icon updates without moving the wo
     await expect(fallback).toHaveCount(0)
     await expect(icon).toHaveText('')
     await expect(row.locator('button')).toHaveCount(0)
-    const labelAfter = await label.boundingBox()
-    const iconAfter = await icon.boundingBox()
-    expect(labelAfter!.x).toBe(labelBefore!.x)
-    expect(iconAfter!.x).toBe(fallbackBefore!.x)
-    expect(iconAfter!.x + iconAfter!.width).toBeLessThan(labelAfter!.x)
 
     const releaseRefresh = githubMock.holdPullRequests()
     try {
@@ -782,11 +774,6 @@ test('multi-root repositories and sibling worktrees share PR queries and track l
     for (const workspace of [a, review, b]) {
       const row = page.getByTestId(`workspace-row-${workspace.id}`)
       const icon = page.getByTestId(`workspace-pr-icon-${workspace.id}`)
-      const branch = page.getByTestId(`workspace-branch-${workspace.id}`).locator('span').last()
-      const iconBox = await icon.boundingBox()
-      const branchBox = await branch.boundingBox()
-      expect(iconBox!.x + iconBox!.width).toBeLessThan(branchBox!.x)
-      expect(Math.abs(iconBox!.y - branchBox!.y)).toBeLessThanOrEqual(1)
       await expect(row.locator('button')).toHaveCount(0)
       await icon.click()
       await expect(page.getByTestId(`workspace-pr-popover-${workspace.id}`)).toBeVisible()

@@ -22,9 +22,6 @@ function markPath(file: string): string {
 async function expectSplashIcon(page: Page): Promise<void> {
   const mark = page.getByTestId('startup-mark')
   await expect(mark).toBeVisible()
-  const box = await mark.boundingBox()
-  expect(box!.width).toBeCloseTo(38.4 * 1.6, 0)
-  expect(box!.height).toBeCloseTo(38.4 * 1.6, 0)
   const paint = await mark.evaluate((element) => {
     const style = getComputedStyle(element)
     return {

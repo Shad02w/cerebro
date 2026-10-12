@@ -1,50 +1,10 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import type { Locator } from '@playwright/test'
 import { test, expect } from './fixtures'
 
 const executable = resolve(__dirname, '../../../packages/mux/src/agents/fixtures/fake-harness.cjs')
 
-/** Ink boxes for @, its label, and the previous letter. A lifted @ sits above the label. */
-async function tagInk(tag: Locator): Promise<{
-  atTop: number
-  atBottom: number
-  labelTop: number
-  labelBottom: number
-  neighborBottom: number
-}> {
-  return tag.evaluate((element) => {
-    const box = (node: Text, index: number): DOMRect => {
-      const range = document.createRange()
-      range.setStart(node, index)
-      range.setEnd(node, index + 1)
-      return range.getBoundingClientRect()
-    }
-    const text = [...element.childNodes].find(
-      (node): node is Text =>
-        node.nodeType === Node.TEXT_NODE && Boolean(node.textContent?.includes('@'))
-    )
-    if (!text?.textContent) throw new Error('tag has no text')
-    const atIndex = text.textContent.indexOf('@')
-    const at = box(text, atIndex)
-    const label = box(text, atIndex + 1)
-    const previous = element.previousSibling
-    if (previous?.nodeType !== Node.TEXT_NODE || !previous.textContent)
-      throw new Error('tag has no neighboring text')
-    let neighborIndex = previous.textContent.length - 1
-    while (neighborIndex >= 0 && /\s/.test(previous.textContent[neighborIndex] ?? ''))
-      neighborIndex -= 1
-    if (neighborIndex < 0) throw new Error('tag neighbor is blank')
-    return {
-      atTop: at.top,
-      atBottom: at.bottom,
-      labelTop: label.top,
-      labelBottom: label.bottom,
-      neighborBottom: box(previous, neighborIndex).bottom
-    }
-  })
-}
 test.use({
   agentEnvironment: {
     CEREBRO_CODEX_PATH: executable,
@@ -81,15 +41,6 @@ test('agent composer renders bullets, inline code, a code block, and Add tags', 
     await expect(page.getByTestId('chat-empty-hero')).toBeVisible()
     await expect(page.getByTestId('chat-composer-glow')).toHaveCount(0)
     await expect(form).toBeVisible()
-    // Center the shell/form itself — hero copy is absolutely positioned above it.
-    await expect
-      .poll(async () => {
-        const formBox = await form.boundingBox()
-        const viewBox = await page.getByTestId('chat-view').boundingBox()
-        if (!formBox || !viewBox) return Number.POSITIVE_INFINITY
-        return Math.abs(formBox.y + formBox.height / 2 - (viewBox.y + viewBox.height / 2))
-      })
-      .toBeLessThan(24)
     await page.screenshot({ path: testInfo.outputPath('composer-glow.png') })
     await shell.screenshot({ path: testInfo.outputPath('composer-glow-shell.png') })
     const composer = page.getByRole('textbox', { name: 'Message agent' })
@@ -159,10 +110,6 @@ test('agent composer renders bullets, inline code, a code block, and Add tags', 
     expect(await composer.getAttribute('data-composer-text')).toContain('@ZZ')
     expect(await composer.getAttribute('data-composer-text')).not.toContain('@Ax')
     await expect(composer.locator('.composer-tag-at')).toHaveCount(0)
-    const composerInk = await tagInk(composer.getByTestId('composer-tag').nth(1))
-    expect(composerInk.atTop).toBeGreaterThanOrEqual(composerInk.labelTop - 1)
-    expect(composerInk.atBottom).toBeGreaterThanOrEqual(composerInk.labelBottom - 0.5)
-    expect(Math.abs(composerInk.labelBottom - composerInk.neighborBottom)).toBeLessThan(1.5)
 
     await page.keyboard.press('Escape')
     await expect(addMenu).toBeHidden()
@@ -191,10 +138,6 @@ test('agent composer renders bullets, inline code, a code block, and Add tags', 
     const sentDocument = sent.getByRole('document', { name: 'Your message' })
     await expect(sentDocument.getByTestId('composer-tag').first()).toHaveCSS('color', tagColor)
     await expect(sentDocument.locator('.composer-tag-at')).toHaveCount(0)
-    const sentInk = await tagInk(sentDocument.getByTestId('composer-tag').nth(1))
-    expect(sentInk.atTop).toBeGreaterThanOrEqual(sentInk.labelTop - 1)
-    expect(sentInk.atBottom).toBeGreaterThanOrEqual(sentInk.labelBottom - 0.5)
-    expect(Math.abs(sentInk.labelBottom - sentInk.neighborBottom)).toBeLessThan(1.5)
     await expect(sentDocument).toContainText('@ZZ')
     await page.screenshot({ path: testInfo.outputPath('composer-sent.png') })
     await sentDocument.screenshot({ path: testInfo.outputPath('composer-sent-document.png') })

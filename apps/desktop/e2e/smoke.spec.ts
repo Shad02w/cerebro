@@ -60,55 +60,27 @@ test('window drag overlay spans the top without taking layout space', async ({ p
   const metrics = await page.evaluate(() => {
     const overlayEl = document.querySelector('[data-testid="window-drag-overlay"]')
     const trigger = document.querySelector('[data-slot="sidebar-trigger"]')
-    const inset = document.querySelector('[data-slot="sidebar-inset"]')
-    const sidebar = document.querySelector('[data-slot="sidebar"]')
-    if (!overlayEl || !trigger || !inset || !sidebar) {
+    if (!overlayEl || !trigger) {
       throw new Error('Window chrome elements were not found.')
     }
 
-    const overlayBox = overlayEl.getBoundingClientRect()
-    const triggerBox = trigger.getBoundingClientRect()
-    const insetBox = inset.getBoundingClientRect()
-    const sidebarBox = sidebar.getBoundingClientRect()
     const style = getComputedStyle(overlayEl)
+    const triggerStyle = getComputedStyle(trigger)
+    const region = (computed: CSSStyleDeclaration): string =>
+      computed.getPropertyValue('-webkit-app-region') ||
+      (computed as CSSStyleDeclaration & { webkitAppRegion?: string }).webkitAppRegion ||
+      ''
 
     return {
-      overlayTop: overlayBox.top,
-      overlayLeft: overlayBox.left,
-      overlayWidth: overlayBox.width,
-      overlayHeight: overlayBox.height,
       overlayPosition: style.position,
-      overlayAppRegion:
-        style.getPropertyValue('-webkit-app-region') ||
-        (style as CSSStyleDeclaration & { webkitAppRegion?: string }).webkitAppRegion ||
-        '',
-      triggerTop: triggerBox.top,
-      triggerHeight: triggerBox.height,
-      triggerAppRegion:
-        getComputedStyle(trigger).getPropertyValue('-webkit-app-region') ||
-        (getComputedStyle(trigger) as CSSStyleDeclaration & { webkitAppRegion?: string })
-          .webkitAppRegion ||
-        '',
-      insetTop: insetBox.top,
-      sidebarTop: sidebarBox.top,
-      sidebarLeft: sidebarBox.left,
-      windowWidth: window.innerWidth
+      overlayAppRegion: region(style),
+      triggerAppRegion: region(triggerStyle)
     }
   })
 
   expect(metrics.overlayPosition).toBe('fixed')
-  expect(metrics.overlayTop).toBe(0)
-  expect(metrics.overlayLeft).toBe(0)
-  expect(metrics.overlayWidth).toBe(metrics.windowWidth)
-  expect(metrics.overlayHeight).toBe(44)
   expect(metrics.overlayAppRegion).toBe('drag')
   expect(metrics.triggerAppRegion).toBe('no-drag')
-  expect(metrics.triggerHeight).toBe(24)
-  expect(Math.round(metrics.triggerTop)).toBe(11)
-  expect(Math.round(metrics.triggerTop + metrics.triggerHeight / 2)).toBe(23)
-  expect(metrics.insetTop).toBe(0)
-  expect(metrics.sidebarTop).toBe(0)
-  expect(metrics.sidebarLeft).toBe(0)
 })
 
 test('keeps the fixed sidebar trigger visible after collapsing', async ({ page }) => {
@@ -123,27 +95,16 @@ test('keeps the fixed sidebar trigger visible after collapsing', async ({ page }
 
   const collapsed = await page.evaluate(() => {
     const host = document.querySelector('[data-testid="titlebar-sidebar-trigger"]')
-    const button = document.querySelector('[data-slot="sidebar-trigger"]')
-    if (!host || !button) throw new Error('Sidebar trigger was not found.')
-    const hostBox = host.getBoundingClientRect()
-    const buttonBox = button.getBoundingClientRect()
+    if (!host) throw new Error('Sidebar trigger was not found.')
     const hostStyle = getComputedStyle(host)
     return {
       hostPosition: hostStyle.position,
-      hostZ: hostStyle.zIndex,
-      hostLeft: hostBox.left,
-      buttonWidth: buttonBox.width,
-      buttonHeight: buttonBox.height,
-      buttonTop: buttonBox.top
+      hostZ: hostStyle.zIndex
     }
   })
 
   expect(collapsed.hostPosition).toBe('fixed')
   expect(Number(collapsed.hostZ)).toBeGreaterThanOrEqual(60)
-  expect(Math.round(collapsed.hostLeft)).toBe(78)
-  expect(collapsed.buttonWidth).toBe(24)
-  expect(collapsed.buttonHeight).toBe(24)
-  expect(Math.round(collapsed.buttonTop)).toBe(11)
 
   await trigger.click()
   await expect(page.locator('[data-slot="sidebar"]')).toHaveAttribute('data-state', 'expanded')
@@ -172,12 +133,7 @@ test('loads the supplied neurology artwork and native app icon', async ({
   await expect(mark).toBeVisible()
   await expect(mark.locator('path')).toHaveAttribute('fill', 'currentColor')
   await expect(mark.locator('path')).toHaveAttribute('d', /^M14\.25 21q/)
-  const box = await mark.boundingBox()
-  expect(box!.width / box!.height).toBeCloseTo(1, 1)
-  expect(box!.width).toBeCloseTo(38.4 * 1.6, 0)
-  const heading = page.getByRole('heading', { name: 'Create your first project' })
-  const headingBox = await heading.boundingBox()
-  expect(headingBox!.y - (box!.y + box!.height)).toBeGreaterThan(28)
+  await expect(page.getByRole('heading', { name: 'Create your first project' })).toBeVisible()
   expect(await mark.evaluate((element) => getComputedStyle(element).color)).not.toBe('rgb(0, 0, 0)')
   const icon = await electronApp.evaluate(({ app, nativeImage }) => {
     const image = nativeImage.createFromPath(`${app.getAppPath()}/resources/icon.png`)

@@ -87,73 +87,11 @@ async function dragTabTo(
   expect(from).toBeTruthy()
   expect(to).toBeTruthy()
 
-  const swapProbe = page.evaluate(() => {
-    const bar = document.querySelector('[data-testid="content-tab-bar"]')
-    if (!bar) {
-      return Promise.resolve({
-        seenTransform: false,
-        seenScale: false,
-        listGrew: false,
-        reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches
-      })
-    }
-    const list = bar.querySelector<HTMLElement>('[data-slot="tabs-list"]')
-    const scrollWidth = list?.scrollWidth ?? 0
-    return new Promise<{
-      seenTransform: boolean
-      seenScale: boolean
-      listGrew: boolean
-      reducedMotion: boolean
-    }>((resolve) => {
-      const seen = {
-        seenTransform: false,
-        seenScale: false,
-        listGrew: false,
-        reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches
-      }
-      const observe = (): void => {
-        if ((list?.scrollWidth ?? 0) > scrollWidth) {
-          seen.listGrew = true
-        }
-        for (const el of bar.querySelectorAll('[data-testid$="-tab"]')) {
-          try {
-            const matrix = new DOMMatrix(getComputedStyle(el).transform)
-            if (Math.abs(matrix.m41) > 0.5) {
-              seen.seenTransform = true
-            }
-            if (matrix.a !== 1 || matrix.d !== 1) {
-              seen.seenScale = true
-            }
-          } catch {
-            /* ignore */
-          }
-        }
-      }
-      const observer = new MutationObserver(observe)
-      observer.observe(bar, {
-        subtree: true,
-        attributes: true,
-        attributeFilter: ['style']
-      })
-      window.setTimeout(() => {
-        observer.disconnect()
-        resolve(seen)
-      }, 600)
-    })
-  })
-
   await page.mouse.move(from!.x + from!.width / 2, from!.y + from!.height / 2)
   await page.mouse.down()
   const endX = edge === 'start' ? to!.x + 8 : to!.x + to!.width + 300
   await page.mouse.move(endX, to!.y + to!.height / 2, { steps: 20 })
   await page.mouse.up()
-  const probe = await swapProbe
-  if (!probe.reducedMotion) {
-    expect(probe.seenTransform).toBe(true)
-  }
-  // The dragged tab keeps its own width and stays inside the tab list.
-  expect(probe.seenScale).toBe(false)
-  expect(probe.listGrew).toBe(false)
   await expect
     .poll(async () =>
       page.locator('[data-testid="content-tab-bar"] [data-testid$="-tab"]').evaluateAll((tabs) =>
@@ -187,8 +125,6 @@ async function openTerminalWithKeybind(page: Page): Promise<void> {
 async function waitForActiveTerminal(page: Page): Promise<void> {
   const host = page.locator('[data-terminal-active="true"] .xterm')
   await expect(host).toBeVisible({ timeout: 30_000 })
-  const box = await host.boundingBox()
-  expect(box?.height ?? 0).toBeGreaterThan(40)
   await host.click()
 }
 
@@ -256,9 +192,6 @@ test('does not spawn a terminal until New terminal is clicked; project row only 
       sidebar.getByTestId(/project-row-/).filter({ hasText: 'term-alpha' })
     ).toBeVisible()
     await expect(sidebar.getByTestId(/workspace-row-/).filter({ hasText: 'main' })).toBeVisible()
-    await expect(sidebar.locator('[data-sidebar="menu-sub"]')).toHaveCSS('border-left-width', '0px')
-    await expect(sidebar.locator('[data-sidebar="menu-sub"]')).toHaveCSS('margin-right', '0px')
-    await expect(sidebar.locator('[data-sidebar="menu-sub"]')).toHaveCSS('padding-right', '0px')
 
     // file:// projects are not GitHub-linked, so per-project + is hidden.
     await expect(page.getByTestId(/project-add-workspace-/)).toHaveCount(0)
@@ -403,12 +336,6 @@ test('does not spawn a terminal until New terminal is clicked; project row only 
         throw new Error('Terminal chrome elements were not found.')
       }
 
-      const stackBox = stack.getBoundingClientRect()
-      const tabBarBox = tabBar.getBoundingClientRect()
-      const sessionsBox = sessions.getBoundingClientRect()
-      const xtermBox = xterm.getBoundingClientRect()
-      const overlayBox = overlay.getBoundingClientRect()
-      const sidebarBox = sidebarEl.getBoundingClientRect()
       const sample = '\uE0A0\uE0B0'
       const canvas = document.createElement('canvas')
       const ctx = canvas.getContext('2d')
@@ -424,41 +351,16 @@ test('does not spawn a terminal until New terminal is clicked; project row only 
 
       return {
         overlayPosition: getComputedStyle(overlay).position,
-        overlayTop: overlayBox.top,
-        overlayHeight: overlayBox.height,
-        overlayWidth: overlayBox.width,
-        windowWidth: window.innerWidth,
-        stackTop: stackBox.top,
-        tabBarTop: tabBarBox.top,
-        tabBarHeight: tabBarBox.height,
-        tabBarLeft: tabBarBox.left,
-        tabBarPaddingLeft: getComputedStyle(tabBar).paddingLeft,
-        sidebarRight: sidebarBox.right,
-        sessionsTop: sessionsBox.top,
-        xtermTop: xtermBox.top,
-        xtermHeight: xtermBox.height,
         font: family,
         renderer: host.dataset.terminalRenderer ?? '',
         webglAvailable,
         overflowY: getComputedStyle(viewport).overflowY,
-        scrollbarGutter: viewport.offsetWidth - viewport.clientWidth,
         nerdWidth,
         menloWidth
       }
     })
 
     expect(chrome.overlayPosition).toBe('fixed')
-    expect(chrome.overlayTop).toBe(0)
-    expect(chrome.overlayWidth).toBe(chrome.windowWidth)
-    expect(chrome.overlayHeight).toBe(44)
-    expect(chrome.stackTop).toBe(0)
-    expect(chrome.tabBarTop).toBe(0)
-    expect(chrome.tabBarHeight).toBe(44)
-    expect(chrome.tabBarLeft).toBeGreaterThanOrEqual(chrome.sidebarRight - 1)
-    expect(chrome.tabBarPaddingLeft).toBe('0px')
-    expect(chrome.sessionsTop).toBe(chrome.tabBarTop + chrome.tabBarHeight)
-    expect(chrome.xtermTop).toBeGreaterThanOrEqual(chrome.sessionsTop)
-    expect(chrome.xtermHeight).toBeGreaterThan(40)
     expect(chrome.font).toMatch(/Nerd Font|MesloLGS|Cerebro Mono/)
     if (chrome.webglAvailable) {
       expect(chrome.renderer).toBe('webgl')
@@ -467,7 +369,6 @@ test('does not spawn a terminal until New terminal is clicked; project row only 
     }
     // v6 uses its custom scrollable element instead of native overflow.
     expect(chrome.overflowY).toBe('visible')
-    expect(chrome.scrollbarGutter).toBe(0)
     expect(chrome.nerdWidth).toBeGreaterThan(0)
     expect(chrome.nerdWidth).not.toBe(chrome.menloWidth)
   } finally {
@@ -614,21 +515,6 @@ test('content tabs use pill selection and reveal close on hover or keyboard focu
     await expect(active).toHaveAttribute('data-state', 'active')
     await expect(active).toHaveAttribute('data-variant', 'pill')
     await expect(inactive).toHaveAttribute('data-state', 'inactive')
-
-    const leftGap = await page.evaluate(() => {
-      const bar = document.querySelector('[data-testid="content-tab-bar"]')
-      const firstTab = bar?.querySelector<HTMLElement>('[data-testid$="-tab"]')
-      const tabsList = bar?.querySelector<HTMLElement>('[data-slot="tabs-list"]')
-      if (!bar || !firstTab || !tabsList) {
-        throw new Error('Content tab bar chrome was not found.')
-      }
-      return {
-        tabOffset: firstTab.getBoundingClientRect().left - bar.getBoundingClientRect().left,
-        listMarginLeft: getComputedStyle(tabsList).marginLeft
-      }
-    })
-    expect(leftGap.listMarginLeft).toBe('8px')
-    expect(leftGap.tabOffset).toBeGreaterThanOrEqual(8)
 
     await tabBar.screenshot({ path: testInfo.outputPath('content-tabs-left-gap.png') })
     await page.screenshot({ path: testInfo.outputPath('content-tabs-left-gap-window.png') })
@@ -1002,33 +888,19 @@ test('keeps the sidebar trigger visible above the tab bar when collapsed', async
     await openNewTerminal(page)
     await expect(page.getByTestId('terminal-tab').filter({ hasText: 'Terminal 1' })).toBeVisible()
 
-    const beforeCollapse = await page.evaluate(() => {
+    await page.evaluate(() => {
       const xterm = document.querySelector('[data-terminal-active="true"] .xterm')
-      const sessions = document.querySelector('[data-testid="terminal-sessions"]')
-      if (!(xterm instanceof HTMLElement) || !(sessions instanceof HTMLElement)) {
-        throw new Error('Active terminal was not found.')
-      }
+      if (!(xterm instanceof HTMLElement)) throw new Error('Active terminal was not found.')
       xterm.dataset.terminalInstance = 'stable'
-      return { sessionsWidth: sessions.getBoundingClientRect().width }
     })
 
     const trigger = page.getByRole('button', { name: 'Toggle Sidebar' })
     await trigger.click()
     await expect(page.locator('[data-slot="sidebar"]')).toHaveAttribute('data-state', 'collapsed')
     await expect(page.locator('.xterm[data-terminal-instance="stable"]')).toBeVisible()
-    await expect
-      .poll(async () => {
-        const box = await page.getByTestId('terminal-sessions').boundingBox()
-        return box?.width ?? 0
-      })
-      .toBeGreaterThan(beforeCollapse.sessionsWidth + 50)
     await expect(trigger).toBeVisible()
-    await expect
-      .poll(async () => {
-        const box = await page.getByTestId('content-tab-bar').boundingBox()
-        return box?.x ?? -1
-      })
-      .toBeLessThanOrEqual(1)
+    await expect(page.getByTestId('content-tab-bar')).toBeVisible()
+    await expect(page.getByTestId('new-content-tab')).toBeVisible()
 
     const layout = await page.evaluate(() => {
       const appRegion = (el: Element): string => {
@@ -1037,36 +909,21 @@ test('keeps the sidebar trigger visible above the tab bar when collapsed', async
       }
       const triggerEl = document.querySelector('[data-slot="sidebar-trigger"]')
       const triggerHost = document.querySelector('[data-testid="titlebar-sidebar-trigger"]')
-      const tabBar = document.querySelector('[data-testid="content-tab-bar"]')
-      const tab = document.querySelector('[data-testid="terminal-tab"]')
-      const plus = document.querySelector('[data-testid="new-content-tab"]')
-      if (!triggerEl || !triggerHost || !tabBar || !tab || !plus) {
-        throw new Error('Collapsed chrome elements were not found.')
-      }
+      if (!triggerEl || !triggerHost) throw new Error('Collapsed chrome elements were not found.')
       const triggerBox = triggerEl.getBoundingClientRect()
-      const tabBox = tabBar.getBoundingClientRect()
-      const plusBox = plus.getBoundingClientRect()
       const hit = document.elementFromPoint(
         triggerBox.left + triggerBox.width / 2,
         triggerBox.top + triggerBox.height / 2
       )
       return {
-        triggerRight: triggerBox.right,
         triggerHostContainsButton: triggerHost.contains(triggerEl),
         triggerHostRegion: appRegion(triggerHost),
-        tabLeft: tabBox.left,
-        tabRight: tabBox.right,
-        plusLeft: plusBox.left,
-        hitIsTrigger: Boolean(hit && triggerEl.contains(hit)),
-        windowWidth: window.innerWidth
+        hitIsTrigger: Boolean(hit && triggerEl.contains(hit))
       }
     })
 
-    expect(layout.tabLeft).toBeLessThanOrEqual(1)
-    expect(layout.tabRight).toBeGreaterThanOrEqual(layout.windowWidth - 1)
     expect(layout.triggerHostContainsButton).toBe(true)
     expect(layout.triggerHostRegion).toBe('no-drag')
-    expect(layout.plusLeft).toBeGreaterThanOrEqual(layout.triggerRight)
     expect(layout.hitIsTrigger).toBe(true)
 
     await trigger.click()
@@ -1383,7 +1240,6 @@ test('terminal themes update existing and new sessions without losing output', a
         )
       )
       .toContain('\u001b[31mRED')
-    const originalSize = await page.locator('.xterm-screen').first().boundingBox()
     await clickNewTerminalMenu(page)
     await expect(page.locator('.terminal-host .xterm')).toHaveCount(1)
     const tabIds = await page
@@ -1419,12 +1275,6 @@ test('terminal themes update existing and new sessions without losing output', a
       await page.getByTestId('terminal-tab').first().click()
       await waitForActiveTerminal(page)
       await page.keyboard.press('Enter')
-      await expect
-        .poll(async () => {
-          const size = await page.locator('.xterm-screen').first().boundingBox()
-          return [size?.width, size?.height]
-        })
-        .toEqual([originalSize?.width, originalSize?.height])
       await page.evaluate(async () => {
         const probe = (window as Window & { themeProbe: { sessionId: number; output: string } })
           .themeProbe

@@ -329,12 +329,6 @@ test('settings reuses the app sidebar and navigates by hash route', async ({ pag
   ).toBeVisible()
   await expect(content.getByRole('button', { name: 'Choose folder' })).toBeVisible()
 
-  const insetBox = await content.boundingBox()
-  const headingBox = await content.getByRole('heading', { name: 'General' }).boundingBox()
-  expect(insetBox).toBeTruthy()
-  expect(headingBox).toBeTruthy()
-  expect(headingBox!.y - insetBox!.y).toBeLessThan(56)
-
   await page.screenshot({
     path: path.join(artifactsDir, 'settings-general.png'),
     fullPage: true

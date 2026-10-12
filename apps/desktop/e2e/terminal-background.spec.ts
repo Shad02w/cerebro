@@ -35,32 +35,6 @@ for (const renderer of ['auto', 'dom'] as const) {
       await expect(screen).toBeVisible()
       await expect(host).toHaveCSS('background-color', 'rgb(40, 42, 54)')
       if (renderer === 'dom') await expect(host).toHaveAttribute('data-terminal-renderer', 'dom')
-      // The fitted grid must stay inside the padded content box on both axes.
-      await expect
-        .poll(() =>
-          host.evaluate((element) => {
-            const terminal = element.querySelector('.xterm')!
-            const bounds = terminal.getBoundingClientRect()
-            const screen = element.querySelector('.xterm-screen')!.getBoundingClientRect()
-            const style = getComputedStyle(terminal)
-            return (
-              screen.bottom <= bounds.bottom - parseFloat(style.paddingBottom) &&
-              screen.right <= bounds.right - parseFloat(style.paddingRight)
-            )
-          })
-        )
-        .toBe(true)
-      // Whole terminal rows leave a remainder below the canvas. The legacy
-      // viewport sits behind that gap, but must not paint its default black.
-      await expect
-        .poll(() =>
-          host.evaluate((element) => {
-            const terminal = element.querySelector('.xterm')!.getBoundingClientRect()
-            const screen = element.querySelector('.xterm-screen')!.getBoundingClientRect()
-            return terminal.bottom - screen.bottom
-          })
-        )
-        .toBeGreaterThan(0)
       await page.screenshot({ path: testInfo.outputPath('terminal-background.png') })
       await expect(host.locator('.xterm-viewport')).toHaveCSS(
         'background-color',

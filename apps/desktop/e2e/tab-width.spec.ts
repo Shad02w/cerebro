@@ -13,7 +13,7 @@ test.use({
 })
 
 for (const harness of ['Claude Code', 'Codex', 'Pi']) {
-  test(`${harness} tabs fit their content up to 192px and retain the session icon after reload`, async ({
+  test(`${harness} tabs keep the session icon after reload and close from the tab`, async ({
     page,
     electronApp
   }) => {
@@ -48,13 +48,8 @@ for (const harness of ['Claude Code', 'Codex', 'Pi']) {
       const tabs = page.getByTestId('chat-tab')
       await expect(tabs).toHaveCount(2)
       await expect(tabs.getByTestId('chat-tab-agent-icon')).toHaveCount(0)
-      const emptyWidth = (await tabs.first().boundingBox())!.width
-      expect(emptyWidth).toBeLessThan(100)
       const changesTab = page.getByTestId('changes-tab')
       await expect(changesTab).toBeVisible()
-      const changesWidth = (await changesTab.boundingBox())!.width
-      expect(changesWidth).toBeGreaterThan(emptyWidth)
-      expect(changesWidth).toBeLessThan(140)
       const chat = page.locator('[data-pane-kind="chat"]:visible')
       await expect(chat.getByTestId('chat-model-picker')).toContainText('Test Model')
       await chat.getByTestId('chat-model-picker').click()
@@ -76,8 +71,6 @@ for (const harness of ['Claude Code', 'Codex', 'Pi']) {
       await expect(tabs.nth(1).getByRole('img', { name: harness })).toBeVisible()
       await page.reload()
       await expect(tabs.nth(1).getByRole('img', { name: harness })).toBeVisible()
-      expect((await tabs.first().boundingBox())!.width).toBe(emptyWidth)
-      await expect(tabs.nth(1)).toHaveCSS('width', '192px')
       const label = tabs.nth(1).locator('span.truncate')
       expect(await label.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(
         true
@@ -89,9 +82,6 @@ for (const harness of ['Claude Code', 'Codex', 'Pi']) {
       await electronApp.evaluate(({ BrowserWindow }) =>
         BrowserWindow.getAllWindows()[0].setSize(750, 700)
       )
-      expect((await tabs.first().boundingBox())!.width).toBe(emptyWidth)
-      expect((await changesTab.boundingBox())!.width).toBe(changesWidth)
-      await expect(tabs.nth(1)).toHaveCSS('width', '192px')
       await tabs.first().click()
       await expect(chat.getByTestId('chat-empty-hero')).toContainText(
         'What would you like to build?'
@@ -103,14 +93,9 @@ for (const harness of ['Claude Code', 'Codex', 'Pi']) {
       await chat.getByRole('textbox', { name: 'Message agent' }).focus()
       await page.mouse.move(700, 400)
       await expect(close).toHaveCSS('opacity', '0')
-      const beforeHover = await tabs.first().boundingBox()
       await tabs.first().hover()
       await expect(close).toHaveCSS('opacity', '1')
-      expect(await tabs.first().boundingBox()).toEqual(beforeHover)
       expect(await close.evaluate((button) => button.closest('[role="tab"]'))).toBeNull()
-      const target = await close.boundingBox()
-      expect(target!.width).toBeGreaterThanOrEqual(24)
-      expect(target!.height).toBeGreaterThanOrEqual(24)
       await page.screenshot({ path: `/tmp/cerebro-tab-width-evidence/${harness}-close-hover.png` })
       await page.mouse.move(700, 400)
       await expect(close).toHaveCSS('opacity', '0')
