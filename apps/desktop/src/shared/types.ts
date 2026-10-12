@@ -4,6 +4,7 @@ import type {
   ChatActivityOverview,
   ChatAttachmentContent,
   ChatCommand,
+  ChatThread,
   ChatView,
   LastAgent
 } from '@cerebro/core'
@@ -73,7 +74,7 @@ export const WORKSPACE_STATUSES = ['todo', 'in_progress', 'ready_to_review', 'do
 
 export type WorkspaceStatus = (typeof WORKSPACE_STATUSES)[number]
 
-export type SidebarGroupBy = 'project' | 'status'
+export type SidebarGroupBy = 'project' | 'status' | 'threads'
 
 export function isWorkspaceStatus(value: unknown): value is WorkspaceStatus {
   return typeof value === 'string' && (WORKSPACE_STATUSES as readonly string[]).includes(value)
@@ -298,6 +299,7 @@ export type CliInstallStatus = {
 export type CerebroApi = {
   chatCommand: (command: ChatCommand) => Promise<ChatView>
   chatOverview: () => Promise<ChatActivityOverview>
+  chatThreads: () => Promise<ChatThread[]>
   agentCatalog: (refresh?: boolean) => Promise<AgentCatalog>
   agentFavorite: (key: string, favorite: boolean) => Promise<AgentCatalog>
   chatAttachment: (

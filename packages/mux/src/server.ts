@@ -241,6 +241,13 @@ export async function startServer(): Promise<void> {
       providers.delete(operationId)
     }
   }
+  const liveChatPaneIds = (): number[] => {
+    const ids: number[] = []
+    for (const workspace of Object.values(layout.workspaces))
+      for (const tab of workspace.tabs)
+        for (const pane of leaves(tab.root)) if (pane.kind === 'chat') ids.push(pane.id)
+    return ids
+  }
   let stopping = false
   const server = createServer((socket) => {
     const peer: Peer = {
@@ -313,14 +320,10 @@ export async function startServer(): Promise<void> {
           case 'subscribe':
             peer.subscribed = true
             return layout
-          case 'chat.overview': {
-            const liveChatPanes: number[] = []
-            for (const workspace of Object.values(layout.workspaces))
-              for (const tab of workspace.tabs)
-                for (const pane of leaves(tab.root))
-                  if (pane.kind === 'chat') liveChatPanes.push(pane.id)
-            return agents.overview(liveChatPanes)
-          }
+          case 'chat.overview':
+            return agents.overview(liveChatPaneIds())
+          case 'chat.threads':
+            return agents.threads(liveChatPaneIds())
           case 'chat.catalog':
             await environment
             return agents.models(Boolean((p as unknown as { refresh?: boolean }).refresh))

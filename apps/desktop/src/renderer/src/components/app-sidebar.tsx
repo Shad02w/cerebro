@@ -18,7 +18,17 @@ import {
   Trash2,
   X
 } from 'lucide-react'
-import type { ChatAgentActivity, LayoutState, PaneNode } from '@cerebro/core'
+import {
+  filterThreadRows,
+  groupThreadRows,
+  sectionTitleHits,
+  sectionWorkspaceStatus,
+  sidebarThreadRows,
+  type ChatAgentActivity,
+  type LayoutState,
+  type PaneNode,
+  type ThreadRow
+} from '@cerebro/core'
 import {
   WORKSPACE_STATUSES,
   type Project,
@@ -29,7 +39,10 @@ import {
 import type { SettingsSectionId } from '@/lib/app-route'
 import { HarnessIcon, HarnessStatusIcon } from '@/components/harness-icon'
 import { harnessLabels } from '@/components/chat/queries'
-import { sortAgentActivity, useAgentActivity } from '@/lib/agent-activity'
+import { sortAgentActivity, useAgentActivity, useChatThreads } from '@/lib/agent-activity'
+import { BranchSections, SectionHitList } from '@/components/branch-sections'
+import { ThreadList } from '@/components/thread-list'
+import { activePaneIdFor, openSavedThread } from '@/lib/thread-open'
 import { acceptLayout, layoutOptions } from '@/lib/query-client'
 import { SETTINGS_SECTIONS } from '@/lib/settings-sections'
 import { Input } from '@/components/ui/input'
@@ -289,6 +302,19 @@ function defaultWorkspaceLabel(project: Project, workspace: Workspace): string {
 function workspaceRowLabel(project: Project, workspace: Workspace): string {
   const custom = workspace.displayName?.trim()
   return custom || defaultWorkspaceLabel(project, workspace)
+}
+
+function branchSectionLabel(workspace: Workspace): string {
+  const branch = workspace.branch.trim()
+  if (branch && branch !== '.') return branch
+  return workspace.kind === 'root' ? 'root' : 'this branch'
+}
+
+function sectionsForWorkspace(
+  rows: readonly ThreadRow[] | undefined,
+  workspaceId: number
+): ThreadRow[] {
+  return (rows ?? []).filter((row) => row.workspaceId === workspaceId)
 }
 
 function repositoryDirName(project: Project, workspace: Workspace): string {
@@ -585,7 +611,10 @@ function MultiRootRepoRow({
   agents,
   onSelect,
   onOpenAgent,
-  onRename
+  onRename,
+  branchRows,
+  sectionHits,
+  onOpenSection
 }: {
   project: Project
   workspace: Workspace
@@ -594,6 +623,9 @@ function MultiRootRepoRow({
   onSelect: (workspaceId: number) => void
   onOpenAgent: (agent: ChatAgentActivity) => void
   onRename: () => void
+  branchRows?: readonly ThreadRow[]
+  sectionHits?: readonly ThreadRow[]
+  onOpenSection?: (row: ThreadRow) => void
 }): React.JSX.Element {
   const name = workspaceRowLabel(project, workspace)
   const branch = workspace.branch.trim()
@@ -637,11 +669,34 @@ function MultiRootRepoRow({
                 <span className="min-w-0 flex-1 truncate">{branch}</span>
               </span>
             ) : null}
-            <WorkspaceAgents agents={agents} onOpenAgent={onOpenAgent} />
+            <WorkspaceAgents
+              agents={agents}
+              onOpenAgent={onOpenAgent}
+              className={branchRows ? 'pr-6' : undefined}
+            />
           </button>
+          {branchRows && onOpenSection ? (
+            <BranchSections
+              workspaceId={workspace.id}
+              branch={branchSectionLabel(workspace)}
+              rows={branchRows}
+              onOpen={onOpenSection}
+              className={cn(
+                'absolute z-10',
+                agents.length > 0 ? 'right-7 bottom-1.5' : 'top-1.5 right-7'
+              )}
+            />
+          ) : null}
           <WorkspaceOverflowMenu workspace={workspace} allowRemove={false} onRename={onRename} />
         </SidebarMenuRow>
       </WorkspaceHoverCard>
+      {onOpenSection ? (
+        <SectionHitList
+          workspaceId={workspace.id}
+          rows={sectionsForWorkspace(sectionHits, workspace.id)}
+          onOpen={onOpenSection}
+        />
+      ) : null}
     </li>
   )
 }
@@ -672,7 +727,10 @@ function MultiRootWorkspaceTree({
   onSelectWorkspace,
   onOpenAgent,
   onRenameWorkspace,
-  onSetStatus
+  onSetStatus,
+  branchRows,
+  sectionHits,
+  onOpenSection
 }: {
   project: Project
   activeWorkspaceId: number | null
@@ -681,6 +739,9 @@ function MultiRootWorkspaceTree({
   onOpenAgent: (agent: ChatAgentActivity) => void
   onRenameWorkspace: (workspace: Workspace) => void
   onSetStatus: (workspaceId: number, status: WorkspaceStatus) => void
+  branchRows?: readonly ThreadRow[]
+  sectionHits?: readonly ThreadRow[]
+  onOpenSection?: (row: ThreadRow) => void
 }): React.JSX.Element {
   const [rootOpen, setRootOpen] = useState(true)
   const [rootHovered, setRootHovered] = useState(false)
@@ -746,6 +807,14 @@ function MultiRootWorkspaceTree({
                 <WorkspaceAgents agents={rootAgents} onOpenAgent={onOpenAgent} />
               </button>
               <div className={rootWorkspaceActionsClass(rootCompact)}>
+                {branchRows && onOpenSection && rootWorkspace ? (
+                  <BranchSections
+                    workspaceId={rootWorkspace.id}
+                    branch={branchSectionLabel(rootWorkspace)}
+                    rows={branchRows}
+                    onOpen={onOpenSection}
+                  />
+                ) : null}
                 <SidebarMenuAction
                   className={cn('app-no-drag', rootMenuActionClass)}
                   data-testid={`root-toggle-${project.id}`}
@@ -774,6 +843,13 @@ function MultiRootWorkspaceTree({
               </div>
             </SidebarMenuRow>
           </WorkspaceHoverCard>
+          {onOpenSection && rootWorkspace ? (
+            <SectionHitList
+              workspaceId={rootWorkspace.id}
+              rows={sectionsForWorkspace(sectionHits, rootWorkspace.id)}
+              onOpen={onOpenSection}
+            />
+          ) : null}
           <CollapsibleContent>
             {repos.length > 0 ? (
               <ul
@@ -791,6 +867,9 @@ function MultiRootWorkspaceTree({
                     onSelect={onSelectWorkspace}
                     onOpenAgent={onOpenAgent}
                     onRename={(): void => onRenameWorkspace(workspace)}
+                    branchRows={branchRows}
+                    sectionHits={sectionHits}
+                    onOpenSection={onOpenSection}
                   />
                 ))}
               </ul>
@@ -852,7 +931,9 @@ function ProjectItem({
   onRemoveProject,
   onRemoveWorkspace,
   onSetStatus,
-  onOpenAgent
+  onOpenAgent,
+  branchRows,
+  onOpenSection
 }: {
   project: Project
   activeWorkspaceId: number | null
@@ -865,6 +946,8 @@ function ProjectItem({
   onRemoveWorkspace: (workspaceId: number, deleteFiles: boolean) => void
   onSetStatus: (workspaceId: number, status: WorkspaceStatus) => void
   onOpenAgent: (agent: ChatAgentActivity) => void
+  branchRows: readonly ThreadRow[]
+  onOpenSection: (row: ThreadRow) => void
 }): React.JSX.Element {
   const [open, setOpen] = useState(defaultOpen)
   const githubLinked = project.github != null
@@ -933,6 +1016,8 @@ function ProjectItem({
               onOpenAgent={onOpenAgent}
               onRenameWorkspace={onRenameWorkspace}
               onSetStatus={onSetStatus}
+              branchRows={branchRows}
+              onOpenSection={onOpenSection}
             />
           ) : project.workspaces.length > 0 ? (
             <SidebarMenuSub>
@@ -965,8 +1050,21 @@ function ProjectItem({
                         <WorkspaceAgents
                           agents={activity.get(workspace.id) ?? []}
                           onOpenAgent={onOpenAgent}
+                          className="pr-6"
                         />
                       </SidebarMenuSubButton>
+                      <BranchSections
+                        workspaceId={workspace.id}
+                        branch={branchSectionLabel(workspace)}
+                        rows={branchRows}
+                        onOpen={onOpenSection}
+                        className={cn(
+                          'absolute z-10',
+                          (activity.get(workspace.id) ?? []).length > 0
+                            ? 'right-7 bottom-1.5'
+                            : 'top-1.5 right-7'
+                        )}
+                      />
                       <WorkspacePrPopover
                         workspace={workspace}
                         className="absolute top-1.5 left-2 size-4"
@@ -1018,29 +1116,33 @@ function searchWorkspaces(projects: Project[], query: string): WorkspaceSearchRe
 
 function NavigationHeader({
   isSettings,
+  heading,
+  searchLabel,
+  searchPlaceholder,
   search,
   groupBy,
   onGroupBy,
   onSearchChange,
   onAddProject,
-  firstResultId,
-  onSelectWorkspace
+  onSubmitSearch
 }: {
   isSettings: boolean
+  heading: string
+  searchLabel: string
+  searchPlaceholder: string
   search: string
   groupBy: SidebarGroupBy
   onGroupBy: (groupBy: SidebarGroupBy) => void
   onSearchChange: (value: string) => void
   onAddProject: () => void
-  firstResultId: number | undefined
-  onSelectWorkspace: (workspaceId: number) => void
+  onSubmitSearch: () => void
 }): React.JSX.Element {
   const searchInput = useRef<HTMLInputElement>(null)
   return (
     <SidebarHeader className="gap-2 px-3 pt-12 pb-1">
       <div className="app-drag-region flex h-8 items-center gap-2 px-2">
         <h2 className="flex-1 text-sm font-semibold" data-testid="sidebar-heading">
-          {isSettings ? 'Settings' : 'Projects'}
+          {heading}
         </h2>
         {!isSettings ? (
           <>
@@ -1068,7 +1170,8 @@ function NavigationHeader({
                   <DropdownMenuRadioGroup
                     value={groupBy}
                     onValueChange={(value): void => {
-                      if (value === 'project' || value === 'status') onGroupBy(value)
+                      if (value === 'project' || value === 'status' || value === 'threads')
+                        onGroupBy(value)
                     }}
                   >
                     <DropdownMenuRadioItem
@@ -1084,6 +1187,13 @@ function NavigationHeader({
                       data-testid="sidebar-group-status"
                     >
                       Status
+                    </DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem
+                      value="threads"
+                      closeOnClick
+                      data-testid="sidebar-group-threads"
+                    >
+                      Threads
                     </DropdownMenuRadioItem>
                   </DropdownMenuRadioGroup>
                 </DropdownMenuGroup>
@@ -1110,8 +1220,8 @@ function NavigationHeader({
           />
           <Input
             ref={searchInput}
-            aria-label="Search projects and workspaces"
-            placeholder="Find a workspace…"
+            aria-label={searchLabel}
+            placeholder={searchPlaceholder}
             value={search}
             className="h-8 rounded-md pr-8 pl-8 text-xs shadow-none md:text-xs"
             onChange={(event) => onSearchChange(event.target.value)}
@@ -1120,9 +1230,9 @@ function NavigationHeader({
               if (event.key === 'Escape') {
                 event.preventDefault()
                 onSearchChange('')
-              } else if (event.key === 'Enter' && firstResultId != null) {
+              } else if (event.key === 'Enter') {
                 event.preventDefault()
-                onSelectWorkspace(firstResultId)
+                onSubmitSearch()
               }
             }}
           />
@@ -1237,6 +1347,18 @@ function projectsWithStatus(
   return groups
 }
 
+function entryHasSection(
+  project: Project,
+  workspace: Workspace,
+  hits: readonly ThreadRow[]
+): boolean {
+  if (isMultiRootProject(project)) {
+    const ids = new Set(project.workspaces.map((item) => item.id))
+    return hits.some((row) => ids.has(row.workspaceId))
+  }
+  return hits.some((row) => row.workspaceId === workspace.id)
+}
+
 function StatusGroup({
   status,
   entries,
@@ -1247,7 +1369,10 @@ function StatusGroup({
   onAddWorkspace,
   onRemoveWorkspace,
   onRenameWorkspace,
-  onSetStatus
+  onSetStatus,
+  searching = false,
+  sectionHits = [],
+  onOpenSection
 }: {
   status: WorkspaceStatus
   entries: Array<{ project: Project; workspace: Workspace }>
@@ -1259,15 +1384,29 @@ function StatusGroup({
   onRemoveWorkspace: (workspaceId: number, deleteFiles: boolean) => void
   onRenameWorkspace: (project: Project, workspace: Workspace) => void
   onSetStatus: (workspaceId: number, status: WorkspaceStatus) => void
+  searching?: boolean
+  sectionHits?: readonly ThreadRow[]
+  onOpenSection?: (row: ThreadRow) => void
 }): React.JSX.Element {
   const presentation = WORKSPACE_STATUS_PRESENTATION[status]
   const containsActive = entries.some((entry) => entry.workspace.id === activeWorkspaceId)
   const startsOpen = entries.length > 0 && (status !== 'done' || containsActive)
-  const [open, setOpen] = useState(startsOpen)
-  const [trackedCount, setTrackedCount] = useState(entries.length)
-  if (entries.length !== trackedCount) {
-    setTrackedCount(entries.length)
-    if (entries.length > trackedCount) setOpen(true)
+  const listed = searching
+    ? entries.filter((entry) => entryHasSection(entry.project, entry.workspace, sectionHits))
+    : entries
+  const hitKey = sectionHits.map((row) => row.id).join('\n')
+  const [open, setOpen] = useState(searching ? listed.length > 0 : startsOpen)
+  const [tracked, setTracked] = useState({ searching, hitKey, count: entries.length })
+  if (
+    tracked.searching !== searching ||
+    tracked.hitKey !== hitKey ||
+    tracked.count !== entries.length
+  ) {
+    const previous = tracked
+    setTracked({ searching, hitKey, count: entries.length })
+    if (searching) setOpen(listed.length > 0)
+    else if (previous.searching) setOpen(startsOpen)
+    else if (entries.length > previous.count) setOpen(true)
   }
 
   return (
@@ -1304,11 +1443,13 @@ function StatusGroup({
           </span>
         </CollapsibleTrigger>
         <CollapsibleContent>
-          {entries.length === 0 ? (
+          {searching && listed.length === 0 ? (
+            <p className="px-2 py-1 text-xs text-sidebar-foreground/50">No matching sections</p>
+          ) : entries.length === 0 ? (
             <p className="px-2 py-1 text-xs text-sidebar-foreground/50">No workspaces</p>
           ) : (
             <ul className="flex min-w-0 flex-col gap-1 pt-1" data-sidebar="status-projects">
-              {projectsWithStatus(entries).map(({ project, workspaces }) => (
+              {projectsWithStatus(listed).map(({ project, workspaces }) => (
                 <li key={project.id} className="min-w-0">
                   <SidebarMenuButton
                     className="sidebar-project-button h-auto! cursor-default pr-2! hover:bg-transparent"
@@ -1339,6 +1480,8 @@ function StatusGroup({
                       onOpenAgent={onOpenAgent}
                       onRenameWorkspace={(workspace): void => onRenameWorkspace(project, workspace)}
                       onSetStatus={onSetStatus}
+                      sectionHits={sectionHits}
+                      onOpenSection={onOpenSection}
                     />
                   ) : (
                     <SidebarMenuSub>
@@ -1400,6 +1543,13 @@ function StatusGroup({
                                 />
                               </SidebarMenuRow>
                             </WorkspaceHoverCard>
+                            {onOpenSection ? (
+                              <SectionHitList
+                                workspaceId={workspace.id}
+                                rows={sectionsForWorkspace(sectionHits, workspace.id)}
+                                onOpen={onOpenSection}
+                              />
+                            ) : null}
                           </SidebarMenuSubItem>
                         )
                       })}
@@ -1424,7 +1574,10 @@ function StatusGroups({
   onAddWorkspace,
   onRemoveWorkspace,
   onRenameWorkspace,
-  onSetStatus
+  onSetStatus,
+  searching,
+  sectionHits,
+  onOpenSection
 }: {
   projects: Project[]
   activeWorkspaceId: number | null
@@ -1435,6 +1588,9 @@ function StatusGroups({
   onRemoveWorkspace: (workspaceId: number, deleteFiles: boolean) => void
   onRenameWorkspace: (project: Project, workspace: Workspace) => void
   onSetStatus: (workspaceId: number, status: WorkspaceStatus) => void
+  searching: boolean
+  sectionHits: readonly ThreadRow[]
+  onOpenSection: (row: ThreadRow) => void
 }): React.JSX.Element {
   return (
     <SidebarMenu className="gap-1" data-testid="sidebar-status-groups">
@@ -1451,6 +1607,11 @@ function StatusGroups({
           onRemoveWorkspace={onRemoveWorkspace}
           onRenameWorkspace={onRenameWorkspace}
           onSetStatus={onSetStatus}
+          searching={searching}
+          sectionHits={sectionHits.filter(
+            (row) => sectionWorkspaceStatus(projects, row.workspaceId) === status
+          )}
+          onOpenSection={onOpenSection}
         />
       ))}
     </SidebarMenu>
@@ -1501,6 +1662,23 @@ export function AppSidebar({
   const query = search.trim().toLowerCase()
   const results = searchWorkspaces(projects, query)
   const activity = useAgentActivity()
+  const threads = useChatThreads()
+  const allThreadRows = sidebarThreadRows(projects, threads)
+  const threadRows = filterThreadRows(allThreadRows, search)
+  const sectionHits = sectionTitleHits(allThreadRows, search)
+  const layout = useQuery(layoutOptions).data
+  const activePaneId = activePaneIdFor(layout, activeWorkspaceId)
+  const openingThread = useRef(false)
+  const openThread = (row: ThreadRow): void => {
+    if (openingThread.current) return
+    openingThread.current = true
+    onSelectWorkspace(row.workspaceId)
+    void openSavedThread(row)
+      .catch(() => {})
+      .finally(() => {
+        openingThread.current = false
+      })
+  }
   const openAgent = (agent: ChatAgentActivity): void => {
     onSelectWorkspace(agent.workspaceId)
     if (agent.paneId == null) return
@@ -1523,6 +1701,21 @@ export function AppSidebar({
       >
         <NavigationHeader
           isSettings={isSettings}
+          heading={isSettings ? 'Settings' : groupBy === 'threads' ? 'Threads' : 'Projects'}
+          searchLabel={
+            groupBy === 'threads'
+              ? 'Search threads'
+              : groupBy === 'status'
+                ? 'Search sections'
+                : 'Search projects and workspaces'
+          }
+          searchPlaceholder={
+            groupBy === 'threads'
+              ? 'Find a thread…'
+              : groupBy === 'status'
+                ? 'Find a section…'
+                : 'Find a workspace…'
+          }
           search={search}
           groupBy={groupBy}
           onGroupBy={(next): void => {
@@ -1533,8 +1726,20 @@ export function AppSidebar({
           }}
           onSearchChange={setSearch}
           onAddProject={onAddProject}
-          firstResultId={results[0]?.workspace.id}
-          onSelectWorkspace={onSelectWorkspace}
+          onSubmitSearch={(): void => {
+            if (groupBy === 'threads') {
+              const first = groupThreadRows(threadRows)[0]?.rows[0]
+              if (first) openThread(first)
+              return
+            }
+            if (groupBy === 'status') {
+              const first = sectionHits[0]
+              if (first) openThread(first)
+              return
+            }
+            const firstWorkspace = results[0]?.workspace.id
+            if (firstWorkspace != null) onSelectWorkspace(firstWorkspace)
+          }}
         />
         <SidebarContent>
           {isSettings ? (
@@ -1564,7 +1769,7 @@ export function AppSidebar({
           ) : (
             <SidebarGroup>
               <SidebarGroupContent>
-                {query ? (
+                {query && groupBy === 'project' ? (
                   <WorkspaceSearchResults
                     results={results}
                     activeWorkspaceId={activeWorkspaceId}
@@ -1573,7 +1778,15 @@ export function AppSidebar({
                     onOpenAgent={openAgent}
                   />
                 ) : null}
-                {projects.length === 0 ? (
+                {groupBy === 'threads' ? (
+                  <ThreadList
+                    rows={threadRows}
+                    projects={projects}
+                    activePaneId={activePaneId}
+                    searching={query.length > 0}
+                    onOpen={openThread}
+                  />
+                ) : projects.length === 0 ? (
                   <p
                     className={cn(
                       'px-2 py-1.5 text-xs text-sidebar-foreground/60',
@@ -1583,7 +1796,16 @@ export function AppSidebar({
                     No projects yet. Use + to clone a repository or open a folder.
                   </p>
                 ) : groupBy === 'status' ? (
-                  <div className={query ? 'hidden' : undefined}>
+                  <div>
+                    {query ? (
+                      <p
+                        role="status"
+                        data-testid="status-section-count"
+                        className="px-2 pt-1 pb-2 text-xs text-sidebar-foreground/60"
+                      >
+                        {sectionHits.length} {sectionHits.length === 1 ? 'section' : 'sections'}
+                      </p>
+                    ) : null}
                     <StatusGroups
                       projects={projects}
                       activeWorkspaceId={activeWorkspaceId}
@@ -1594,6 +1816,9 @@ export function AppSidebar({
                       onRemoveWorkspace={onRemoveWorkspace}
                       onRenameWorkspace={openRename}
                       onSetStatus={onSetWorkspaceStatus}
+                      searching={query.length > 0}
+                      sectionHits={sectionHits}
+                      onOpenSection={openThread}
                     />
                   </div>
                 ) : (
@@ -1616,6 +1841,8 @@ export function AppSidebar({
                           onRemoveProject={onRemoveProject}
                           onRemoveWorkspace={onRemoveWorkspace}
                           onSetStatus={onSetWorkspaceStatus}
+                          branchRows={allThreadRows}
+                          onOpenSection={openThread}
                         />
                       )
                     })}

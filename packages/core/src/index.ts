@@ -12,5 +12,6 @@ export * from './terminal-state'
 
 export * from './terminal-palettes'
 export * from './chat'
+export * from './threads'
 export * from './agent-defaults'
 export * from './notifications'

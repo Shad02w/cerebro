@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import type { AgentActivityStatus, ChatAgentActivity } from '@cerebro/core'
+import type { AgentActivityStatus, ChatAgentActivity, ChatThread } from '@cerebro/core'
 
 const rank: Record<AgentActivityStatus, number> = {
   waiting: 0,
@@ -24,6 +24,15 @@ export function sortAgentActivity(agents: ChatAgentActivity[]): ChatAgentActivit
   return agents.toSorted(
     (a, b) => rank[a.status] - rank[b.status] || a.harness.localeCompare(b.harness)
   )
+}
+
+export function useChatThreads(): ChatThread[] {
+  const threads = useQuery({
+    queryKey: ['chat', 'threads'],
+    queryFn: () => window.cerebro.chatThreads(),
+    staleTime: Infinity
+  })
+  return threads.data ?? []
 }
 
 export function useAgentActivity(): Map<number, ChatAgentActivity[]> {
