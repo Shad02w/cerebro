@@ -1,5 +1,5 @@
 import type { AgentHarness, AgentSession, ChatItem } from './chat'
-import type { WorkspaceStatus } from './types'
+import { WORKSPACE_STATUSES, type WorkspaceStatus } from './types'
 
 /**
  * Labels drawn on a thread row. Order is the sidebar group order: someone waiting
@@ -199,4 +199,84 @@ export function filterThreadRows(rows: readonly ThreadRow[], query: string): Thr
   return rows.filter((row) =>
     `${row.location} ${row.title} ${row.description} ${row.status}`.toLowerCase().includes(needle)
   )
+}
+
+const sectionSort = (a: ThreadRow, b: ThreadRow): number =>
+  b.updatedAt - a.updatedAt || a.id.localeCompare(b.id)
+
+function titleMatch(row: ThreadRow, query: string): boolean {
+  const needle = query.trim().toLowerCase()
+  return !needle || row.title.toLowerCase().includes(needle)
+}
+
+/**
+ * Sections saved on one workspace, newest first. An empty query lists every one,
+ * including closed sessions. The match is the title only.
+ */
+export function workspaceSections(
+  rows: readonly ThreadRow[],
+  workspaceId: number,
+  query: string
+): ThreadRow[] {
+  return rows
+    .filter((row) => row.workspaceId === workspaceId && titleMatch(row, query))
+    .sort(sectionSort)
+}
+
+/** Title matches across workspaces. An empty query is not a search. */
+export function sectionTitleHits(rows: readonly ThreadRow[], query: string): ThreadRow[] {
+  const needle = query.trim().toLowerCase()
+  if (!needle) return []
+  return rows.filter((row) => row.title.toLowerCase().includes(needle)).sort(sectionSort)
+}
+
+/**
+ * Status group a section belongs under. A multi-root child uses the root workspace's
+ * status, which is the group that already lists that project.
+ */
+export function sectionWorkspaceStatus(
+  projects: readonly ThreadProjectRef[],
+  workspaceId: number
+): WorkspaceStatus | null {
+  for (const project of projects) {
+    const workspace = project.workspaces.find((item) => item.id === workspaceId)
+    if (!workspace) continue
+    const multiRoot = project.kind === 'multi-root' || project.repositories.length > 1
+    if (!multiRoot || workspace.kind === 'root') return workspace.status
+    return project.workspaces.find((item) => item.kind === 'root')?.status ?? workspace.status
+  }
+  return null
+}
+
+/** Title hits kept in workspace-status groups. Statuses with no hit are omitted. */
+export function groupSectionHits(
+  hits: readonly ThreadRow[],
+  statusOf: (workspaceId: number) => WorkspaceStatus | null
+): { status: WorkspaceStatus; rows: ThreadRow[] }[] {
+  const grouped = new Map<WorkspaceStatus, ThreadRow[]>()
+  for (const row of hits) {
+    const status = statusOf(row.workspaceId)
+    if (!status) continue
+    const list = grouped.get(status)
+    if (list) list.push(row)
+    else grouped.set(status, [row])
+  }
+  return WORKSPACE_STATUSES.flatMap((status) => {
+    const rows = grouped.get(status)
+    return rows?.length ? [{ status, rows }] : []
+  })
+}
+
+const MINUTE = 60_000
+const HOUR = 60 * MINUTE
+const DAY = 24 * HOUR
+
+/** Short age for a closed section: just now, 5m, 2h, yesterday, 3d. */
+export function sectionAge(updatedAt: number, now: number): string {
+  const delta = Math.max(0, now - updatedAt)
+  if (delta < MINUTE) return 'just now'
+  if (delta < HOUR) return `${Math.floor(delta / MINUTE)}m`
+  if (delta < DAY) return `${Math.floor(delta / HOUR)}h`
+  if (delta < 2 * DAY) return 'yesterday'
+  return `${Math.floor(delta / DAY)}d`
 }

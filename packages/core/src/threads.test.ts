@@ -3,11 +3,16 @@ import { test } from 'node:test'
 import type { ChatThread, ThreadProjectRef } from './threads'
 import {
   filterThreadRows,
+  groupSectionHits,
   groupThreadRows,
+  sectionAge,
+  sectionTitleHits,
+  sectionWorkspaceStatus,
   sidebarThreadRows,
   threadDescription,
   threadLocation,
-  threadRowStatus
+  threadRowStatus,
+  workspaceSections
 } from './threads'
 
 const attention = { kind: 'finished' as const, at: 1 }
@@ -285,4 +290,96 @@ test('thread search matches location, title, description, and status', () => {
   assert.equal(filterThreadRows(rows, 'agent working').length, 1)
   assert.equal(filterThreadRows(rows, 'ledger').length, 0)
   assert.equal(filterThreadRows(rows, '   ').length, 1)
+})
+
+test('a branch search lists that workspace, including closed sessions, newest first', () => {
+  const rows = sidebarThreadRows(projects, [
+    thread({
+      id: 'old',
+      workspaceId: 10,
+      title: 'Fix the sidebar hover',
+      description: 'notes about color',
+      updatedAt: 1,
+      paneId: null
+    }),
+    thread({
+      id: 'newer',
+      workspaceId: 10,
+      title: 'Notes on tab labels',
+      updatedAt: 5,
+      paneId: 3
+    }),
+    thread({
+      id: 'other',
+      workspaceId: 11,
+      title: 'Fix the sidebar hover',
+      updatedAt: 9,
+      paneId: null
+    })
+  ])
+  assert.deepEqual(
+    workspaceSections(rows, 10, '').map((row) => row.id),
+    ['newer', 'old']
+  )
+  assert.deepEqual(
+    workspaceSections(rows, 10, 'hover').map((row) => [row.id, row.open]),
+    [['old', false]]
+  )
+  assert.equal(workspaceSections(rows, 10, 'color').length, 0)
+  assert.equal(workspaceSections(rows, 10, 'hover')[0]?.paneId, null)
+  assert.equal(workspaceSections(rows, 10, '')[0]?.paneId, 3)
+})
+
+test('status search matches titles and keeps hits in workspace status groups', () => {
+  const rows = sidebarThreadRows(projects, [
+    thread({
+      id: 'hover',
+      workspaceId: 21,
+      title: 'Fix the sidebar hover',
+      description: 'unrelated body',
+      updatedAt: 2,
+      paneId: null
+    }),
+    thread({
+      id: 'notes',
+      workspaceId: 10,
+      title: 'Notes on the empty state',
+      updatedAt: 4,
+      paneId: null
+    }),
+    thread({
+      id: 'done',
+      workspaceId: 20,
+      title: 'Ship it',
+      updatedAt: 8
+    })
+  ])
+  assert.deepEqual(sectionTitleHits(rows, '   '), [])
+  assert.deepEqual(
+    sectionTitleHits(rows, 'the').map((row) => row.id),
+    ['notes', 'hover']
+  )
+  assert.equal(sectionWorkspaceStatus(projects, 21), 'done')
+  assert.equal(sectionWorkspaceStatus(projects, 20), 'done')
+  assert.equal(sectionWorkspaceStatus(projects, 10), 'todo')
+  const groups = groupSectionHits(sectionTitleHits(rows, 'the'), (workspaceId) =>
+    sectionWorkspaceStatus(projects, workspaceId)
+  )
+  assert.deepEqual(
+    groups.map((group) => [group.status, group.rows.map((row) => row.id)]),
+    [
+      ['todo', ['notes']],
+      ['done', ['hover']]
+    ]
+  )
+})
+
+test('closed section age is just now, minutes, hours, yesterday, then days', () => {
+  const now = 1_700_000_000_000
+  assert.equal(sectionAge(now - 10_000, now), 'just now')
+  assert.equal(sectionAge(now + 5_000, now), 'just now')
+  assert.equal(sectionAge(now - 5 * 60_000, now), '5m')
+  assert.equal(sectionAge(now - 2 * 60 * 60_000, now), '2h')
+  assert.equal(sectionAge(now - 30 * 60 * 60_000, now), 'yesterday')
+  assert.equal(sectionAge(now - 3 * 24 * 60 * 60_000, now), '3d')
 })
