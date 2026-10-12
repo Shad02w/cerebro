@@ -1157,12 +1157,22 @@ test('a thread title starts as the slice, then the prompt pass, then the first r
     const prompt = 'please rename the save button'
     const created = await service.command(scope, { ...send, text: prompt })
     assert.equal(created.session?.title, prompt)
+    assert.equal(created.session?.slice, prompt)
+    assert.equal(created.session?.first, null)
+    assert.equal(created.session?.settled, false)
     for (let i = 0; gates.length < 2 && i < 10; i++)
       await new Promise((resolve) => setImmediate(resolve))
     assert.equal(calls.length, 2)
     assert.equal(calls[0].response, undefined)
     assert.equal(calls[0].user, prompt)
     assert.equal(calls[1].response, 'The button is now called Save.')
+    const sessionId = created.session!.id
+    const between = JSON.parse(
+      readFileSync(join(f.dir, `session-${sessionId}.json`), 'utf8')
+    ) as AgentSession
+    assert.equal(between.slice, prompt)
+    assert.equal(between.first, null)
+    assert.equal(between.settled, false)
     gates[1]('Save button')
     await new Promise((resolve) => setImmediate(resolve))
     assert.equal(
@@ -1175,6 +1185,12 @@ test('a thread title starts as the slice, then the prompt pass, then the first r
       (await service.command(scope, { ...send, action: 'get' })).session?.title,
       'Save button'
     )
+    const named = JSON.parse(
+      readFileSync(join(f.dir, `session-${sessionId}.json`), 'utf8')
+    ) as AgentSession
+    assert.equal(named.title, 'Save button')
+    assert.equal(named.slice, prompt)
+    assert.equal(named.settled, true)
     const sourceId = created.session!.id
     const turnId = created.session!.items[0].turnId
     const forked = await service.command(scope, {
@@ -1184,9 +1200,277 @@ test('a thread title starts as the slice, then the prompt pass, then the first r
       turnId
     })
     assert.equal(forked.session?.title, 'Save button (fork)')
+    assert.equal(forked.session?.settled, true)
     await service.command(scope, { ...send, commandId: 'second', text: 'another message' })
     await new Promise((resolve) => setImmediate(resolve))
     assert.equal(calls.length, 2)
+    await service.shutdown()
+  } finally {
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
+
+const soon = (): Promise<void> => new Promise((resolve) => setImmediate(resolve))
+
+async function until(ready: () => boolean): Promise<void> {
+  for (let i = 0; i < 20 && !ready(); i++) await soon()
+}
+
+function sessionFile(dir: string, id: string): AgentSession {
+  return JSON.parse(readFileSync(join(dir, `session-${id}.json`), 'utf8')) as AgentSession
+}
+
+test('a reload between title passes applies the response title only for the slice or the first pass', async () => {
+  const prompt = 'please rename the save button'
+  const reply = 'The button is now called Save.'
+  const cases: Array<{
+    label: string
+    promptTitle: string | null
+    rename: string | null
+    expectTitle: string
+  }> = [
+    { label: 'slice', promptTitle: null, rename: null, expectTitle: 'From the reply' },
+    {
+      label: 'first pass',
+      promptTitle: 'From the prompt',
+      rename: null,
+      expectTitle: 'From the reply'
+    },
+    {
+      label: 'rename',
+      promptTitle: 'From the prompt',
+      rename: 'Custom name',
+      expectTitle: 'Custom name'
+    }
+  ]
+  for (const item of cases) {
+    const calls: Array<{ user: string; response?: string }> = []
+    const gates: Array<(title: string | null) => void> = []
+    const f = fixture(async (context) => {
+      context.emit({
+        type: 'item',
+        item: { id: 'answer', kind: 'text', text: reply }
+      })
+    })
+    const suggest = (input: { user: string; response?: string }) => {
+      calls.push({
+        user: input.user,
+        ...(input.response === undefined ? {} : { response: input.response })
+      })
+      return new Promise<string | null>((resolve) => gates.push(resolve))
+    }
+    try {
+      const service = new AgentSessions(
+        f.dir,
+        () => {},
+        f.drivers,
+        () => {},
+        suggest
+      )
+      const created = await service.command(scope, { ...send, text: prompt })
+      const id = created.session!.id
+      await until(() => calls.length >= 2)
+      assert.equal(calls.length, 2, item.label)
+      const promptAt = calls.findIndex((call) => call.response === undefined)
+      const responseAt = calls.findIndex((call) => call.response !== undefined)
+      assert.equal(calls[responseAt].user, prompt, item.label)
+      assert.equal(calls[responseAt].response, reply, item.label)
+      gates[promptAt](item.promptTitle)
+      await soon()
+      const stored = sessionFile(f.dir, id)
+      assert.equal(stored.settled, false, item.label)
+      assert.equal(stored.slice, prompt, item.label)
+      assert.equal(stored.first, item.promptTitle, item.label)
+      assert.equal(stored.title, item.promptTitle ?? prompt, item.label)
+      await service.shutdown()
+      if (item.rename) {
+        const renamed = sessionFile(f.dir, id)
+        renamed.title = item.rename
+        writeFileSync(join(f.dir, `session-${id}.json`), JSON.stringify(renamed))
+      }
+      const again: Array<{ user: string; response?: string }> = []
+      const againGates: Array<(title: string | null) => void> = []
+      const restored = new AgentSessions(
+        f.dir,
+        () => {},
+        f.drivers,
+        () => {},
+        (input) => {
+          again.push({
+            user: input.user,
+            ...(input.response === undefined ? {} : { response: input.response })
+          })
+          return new Promise<string | null>((resolve) => againGates.push(resolve))
+        }
+      )
+      await until(() => again.length >= 1)
+      assert.equal(again.length, 1, item.label)
+      assert.equal(again[0].response, reply, item.label)
+      assert.equal(again[0].user, prompt, item.label)
+      againGates[0]('From the reply')
+      await soon()
+      const titled = sessionFile(f.dir, id)
+      assert.equal(titled.title, item.expectTitle, item.label)
+      assert.equal(titled.settled, true, item.label)
+      assert.equal(titled.slice, prompt, item.label)
+      assert.equal(titled.first, item.promptTitle, item.label)
+      assert.equal(
+        (await restored.command(scope, { ...send, action: 'get' })).session?.title,
+        item.expectTitle,
+        item.label
+      )
+      await restored.shutdown()
+      let retried = 0
+      const third = new AgentSessions(
+        f.dir,
+        () => {},
+        f.drivers,
+        () => {},
+        async () => {
+          retried++
+          return 'Again'
+        }
+      )
+      for (let i = 0; i < 10; i++) await soon()
+      assert.equal(retried, 0, item.label)
+      assert.equal(sessionFile(f.dir, id).title, item.expectTitle, item.label)
+      await third.shutdown()
+    } finally {
+      rmSync(f.dir, { recursive: true, force: true })
+    }
+  }
+})
+
+test('a skipped response pass records settled on the session file', async () => {
+  const f = fixture(async (context) => {
+    await new Promise<void>((resolve) => {
+      if (context.signal.aborted) {
+        resolve()
+        return
+      }
+      context.signal.addEventListener('abort', () => resolve(), { once: true })
+    })
+  })
+  const pending = new Promise<string | null>(() => {})
+  try {
+    const service = new AgentSessions(
+      f.dir,
+      () => {},
+      f.drivers,
+      () => {},
+      () => pending
+    )
+    const created = await service.command(scope, { ...send, text: 'hello there' })
+    const id = created.session!.id
+    await service.command(scope, { ...send, action: 'stop' })
+    await until(() => sessionFile(f.dir, id).settled === true)
+    const stored = sessionFile(f.dir, id)
+    assert.equal(stored.settled, true)
+    assert.equal(stored.status, 'interrupted')
+    assert.equal(stored.title, 'hello there')
+    assert.equal(stored.slice, 'hello there')
+    await service.shutdown()
+    let retried = 0
+    const restored = new AgentSessions(
+      f.dir,
+      () => {},
+      f.drivers,
+      () => {},
+      async () => {
+        retried++
+        return 'From the reply'
+      }
+    )
+    for (let i = 0; i < 10; i++) await soon()
+    assert.equal(retried, 0)
+    assert.equal(sessionFile(f.dir, id).title, 'hello there')
+    await restored.shutdown()
+  } finally {
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
+
+test('a first turn with no assistant text records settled and skips the response pass', async () => {
+  const calls: Array<string | undefined> = []
+  const f = fixture(async () => {})
+  try {
+    const service = new AgentSessions(
+      f.dir,
+      () => {},
+      f.drivers,
+      () => {},
+      async (input) => {
+        calls.push(input.response)
+        return null
+      }
+    )
+    const created = await service.command(scope, send)
+    const id = created.session!.id
+    await until(() => sessionFile(f.dir, id).settled === true)
+    assert.deepEqual(calls, [undefined])
+    const stored = sessionFile(f.dir, id)
+    assert.equal(stored.settled, true)
+    assert.equal(stored.title, 'hello')
+    assert.equal(stored.first, null)
+    assert.equal(stored.slice, 'hello')
+    await service.shutdown()
+  } finally {
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
+
+test('a session saved without a title guard is not retitled', async () => {
+  const f = fixture(async (context) => {
+    context.emit({
+      type: 'item',
+      item: { id: 'later', kind: 'text', text: 'done' }
+    })
+  })
+  const session: AgentSession = {
+    version: 1,
+    id: 'old',
+    workspaceId: 1,
+    repositoryId: 3,
+    cwd: '/tmp',
+    title: 'Kept name',
+    model,
+    status: 'idle',
+    generation: '',
+    sequence: 1,
+    updatedAt: 0,
+    items: [
+      { id: 'user', turnId: 'turn', kind: 'user', text: 'hello', status: 'completed' },
+      { id: 'answer', turnId: 'turn', kind: 'text', text: 'done', status: 'completed' }
+    ],
+    commands: ['first']
+  }
+  writeFileSync(join(f.dir, 'session-old.json'), JSON.stringify(session))
+  writeFileSync(join(f.dir, 'bindings.json'), JSON.stringify({ 1: 'old' }))
+  let calls = 0
+  try {
+    const service = new AgentSessions(
+      f.dir,
+      () => {},
+      f.drivers,
+      () => {},
+      async () => {
+        calls++
+        return 'New title'
+      }
+    )
+    for (let i = 0; i < 10; i++) await soon()
+    assert.equal(calls, 0)
+    assert.equal(
+      (await service.command(scope, { ...send, action: 'get' })).session?.title,
+      'Kept name'
+    )
+    await service.command(scope, { ...send, commandId: 'next', text: 'more' })
+    for (let i = 0; i < 10; i++) await soon()
+    assert.equal(calls, 0)
+    const stored = sessionFile(f.dir, 'old')
+    assert.equal(stored.title, 'Kept name')
+    assert.equal(stored.slice, undefined)
+    assert.equal(stored.settled, undefined)
     await service.shutdown()
   } finally {
     rmSync(f.dir, { recursive: true, force: true })

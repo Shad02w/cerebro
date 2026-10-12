@@ -248,8 +248,8 @@ export class AgentSessions {
   private catalog?: AgentCatalog
   private loadingCatalog?: Promise<AgentCatalog>
   private stopping = false
-  /** Titles this process wrote for a thread, so a rename is left alone. */
-  private autoTitle = new Map<string, { slice: string; first: string | null; settled: boolean }>()
+  /** Title passes already running in this process. The rename guard itself is on the session file. */
+  private titleFlight = new Set<string>()
   constructor(
     private directory: string,
     private publish: (workspaceId: number) => void,
@@ -283,7 +283,22 @@ export class AgentSessions {
         this.persist(session)
       }
       this.sessions.set(session.id, session)
+      this.resumeTitle(session)
     }
+  }
+  /**
+   * Sessions written before the guard existed have no `slice` and stay settled.
+   * An unfinished response pass continues; a turn the host did not finish does not.
+   */
+  private resumeTitle(session: AgentSession): void {
+    if (typeof session.slice !== 'string' || session.settled !== false) return
+    if (session.status !== 'idle') {
+      session.settled = true
+      session.sequence++
+      this.persist(session)
+      return
+    }
+    this.noteFirstTurn(session)
   }
   private atomic(name: string, data: unknown): void {
     const file = join(this.directory, name)
@@ -782,6 +797,9 @@ export class AgentSessions {
         repositoryId: scope.repositoryId,
         cwd: scope.cwd,
         title: slice,
+        slice,
+        first: null,
+        settled: false,
         model: selected,
         status: 'idle',
         generation: '',
@@ -790,7 +808,6 @@ export class AgentSessions {
         items: [],
         commands: []
       }
-      this.autoTitle.set(session.id, { slice, first: null, settled: false })
       this.sessions.set(session.id, session)
       this.persist(session)
       const next = { ...this.bindings, [scope.paneId]: session.id }
@@ -1060,6 +1077,8 @@ export class AgentSessions {
       checkpoints: undefined
     }
     if (next.todo) next.todo = { ...next.todo, listId: todoListId(next.id) }
+    // A fork keeps the copied title. It is not a thread waiting on an automatic name.
+    if (typeof next.slice === 'string') next.settled = true
     const checkpoint = source.checkpoints?.[command.turnId]
     if (source.model.harness === 'claude' && checkpoint && source.nativeId) {
       try {
@@ -1093,7 +1112,11 @@ export class AgentSessions {
     response?: string
   ): void {
     const session = this.sessions.get(sessionId)
-    if (!session || !this.autoTitle.has(sessionId)) return
+    if (!session || typeof session.slice !== 'string') return
+    if (pass === 'response' && session.settled !== false) return
+    const flight = `${sessionId}:${pass}`
+    if (this.titleFlight.has(flight)) return
+    this.titleFlight.add(flight)
     const harness = session.model.harness
     void (async () => {
       try {
@@ -1107,6 +1130,9 @@ export class AgentSessions {
         this.applyTitle(sessionId, pass, suggestion)
       } catch {
         // The slice already names the thread. A title failure is not a failed turn.
+        if (pass === 'response') this.settleTitle(sessionId)
+      } finally {
+        this.titleFlight.delete(flight)
       }
     })()
   }
@@ -1116,29 +1142,46 @@ export class AgentSessions {
     suggestion: string | null
   ): void {
     const session = this.sessions.get(sessionId)
-    const record = this.autoTitle.get(sessionId)
-    if (!session || !record) return
+    if (!session || typeof session.slice !== 'string') return
+    if (pass === 'response' && session.settled !== false) return
     const next = nextThreadTitle({
       current: session.title,
-      slice: record.slice,
-      firstPass: record.first,
+      slice: session.slice,
+      firstPass: session.first ?? null,
       suggestion,
       pass
     })
-    if (!next) return
-    session.title = next
-    if (pass === 'prompt') record.first = next
+    if (pass === 'prompt') {
+      if (!next) return
+      session.title = next
+      session.first = next
+      this.changed(session, true)
+      return
+    }
+    session.settled = true
+    if (next) session.title = next
     this.changed(session, true)
+  }
+  /** Writes `settled` even when the response pass then does nothing, so a restart will not retry it. */
+  private settleTitle(sessionId: string): void {
+    const session = this.sessions.get(sessionId)
+    if (!session || typeof session.slice !== 'string' || session.settled !== false) return
+    session.settled = true
+    try {
+      this.changed(session, true)
+    } catch {
+      // The slice already names the thread. A title failure is not a failed turn.
+    }
   }
   /** Second pass, once, when this thread's first turn settles with assistant text. */
   private noteFirstTurn(session: AgentSession): void {
-    const record = this.autoTitle.get(session.id)
-    if (!record || record.settled) return
-    record.settled = true
-    if (this.stopping || session.status !== 'idle') return
+    if (typeof session.slice !== 'string' || session.settled !== false) return
     const user = session.items.find((item) => item.kind === 'user' && item.text.trim())
     const reply = session.items.find((item) => item.kind === 'text' && item.text.trim())
-    if (!user || !reply) return
+    if (this.stopping || session.status !== 'idle' || !user || !reply) {
+      this.settleTitle(session.id)
+      return
+    }
     this.scheduleTitle(session.id, 'response', user.text, reply.text)
   }
   /** Drives one turn. `start` must receive its context synchronously; `autonomous` relies on it. */
