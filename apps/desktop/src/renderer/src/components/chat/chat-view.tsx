@@ -396,26 +396,6 @@ export function ChatView({
                   <span className="chat-working">Working…</span>
                 </div>
               ) : null}
-              {session && session.status !== 'running' ? (
-                <div
-                  className="flex items-center gap-2 text-xs text-muted-foreground"
-                  role="status"
-                >
-                  <span
-                    className={
-                      busy
-                        ? 'size-1.5 animate-pulse rounded-full bg-foreground'
-                        : 'size-1.5 rounded-full bg-muted-foreground'
-                    }
-                  />
-                  {session.status === 'idle'
-                    ? 'Ready'
-                    : session.status === 'waiting'
-                      ? 'Waiting for your response'
-                      : session.status}
-                  {session.nativeId ? ' · Native session saved' : ''}
-                </div>
-              ) : null}
               {!empty && alertText ? (
                 <p
                   role="alert"
