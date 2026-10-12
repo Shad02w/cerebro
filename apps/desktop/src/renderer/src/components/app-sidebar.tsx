@@ -777,7 +777,7 @@ function MultiRootWorkspaceTree({
           <CollapsibleContent>
             {repos.length > 0 ? (
               <ul
-                className="ml-6 flex min-w-0 flex-col gap-1 pt-1 pb-0.5"
+                className="flex min-w-0 flex-col gap-1 pt-1 pb-0.5"
                 aria-label="Repositories in root"
                 data-testid={`project-repo-tree-${project.id}`}
               >
@@ -879,7 +879,7 @@ function ProjectItem({
             render={
               <SidebarMenuButton
                 className={cn(
-                  'app-no-drag sidebar-project-button h-auto!',
+                  'app-no-drag sidebar-project-button h-auto! bg-transparent shadow-none hover:bg-transparent hover:shadow-none active:bg-transparent data-popup-open:bg-transparent data-popup-open:hover:bg-transparent',
                   githubLinked && 'pr-14'
                 )}
                 data-testid={`project-row-${project.id}`}
@@ -1277,7 +1277,7 @@ function StatusGroup({
           render={
             <SidebarMenuButton
               className={cn(
-                'group/status-header app-no-drag h-8 pr-2! text-[11px] font-semibold tracking-wider uppercase',
+                'group/status-header sidebar-status-header app-no-drag h-8 bg-transparent pr-2! text-[11px] font-semibold tracking-wider uppercase shadow-none hover:bg-transparent hover:shadow-none active:bg-transparent',
                 presentation.headerClassName
               )}
               data-testid={`status-group-${status}`}
@@ -1311,7 +1311,7 @@ function StatusGroup({
               {projectsWithStatus(entries).map(({ project, workspaces }) => (
                 <li key={project.id} className="min-w-0">
                   <SidebarMenuButton
-                    className="sidebar-project-button h-auto! cursor-default pr-2! hover:bg-transparent"
+                    className="sidebar-project-button h-auto! cursor-default bg-transparent pr-2! shadow-none hover:bg-transparent hover:shadow-none active:bg-transparent"
                     render={
                       <div
                         data-testid={`status-project-${status}-${project.id}`}

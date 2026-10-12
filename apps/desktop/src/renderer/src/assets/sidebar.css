@@ -3,12 +3,26 @@
   padding-inline: 12px;
 }
 
+/* Project rows are quiet labels. Workspace rows keep selection and hover. */
 .cerebro-sidebar .sidebar-project-button {
   min-height: 34px;
   height: auto;
   gap: 7px;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
+  color: color-mix(in oklch, var(--sidebar-foreground) 72%, transparent);
+  background-color: transparent;
+  box-shadow: none;
+}
+
+.cerebro-sidebar .sidebar-project-button:hover,
+.cerebro-sidebar .sidebar-project-button:active,
+.cerebro-sidebar .sidebar-project-button[data-popup-open],
+.cerebro-sidebar .sidebar-project-button[data-active='true'],
+.cerebro-sidebar .sidebar-project-button[data-active='true']:hover {
+  color: color-mix(in oklch, var(--sidebar-foreground) 72%, transparent);
+  background-color: transparent;
+  box-shadow: none;
 }
 
 .cerebro-sidebar .sidebar-project-button > svg {
@@ -17,10 +31,20 @@
   color: color-mix(in oklch, var(--sidebar-foreground) 65%, transparent);
 }
 
-/* Workspace rows indent one step under the project row. */
+/* Status group headers stay quiet labels: no rest or hover fill. */
+.cerebro-sidebar .sidebar-status-header,
+.cerebro-sidebar .sidebar-status-header:hover,
+.cerebro-sidebar .sidebar-status-header:active,
+.cerebro-sidebar .sidebar-status-header[data-active='true'],
+.cerebro-sidebar .sidebar-status-header[data-active='true']:hover {
+  background-color: transparent;
+  box-shadow: none;
+}
+
+/* Workspace rows align with the project row. */
 .cerebro-sidebar [data-sidebar='menu-sub'] {
-  margin-left: 16px;
-  padding-left: 8px;
+  margin-left: 0;
+  padding-left: 0;
   padding-block: 3px;
 }
 
