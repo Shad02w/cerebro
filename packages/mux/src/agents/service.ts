@@ -49,12 +49,7 @@ import {
   type RunContext
 } from './adapters'
 import { executable } from './transport'
-import {
-  nextThreadTitle,
-  suggestThreadTitle,
-  threadTitleSlice,
-  type ThreadTitleInput
-} from './title'
+import { suggestThreadTitle, threadTitleSlice, type ThreadTitleInput } from './title'
 
 export type AgentScope = {
   workspaceId: number
@@ -248,8 +243,6 @@ export class AgentSessions {
   private catalog?: AgentCatalog
   private loadingCatalog?: Promise<AgentCatalog>
   private stopping = false
-  /** Title passes already running in this process. The rename guard itself is on the session file. */
-  private titleFlight = new Set<string>()
   constructor(
     private directory: string,
     private publish: (workspaceId: number) => void,
@@ -283,22 +276,7 @@ export class AgentSessions {
         this.persist(session)
       }
       this.sessions.set(session.id, session)
-      this.resumeTitle(session)
     }
-  }
-  /**
-   * Sessions written before the guard existed have no `slice` and stay settled.
-   * An unfinished response pass continues; a turn the host did not finish does not.
-   */
-  private resumeTitle(session: AgentSession): void {
-    if (typeof session.slice !== 'string' || session.settled !== false) return
-    if (session.status !== 'idle') {
-      session.settled = true
-      session.sequence++
-      this.persist(session)
-      return
-    }
-    this.noteFirstTurn(session)
   }
   private atomic(name: string, data: unknown): void {
     const file = join(this.directory, name)
@@ -797,9 +775,6 @@ export class AgentSessions {
         repositoryId: scope.repositoryId,
         cwd: scope.cwd,
         title: slice,
-        slice,
-        first: null,
-        settled: false,
         model: selected,
         status: 'idle',
         generation: '',
@@ -826,7 +801,7 @@ export class AgentSessions {
       throw error
     }
     this.beginTurn(session, command.text, stored, selected, command.reasoning, accessMode)
-    if (created) this.scheduleTitle(session.id, 'prompt', command.text)
+    if (created) this.scheduleTitle(session.id, command.text)
     return this.view(scope)
   }
   /** Writes attachment bytes to disk and returns their host-owned paths. Pure I/O — callers decide how to handle failure. */
@@ -1077,8 +1052,6 @@ export class AgentSessions {
       checkpoints: undefined
     }
     if (next.todo) next.todo = { ...next.todo, listId: todoListId(next.id) }
-    // A fork keeps the copied title. It is not a thread waiting on an automatic name.
-    if (typeof next.slice === 'string') next.settled = true
     const checkpoint = source.checkpoints?.[command.turnId]
     if (source.model.harness === 'claude' && checkpoint && source.nativeId) {
       try {
@@ -1105,18 +1078,9 @@ export class AgentSessions {
     })
   }
   /** Asks the cheap model for a thread title without holding the send or the turn. */
-  private scheduleTitle(
-    sessionId: string,
-    pass: 'prompt' | 'response',
-    user: string,
-    response?: string
-  ): void {
+  private scheduleTitle(sessionId: string, user: string, response?: string): void {
     const session = this.sessions.get(sessionId)
-    if (!session || typeof session.slice !== 'string') return
-    if (pass === 'response' && session.settled !== false) return
-    const flight = `${sessionId}:${pass}`
-    if (this.titleFlight.has(flight)) return
-    this.titleFlight.add(flight)
+    if (!session) return
     const harness = session.model.harness
     void (async () => {
       try {
@@ -1127,62 +1091,26 @@ export class AgentSessions {
           user,
           ...(response === undefined ? {} : { response })
         })
-        this.applyTitle(sessionId, pass, suggestion)
+        this.applyTitle(sessionId, suggestion)
       } catch {
-        // The slice already names the thread. A title failure is not a failed turn.
-        if (pass === 'response') this.settleTitle(sessionId)
-      } finally {
-        this.titleFlight.delete(flight)
+        // The current title already names the thread. A title failure is not a failed turn.
       }
     })()
   }
-  private applyTitle(
-    sessionId: string,
-    pass: 'prompt' | 'response',
-    suggestion: string | null
-  ): void {
+  private applyTitle(sessionId: string, suggestion: string | null): void {
     const session = this.sessions.get(sessionId)
-    if (!session || typeof session.slice !== 'string') return
-    if (pass === 'response' && session.settled !== false) return
-    const next = nextThreadTitle({
-      current: session.title,
-      slice: session.slice,
-      firstPass: session.first ?? null,
-      suggestion,
-      pass
-    })
-    if (pass === 'prompt') {
-      if (!next) return
-      session.title = next
-      session.first = next
-      this.changed(session, true)
-      return
-    }
-    session.settled = true
-    if (next) session.title = next
+    if (!session || !suggestion || suggestion === session.title) return
+    session.title = suggestion
     this.changed(session, true)
-  }
-  /** Writes `settled` even when the response pass then does nothing, so a restart will not retry it. */
-  private settleTitle(sessionId: string): void {
-    const session = this.sessions.get(sessionId)
-    if (!session || typeof session.slice !== 'string' || session.settled !== false) return
-    session.settled = true
-    try {
-      this.changed(session, true)
-    } catch {
-      // The slice already names the thread. A title failure is not a failed turn.
-    }
   }
   /** Second pass, once, when this thread's first turn settles with assistant text. */
   private noteFirstTurn(session: AgentSession): void {
-    if (typeof session.slice !== 'string' || session.settled !== false) return
-    const user = session.items.find((item) => item.kind === 'user' && item.text.trim())
+    if (this.stopping || session.status !== 'idle') return
+    const users = session.items.filter((item) => item.kind === 'user' && item.text.trim())
+    if (users.length !== 1) return
     const reply = session.items.find((item) => item.kind === 'text' && item.text.trim())
-    if (this.stopping || session.status !== 'idle' || !user || !reply) {
-      this.settleTitle(session.id)
-      return
-    }
-    this.scheduleTitle(session.id, 'response', user.text, reply.text)
+    if (!reply) return
+    this.scheduleTitle(session.id, users[0].text, reply.text)
   }
   /** Drives one turn. `start` must receive its context synchronously; `autonomous` relies on it. */
   private async run(

@@ -17,7 +17,6 @@ const piProvider = 'openai-codex'
 const piModel = 'gpt-5.6-luna'
 
 export type TitleTarget = { harness: AgentHarness; id: string; provider: string }
-export type TitlePass = 'prompt' | 'response'
 export type ThreadTitleInput = {
   harness: AgentHarness
   models: readonly AgentModel[]
@@ -89,25 +88,6 @@ export function sanitizeTitle(raw: string): string | null {
   const unquoted = trimmed.replace(/^["'`]+|["'`]+$/g, '').trim()
   if (!unquoted || /[\r\n]/.test(unquoted)) return null
   return unquoted.slice(0, threadTitleLimit)
-}
-
-/**
- * Whether an automatic title may replace the one on the thread.
- * A prompt-pass result only replaces the original slice, so it cannot cover a later pass.
- * A response-pass result replaces the slice or the prompt-pass title. Any other string is a rename.
- */
-export function nextThreadTitle(input: {
-  current: string
-  slice: string
-  firstPass: string | null
-  suggestion: string | null
-  pass: TitlePass
-}): string | null {
-  const { current, slice, firstPass, suggestion, pass } = input
-  if (!suggestion || suggestion === current) return null
-  if (pass === 'prompt') return current === slice ? suggestion : null
-  if (current === slice || (firstPass !== null && current === firstPass)) return suggestion
-  return null
 }
 
 const assistantText = (message: Frame): string => {

@@ -153,16 +153,6 @@ export type AgentSession = {
   repositoryId: number | null
   cwd: string
   title: string
-  /**
-   * Automatic-title guard, stored in the session file so a restart can still tell a
-   * generated title from a rename. `slice` is the original prompt cut. `first` is the
-   * prompt-pass title, or null until that pass writes one. `settled` is true once the
-   * response pass has been applied or skipped. Sessions loaded without these fields
-   * are already settled and are not retitled.
-   */
-  slice?: string
-  first?: string | null
-  settled?: boolean
   model: AgentModel
   reasoning?: string
   accessMode?: AgentAccessMode

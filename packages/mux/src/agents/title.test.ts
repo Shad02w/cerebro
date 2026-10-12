@@ -4,7 +4,6 @@ import { resolve } from 'node:path'
 import type { AgentHarness, AgentModel } from '@cerebro/core'
 import {
   completeTitle,
-  nextThreadTitle,
   sanitizeTitle,
   suggestThreadTitle,
   threadTitleLimit,
@@ -98,92 +97,6 @@ test('sanitizeTitle keeps one short line and drops anything else', () => {
   assert.equal(sanitizeTitle('   '), null)
   assert.equal(sanitizeTitle('one\ntwo'), null)
   assert.equal(sanitizeTitle('"'), null)
-})
-
-test('a prompt-pass title replaces only the slice', () => {
-  assert.equal(
-    nextThreadTitle({
-      current: 'slice',
-      slice: 'slice',
-      firstPass: null,
-      suggestion: 'From the prompt',
-      pass: 'prompt'
-    }),
-    'From the prompt'
-  )
-  assert.equal(
-    nextThreadTitle({
-      current: 'From the reply',
-      slice: 'slice',
-      firstPass: null,
-      suggestion: 'From the prompt',
-      pass: 'prompt'
-    }),
-    null
-  )
-  assert.equal(
-    nextThreadTitle({
-      current: 'User name',
-      slice: 'slice',
-      firstPass: 'From the prompt',
-      suggestion: 'From the prompt',
-      pass: 'prompt'
-    }),
-    null
-  )
-})
-
-test('a response-pass title replaces the slice or the first generated title', () => {
-  assert.equal(
-    nextThreadTitle({
-      current: 'slice',
-      slice: 'slice',
-      firstPass: null,
-      suggestion: 'From the reply',
-      pass: 'response'
-    }),
-    'From the reply'
-  )
-  assert.equal(
-    nextThreadTitle({
-      current: 'From the prompt',
-      slice: 'slice',
-      firstPass: 'From the prompt',
-      suggestion: 'From the reply',
-      pass: 'response'
-    }),
-    'From the reply'
-  )
-  assert.equal(
-    nextThreadTitle({
-      current: 'User name',
-      slice: 'slice',
-      firstPass: 'From the prompt',
-      suggestion: 'From the reply',
-      pass: 'response'
-    }),
-    null
-  )
-  assert.equal(
-    nextThreadTitle({
-      current: 'slice',
-      slice: 'slice',
-      firstPass: null,
-      suggestion: null,
-      pass: 'response'
-    }),
-    null
-  )
-  assert.equal(
-    nextThreadTitle({
-      current: 'slice',
-      slice: 'slice',
-      firstPass: null,
-      suggestion: 'slice',
-      pass: 'response'
-    }),
-    null
-  )
 })
 
 test('suggestThreadTitle does not call a harness when the cheap model is absent', async () => {
