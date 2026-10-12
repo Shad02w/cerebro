@@ -115,9 +115,7 @@ test('chat works through native adapters, survives reload, handles requests, and
     await expect(page.getByTestId('chat-tab').first()).toHaveText(userText)
     await expect(page.getByTestId('chat-transcript')).toContainText('Adapter connected.')
     await expect(page.getByTestId('chat-view').getByRole('status')).toContainText('Ready')
-    await expect(page.getByTestId('chat-transcript').getByRole('status')).toContainText(
-      'Ready · Native session saved'
-    )
+    await expect(page.getByTestId('chat-transcript')).not.toContainText('Native session saved')
     // A completed turn keeps the green finished mark until the next turn.
     const sidebarAgents = page.locator(
       `[data-sidebar="menu-row"][data-workspace-id="${workspaceId}"] [data-testid="workspace-agent-open"]`

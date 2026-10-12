@@ -413,7 +413,6 @@ export function ChatView({
                     : session.status === 'waiting'
                       ? 'Waiting for your response'
                       : session.status}
-                  {session.nativeId ? ' · Native session saved' : ''}
                 </div>
               ) : null}
               {!empty && alertText ? (
