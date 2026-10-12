@@ -114,8 +114,9 @@ test('chat works through native adapters, survives reload, handles requests, and
     await page.getByRole('button', { name: 'Send message', exact: true }).click()
     await expect(page.getByTestId('chat-tab').first()).toHaveText(userText)
     await expect(page.getByTestId('chat-transcript')).toContainText('Adapter connected.')
-    await expect(page.getByTestId('chat-view').getByRole('status')).toContainText('Ready')
+    await expect(page.getByTestId('chat-transcript').getByRole('status')).toHaveCount(0)
     await expect(page.getByTestId('chat-transcript')).not.toContainText('Native session saved')
+    await expect(page.getByTestId('chat-transcript')).not.toContainText('Ready')
     // A completed turn keeps the green finished mark until the next turn.
     const sidebarAgents = page.locator(
       `[data-sidebar="menu-row"][data-workspace-id="${workspaceId}"] [data-testid="workspace-agent-open"]`
@@ -491,7 +492,8 @@ test('chat works through native adapters, survives reload, handles requests, and
       .getByRole('textbox', { name: 'Message agent' })
       .fill('Independent pane session')
     await panes.nth(1).getByRole('button', { name: 'Send message', exact: true }).click()
-    await expect(panes.nth(1).getByRole('status')).toContainText('Ready')
+    await expect(panes.nth(1).getByTestId('chat-transcript')).toContainText('Adapter connected.')
+    await expect(panes.nth(1).getByTestId('chat-transcript').getByRole('status')).toHaveCount(0)
     await expect(panes.nth(0).getByTestId('chat-transcript')).not.toContainText(
       'Independent pane session'
     )
@@ -527,7 +529,7 @@ test('Claude and Pi keep separate chat sessions, with a mixed Terminal pane', as
     await chat.getByRole('textbox', { name: 'Message agent' }).fill('hello Claude')
     await chat.getByRole('button', { name: 'Send message', exact: true }).click()
     await expect(chat.getByTestId('chat-transcript')).toContainText('Adapter connected.')
-    await expect(chat.getByTestId('chat-view').getByRole('status')).toContainText('Ready')
+    await expect(chat.getByTestId('chat-transcript').getByRole('status')).toHaveCount(0)
     await chat.getByTestId('chat-model-picker').click()
     await page.getByTestId('model-picker').getByRole('button', { name: 'Pi', exact: true }).click()
     await page
@@ -558,7 +560,7 @@ test('Claude and Pi keep separate chat sessions, with a mixed Terminal pane', as
     await nextChat.getByRole('textbox', { name: 'Message agent' }).fill('hello Pi')
     await nextChat.getByRole('button', { name: 'Send message', exact: true }).click()
     await expect(nextChat.getByTestId('chat-transcript')).toContainText('Adapter connected.')
-    await expect(nextChat.getByTestId('chat-view').getByRole('status')).toContainText('Ready')
+    await expect(nextChat.getByTestId('chat-transcript').getByRole('status')).toHaveCount(0)
     await page.getByTestId('new-content-tab').click()
     await page.getByTestId('pane-menu-right').hover()
     await page.getByTestId('add-pane-right-terminal').press('Enter')
@@ -618,12 +620,12 @@ test('queued messages during a running turn can be steered in immediately or sen
 
     // Stopping leaves the queue intact; it becomes the next turn automatically.
     await page.getByRole('button', { name: 'Stop agent' }).click()
-    await expect(page.getByTestId('chat-view').getByRole('status')).toContainText('Ready', {
+    await expect(page.getByTestId('chat-transcript')).toContainText('follow-up message', {
       timeout: 15_000
     })
-    await expect(page.getByTestId('chat-queue')).toHaveCount(0)
-    await expect(page.getByTestId('chat-transcript')).toContainText('follow-up message')
     await expect(page.getByTestId('chat-transcript')).toContainText('Adapter connected.')
+    await expect(page.getByTestId('chat-transcript').getByRole('status')).toHaveCount(0)
+    await expect(page.getByTestId('chat-queue')).toHaveCount(0)
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
@@ -892,7 +894,7 @@ test('image attachments use atomic chips, reach the harness, render in the trans
     const transcript = chat.getByTestId('chat-transcript')
     await expect(transcript).toContainText('"type":"localImage"')
     await expect(transcript).toContainText('"placeholder":"[Image #1]"')
-    await expect(chat.getByTestId('chat-view').getByRole('status')).toContainText('Ready')
+    await expect(chat.getByTestId('chat-transcript').getByRole('status')).toHaveCount(0)
     await expect.poll(composerText).toBe('')
     await expect(attachments).toHaveCount(0)
     const message = chat.getByTestId('chat-user-message').first()
@@ -955,7 +957,7 @@ test('forking a completed response branches it into a new tab or a new pane, lea
     await chat.getByRole('textbox', { name: 'Message agent' }).fill('hello')
     await chat.getByRole('button', { name: 'Send message', exact: true }).click()
     await expect(chat.getByTestId('chat-transcript')).toContainText('Adapter connected.')
-    await expect(chat.getByTestId('chat-view').getByRole('status')).toContainText('Ready')
+    await expect(chat.getByTestId('chat-transcript').getByRole('status')).toHaveCount(0)
 
     const actions = chat.getByTestId('chat-turn-actions')
     const copyButton = actions.getByRole('button', { name: 'Copy response', exact: true })
@@ -984,7 +986,7 @@ test('forking a completed response branches it into a new tab or a new pane, lea
     // The source conversation is untouched by the fork.
     await page.getByTestId('chat-tab').first().click()
     await expect(chat.getByTestId('chat-transcript')).toContainText('Adapter connected.')
-    await expect(chat.getByRole('status')).toContainText('Ready')
+    await expect(chat.getByTestId('chat-transcript').getByRole('status')).toHaveCount(0)
 
     await actions.getByTestId('chat-fork-trigger').click()
     await page.getByTestId('chat-fork-new-pane').click()
@@ -1057,7 +1059,7 @@ test('multi-root root row keeps agent status inside the row chrome', async ({ pa
     await mkdir('/tmp/cerebro-sidebar-evidence', { recursive: true })
     await page.screenshot({ path: '/tmp/cerebro-sidebar-evidence/multi-root-root-agent.png' })
     await page.getByRole('button', { name: 'Allow once', exact: true }).click()
-    await expect(page.getByTestId('chat-view').getByRole('status')).toContainText('Ready')
+    await expect(page.getByTestId('chat-transcript').getByRole('status')).toHaveCount(0)
     await expect(
       rootRow.locator('[data-agent-harness="codex"] [data-workspace-agent-status="finished"]')
     ).toBeVisible()
@@ -1523,7 +1525,7 @@ test('agent replies render rich markdown, local images, and never load remote im
     await expect(transcript.getByRole('img', { name: 'local shot' })).toBeVisible()
     await expect(transcript).toContainText('https://example.invalid/remote.png')
     await expect(transcript.getByRole('img', { name: 'remote shot' })).toHaveCount(0)
-    await expect(chat.getByTestId('chat-view').getByRole('status')).toContainText('Ready')
+    await expect(chat.getByTestId('chat-transcript').getByRole('status')).toHaveCount(0)
     await mkdir(chatEvidenceDir, { recursive: true })
     await screenshotChatEvidence(page, 'markdown-rich.png')
     expect(remoteRequests).toEqual([])

@@ -396,7 +396,7 @@ export function ChatView({
                   <span className="chat-working">Working…</span>
                 </div>
               ) : null}
-              {session && session.status !== 'running' ? (
+              {session && session.status !== 'running' && session.status !== 'idle' ? (
                 <div
                   className="flex items-center gap-2 text-xs text-muted-foreground"
                   role="status"
@@ -408,11 +408,7 @@ export function ChatView({
                         : 'size-1.5 rounded-full bg-muted-foreground'
                     }
                   />
-                  {session.status === 'idle'
-                    ? 'Ready'
-                    : session.status === 'waiting'
-                      ? 'Waiting for your response'
-                      : session.status}
+                  {session.status === 'waiting' ? 'Waiting for your response' : session.status}
                 </div>
               ) : null}
               {!empty && alertText ? (
