@@ -12,10 +12,10 @@ const fenceLanguage = /language-([^\s]+)/
 const surface =
   'my-5 rounded-lg border-0 bg-[oklch(0.085_0_0)] shadow-[inset_0_1px_0_oklch(1_0_0/0.07),0_1px_2px_oklch(0_0_0/0.6),0_10px_22px_-8px_oklch(0_0_0/0.9)]'
 
-// Flattens Streamdown's own card chrome (border, grey background, padding, header) inside a code block.
+// Flattens Streamdown's own card chrome (border, grey background, padding, header, and floating copy button) inside a code block.
 const flatCode = cn(
   '**:data-[streamdown=code-block]:m-0 **:data-[streamdown=code-block]:gap-0 **:data-[streamdown=code-block]:border-0 **:data-[streamdown=code-block]:bg-transparent **:data-[streamdown=code-block]:p-0',
-  '**:data-[streamdown=code-block-header]:hidden',
+  '**:data-[streamdown=code-block-header]:hidden **:data-[streamdown=code-block-actions]:hidden **:data-[streamdown=code-block-copy-button]:hidden',
   '**:data-[streamdown=code-block-body]:rounded-lg **:data-[streamdown=code-block-body]:border-0 **:data-[streamdown=code-block-body]:bg-transparent **:data-[streamdown=code-block-body]:px-3 **:data-[streamdown=code-block-body]:pt-0 **:data-[streamdown=code-block-body]:pb-3 **:data-[streamdown=code-block-body]:text-xs **:data-[streamdown=code-block-body]:leading-5',
   '[&_pre]:bg-transparent!'
 )
@@ -45,6 +45,7 @@ function CopyCodeButton({ code }: { code: string }): React.JSX.Element {
       type="button"
       title="Copy code"
       aria-label={copied ? 'Copied' : 'Copy code'}
+      data-testid="copy-code"
       onClick={async () => setCopied(await copy(code.replace(/\n$/, '')))}
       className="ml-auto flex size-6 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 hover:text-foreground focus-visible:opacity-100"
     >

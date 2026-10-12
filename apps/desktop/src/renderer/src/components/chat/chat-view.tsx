@@ -419,7 +419,10 @@ export function ChatView({
                 className="h-10 bg-gradient-to-t from-background via-background/80 to-transparent"
               />
             ) : null}
-            <div className={cn('relative px-5', empty ? 'pb-0' : 'bg-background pb-4')}>
+            <div
+              data-testid="chat-composer-surface"
+              className={cn('relative px-5', empty ? 'pb-0' : 'bg-background pb-4')}
+            >
               {session ? (
                 <div className={`mx-auto max-w-3xl ${visible ? 'pointer-events-auto' : ''}`}>
                   <ChatSessionChips session={session} />

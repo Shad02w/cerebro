@@ -406,9 +406,18 @@ test('chat works through native adapters, survives reload, handles requests, and
     await expect(fade).toHaveCSS('pointer-events', 'none')
     const fadeBox = await fade.boundingBox()
     const formBox = await composer.locator('form').boundingBox()
+    const surfaceBox = await composer.getByTestId('chat-composer-surface').boundingBox()
     expect(fadeBox!.height).toBeLessThanOrEqual(48)
     expect(fadeBox!.y).toBe(floatingTop)
-    expect(fadeBox!.y + fadeBox!.height).toBeCloseTo(formBox!.y, 0)
+    // Session chips sit on the solid surface, so the fade meets that surface rather than the form.
+    await expect(composer.getByTestId('chat-todo-chip')).toBeVisible()
+    expect(fadeBox!.y + fadeBox!.height).toBeCloseTo(surfaceBox!.y, 0)
+    expect(formBox!.y).toBeGreaterThan(surfaceBox!.y)
+    expect(surfaceBox!.x).toBeLessThanOrEqual(transcriptBox!.x + 1)
+    expect(surfaceBox!.x + surfaceBox!.width).toBeGreaterThanOrEqual(
+      transcriptBox!.x + transcriptBox!.width - 1
+    )
+    expect(formBox!.y + formBox!.height).toBeLessThanOrEqual(surfaceBox!.y + surfaceBox!.height + 1)
     // The dock spans the whole transcript so no text peeks out beside the form.
     expect(fadeBox!.x).toBeLessThanOrEqual(transcriptBox!.x)
     expect(fadeBox!.width).toBeGreaterThanOrEqual(formBox!.width + 40)
@@ -1519,9 +1528,10 @@ test('agent replies render rich markdown, local images, and never load remote im
     await expect(transcript.getByRole('table')).toContainText('alpha')
     await expect(transcript).toContainText('const answer: number = 42')
     await expect(transcript.getByTestId('code-language')).toHaveText('TypeScript')
+    await expect(transcript.locator('[data-streamdown="code-block-copy-button"]')).toBeHidden()
     await transcript.getByTestId('code-language').hover()
-    await transcript.getByRole('button', { name: 'Copy code' }).click()
-    await expect(transcript.getByRole('button', { name: 'Copied' })).toBeVisible()
+    await transcript.getByTestId('copy-code').click()
+    await expect(transcript.getByTestId('copy-code')).toHaveAttribute('aria-label', 'Copied')
     await expect(transcript.locator('svg').getByText('A', { exact: true })).toBeVisible()
     await expect(transcript.getByRole('img', { name: 'local shot' })).toBeVisible()
     await expect(transcript).toContainText('https://example.invalid/remote.png')
