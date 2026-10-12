@@ -12,7 +12,7 @@ export const WORKSPACE_STATUS_PRESENTATION: Record<
     label: string
     iconClassName: string
     badgeClassName: string
-    /** Section header text color and faint background used when the sidebar is grouped by status. */
+    /** Section header text color when the sidebar is grouped by status. */
     headerClassName: string
     Icon: typeof Circle
   }
@@ -22,7 +22,7 @@ export const WORKSPACE_STATUS_PRESENTATION: Record<
     iconClassName: 'text-sidebar-foreground/70',
     badgeClassName: 'bg-sidebar-foreground/10',
     headerClassName:
-      'bg-sidebar-foreground/[0.04] text-sidebar-foreground/80 hover:bg-sidebar-foreground/[0.08]',
+      'text-sidebar-foreground/80 hover:text-sidebar-foreground/80 active:text-sidebar-foreground/80',
     Icon: Circle
   },
   in_progress: {
@@ -30,7 +30,7 @@ export const WORKSPACE_STATUS_PRESENTATION: Record<
     iconClassName: 'text-amber-500',
     badgeClassName: 'bg-amber-500/15',
     headerClassName:
-      'bg-sidebar-foreground/[0.04] text-amber-700 hover:bg-sidebar-foreground/[0.08] dark:text-amber-400',
+      'text-amber-700 hover:text-amber-700 active:text-amber-700 dark:text-amber-400 dark:hover:text-amber-400 dark:active:text-amber-400',
     Icon: CircleDot
   },
   ready_to_review: {
@@ -38,7 +38,7 @@ export const WORKSPACE_STATUS_PRESENTATION: Record<
     iconClassName: 'text-emerald-500',
     badgeClassName: 'bg-emerald-500/15',
     headerClassName:
-      'bg-sidebar-foreground/[0.04] text-emerald-700 hover:bg-sidebar-foreground/[0.08] dark:text-emerald-400',
+      'text-emerald-700 hover:text-emerald-700 active:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-400 dark:active:text-emerald-400',
     Icon: Eye
   },
   done: {
@@ -46,7 +46,7 @@ export const WORKSPACE_STATUS_PRESENTATION: Record<
     iconClassName: 'text-sky-500',
     badgeClassName: 'bg-sky-500/15',
     headerClassName:
-      'bg-sidebar-foreground/[0.04] text-sky-700 hover:bg-sidebar-foreground/[0.08] dark:text-sky-400',
+      'text-sky-700 hover:text-sky-700 active:text-sky-700 dark:text-sky-400 dark:hover:text-sky-400 dark:active:text-sky-400',
     Icon: CircleCheck
   }
 }
