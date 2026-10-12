@@ -328,7 +328,7 @@ test('chat works through native adapters, survives reload, handles requests, and
     )
     await expect(runningHarness).toHaveCSS('animation-name', 'agent-harness-loading')
     await page.getByRole('button', { name: 'Stop agent' }).click()
-    await expect(working).not.toContainText('Working…')
+    await expect(page.getByTestId('chat-transcript').getByRole('status')).toHaveCount(0)
     await expect(page.getByRole('separator', { name: 'End of response' })).toHaveCount(4)
     await page.screenshot({ path: '/tmp/cerebro-chat-evidence/response-interrupted.png' })
     const interruptedRow = page.locator(
@@ -346,10 +346,11 @@ test('chat works through native adapters, survives reload, handles requests, and
     )
     await expect(page.getByTestId('chat-tab').first()).toHaveText(userText)
     await screenshotChatEvidence(page, 'agent-status-interrupted.png')
-    await expect(page.getByTestId('chat-view').getByRole('status')).toContainText('interrupted')
+    await expect(page.getByTestId('chat-transcript').getByRole('status')).toHaveCount(0)
+    await expect(page.getByTestId('chat-transcript')).not.toContainText('interrupted')
     const chatTranscript = page.getByTestId('chat-transcript')
     const composer = page.getByTestId('chat-composer')
-    // A user interrupt is a status, not an error.
+    // Stopping a turn is not an error in the transcript.
     await expect(chatTranscript.getByRole('alert')).toHaveCount(0)
     await expect(composer.getByRole('status')).toHaveCount(0)
     await expect(composer.getByRole('alert')).toHaveCount(0)
