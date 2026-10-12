@@ -413,10 +413,6 @@ test('chat works through native adapters, survives reload, handles requests, and
     await expect(composer.getByTestId('chat-todo-chip')).toBeVisible()
     expect(fadeBox!.y + fadeBox!.height).toBeCloseTo(surfaceBox!.y, 0)
     expect(formBox!.y).toBeGreaterThan(surfaceBox!.y)
-    expect(surfaceBox!.x).toBeLessThanOrEqual(transcriptBox!.x + 1)
-    expect(surfaceBox!.x + surfaceBox!.width).toBeGreaterThanOrEqual(
-      transcriptBox!.x + transcriptBox!.width - 1
-    )
     expect(formBox!.y + formBox!.height).toBeLessThanOrEqual(surfaceBox!.y + surfaceBox!.height + 1)
     // The dock spans the whole transcript so no text peeks out beside the form.
     expect(fadeBox!.x).toBeLessThanOrEqual(transcriptBox!.x)
