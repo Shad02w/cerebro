@@ -19,8 +19,16 @@ import { Button } from '@/components/ui/button'
 import { StarsBackground } from '@/lib/stars-background'
 import { cn } from '@/lib/utils'
 import { ChatItem } from './chat-item'
+import { ChatScrollEndButton } from './chat-scroll-end'
 import { ChatTurnActions } from './chat-turn-actions'
+import { ChatTurnRail } from './chat-turn-rail'
 import { ChatQueue } from './chat-queue'
+import {
+  activeChatTurn,
+  chatTurnAnchorItemIds,
+  chatTurnSummaries,
+  isTranscriptAtEnd
+} from './chat-turns'
 import { ChatSessionChips } from './chat-session-chips'
 import { AttachmentStrip, DropOverlay } from './chat-composer-attachments'
 import { ComposerEditor, type ComposerEditorHandle } from './composer-editor'
@@ -33,6 +41,10 @@ import { catalogOptions, harnessLabels } from './queries'
 import { observeChatLayout } from './chat-layout'
 import './chat-scrollbars.css'
 import './chat-status.css'
+
+function chatScrollBehavior(): ScrollBehavior {
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+}
 
 export function ChatView({
   workspaceId,
@@ -134,7 +146,61 @@ export function ChatView({
     onError: setError
   })
   const stick = useRef(true)
+  const scrollingToEnd = useRef(false)
+  const lastScrollTop = useRef(0)
+  const [pinned, setPinned] = useState(true)
+  const [activeTurn, setActiveTurn] = useState<string | null>(null)
   const busy = session?.status === 'running' || session?.status === 'waiting'
+  const turns = useMemo(
+    () => chatTurnSummaries(items ?? [], { busyTurnId: busy ? session?.turnId : undefined }),
+    [items, busy, session?.turnId]
+  )
+  const turnAnchors = useMemo(() => new Set(chatTurnAnchorItemIds(items ?? [])), [items])
+  const readScroll = useCallback(() => {
+    const node = scrolling.current
+    if (!node) return
+    const near = isTranscriptAtEnd(node.scrollHeight, node.scrollTop, node.clientHeight)
+    if (scrollingToEnd.current && node.scrollTop + 1 < lastScrollTop.current)
+      scrollingToEnd.current = false
+    lastScrollTop.current = node.scrollTop
+    if (scrollingToEnd.current) {
+      stick.current = true
+      if (near) scrollingToEnd.current = false
+      setPinned(true)
+    } else {
+      stick.current = near
+      setPinned((current) => (current === near ? current : near))
+    }
+    const viewportTop = node.getBoundingClientRect().top
+    const anchors: { turnId: string; top: number }[] = []
+    for (const element of node.querySelectorAll<HTMLElement>('[data-turn-anchor]')) {
+      const turnId = element.dataset.turnAnchor
+      if (turnId) anchors.push({ turnId, top: element.getBoundingClientRect().top })
+    }
+    const next = activeChatTurn(anchors, viewportTop)
+    setActiveTurn((current) => (current === next ? current : next))
+  }, [])
+  const scrollToEnd = useCallback(() => {
+    const node = scrolling.current
+    if (!node) return
+    scrollingToEnd.current = true
+    stick.current = true
+    setPinned(true)
+    lastScrollTop.current = node.scrollTop
+    node.scrollTo({ top: node.scrollHeight, behavior: chatScrollBehavior() })
+  }, [])
+  const scrollToTurn = useCallback((turnId: string) => {
+    const node = scrolling.current
+    const anchor = node?.querySelector(`[data-turn-anchor="${CSS.escape(turnId)}"]`)
+    if (!node || !(anchor instanceof HTMLElement)) return
+    scrollingToEnd.current = false
+    stick.current = false
+    setPinned(false)
+    setActiveTurn(turnId)
+    const top =
+      anchor.getBoundingClientRect().top - node.getBoundingClientRect().top + node.scrollTop - 12
+    node.scrollTo({ top, behavior: chatScrollBehavior() })
+  }, [])
   const { mutateAsync } = useMutation({
     mutationFn: async (command: ChatCommand) => {
       await client.cancelQueries({ queryKey })
@@ -190,7 +256,8 @@ export function ChatView({
   useLayoutEffect(() => {
     if (stick.current && scrolling.current)
       scrolling.current.scrollTop = scrolling.current.scrollHeight
-  }, [session?.sequence, session?.error, error, view.error])
+    readScroll()
+  }, [session?.sequence, session?.error, error, view.error, readScroll])
   useLayoutEffect(() => {
     // Wait until the query confirms empty vs conversation — never center or animate on load.
     if (loading) return
@@ -347,18 +414,19 @@ export function ChatView({
         <>
           <div
             ref={scrolling}
-            onScroll={() => {
-              const node = scrolling.current
-              if (node) stick.current = node.scrollHeight - node.scrollTop - node.clientHeight < 80
-            }}
-            className={cn('min-h-0 flex-1 overflow-y-auto px-5 pt-5', empty ? 'pb-5' : 'pb-40')}
+            onScroll={readScroll}
+            className={cn(
+              'min-h-0 flex-1 overflow-y-auto px-5 pt-5',
+              empty ? 'pb-5' : 'pb-40',
+              turns.length > 1 && 'pl-16'
+            )}
             data-testid="chat-transcript"
             aria-label="Conversation"
           >
             <div className="mx-auto flex max-w-3xl flex-col gap-4">
               {session?.items.length
-                ? session.items.map((item, index) => (
-                    <Fragment key={item.id}>
+                ? session.items.map((item, index) => {
+                    const message = (
                       <ChatItem
                         item={item}
                         onReply={reply}
@@ -366,30 +434,47 @@ export function ChatView({
                         sessionId={session.id}
                         streaming={busy && index === session.items.length - 1}
                       />
-                      {item.kind !== 'user' &&
-                      session.items[index + 1]?.turnId !== item.turnId &&
-                      (item.turnId !== session.turnId || !busy) ? (
-                        <div
-                          role="separator"
-                          aria-label="End of response"
-                          className="flex items-center gap-3 py-2 text-xs text-muted-foreground"
-                        >
-                          <span className="h-px flex-1 bg-border" />
-                          <ChatTurnActions
-                            workspaceId={workspaceId}
-                            paneId={paneId}
-                            repositoryId={session.repositoryId}
-                            sessionId={session.id}
-                            turnId={item.turnId}
-                            text={turnTexts.get(item.turnId) ?? ''}
-                            forkCapability={catalog.data?.capabilities[session.model.harness]?.fork}
-                          />
-                          <span>End of response</span>
-                          <span className="h-px flex-1 bg-border" />
-                        </div>
-                      ) : null}
-                    </Fragment>
-                  ))
+                    )
+                    return (
+                      <Fragment key={item.id}>
+                        {turnAnchors.has(item.id) ? (
+                          <div
+                            data-turn-anchor={item.turnId}
+                            data-testid="chat-turn"
+                            className="scroll-mt-3"
+                          >
+                            {message}
+                          </div>
+                        ) : (
+                          message
+                        )}
+                        {item.kind !== 'user' &&
+                        session.items[index + 1]?.turnId !== item.turnId &&
+                        (item.turnId !== session.turnId || !busy) ? (
+                          <div
+                            role="separator"
+                            aria-label="End of response"
+                            className="flex items-center gap-3 py-2 text-xs text-muted-foreground"
+                          >
+                            <span className="h-px flex-1 bg-border" />
+                            <ChatTurnActions
+                              workspaceId={workspaceId}
+                              paneId={paneId}
+                              repositoryId={session.repositoryId}
+                              sessionId={session.id}
+                              turnId={item.turnId}
+                              text={turnTexts.get(item.turnId) ?? ''}
+                              forkCapability={
+                                catalog.data?.capabilities[session.model.harness]?.fork
+                              }
+                            />
+                            <span>End of response</span>
+                            <span className="h-px flex-1 bg-border" />
+                          </div>
+                        ) : null}
+                      </Fragment>
+                    )
+                  })
                 : null}
               {session?.status === 'running' ? (
                 <div role="status" className="text-sm text-muted-foreground">
@@ -406,12 +491,14 @@ export function ChatView({
               ) : null}
             </div>
           </div>
+          <ChatTurnRail turns={turns} activeTurnId={activeTurn} onSelect={scrollToTurn} />
           <div
             ref={composer}
             data-testid="chat-composer"
             data-dock={empty ? 'center' : 'bottom'}
             className="chat-composer-dock pointer-events-none"
           >
+            {!empty && !pinned ? <ChatScrollEndButton onClick={scrollToEnd} /> : null}
             {!empty ? (
               <div
                 aria-hidden="true"
