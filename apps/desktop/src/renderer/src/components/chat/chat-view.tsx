@@ -6,7 +6,8 @@ import {
   type AgentAccessMode,
   type AgentAnswer,
   type AgentModel,
-  type ChatCommand
+  type ChatCommand,
+  type ChatView as ChatSnapshot
 } from '@cerebro/core'
 import {
   DEFAULT_AGENT_BACKGROUND,
@@ -16,7 +17,9 @@ import {
   type LastAgent
 } from '@shared/types'
 import { Button } from '@/components/ui/button'
+import { acceptLayout } from '@/lib/query-client'
 import { StarsBackground } from '@/lib/stars-background'
+import { defaultChatTabLabel, generatedTabLabel, promptTabLabel } from '@/lib/thread-tab-title'
 import { cn } from '@/lib/utils'
 import { ChatItem } from './chat-item'
 import { ChatScrollEndButton } from './chat-scroll-end'
@@ -56,7 +59,8 @@ export function ChatView({
   composerVimMode = 'insert',
   agentModelDefaults,
   lastAgent = null,
-  onRememberAgent
+  onRememberAgent,
+  tabLabel = ''
 }: {
   workspaceId: number
   paneId: number
@@ -68,6 +72,8 @@ export function ChatView({
   agentModelDefaults: AgentModelDefaults
   lastAgent?: LastAgent | null
   onRememberAgent?: (model: AgentModel) => void
+  /** Current content-tab label. A generated session title replaces the prompt label. */
+  tabLabel?: string
 }): React.JSX.Element {
   const client = useQueryClient()
   const [vimMode, setVimMode] = useState<VimMode | null>(null)
@@ -86,6 +92,38 @@ export function ChatView({
   const loading = !view.data && view.isPending
   const session = view.data?.session
   const items = session?.items
+  const firstPrompt = useMemo(
+    () => items?.find((item) => item.kind === 'user' && item.text.trim())?.text ?? '',
+    [items]
+  )
+  const seenTitle = useRef<string | null>(null)
+  const renameTab = useCallback(
+    (label: string) => {
+      void window.cerebro
+        .layoutCommand({
+          target: 'tab',
+          action: 'rename',
+          workspaceId,
+          paneId,
+          label
+        })
+        .then((reply) => acceptLayout(reply.state))
+        .catch(() => {})
+    },
+    [workspaceId, paneId]
+  )
+  useEffect(() => {
+    const title = session?.title ?? ''
+    const previous = seenTitle.current
+    seenTitle.current = title || previous
+    const next = generatedTabLabel({
+      tabLabel,
+      sessionTitle: title,
+      prompt: firstPrompt,
+      previousSessionTitle: previous
+    })
+    if (next) renameTab(next)
+  }, [session?.title, tabLabel, firstPrompt, renameTab])
   const turnTexts = useMemo(() => {
     const texts = new Map<string, string[]>()
     for (const item of items ?? [])
@@ -354,14 +392,17 @@ export function ChatView({
         accessMode
       })
     ) {
-      if (isFirstMessage)
-        void window.cerebro.layoutCommand({
-          target: 'tab',
-          action: 'rename',
-          workspaceId,
-          paneId,
-          label: promptLabel
-        })
+      if (isFirstMessage) {
+        const cached = client.getQueryData<ChatSnapshot>(queryKey)
+        const title = cached?.session?.title ?? ''
+        renameTab(
+          generatedTabLabel({
+            tabLabel: defaultChatTabLabel,
+            sessionTitle: title,
+            prompt: promptLabel
+          }) ?? promptTabLabel(promptLabel)
+        )
+      }
       if (!lastAgent || lastAgent.harness === selected.harness) onRememberAgent?.(selected)
       clear()
       pendingSend.current = null

@@ -774,6 +774,7 @@ export function TerminalStack({
                         <ChatView
                           workspaceId={workspaceId}
                           paneId={pane.id}
+                          tabLabel={tab.label}
                           visible={shown}
                           active={active}
                           agentBackground={agentBackground}
