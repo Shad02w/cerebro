@@ -197,6 +197,13 @@ describe('sidebar project rows', () => {
     const worktreeRow = screen.getByTestId('workspace-row-12')
     expectItemRow(mainRow, 'branch')
     expectItemRow(worktreeRow, 'branch')
+    for (const row of [mainRow, worktreeRow]) {
+      const label = row.querySelector('[data-workspace-label]')
+      expect(label?.className).toContain('leading-normal')
+      expect(label?.className).not.toContain('leading-none')
+      expect(label?.querySelector('.align-baseline')).not.toBeNull()
+      expect(label?.textContent).toMatch(/\S/)
+    }
     expect(mainRow.closest('[data-workspace-lines]')).toHaveAttribute('data-workspace-lines', '1')
     expect(worktreeRow.closest('[data-workspace-lines]')).toHaveAttribute(
       'data-workspace-lines',
@@ -206,6 +213,9 @@ describe('sidebar project rows', () => {
     await user.click(appsRow)
     const rootRow = screen.getByTestId('project-root-2')
     expectItemRow(rootRow, 'root')
+    const rootLabel = rootRow.querySelector('[data-workspace-label]')
+    expect(rootLabel?.className).toContain('leading-normal')
+    expect(rootLabel?.querySelector('.align-baseline')).not.toBeNull()
     expect(rootRow.closest('[data-workspace-lines]')).toHaveAttribute('data-workspace-lines', '1')
     expectItemRow(screen.getByTestId('workspace-row-22'), 'repository')
     expectItemRow(screen.getByTestId('workspace-row-23'), 'repository')

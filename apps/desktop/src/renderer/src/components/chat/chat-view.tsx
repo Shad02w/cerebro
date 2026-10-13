@@ -40,6 +40,7 @@ import type { Mode as VimMode } from 'vim-prosemirror'
 import { chatImageAccept, useComposerDraft } from './use-composer-draft'
 import { ModelPicker } from './model-picker'
 import { ContextUsageRing } from './context-usage-ring'
+import { messageToResend } from './model-switch'
 import { catalogOptions, harnessLabels } from './queries'
 import { observeChatLayout } from './chat-layout'
 import './chat-scrollbars.css'
@@ -627,8 +628,17 @@ export function ChatView({
                             return
                           }
                           setError(null)
+                          const draft = readDraft()
+                          const restored = messageToResend({
+                            composerText: draft.text,
+                            attachmentCount: draft.attachments.length,
+                            current: selected,
+                            next: model,
+                            items: session?.items ?? []
+                          })
                           setSelection(model)
                           setReasoning('')
+                          if (restored) editorRef.current?.replaceText(restored)
                         }}
                       />
                     </div>

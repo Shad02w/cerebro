@@ -88,6 +88,7 @@ export type ComposerEditorHandle = {
   insertAttachment: (attachmentId: string) => void
   removeAttachment: (attachmentId: string) => void
   clear: () => void
+  replaceText: (text: string) => void
   focus: () => void
 }
 
@@ -673,6 +674,11 @@ export function ComposerEditor({
       clear: () => {
         editor?.commands.clearContent(true)
         if (editor && vimRef.current.enabled) setComposerVimMode(editor, vimRef.current.initialMode)
+      },
+      replaceText: (text: string) => {
+        if (!editor) return
+        editor.commands.setContent(textToContent(text), { emitUpdate: true })
+        editor.commands.focus('end')
       },
       focus: () => {
         // A freshly loaded draft has its caret at the start; resume typing after it instead.

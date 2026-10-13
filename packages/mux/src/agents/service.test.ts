@@ -77,6 +77,36 @@ test('accepted command is durable before dispatch; duplicate sends do not replay
     rmSync(f.dir, { recursive: true, force: true })
   }
 })
+test('a later turn can use another model from the same harness', async () => {
+  const other: AgentModel = { ...model, key: 'other', id: 'other-id', label: 'Other' }
+  const seen: string[] = []
+  const dir = mkdtempSync(join(tmpdir(), 'cerebro-agents-model-'))
+  const adapter: AgentAdapter = {
+    models: async () => [model, other],
+    connect: () => ({
+      async run(context) {
+        seen.push(context.session.model.id)
+      },
+      close() {}
+    })
+  }
+  const service = new AgentSessions(dir, () => {}, { claude: adapter, codex: adapter, pi: adapter })
+  try {
+    await service.command(scope, send)
+    const second = await service.command(scope, {
+      ...send,
+      commandId: 'second',
+      text: 'again',
+      model: other
+    })
+    assert.deepEqual(seen, ['test', 'other-id'])
+    assert.equal(second.session?.model.id, 'other-id')
+    assert.equal(second.session?.items.filter((item) => item.kind === 'user').length, 2)
+  } finally {
+    await service.shutdown()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
 test('a usage delta from the adapter is reflected on the session', async () => {
   const f = fixture(async (context) => {
     context.emit({
