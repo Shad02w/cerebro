@@ -106,13 +106,19 @@ function ToolCallLine({ item }: { item: Item }): React.JSX.Element {
   const detail = run ? commandInputDetail(item.input, run.command) : item.input
   return (
     <details className="min-w-0" data-testid={run ? 'command-run' : 'tool-call'}>
-      <summary className="flex min-w-0 cursor-pointer list-none items-center gap-2 py-1 text-xs text-muted-foreground [&::-webkit-details-marker]:hidden [&::marker]:content-none">
-        <ToolTypeIcon name={run ? 'shell' : undefined} title={run ? undefined : item.title} />
-        <span
-          data-testid={run ? 'command-preview' : undefined}
-          className={cn('min-w-0 flex-1 truncate', running && 'chat-working')}
-        >
-          {summary}
+      <summary className="flex min-w-0 cursor-pointer list-none items-baseline gap-2 py-1 text-xs text-muted-foreground [&::-webkit-details-marker]:hidden [&::marker]:content-none">
+        <ToolTypeIcon
+          name={run ? 'shell' : undefined}
+          title={run ? undefined : item.title}
+          className="relative top-px"
+        />
+        <span className="min-w-0 flex-1">
+          <span
+            data-testid={run ? 'command-preview' : undefined}
+            className={cn('block w-full truncate', running && 'chat-working')}
+          >
+            {summary}
+          </span>
         </span>
         {running ? (
           <span data-testid="tool-working" className="chat-working shrink-0">
