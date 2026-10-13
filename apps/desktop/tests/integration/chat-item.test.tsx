@@ -128,6 +128,12 @@ describe('ChatItem command runs', () => {
     expect(group).not.toHaveAttribute('open')
     expect(screen.getByText('Working for 4s')).toBeInTheDocument()
     expect(screen.queryByText(/Working on/)).toBeNull()
+    const summary = group.querySelector('summary')
+    expect(summary).toHaveClass('text-sm')
+    expect(summary?.textContent).toBe('Working for 4s')
+    const disclosure = screen.getByTestId('working-disclosure')
+    expect(summary?.contains(disclosure)).toBe(true)
+    expect(summary?.lastElementChild).toBe(disclosure)
 
     await userEvent.click(screen.getByText(/Working for 4s/))
     expect(group).toHaveAttribute('open')

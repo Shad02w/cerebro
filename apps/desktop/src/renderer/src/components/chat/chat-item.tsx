@@ -1,5 +1,6 @@
 import { memo, useState } from 'react'
 import type { AgentAnswer, ChatItem as Item } from '@cerebro/core'
+import { ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { AgentMarkdown } from '@/components/markdown/agent-markdown'
 import { cn } from '@/lib/utils'
@@ -158,9 +159,14 @@ export function WorkingGroup({
     )
   }
   return (
-    <details className="min-w-0" data-testid="working-group">
-      <summary className="flex min-w-0 cursor-pointer list-none items-baseline py-1 text-xs text-muted-foreground [&::-webkit-details-marker]:hidden [&::marker]:content-none">
+    <details className="group min-w-0" data-testid="working-group">
+      <summary className="flex min-w-0 cursor-pointer list-none items-center gap-1 py-1 text-sm text-muted-foreground [&::-webkit-details-marker]:hidden [&::marker]:content-none">
         <span className="min-w-0 truncate">{workingHeading(seconds)}</span>
+        <ChevronRight
+          aria-hidden
+          data-testid="working-disclosure"
+          className="size-3.5 shrink-0 transition-transform group-open:rotate-90 motion-reduce:transition-none"
+        />
       </summary>
       <div className="pl-4">
         {items.map((item) => (
