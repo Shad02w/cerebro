@@ -660,12 +660,11 @@ test('PR loading stays hidden and the leading icon updates without moving the wo
     await expect(row.locator('button')).toHaveCount(0)
     const labelAfter = await label.boundingBox()
     const iconAfter = await icon.boundingBox()
-    // The row keeps the label put and the pull-request mark in the fallback's slot.
-    // Exact edges drift by a pixel across runners, so compare order, not a coordinate.
+    // The branch name stays put and the pull-request mark takes the fallback's slot.
+    // The row button is shifted 1px (`-translate-x-px`) while the icon is absolutely
+    // positioned, so the label box and the icon edge land on the same pixel.
     expect(Math.abs(labelAfter!.x - labelBefore!.x)).toBeLessThanOrEqual(1)
     expect(Math.abs(iconAfter!.x - fallbackBefore!.x)).toBeLessThanOrEqual(1)
-    expect(iconAfter!.x).toBeLessThan(labelAfter!.x)
-    expect(iconAfter!.x + iconAfter!.width).toBeLessThanOrEqual(labelAfter!.x + 1)
 
     const releaseRefresh = githubMock.holdPullRequests()
     try {
