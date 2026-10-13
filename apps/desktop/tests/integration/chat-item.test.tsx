@@ -1,13 +1,14 @@
-import { act, render, screen } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChatItem as Item } from '@cerebro/core'
+import { clearTurnDurations, recordTurnSeconds } from '@/components/chat/turn-durations'
 
 vi.mock('@/components/chat/chat-user-message', () => ({ ChatUserMessage: () => null }))
 vi.mock('@/components/markdown/agent-markdown', () => ({ AgentMarkdown: () => null }))
 vi.mock('@/components/chat/chat-diff', () => ({ ChatDiff: () => null }))
 
-import { ChatItem } from '@/components/chat/chat-item'
+import { ChatItem, WorkingGroup } from '@/components/chat/chat-item'
 
 const item = (patch: Partial<Item>): Item => ({
   id: '1',
@@ -18,7 +19,9 @@ const item = (patch: Partial<Item>): Item => ({
 })
 
 describe('ChatItem command runs', () => {
-  it('shows a .... preview while collapsed and the full command after expand', async () => {
+  beforeEach(() => clearTurnDurations())
+
+  it('shows the description after a dot and the full command after expand', async () => {
     const command = `echo ${'segment '.repeat(30)}tail`
     render(
       <ChatItem
@@ -35,56 +38,42 @@ describe('ChatItem command runs', () => {
     )
     const preview = screen.getByTestId('command-preview')
     const row = screen.getByTestId('command-run')
-    expect(preview).toHaveTextContent(/^Bash echo segment/)
-    expect(preview).toHaveTextContent(/\.\.\.\.$/)
+    expect(preview).toHaveTextContent('Bash · Print segments')
     expect(preview.textContent).not.toContain('>')
+    expect(preview.textContent).not.toContain('completed')
     expect(preview.textContent).not.toContain('tail')
-    expect(preview.textContent).not.toContain('printed-line')
     expect(preview.className).toContain('truncate')
     expect(preview.className).not.toContain('chat-working')
     expect(row.className).not.toContain('border')
-    expect(screen.queryByTestId('tool-working')).toBeNull()
+    expect(screen.queryByText(/working for/i)).toBeNull()
 
     await userEvent.click(preview)
     expect(screen.getByTestId('command-run')).toHaveAttribute('open')
     expect(screen.getByTestId('command-full')).toHaveTextContent(command)
-    expect(screen.getByText(/Print segments/)).toBeInTheDocument()
     expect(screen.getByText(/printed-line/)).toBeInTheDocument()
   })
 
-  it('uses the shimmer and a working timer while the command is running', () => {
-    vi.useFakeTimers()
-    try {
-      render(
-        <ChatItem
-          item={item({
-            title: 'Bash',
-            status: 'running',
-            input: JSON.stringify({ command: 'npm test' })
-          })}
-          onReply={() => {}}
-          workspaceId={1}
-          sessionId="session"
-        />
-      )
-      const preview = screen.getByTestId('command-preview')
-      expect(preview).toHaveTextContent('Bash npm test')
-      expect(preview).toHaveClass('chat-working')
-      expect(screen.getByTestId('tool-working')).toHaveTextContent('working for 0s')
-      expect(screen.getByTestId('tool-working')).toHaveClass('chat-working')
-      expect(
-        screen.getByTestId('command-run').querySelector('[data-tool-icon="shell"]')
-      ).toBeTruthy()
-      act(() => {
-        vi.advanceTimersByTime(2000)
-      })
-      expect(screen.getByTestId('tool-working')).toHaveTextContent('working for 2s')
-    } finally {
-      vi.useRealTimers()
-    }
+  it('shimmers a running command without a per-call timer', () => {
+    render(
+      <ChatItem
+        item={item({
+          title: 'Bash',
+          status: 'running',
+          input: JSON.stringify({ command: 'npm test', description: 'Run tests' })
+        })}
+        onReply={() => {}}
+        workspaceId={1}
+        sessionId="session"
+      />
+    )
+    const preview = screen.getByTestId('command-preview')
+    expect(preview).toHaveTextContent('Bash · Run tests')
+    expect(preview).toHaveClass('chat-working')
+    expect(screen.queryByText(/working for/i)).toBeNull()
+    expect(screen.getByTestId('command-run').querySelector('[data-tool-icon="shell"]')).toBeTruthy()
   })
 
-  it('uses a different icon for each tool', () => {
+  it('uses a different icon and a description for each tool', () => {
     const { rerender } = render(
       <ChatItem
         item={item({ title: 'Read', input: '{"file_path":"a.ts"}', text: 'export const a = 1\n' })}
@@ -93,33 +82,73 @@ describe('ChatItem command runs', () => {
         sessionId="session"
       />
     )
-    expect(screen.queryByTestId('command-preview')).toBeNull()
+    expect(screen.getByTestId('tool-summary')).toHaveTextContent('Read · a.ts')
+    expect(screen.getByTestId('tool-summary').textContent).not.toContain('completed')
     expect(document.querySelector('[data-tool-icon="read"]')).toBeTruthy()
 
     rerender(
       <ChatItem
-        item={item({ title: 'WebSearch', status: 'running', text: 'results' })}
+        item={item({
+          title: 'WebSearch',
+          status: 'running',
+          input: '{"query":"cerebro"}',
+          text: 'results'
+        })}
         onReply={() => {}}
         workspaceId={1}
         sessionId="session"
       />
     )
     expect(document.querySelector('[data-tool-icon="web"]')).toBeTruthy()
-    expect(screen.getByText(/WebSearch/)).toHaveClass('chat-working')
-    expect(screen.getByTestId('tool-call').className).not.toContain('border')
-    expect(screen.getByTestId('tool-working')).toHaveTextContent(/^working for \d+s$/)
+    expect(screen.getByTestId('tool-summary')).toHaveTextContent('WebSearch · cerebro')
+    expect(screen.getByTestId('tool-summary')).toHaveClass('chat-working')
   })
 
-  it('does not preview a file tool', () => {
+  it('collapses a finished turn into one working section', async () => {
+    recordTurnSeconds('turn', 4)
     render(
-      <ChatItem
-        item={item({ title: 'Read', input: '{"file_path":"a.ts"}', text: 'export const a = 1\n' })}
-        onReply={() => {}}
-        workspaceId={1}
-        sessionId="session"
+      <WorkingGroup
+        items={[
+          item({
+            id: 'read',
+            title: 'Read',
+            status: 'completed',
+            input: '{"file_path":"a.ts"}'
+          }),
+          item({
+            id: 'bash',
+            title: 'Bash',
+            status: 'completed',
+            input: JSON.stringify({ command: 'pwd', description: 'Where am I' })
+          })
+        ]}
       />
     )
-    expect(screen.queryByTestId('command-preview')).toBeNull()
-    expect(screen.getByText('Read')).toBeInTheDocument()
+    const group = screen.getByTestId('working-group')
+    expect(group).not.toHaveAttribute('open')
+    expect(screen.getByText('Working for 4s · Working on a.ts, Where am I')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByText(/Working for 4s/))
+    expect(group).toHaveAttribute('open')
+    expect(screen.getByTestId('tool-summary')).toHaveTextContent('Read · a.ts')
+    expect(screen.getByTestId('command-preview')).toHaveTextContent('Bash · Where am I')
+  })
+
+  it('keeps tool lines visible while the turn is still streaming', () => {
+    render(
+      <WorkingGroup
+        live
+        items={[
+          item({
+            title: 'Bash',
+            status: 'running',
+            input: JSON.stringify({ command: 'npm test', description: 'Run tests' })
+          })
+        ]}
+      />
+    )
+    expect(screen.queryByTestId('working-group')).toBeNull()
+    expect(screen.getByTestId('working-live')).toHaveTextContent('Bash · Run tests')
+    expect(screen.queryByText(/working for/i)).toBeNull()
   })
 })

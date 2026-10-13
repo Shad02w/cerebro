@@ -4,13 +4,13 @@ import { Button } from '@/components/ui/button'
 import { AgentMarkdown } from '@/components/markdown/agent-markdown'
 import { cn } from '@/lib/utils'
 import './chat-status.css'
-import { commandInputDetail, commandRun } from './command-preview'
+import { commandInputDetail, commandRun, toolCallSummary, workingOn } from './command-preview'
+import { workingHeading } from './working-label'
+import { useTurnDuration } from './turn-durations'
 import { ChatDiff } from './chat-diff'
 import { ToolTypeIcon } from './tool-type-icon'
 import { ChatTaskOutcome } from './chat-task-outcome'
 import { ChatUserMessage } from './chat-user-message'
-import { workingLabel } from './working-label'
-import { useWorkingSeconds } from './working-seconds'
 
 function RequestCard({
   item,
@@ -97,12 +97,8 @@ function RequestCard({
 
 function ToolCallLine({ item }: { item: Item }): React.JSX.Element {
   const run = commandRun(item)
+  const summary = toolCallSummary(item)
   const running = item.status === 'running'
-  const seconds = useWorkingSeconds(running)
-  const label = run?.label ?? item.title ?? 'Tool'
-  const summary = run
-    ? run.preview
-    : `${label}${item.status && !running ? ` · ${item.status}` : ''}`
   const detail = run ? commandInputDetail(item.input, run.command) : item.input
   return (
     <details className="min-w-0" data-testid={run ? 'command-run' : 'tool-call'}>
@@ -114,17 +110,12 @@ function ToolCallLine({ item }: { item: Item }): React.JSX.Element {
         />
         <span className="min-w-0 flex-1">
           <span
-            data-testid={run ? 'command-preview' : undefined}
+            data-testid={run ? 'command-preview' : 'tool-summary'}
             className={cn('block w-full truncate', running && 'chat-working')}
           >
-            {summary}
+            {summary.line}
           </span>
         </span>
-        {running ? (
-          <span data-testid="tool-working" className="chat-working shrink-0">
-            {workingLabel(seconds)}
-          </span>
-        ) : null}
       </summary>
       {run?.command ? (
         <pre
@@ -144,6 +135,38 @@ function ToolCallLine({ item }: { item: Item }): React.JSX.Element {
           {item.text}
         </pre>
       ) : null}
+    </details>
+  )
+}
+
+/** Every tool call from one turn, as a single expandable once the reply has ended. */
+export function WorkingGroup({
+  items,
+  live = false
+}: {
+  items: Item[]
+  live?: boolean
+}): React.JSX.Element {
+  const seconds = useTurnDuration(items[0]?.turnId)
+  if (live) {
+    return (
+      <div data-testid="working-live">
+        {items.map((item) => (
+          <ToolCallLine key={item.id} item={item} />
+        ))}
+      </div>
+    )
+  }
+  return (
+    <details className="min-w-0" data-testid="working-group">
+      <summary className="flex min-w-0 cursor-pointer list-none items-baseline py-1 text-xs text-muted-foreground [&::-webkit-details-marker]:hidden [&::marker]:content-none">
+        <span className="min-w-0 truncate">{workingHeading(seconds, workingOn(items))}</span>
+      </summary>
+      <div className="pl-4">
+        {items.map((item) => (
+          <ToolCallLine key={item.id} item={item} />
+        ))}
+      </div>
     </details>
   )
 }

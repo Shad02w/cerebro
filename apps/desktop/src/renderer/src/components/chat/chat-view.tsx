@@ -18,7 +18,9 @@ import {
 import { Button } from '@/components/ui/button'
 import { StarsBackground } from '@/lib/stars-background'
 import { cn } from '@/lib/utils'
-import { ChatItem } from './chat-item'
+import { ChatItem, WorkingGroup } from './chat-item'
+import { transcriptEntries } from './tool-groups'
+import { TurnClock } from './turn-clock'
 import { WorkingFor } from './working-for'
 import { ChatScrollEndButton } from './chat-scroll-end'
 import { ChatTurnActions } from './chat-turn-actions'
@@ -421,57 +423,72 @@ export function ChatView({
             aria-label="Conversation"
           >
             <div className="mx-auto flex max-w-3xl flex-col gap-4">
+              <TurnClock active={busy} turnId={session?.turnId} />
               {session?.items.length
-                ? session.items.map((item, index) => {
-                    const message = (
-                      <ChatItem
-                        item={item}
-                        onReply={reply}
-                        workspaceId={workspaceId}
-                        sessionId={session.id}
-                        streaming={busy && index === session.items.length - 1}
-                      />
-                    )
-                    return (
-                      <Fragment key={item.id}>
-                        {turnAnchors.has(item.id) ? (
-                          <div
-                            data-turn-anchor={item.turnId}
-                            data-testid="chat-turn"
-                            className="scroll-mt-3"
-                          >
-                            {message}
-                          </div>
+                ? transcriptEntries(session.items, busy ? session.turnId : undefined).map(
+                    (entry, index, entries) => {
+                      const first = entry.type === 'item' ? entry.item : entry.items[0]
+                      const last =
+                        entry.type === 'item' ? entry.item : entry.items[entry.items.length - 1]
+                      const next = entries[index + 1]
+                      const nextTurn = next
+                        ? next.type === 'item'
+                          ? next.item.turnId
+                          : next.items[0]?.turnId
+                        : undefined
+                      const message =
+                        entry.type === 'item' ? (
+                          <ChatItem
+                            item={entry.item}
+                            onReply={reply}
+                            workspaceId={workspaceId}
+                            sessionId={session.id}
+                            streaming={busy && entry.item.id === session.items.at(-1)?.id}
+                          />
                         ) : (
-                          message
-                        )}
-                        {item.kind !== 'user' &&
-                        session.items[index + 1]?.turnId !== item.turnId &&
-                        (item.turnId !== session.turnId || !busy) ? (
-                          <div
-                            role="separator"
-                            aria-label="End of response"
-                            className="flex items-center gap-3 py-2 text-xs text-muted-foreground"
-                          >
-                            <span className="h-px flex-1 bg-border" />
-                            <ChatTurnActions
-                              workspaceId={workspaceId}
-                              paneId={paneId}
-                              repositoryId={session.repositoryId}
-                              sessionId={session.id}
-                              turnId={item.turnId}
-                              text={turnTexts.get(item.turnId) ?? ''}
-                              forkCapability={
-                                catalog.data?.capabilities[session.model.harness]?.fork
-                              }
-                            />
-                            <span>End of response</span>
-                            <span className="h-px flex-1 bg-border" />
-                          </div>
-                        ) : null}
-                      </Fragment>
-                    )
-                  })
+                          <WorkingGroup items={entry.items} live={entry.live} />
+                        )
+                      return (
+                        <Fragment key={first.id}>
+                          {turnAnchors.has(first.id) ? (
+                            <div
+                              data-turn-anchor={first.turnId}
+                              data-testid="chat-turn"
+                              className="scroll-mt-3"
+                            >
+                              {message}
+                            </div>
+                          ) : (
+                            message
+                          )}
+                          {last.kind !== 'user' &&
+                          nextTurn !== last.turnId &&
+                          (last.turnId !== session.turnId || !busy) ? (
+                            <div
+                              role="separator"
+                              aria-label="End of response"
+                              className="flex items-center gap-3 py-2 text-xs text-muted-foreground"
+                            >
+                              <span className="h-px flex-1 bg-border" />
+                              <ChatTurnActions
+                                workspaceId={workspaceId}
+                                paneId={paneId}
+                                repositoryId={session.repositoryId}
+                                sessionId={session.id}
+                                turnId={last.turnId}
+                                text={turnTexts.get(last.turnId) ?? ''}
+                                forkCapability={
+                                  catalog.data?.capabilities[session.model.harness]?.fork
+                                }
+                              />
+                              <span>End of response</span>
+                              <span className="h-px flex-1 bg-border" />
+                            </div>
+                          ) : null}
+                        </Fragment>
+                      )
+                    }
+                  )
                 : null}
               {session?.status === 'running' ? <WorkingFor /> : null}
               {!empty && alertText ? (

@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { workingLabel } from './working-label'
+import { workingHeading } from './working-label'
 
-test('formats the running duration', () => {
-  assert.equal(workingLabel(0), 'working for 0s')
-  assert.equal(workingLabel(12), 'working for 12s')
-  assert.equal(workingLabel(3.9), 'working for 3s')
+test('formats the finished working heading', () => {
+  assert.equal(workingHeading(4, 'Working on Read a.ts'), 'Working for 4s · Working on Read a.ts')
+  assert.equal(workingHeading(null, 'Working on tools'), 'Working on tools')
 })

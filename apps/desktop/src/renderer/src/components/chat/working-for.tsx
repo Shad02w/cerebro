@@ -1,13 +1,10 @@
 import './chat-status.css'
-import { workingLabel } from './working-label'
-import { useWorkingSeconds } from './working-seconds'
 
-/** Turn-level status. Mount only while the session is running. */
+/** Shown while a reply is still streaming. The duration waits until the reply ends. */
 export function WorkingFor(): React.JSX.Element {
-  const seconds = useWorkingSeconds(true)
   return (
     <div role="status" className="text-sm text-muted-foreground">
-      <span className="chat-working">{workingLabel(seconds)}</span>
+      <span className="chat-working">Working</span>
     </div>
   )
 }

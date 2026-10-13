@@ -27,20 +27,32 @@ export type CommandRun = {
 
 const oneLine = (value: string): string => value.replace(/\s+/g, ' ').trim()
 
-/** Pull `command` out of a tool input object, including a still-streaming JSON fragment. */
-function commandFromInput(input: string | undefined): string | null {
+const DESCRIPTION_KEYS = [
+  'description',
+  'query',
+  'file_path',
+  'path',
+  'pattern',
+  'url',
+  'subject',
+  'prompt',
+  'command'
+] as const
+
+/** Pull one string field out of tool input, including a still-streaming JSON fragment. */
+function stringField(input: string | undefined, key: string): string | null {
   if (!input?.trim()) return null
   const trimmed = input.trim()
   try {
     const parsed = JSON.parse(trimmed) as unknown
-    if (typeof parsed === 'string') return oneLine(parsed) || null
+    if (typeof parsed === 'string') return key === 'command' ? oneLine(parsed) || null : null
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      const command = (parsed as { command?: unknown }).command
-      if (typeof command === 'string') return oneLine(command) || null
+      const value = (parsed as Record<string, unknown>)[key]
+      if (typeof value === 'string') return oneLine(value) || null
     }
     return null
   } catch {
-    const match = trimmed.match(/"command"\s*:\s*"((?:\\.|[^"\\])*)/)
+    const match = trimmed.match(new RegExp(`"${key}"\\s*:\\s*"((?:\\\\.|[^"\\\\])*)`))
     if (!match?.[1]) return null
     try {
       return oneLine(JSON.parse(`"${match[1]}"`) as string) || null
@@ -48,6 +60,11 @@ function commandFromInput(input: string | undefined): string | null {
       return oneLine(match[1]) || null
     }
   }
+}
+
+/** Pull `command` out of a tool input object, including a still-streaming JSON fragment. */
+function commandFromInput(input: string | undefined): string | null {
+  return stringField(input, 'command')
 }
 
 /** Tool names from the harnesses use a capital letter (`Bash`, `Read`, `webSearch`). */
@@ -59,11 +76,14 @@ function shellLabel(title: string): string {
   return SHELL_LABELS[title.toLowerCase()] ?? 'Shell'
 }
 
-/** `Bash <command>`, cut to one line with `....` when the command is longer. */
-function collapsedLine(label: string, command: string): string {
-  const line = command ? `${label} ${command}` : label
+function cutLine(line: string): string {
   if (line.length <= COMMAND_PREVIEW_LENGTH) return line
   return `${line.slice(0, COMMAND_PREVIEW_LENGTH).trimEnd()}....`
+}
+
+/** `Bash · <what it did>`, cut to one line with `....` when it is longer. */
+function collapsedLine(label: string, description: string | null): string {
+  return cutLine(description ? `${label} · ${description}` : label)
 }
 
 /**
@@ -85,6 +105,42 @@ export function commandRun(item: CommandFields): CommandRun | null {
   const commandFlat = oneLine(command)
   if (!commandFlat && !shellTool) return null
   return { command: commandFlat, label, preview: collapsedLine(label, commandFlat) }
+}
+
+export type ToolCallSummary = {
+  label: string
+  /** What the call is about: a description, path, query, or the command. */
+  description: string | null
+  /** `Read · a.ts`, or `Bash · Say hello`. */
+  line: string
+}
+
+/** One line for any tool call. The description is never the status word. */
+export function toolCallSummary(item: CommandFields): ToolCallSummary {
+  const run = commandRun(item)
+  const label = (run?.label ?? item.title?.trim()) || 'Tool'
+  let description: string | null = null
+  for (const key of DESCRIPTION_KEYS) {
+    const value = stringField(item.input, key)
+    if (value) {
+      description = value
+      break
+    }
+  }
+  if (!description && run?.command) description = run.command
+  return { label, description, line: collapsedLine(label, description) }
+}
+
+/** `Working on` the calls in one turn, from each call's description. */
+export function workingOn(items: readonly CommandFields[]): string {
+  const parts = new Set<string>()
+  for (const item of items) {
+    const summary = toolCallSummary(item)
+    const part = summary.description ?? summary.label
+    if (part) parts.add(part)
+  }
+  if (parts.size === 0) return 'Working on tools'
+  return cutLine(`Working on ${[...parts].join(', ')}`)
 }
 
 /** Input fields other than the command itself, shown only after the row is expanded. */
