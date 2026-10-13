@@ -1,8 +1,15 @@
 import { memo, useState } from 'react'
 import type { AgentAnswer, ChatItem as Item } from '@cerebro/core'
+import { ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { AgentMarkdown } from '@/components/markdown/agent-markdown'
+import { cn } from '@/lib/utils'
+import './chat-status.css'
+import { commandInputDetail, commandRun, toolCallSummary } from './command-preview'
+import { workingHeading } from './working-label'
+import { useTurnDuration } from './turn-durations'
 import { ChatDiff } from './chat-diff'
+import { ToolTypeIcon } from './tool-type-icon'
 import { ChatTaskOutcome } from './chat-task-outcome'
 import { ChatUserMessage } from './chat-user-message'
 
@@ -89,6 +96,87 @@ function RequestCard({
   )
 }
 
+function ToolCallLine({ item }: { item: Item }): React.JSX.Element {
+  const run = commandRun(item)
+  const summary = toolCallSummary(item)
+  const running = item.status === 'running'
+  const detail = run ? commandInputDetail(item.input, run.command) : item.input
+  return (
+    <details className="min-w-0" data-testid={run ? 'command-run' : 'tool-call'}>
+      <summary className="flex min-w-0 cursor-pointer list-none items-baseline gap-2 py-1 text-xs text-muted-foreground [&::-webkit-details-marker]:hidden [&::marker]:content-none">
+        <ToolTypeIcon
+          name={run ? 'shell' : undefined}
+          title={run ? undefined : item.title}
+          className="relative top-px"
+        />
+        <span className="min-w-0 flex-1">
+          <span
+            data-testid={run ? 'command-preview' : 'tool-summary'}
+            className={cn('block w-full truncate', running && 'chat-working')}
+          >
+            {summary.line}
+          </span>
+        </span>
+      </summary>
+      {run?.command ? (
+        <pre
+          data-testid="command-full"
+          className="mt-1 max-h-60 overflow-auto pl-6 font-mono text-xs leading-5 whitespace-pre-wrap break-words"
+        >
+          {run.command}
+        </pre>
+      ) : null}
+      {detail ? (
+        <pre className="my-1 max-h-60 overflow-auto pl-6 text-xs whitespace-pre-wrap break-words text-muted-foreground">
+          {detail}
+        </pre>
+      ) : null}
+      {item.text ? (
+        <pre className="mt-1 max-h-96 overflow-auto pl-6 text-xs leading-5 whitespace-pre-wrap break-words">
+          {item.text}
+        </pre>
+      ) : null}
+    </details>
+  )
+}
+
+/** Every tool call from one turn, as a single expandable once the reply has ended. */
+export function WorkingGroup({
+  items,
+  live = false
+}: {
+  items: Item[]
+  live?: boolean
+}): React.JSX.Element {
+  const seconds = useTurnDuration(items[0]?.turnId)
+  if (live) {
+    return (
+      <div data-testid="working-live">
+        {items.map((item) => (
+          <ToolCallLine key={item.id} item={item} />
+        ))}
+      </div>
+    )
+  }
+  return (
+    <details className="group min-w-0" data-testid="working-group">
+      <summary className="flex min-w-0 cursor-pointer list-none items-center gap-1 py-1 text-sm text-muted-foreground [&::-webkit-details-marker]:hidden [&::marker]:content-none">
+        <span className="min-w-0 truncate">{workingHeading(seconds)}</span>
+        <ChevronRight
+          aria-hidden
+          data-testid="working-disclosure"
+          className="size-3.5 shrink-0 transition-transform group-open:rotate-90 motion-reduce:transition-none"
+        />
+      </summary>
+      <div className="pl-4">
+        {items.map((item) => (
+          <ToolCallLine key={item.id} item={item} />
+        ))}
+      </div>
+    </details>
+  )
+}
+
 export const ChatItem = memo(function ChatItem({
   item,
   onReply,
@@ -129,6 +217,7 @@ export const ChatItem = memo(function ChatItem({
         {item.text}
       </p>
     )
+  if (item.kind === 'tool') return <ToolCallLine item={item} />
   return (
     <details
       className="min-w-0 rounded-xl border border-border/70 bg-muted/15 px-3 py-2"

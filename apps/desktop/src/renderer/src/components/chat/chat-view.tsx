@@ -21,7 +21,10 @@ import { acceptLayout } from '@/lib/query-client'
 import { StarsBackground } from '@/lib/stars-background'
 import { defaultChatTabLabel, generatedTabLabel, promptTabLabel } from '@/lib/thread-tab-title'
 import { cn } from '@/lib/utils'
-import { ChatItem } from './chat-item'
+import { ChatItem, WorkingGroup } from './chat-item'
+import { transcriptEntries, workingAnchorId } from './tool-groups'
+import { TurnClock } from './turn-clock'
+import { WorkingFor } from './working-for'
 import { ChatScrollEndButton } from './chat-scroll-end'
 import { ChatTurnActions } from './chat-turn-actions'
 import { ChatTurnRail } from './chat-turn-rail'
@@ -427,6 +430,12 @@ export function ChatView({
     const timeout = window.setTimeout(() => setStarPhase('off'), reduce ? 0 : 480)
     return () => window.clearTimeout(timeout)
   }, [starPhase])
+  const transcript = session?.items.length ? session : null
+  const entries = transcript
+    ? transcriptEntries(transcript.items, busy ? transcript.turnId : undefined)
+    : []
+  const workingAnchor =
+    transcript?.status === 'running' ? workingAnchorId(entries, transcript.turnId) : null
   return (
     <div
       ref={viewRef}
@@ -462,22 +471,37 @@ export function ChatView({
             aria-label="Conversation"
           >
             <div className="mx-auto flex max-w-3xl flex-col gap-4">
-              {session?.items.length
-                ? session.items.map((item, index) => {
-                    const message = (
-                      <ChatItem
-                        item={item}
-                        onReply={reply}
-                        workspaceId={workspaceId}
-                        sessionId={session.id}
-                        streaming={busy && index === session.items.length - 1}
-                      />
-                    )
+              <TurnClock active={busy} turnId={session?.turnId} />
+              {transcript
+                ? entries.map((entry, index, listed) => {
+                    const first = entry.type === 'item' ? entry.item : entry.items[0]
+                    const last =
+                      entry.type === 'item' ? entry.item : entry.items[entry.items.length - 1]
+                    const next = listed[index + 1]
+                    const nextTurn = next
+                      ? next.type === 'item'
+                        ? next.item.turnId
+                        : next.items[0]?.turnId
+                      : undefined
+                    const showWorking = first?.id === workingAnchor
+                    const message =
+                      entry.type === 'item' ? (
+                        <ChatItem
+                          item={entry.item}
+                          onReply={reply}
+                          workspaceId={workspaceId}
+                          sessionId={transcript.id}
+                          streaming={busy && entry.item.id === transcript.items.at(-1)?.id}
+                        />
+                      ) : (
+                        <WorkingGroup items={entry.items} live={entry.live} />
+                      )
                     return (
-                      <Fragment key={item.id}>
-                        {turnAnchors.has(item.id) ? (
+                      <Fragment key={first.id}>
+                        {showWorking ? <WorkingFor /> : null}
+                        {turnAnchors.has(first.id) ? (
                           <div
-                            data-turn-anchor={item.turnId}
+                            data-turn-anchor={first.turnId}
                             data-testid="chat-turn"
                             className="scroll-mt-3"
                           >
@@ -486,9 +510,9 @@ export function ChatView({
                         ) : (
                           message
                         )}
-                        {item.kind !== 'user' &&
-                        session.items[index + 1]?.turnId !== item.turnId &&
-                        (item.turnId !== session.turnId || !busy) ? (
+                        {last.kind !== 'user' &&
+                        nextTurn !== last.turnId &&
+                        (last.turnId !== transcript.turnId || !busy) ? (
                           <div
                             role="separator"
                             aria-label="End of response"
@@ -498,12 +522,12 @@ export function ChatView({
                             <ChatTurnActions
                               workspaceId={workspaceId}
                               paneId={paneId}
-                              repositoryId={session.repositoryId}
-                              sessionId={session.id}
-                              turnId={item.turnId}
-                              text={turnTexts.get(item.turnId) ?? ''}
+                              repositoryId={transcript.repositoryId}
+                              sessionId={transcript.id}
+                              turnId={last.turnId}
+                              text={turnTexts.get(last.turnId) ?? ''}
                               forkCapability={
-                                catalog.data?.capabilities[session.model.harness]?.fork
+                                catalog.data?.capabilities[transcript.model.harness]?.fork
                               }
                             />
                             <span>End of response</span>
@@ -514,11 +538,7 @@ export function ChatView({
                     )
                   })
                 : null}
-              {session?.status === 'running' ? (
-                <div role="status" className="text-sm text-muted-foreground">
-                  <span className="chat-working">Working…</span>
-                </div>
-              ) : null}
+              {session?.status === 'running' && !workingAnchor ? <WorkingFor /> : null}
               {!empty && alertText ? (
                 <p
                   role="alert"
