@@ -206,22 +206,20 @@ test('sidebar keeps keyboard selection and disclosures usable in both themes', a
     const branchBox = await branchRow.boundingBox()
     expect(projectBox).toBeTruthy()
     expect(branchBox).toBeTruthy()
-    expect(branchBox!.x - projectBox!.x).toBeGreaterThanOrEqual(20)
-    expect(branchBox!.x - projectBox!.x).toBeLessThanOrEqual(28)
+    expect(Math.abs(branchBox!.x - projectBox!.x)).toBeLessThanOrEqual(2)
 
     for (const subtree of await sidebar.locator('[data-sidebar="menu-sub"]').all()) {
-      await expect(subtree).toHaveCSS('margin-left', '16px')
-      await expect(subtree).toHaveCSS('padding-left', '8px')
+      await expect(subtree).toHaveCSS('margin-left', '0px')
+      await expect(subtree).toHaveCSS('padding-left', '0px')
     }
     const repoTree = sidebar.getByTestId(/project-repo-tree-/)
-    await expect(repoTree).toHaveCSS('margin-left', '24px')
+    await expect(repoTree).toHaveCSS('margin-left', '0px')
     const rootButton = sidebar.locator('[data-workspace-role="root"]')
     const rootBox = await rootButton.boundingBox()
     const repoBox = await repoRow.boundingBox()
     expect(rootBox).toBeTruthy()
     expect(repoBox).toBeTruthy()
-    expect(repoBox!.x - rootBox!.x).toBeGreaterThanOrEqual(20)
-    expect(repoBox!.x - rootBox!.x).toBeLessThanOrEqual(28)
+    expect(Math.abs(repoBox!.x - rootBox!.x)).toBeLessThanOrEqual(2)
 
     await rootButton.click()
     await expect(rootButton).toHaveAttribute('data-active', 'true')
