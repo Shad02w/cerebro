@@ -1226,3 +1226,39 @@ test('a thread title starts as the prompt, then the prompt pass, then the first 
     rmSync(f.dir, { recursive: true, force: true })
   }
 })
+
+test('a mentioned skill is passed through and a mention missing from the text is rejected', async () => {
+  const seen: RunContext['skills'][] = []
+  const f = fixture(async (context) => {
+    seen.push(context.skills)
+    context.emit({ type: 'item', item: { id: 'answer', kind: 'text', text: 'ok' } })
+  })
+  try {
+    const service = new AgentSessions(f.dir, () => {}, f.drivers)
+    const sent = await service.command(scope, {
+      ...send,
+      commandId: 'skill-ok',
+      text: 'use $review please',
+      skills: [{ name: 'review', path: '/tmp/skills/review/SKILL.md' }]
+    })
+    assert.equal(
+      sent.session?.items.find((item) => item.kind === 'user')?.text,
+      'use $review please'
+    )
+    assert.equal(seen[0]?.[0]?.token, '$review')
+    assert.equal(seen[0]?.[0]?.prompt, '$review')
+    assert.equal(seen[0]?.[0]?.path, '/tmp/skills/review/SKILL.md')
+    await assert.rejects(
+      service.command(scope, {
+        ...send,
+        commandId: 'skill-missing',
+        text: 'hello',
+        skills: [{ name: 'review', path: '/tmp/skills/review/SKILL.md' }]
+      }),
+      /missing from the message/
+    )
+    await service.shutdown()
+  } finally {
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})

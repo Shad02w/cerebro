@@ -36,7 +36,10 @@ import {
   type ChatActivityOverview,
   type ChatAgentActivity,
   type ChatView,
-  type QueuedMessage
+  type AgentSkillList,
+  type ChatSkillMention,
+  type QueuedMessage,
+  skillMentionsFor
 } from '@cerebro/core'
 import {
   adapters,
@@ -62,7 +65,7 @@ type Running = {
   done: Promise<void>
   requests: Map<string, (answer: AgentAnswer) => void>
   /** Registered by the adapter once it has a live handle into the running turn. Absent means this harness/run can't be steered right now. */
-  steer?: (text: string, attachments: RunAttachment[]) => Promise<void>
+  steer?: (text: string, attachments: RunAttachment[], skills?: ChatSkillMention[]) => Promise<void>
 }
 /** A session's live harness process. Access mode and cwd are launch settings; changing either restarts it. */
 type Live = {
@@ -242,6 +245,7 @@ export class AgentSessions {
   private timers = new Map<string, ReturnType<typeof setTimeout>>()
   private catalog?: AgentCatalog
   private loadingCatalog?: Promise<AgentCatalog>
+  private skillCache = new Map<string, { at: number; skills: AgentSkillList['skills'] }>()
   private stopping = false
   constructor(
     private directory: string,
@@ -385,6 +389,21 @@ export class AgentSessions {
           this.publish(session.workspaceId)
         }, 100)
       )
+    }
+  }
+  /** Skills for one harness in a workspace. Failures become an empty list so the composer still opens. */
+  async skills(harness: AgentHarness, cwd: string): Promise<AgentSkillList> {
+    const key = `${harness}\0${cwd}`
+    const cached = this.skillCache.get(key)
+    if (cached && Date.now() - cached.at < 15_000) return { skills: cached.skills }
+    const load = this.drivers[harness].skills
+    if (!load) return { skills: [] }
+    try {
+      const skills = await load(cwd)
+      this.skillCache.set(key, { at: Date.now(), skills })
+      return { skills }
+    } catch (error) {
+      return { skills: [], issue: error instanceof Error ? error.message : String(error) }
     }
   }
   async models(refresh = false): Promise<AgentCatalog> {
@@ -690,7 +709,7 @@ export class AgentSessions {
         path: this.attachmentPath(meta)
       }))
       // Native call first: on rejection the item stays queued untouched and the error just propagates, like any other action.
-      await runtime.steer(queued.text, attachments)
+      await runtime.steer(queued.text, attachments, queued.skills)
       session.queue = (session.queue ?? []).filter((q) => q.id !== command.commandId)
       session.items.push({
         id: randomUUID(),
@@ -757,9 +776,10 @@ export class AgentSessions {
       throw new Error('Changing harness starts a new native conversation. Use New Agent first.')
     // No await between here and the mutation below: this recheck-then-commit sequence must stay atomic,
     // since nothing below the mux server's own request serialization guards against a concurrent command.
+    const skills = skillMentionsFor(selected.harness, command.text, command.skills)
     if (session && busy(session)) {
       if (!capabilities[selected.harness].steering) throw new Error('The agent is already working.')
-      return this.enqueue(scope, session, command, selected, attachments, accessMode)
+      return this.enqueue(scope, session, command, selected, attachments, accessMode, skills)
     }
     if (session && session.items.length > 1500)
       throw new Error(
@@ -800,7 +820,7 @@ export class AgentSessions {
       session.error = 'Could not persist the prompt. It was not sent.'
       throw error
     }
-    this.beginTurn(session, command.text, stored, selected, command.reasoning, accessMode)
+    this.beginTurn(session, command.text, stored, selected, command.reasoning, accessMode, skills)
     if (created) this.scheduleTitle(session.id, command.text)
     return this.view(scope)
   }
@@ -823,7 +843,8 @@ export class AgentSessions {
     command: ChatCommand,
     selected: AgentModel,
     attachments: Array<{ meta: ChatAttachment; bytes: Buffer }>,
-    accessMode: AgentAccessMode
+    accessMode: AgentAccessMode,
+    skills: ChatSkillMention[]
   ): ChatView {
     const stored = this.writeAttachments(attachments)
     session.commands.push(command.commandId!)
@@ -831,6 +852,7 @@ export class AgentSessions {
       id: command.commandId!,
       text: command.text!,
       ...(stored.length ? { attachments: stored.map(({ path: _path, ...meta }) => meta) } : {}),
+      ...(skills.length ? { skills } : {}),
       model: selected,
       reasoning: command.reasoning,
       accessMode
@@ -846,7 +868,8 @@ export class AgentSessions {
     attachments: RunAttachment[],
     model: AgentModel,
     reasoning: string | undefined,
-    accessMode: AgentAccessMode
+    accessMode: AgentAccessMode,
+    skills: ChatSkillMention[] = []
   ): void {
     if (session.items.length > 1500) {
       session.status = 'failed'
@@ -880,7 +903,12 @@ export class AgentSessions {
     }
     this.running.set(session.id, runtime)
     runtime.done = this.run(session, runtime, (context) =>
-      this.connectionFor(session).run({ ...context, text, attachments })
+      this.connectionFor(session).run({
+        ...context,
+        text,
+        attachments,
+        ...(skills.length ? { skills } : {})
+      })
     )
   }
   /** The session's live harness process, opened on first use and reused by every later turn. */
@@ -1224,7 +1252,8 @@ export class AgentSessions {
           attachments,
           next.model,
           next.reasoning,
-          next.accessMode ?? 'full'
+          next.accessMode ?? 'full',
+          next.skills ?? []
         )
       }
       this.releaseIfDetached(session.id)

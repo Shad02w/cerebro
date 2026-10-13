@@ -32,6 +32,13 @@ const codexDone = () => {
   })
 }
 function codexPrompt(prompt, input) {
+  if (prompt.includes('skill-wire')) {
+    notify('item/completed', {
+      item: { type: 'agentMessage', id: 'skills', text: JSON.stringify(input) }
+    })
+    codexDone()
+    return
+  }
   if (prompt.includes('attachments')) {
     notify('item/completed', {
       item: { type: 'agentMessage', id: 'attachments', text: JSON.stringify(input) }
@@ -244,6 +251,10 @@ function codexPrompt(prompt, input) {
   codexDone()
 }
 function claudePrompt(prompt, content) {
+  if (prompt.includes('skill-wire')) {
+    claudeFinish(prompt)
+    return
+  }
   if (prompt.includes('attachments')) {
     claudeFinish(JSON.stringify(content))
     return
@@ -609,6 +620,26 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       case 'initialize':
         reply({})
         break
+      case 'skills/list':
+        reply({
+          data: [
+            {
+              cwd: frame.params?.cwds?.[0] ?? '/tmp',
+              skills: [
+                {
+                  name: 'review',
+                  description: 'Review the change',
+                  enabled: true,
+                  path: '/tmp/skills/review/SKILL.md',
+                  interface: { shortDescription: 'Review the change' }
+                },
+                { name: 'hidden', description: 'Disabled', enabled: false, path: '/tmp/hidden' }
+              ],
+              errors: []
+            }
+          ]
+        })
+        break
       case 'model/list':
         reply({
           data: ['test-model', 'second-model'].map((id) => ({
@@ -649,6 +680,19 @@ createInterface({ input: process.stdin }).on('line', (line) => {
     const reply = (data) =>
       send({ type: 'response', command: frame.type, id: frame.id, success: true, data })
     switch (frame.type) {
+      case 'get_commands':
+        reply({
+          commands: [
+            {
+              name: 'skill:review',
+              description: 'Review the change',
+              source: 'skill',
+              sourceInfo: { path: '/tmp/pi/review/SKILL.md' }
+            },
+            { name: 'fix-tests', description: 'Not a skill', source: 'prompt', path: '/tmp/fix.md' }
+          ]
+        })
+        break
       case 'get_available_models':
         reply({
           models: [
@@ -700,7 +744,9 @@ createInterface({ input: process.stdin }).on('line', (line) => {
               ? String(process.pid)
               : frame.message.includes('attachments')
                 ? JSON.stringify({ message: frame.message, images: frame.images })
-                : text
+                : frame.message.includes('skill-wire')
+                  ? frame.message
+                  : text
         reply({})
         send({ type: 'message_start', message: { role: 'assistant' } })
         if (frame.message.includes('slow')) break

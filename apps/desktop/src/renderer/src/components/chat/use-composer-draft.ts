@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type DragEvent, type RefObject } from 'react'
-import { chatAttachmentLimits, type ChatAttachmentUpload } from '@cerebro/core'
+import { chatAttachmentLimits, type ChatAttachmentUpload, type ChatSkillRef } from '@cerebro/core'
 import {
   emptyDraft,
   imageFiles,
@@ -22,6 +22,11 @@ const sameDraft = (left: ComposerDraft, right: ComposerDraft): boolean =>
       chip.attachmentId === right.chips[index]?.attachmentId &&
       chip.start === right.chips[index]?.start &&
       chip.end === right.chips[index]?.end
+  ) &&
+  left.skills.length === right.skills.length &&
+  left.skills.every(
+    (skill, index) =>
+      skill.name === right.skills[index]?.name && skill.path === right.skills[index]?.path
   )
 
 /**
@@ -45,7 +50,7 @@ export function useComposerDraft({
   attachFiles: (files: File[]) => Promise<void>
   remove: (attachmentId: string) => void
   clear: () => void
-  onDocument: (text: string, chips: Chip[]) => void
+  onDocument: (text: string, chips: Chip[], skills: ChatSkillRef[]) => void
   readDraft: () => ComposerDraft
   dropHandlers: {
     onDragOver: (event: DragEvent<HTMLElement>) => void
@@ -117,11 +122,12 @@ export function useComposerDraft({
       editorRef.current?.clear()
       commit(emptyDraft())
     },
-    onDocument: (text, chips) => {
+    onDocument: (text, chips, skills) => {
       const ids = new Set(chips.map((chip) => chip.attachmentId))
       const next = {
         text,
         chips,
+        skills,
         attachments: current.current.attachments.filter((item) => ids.has(item.id))
       }
       if (!sameDraft(current.current, next)) commit(next)

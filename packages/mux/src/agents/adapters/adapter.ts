@@ -5,7 +5,9 @@ import type {
   AgentModel,
   AgentRequest,
   AgentSession,
-  ChatAttachment
+  AgentSkill,
+  ChatAttachment,
+  ChatSkillMention
 } from '@cerebro/core'
 
 /** A host-owned image file sent with the prompt. Bytes are read only when a harness needs them inline. */
@@ -14,11 +16,19 @@ export type RunContext = {
   session: AgentSession
   text: string
   attachments?: RunAttachment[]
+  /** Skills mentioned in `text`. Adapters rewrite `text` into the harness prompt and, for Codex, attach skill inputs. */
+  skills?: ChatSkillMention[]
   signal: AbortSignal
   emit: (event: AgentDelta) => void
   ask: (request: AgentRequest) => Promise<AgentAnswer>
   /** Called by an adapter once it has a live handle to fold another message into this turn. Absent/unset means steering isn't available yet (or ever) for this run. */
-  registerSteer?: (steer: (text: string, attachments: RunAttachment[]) => Promise<void>) => void
+  registerSteer?: (
+    steer: (
+      text: string,
+      attachments: RunAttachment[],
+      skills?: ChatSkillMention[]
+    ) => Promise<void>
+  ) => void
 }
 /** One change in a background task's life. Fields left out keep their previous value. */
 export type BackgroundTaskUpdate = Pick<AgentBackgroundTask, 'id' | 'status'> &
@@ -43,5 +53,7 @@ export interface AgentConnection {
 }
 export interface AgentAdapter {
   models(cwd: string): Promise<AgentModel[]>
+  /** Skills available in `cwd` for this harness. Optional so test doubles can omit it. */
+  skills?(cwd: string): Promise<AgentSkill[]>
   connect(session: AgentSession, host: ConnectionHost): AgentConnection
 }

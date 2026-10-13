@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { join, resolve } from 'node:path'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import {
   adapters,
@@ -899,5 +899,63 @@ test(
         : []
     )
     assert.equal(replies.at(-1), '1')
+  }
+)
+
+test(
+  'each harness lists skills and receives that harness’s prompt form',
+  { timeout: 20_000 },
+  async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'cerebro-skill-wire-'))
+    try {
+      mkdirSync(join(directory, '.claude', 'skills', 'review'), { recursive: true })
+      writeFileSync(
+        join(directory, '.claude', 'skills', 'review', 'SKILL.md'),
+        '---\nname: review\ndescription: Review the diff\n---\n'
+      )
+      for (const harness of ['claude', 'codex', 'pi'] as AgentHarness[]) {
+        process.env[`CEREBRO_${harness.toUpperCase()}_PATH`] = fixture
+        const listed = await adapters[harness].skills?.(directory)
+        assert.equal(listed?.[0]?.name, 'review')
+        const token = harness === 'codex' ? '$review' : '@review'
+        const prompt =
+          harness === 'pi' ? '/skill:review' : harness === 'claude' ? '/review' : '$review'
+        assert.equal(listed?.[0]?.token, token)
+        assert.equal(listed?.[0]?.prompt, prompt)
+        const models = await adapters[harness].models(directory)
+        const events: AgentDelta[] = []
+        await runTurn(adapters[harness], {
+          session: { ...liveSession(models[0], `skill-${harness}`), cwd: directory },
+          text: `skill-wire ${token} please`,
+          skills: [
+            {
+              name: 'review',
+              path: listed?.[0]?.path || '/tmp/skills/review/SKILL.md',
+              token,
+              prompt
+            }
+          ],
+          signal: new AbortController().signal,
+          emit: (event) => events.push(event),
+          ask: async () => ({ allow: false, answers: {} })
+        })
+        const reply = events
+          .flatMap((event) => (event.type === 'item' && event.item.text ? [event.item.text] : []))
+          .join('')
+        if (harness === 'codex') {
+          const input = JSON.parse(reply) as Array<{ type?: string; text?: string; name?: string }>
+          assert.equal(input[0]?.text, 'skill-wire $review please')
+          assert.equal(
+            input.some((item) => item.type === 'skill' && item.name === 'review'),
+            true
+          )
+        } else {
+          assert.match(reply, new RegExp(prompt.replaceAll('/', '\\/')))
+          assert.doesNotMatch(reply, /@review/)
+        }
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true })
+    }
   }
 )
