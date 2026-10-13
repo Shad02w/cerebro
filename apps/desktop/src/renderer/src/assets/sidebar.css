@@ -3,14 +3,15 @@
   padding-inline: 12px;
 }
 
-/* Project rows are quiet labels. Workspace rows keep selection and hover. */
+/* Project rows are section labels: 12px, medium, about 60% of the sidebar foreground.
+   No fill at rest or on hover. Workspace rows keep their size, contrast, and selection. */
 .cerebro-sidebar .sidebar-project-button {
   min-height: 34px;
   height: auto;
   gap: 7px;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
-  color: color-mix(in oklch, var(--sidebar-foreground) 72%, transparent);
+  color: color-mix(in oklch, var(--sidebar-foreground) 60%, transparent);
   background-color: transparent;
   box-shadow: none;
 }
@@ -20,7 +21,7 @@
 .cerebro-sidebar .sidebar-project-button[data-popup-open],
 .cerebro-sidebar .sidebar-project-button[data-active='true'],
 .cerebro-sidebar .sidebar-project-button[data-active='true']:hover {
-  color: color-mix(in oklch, var(--sidebar-foreground) 72%, transparent);
+  color: color-mix(in oklch, var(--sidebar-foreground) 60%, transparent);
   background-color: transparent;
   box-shadow: none;
 }
@@ -28,7 +29,7 @@
 .cerebro-sidebar .sidebar-project-button > svg {
   width: 15px;
   height: 15px;
-  color: color-mix(in oklch, var(--sidebar-foreground) 65%, transparent);
+  color: color-mix(in oklch, var(--sidebar-foreground) 60%, transparent);
 }
 
 /* Status group headers stay quiet labels: no rest or hover fill. */
@@ -182,4 +183,24 @@
 
 .cerebro-sidebar .sidebar-root-group[data-active='true'] [data-workspace-role='repository']:hover {
   background-color: color-mix(in srgb, var(--sidebar-selected) 16%, var(--sidebar));
+}
+
+/* Comes after the workspace selection wash so a project row never picks it up.
+   Hovering the … menu or + stays on those controls and does not fill the row. */
+.cerebro-sidebar .sidebar-project-button,
+.cerebro-sidebar .sidebar-project-button:hover,
+.cerebro-sidebar .sidebar-project-button:active,
+.cerebro-sidebar .sidebar-project-button[data-popup-open],
+.cerebro-sidebar .sidebar-project-button[data-active='true'],
+.cerebro-sidebar .sidebar-project-button[data-active='true']:hover,
+.cerebro-sidebar
+  [data-sidebar='menu-row']:has(.sidebar-project-button):hover
+  .sidebar-project-button {
+  background-color: transparent;
+  box-shadow: none;
+  color: color-mix(in oklch, var(--sidebar-foreground) 60%, transparent);
+}
+
+.cerebro-sidebar .sidebar-project-button > svg {
+  color: color-mix(in oklch, var(--sidebar-foreground) 60%, transparent);
 }

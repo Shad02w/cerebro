@@ -78,6 +78,18 @@ import {
 const DEFAULT_WORKSPACE_TOOLTIP =
   "Default workspace — can't be deleted. Remove the project instead."
 
+/** Project rows read as section labels. Workspace and worktree rows stay items. */
+const projectSectionLabelClass = cn(
+  'sidebar-project-button h-auto! bg-transparent text-xs font-medium text-sidebar-foreground/60 shadow-none',
+  'hover:bg-transparent hover:text-sidebar-foreground/60 hover:shadow-none',
+  'active:bg-transparent active:text-sidebar-foreground/60',
+  'data-popup-open:bg-transparent data-popup-open:hover:bg-transparent data-popup-open:hover:text-sidebar-foreground/60',
+  '[&>svg]:text-sidebar-foreground/60'
+)
+
+/** About 10px above a project row, separating it from the previous group's last workspace. */
+const projectGroupSpacingClass = 'not-first:mt-2.5'
+
 /** In-flow root actions. `static` wins over the shadcn absolute action; `top` from sidebar.css is then ignored. */
 const rootMenuActionClass =
   'static top-auto right-auto group-hover/root:text-sidebar-accent-foreground group-focus-within/root:text-sidebar-accent-foreground'
@@ -905,16 +917,17 @@ function ProjectItem({
   const summary = collapsedProjectAgents(project, open, activity)
 
   return (
-    <Collapsible open={open} onOpenChange={setOpen} className="group/collapsible">
+    <Collapsible
+      open={open}
+      onOpenChange={setOpen}
+      className={cn('group/collapsible', projectGroupSpacingClass)}
+    >
       <SidebarMenuItem>
         <SidebarMenuRow>
           <CollapsibleTrigger
             render={
               <SidebarMenuButton
-                className={cn(
-                  'app-no-drag sidebar-project-button h-auto! bg-transparent shadow-none hover:bg-transparent hover:shadow-none active:bg-transparent data-popup-open:bg-transparent data-popup-open:hover:bg-transparent',
-                  githubLinked && 'pr-14'
-                )}
+                className={cn('app-no-drag', projectSectionLabelClass, githubLinked && 'pr-14')}
                 data-testid={`project-row-${project.id}`}
                 data-project-kind={project.kind}
                 data-project-icon={multiRoot ? 'folders' : githubLinked ? 'avatar' : 'folder'}
@@ -1347,11 +1360,11 @@ function StatusGroup({
           {entries.length === 0 ? (
             <p className="px-2 py-1 text-xs text-sidebar-foreground/50">No workspaces</p>
           ) : (
-            <ul className="flex min-w-0 flex-col gap-1 pt-1" data-sidebar="status-projects">
+            <ul className="flex min-w-0 flex-col gap-0 pt-1" data-sidebar="status-projects">
               {projectsWithStatus(entries).map(({ project, workspaces }) => (
-                <li key={project.id} className="min-w-0">
+                <li key={project.id} className={cn('min-w-0', projectGroupSpacingClass)}>
                   <SidebarMenuButton
-                    className="sidebar-project-button h-auto! cursor-default bg-transparent pr-2! shadow-none hover:bg-transparent hover:shadow-none active:bg-transparent"
+                    className={cn(projectSectionLabelClass, 'cursor-default pr-2!')}
                     render={
                       <div
                         data-testid={`status-project-${status}-${project.id}`}
@@ -1639,7 +1652,7 @@ export function AppSidebar({
                     />
                   </div>
                 ) : (
-                  <SidebarMenu className={query ? 'hidden' : 'gap-1'}>
+                  <SidebarMenu className={query ? 'hidden' : 'gap-0'}>
                     {projects.map((project) => {
                       const containsActive = project.workspaces.some(
                         (workspace) => workspace.id === activeWorkspaceId
