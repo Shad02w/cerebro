@@ -408,7 +408,16 @@ test('chat works through native adapters, survives reload, handles requests, and
     const formBox = await composer.locator('form').boundingBox()
     expect(fadeBox!.height).toBeLessThanOrEqual(48)
     expect(fadeBox!.y).toBe(floatingTop)
-    expect(fadeBox!.y + fadeBox!.height).toBeCloseTo(formBox!.y, 0)
+    // The fade meets the opaque dock. Session chips and the queue sit on that
+    // dock, so the form starts below them. Anything else between the fade and
+    // the form is a gap.
+    const rowHeight = async (testId: string): Promise<number> => {
+      const row = page.getByTestId(testId)
+      if ((await row.count()) === 0) return 0
+      return (await row.boundingBox())?.height ?? 0
+    }
+    const between = (await rowHeight('chat-session-chips')) + (await rowHeight('chat-queue'))
+    expect(fadeBox!.y + fadeBox!.height + between).toBeCloseTo(formBox!.y, 0)
     // The dock spans the whole transcript so no text peeks out beside the form.
     expect(fadeBox!.x).toBeLessThanOrEqual(transcriptBox!.x)
     expect(fadeBox!.width).toBeGreaterThanOrEqual(formBox!.width + 40)
