@@ -212,7 +212,76 @@ export const claudeAdapter: AgentAdapter = {
       const ids = (uuids ?? []).flatMap((uuid) => idsByMessageUuid.get(uuid) ?? [])
       if (ids.length) emit({ type: 'evict', ids })
     }
+    // Tool titles, keyed by tool-use id, so a child frame can be named after the tool that spawned it.
+    const toolTitles = new Map<string, string>()
+    // Child ids already reported, and the title last sent for each.
+    const children = new Map<string, string | undefined>()
+    const titleFrom = (name: unknown, input: unknown): string | undefined => {
+      let parsed = input
+      if (typeof input === 'string' && input.trim().startsWith('{')) {
+        try {
+          parsed = JSON.parse(input)
+        } catch {
+          parsed = undefined
+        }
+      }
+      const description =
+        parsed && typeof parsed === 'object' && typeof (parsed as Frame).description === 'string'
+          ? String((parsed as Frame).description).trim()
+          : ''
+      if (description) return description
+      return typeof name === 'string' && name ? name : undefined
+    }
+    const rememberTool = (id: unknown, name: unknown, input: unknown): void => {
+      if (id == null || id === '') return
+      const key = String(id)
+      const title = titleFrom(name, input)
+      if (!title || toolTitles.get(key) === title) return
+      toolTitles.set(key, title)
+      if (!children.has(key) || children.get(key) === title) return
+      children.set(key, title)
+      host.subagent({ id: key, status: 'running', title })
+    }
+    const noteChild = (parentId: unknown): void => {
+      if (parentId == null || parentId === '') return
+      const id = String(parentId)
+      const title = toolTitles.get(id)
+      if (!children.has(id)) {
+        children.set(id, title)
+        host.subagent({ id, status: 'running', ...(title ? { title } : {}) })
+        return
+      }
+      if (title && children.get(id) !== title) {
+        children.set(id, title)
+        host.subagent({ id, status: 'running', title })
+      }
+    }
+    const childTokens = (
+      usage: unknown
+    ): { input?: number; output?: number; total?: number } | undefined => {
+      if (!usage || typeof usage !== 'object') return undefined
+      const record = usage as Frame
+      const input = typeof record.input_tokens === 'number' ? record.input_tokens : undefined
+      const output = typeof record.output_tokens === 'number' ? record.output_tokens : undefined
+      const total = typeof record.total_tokens === 'number' ? record.total_tokens : undefined
+      if (input === undefined && output === undefined && total === undefined) return undefined
+      return {
+        ...(input !== undefined ? { input } : {}),
+        ...(output !== undefined ? { output } : {}),
+        ...(total !== undefined ? { total } : {})
+      }
+    }
+    const finishChild = (block: Frame): void => {
+      if (block.tool_use_id == null || !children.has(String(block.tool_use_id))) return
+      const tokens = childTokens(block.usage)
+      host.subagent({
+        id: String(block.tool_use_id),
+        status: block.is_error ? 'failed' : 'completed',
+        ...(tokens ? { tokens } : {})
+      })
+    }
     const handle = async (frame: Frame): Promise<void> => {
+      if (frame.parent_tool_use_id) noteChild(frame.parent_tool_use_id)
       if (frame.session_id && !frame.parent_tool_use_id)
         emit({ type: 'binding', nativeId: frame.session_id })
       if (frame.type === 'stream_event') {
@@ -231,6 +300,7 @@ export const claudeAdapter: AgentAdapter = {
           const kind = blockKind(block.type)
           const id = block.id ?? `${messageId}:${e.index}`
           blocks.set(e.index, { id, kind, input: '' })
+          if (kind === 'tool') rememberTool(block.id, block.name, block.input)
           unclaimed.set(messageId, [...(unclaimed.get(messageId) ?? []), { id, kind }])
           item(context, id, kind, block.text ?? block.thinking ?? '', {
             title: block.name,
@@ -265,6 +335,7 @@ export const claudeAdapter: AgentAdapter = {
           const id = claimBlockId(frame.message.id, block)
           ids.push(id)
           if (block.type === 'tool_use') {
+            rememberTool(block.id ?? id, block.name, block.input)
             item(turn.context, id, 'tool', '', {
               title: block.name,
               input: describe(block.input),
@@ -292,10 +363,12 @@ export const claudeAdapter: AgentAdapter = {
         const turn = turnFor()
         if (!turn) return
         const results = blocks.filter((block: Frame) => block.type === 'tool_result')
-        for (const block of results)
+        for (const block of results) {
           item(turn.context, block.tool_use_id, 'tool', describe(block.content), {
             status: block.is_error ? 'failed' : 'completed'
           })
+          finishChild(block)
+        }
         // The assigned task id lives on tool_use_result, not in the tool input.
         const known = results.filter((block: Frame) => todos.known(String(block.tool_use_id)))
         const target =

@@ -1103,6 +1103,73 @@ test('tasks still running when Cerebro closes their process are recorded as stop
   }
 })
 
+test('a sub-agent stays listed after it finishes, and an open one stops with the process', async () => {
+  const f = liveFixture()
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    await service.command(scope, { ...send, commandId: 'open' })
+    await waitFor(() => !service['running'].size)
+    const { host } = f.opened[0]
+    host.subagent({ id: 'child', status: 'created' })
+    host.subagent({ id: 'child', status: 'running', title: 'Review the diff' })
+    host.subagent({ id: 'child', status: 'running', tokens: { total: 100 } })
+    host.subagent({ id: 'child', status: 'running', tokens: { input: 40 } })
+    let session = (await service.command(scope, get)).session!
+    const running = session.subagents?.find((child) => child.id === 'child')
+    assert(running)
+    assert.equal(running.title, 'Review the diff')
+    assert.equal(running.status, 'running')
+    assert.equal(typeof running.createdAt, 'number')
+    assert.equal(typeof running.startedAt, 'number')
+    assert.equal(running.finishedAt, undefined)
+    assert.deepEqual(running.tokens, { total: 100, input: 40 })
+    assert.equal(
+      session.items.some((item) => item.kind === 'notice'),
+      false
+    )
+
+    host.subagent({ id: 'child', status: 'completed', tokens: { output: 60 } })
+    session = (await service.command(scope, get)).session!
+    const finished = session.subagents?.find((child) => child.id === 'child')
+    assert(finished)
+    assert.equal(finished.status, 'completed')
+    assert.equal(finished.startedAt, running.startedAt)
+    assert.equal(typeof finished.finishedAt, 'number')
+    assert.deepEqual(finished.tokens, { total: 100, input: 40, output: 60 })
+    assert.equal(session.subagents?.length, 1)
+    assert.equal(
+      session.items.some((item) => item.kind === 'notice'),
+      false
+    )
+
+    host.subagent({ id: 'other', status: 'created', title: 'explore-auth' })
+    service.releasePanes([1])
+    assert.equal(f.opened[0].closed, true)
+    session = (await service.command(scope, { ...get, action: 'open', sessionId: session.id }))
+      .session!
+    const stopped = session.subagents?.find((child) => child.id === 'other')
+    assert.equal(stopped?.status, 'stopped')
+    assert.equal(stopped?.startedAt, undefined)
+    assert.equal(typeof stopped?.finishedAt, 'number')
+    assert.equal(session.subagents?.find((child) => child.id === 'child')?.status, 'completed')
+    host.subagent({ id: 'stale', status: 'running', title: 'stale' })
+    assert.equal(
+      (await service.command(scope, get)).session?.subagents?.some((child) => child.id === 'stale'),
+      false
+    )
+    await service.shutdown()
+
+    const restored = new AgentSessions(f.dir, () => {}, f.drivers)
+    const again = (await restored.command(scope, { ...get, action: 'open', sessionId: session.id }))
+      .session
+    assert.equal(again?.subagents?.find((child) => child.id === 'other')?.status, 'stopped')
+    assert.equal(again?.subagents?.find((child) => child.id === 'child')?.tokens?.total, 100)
+    await restored.shutdown()
+  } finally {
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
+
 test('a todo snapshot replaces the session checklist and survives restart', async () => {
   const f = fixture(async (context) => {
     const listId = `session:${context.session.id}:todo`

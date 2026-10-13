@@ -29,6 +29,8 @@ export const piAdapter: AgentAdapter = {
     }
   },
   connect(session, host) {
+    // Pi's rpc events have no child channel. host.subagent stays unused until a frame names one.
+    // `agent_end` is the parent turn, not a sub-agent.
     const rpc = new JsonProcess(
       executable('pi'),
       [

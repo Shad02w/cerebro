@@ -5,6 +5,7 @@ import type {
   AgentModel,
   AgentRequest,
   AgentSession,
+  AgentSubagent,
   ChatAttachment
 } from '@cerebro/core'
 
@@ -23,6 +24,9 @@ export type RunContext = {
 /** One change in a background task's life. Fields left out keep their previous value. */
 export type BackgroundTaskUpdate = Pick<AgentBackgroundTask, 'id' | 'status'> &
   Partial<Omit<AgentBackgroundTask, 'id' | 'status'>>
+/** One change in a child agent's life. Fields left out keep their previous value. */
+export type SubagentUpdate = Pick<AgentSubagent, 'id' | 'status'> &
+  Partial<Omit<AgentSubagent, 'id' | 'status'>>
 /** A turn the harness started without a user message, such as a background task waking the agent. */
 export type AutonomousTurn = { context: Omit<RunContext, 'text'>; settle: (error?: Error) => void }
 /** Session-level callbacks a connection uses outside of the turn it was asked to run. */
@@ -31,6 +35,8 @@ export type ConnectionHost = {
   autonomous: () => AutonomousTurn | undefined
   /** A background task started, or settled as completed, failed or stopped. */
   task: (update: BackgroundTaskUpdate) => void
+  /** A child agent was named, started, or settled. Shell jobs stay on `task`. */
+  subagent: (update: SubagentUpdate) => void
   /** Output that arrived between turns. Items update in whichever turn owns them. */
   idle: (event: AgentDelta) => void
   /** The native process ended on its own; its background work is gone. */

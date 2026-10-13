@@ -385,6 +385,74 @@ function claudePrompt(prompt, content) {
     )
     return
   }
+  if (prompt === 'subagent' || prompt === 'subagent-fail') {
+    const failed = prompt === 'subagent-fail'
+    send({ type: 'system', subtype: 'init', session_id: 'claude-test', tools: [], model: 'test' })
+    send({
+      type: 'assistant',
+      session_id: 'claude-test',
+      uuid: 'subagent-spawn',
+      message: {
+        id: 'msg-subagent',
+        role: 'assistant',
+        content: [
+          {
+            type: 'tool_use',
+            id: 'tool-sub',
+            name: 'Task',
+            input: { description: 'Review the diff', prompt: 'Look at the auth change.' }
+          }
+        ]
+      }
+    })
+    send({
+      type: 'stream_event',
+      session_id: 'claude-test',
+      parent_tool_use_id: 'tool-sub',
+      event: { type: 'message_start', message: { id: 'msg-child' } }
+    })
+    send({
+      type: 'stream_event',
+      session_id: 'claude-test',
+      parent_tool_use_id: 'tool-sub',
+      event: {
+        type: 'content_block_start',
+        index: 0,
+        content_block: { type: 'text', text: '' }
+      }
+    })
+    send({
+      type: 'stream_event',
+      session_id: 'claude-test',
+      parent_tool_use_id: 'tool-sub',
+      event: {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'text_delta', text: 'Looking at the diff.' }
+      }
+    })
+    send({
+      type: 'user',
+      session_id: 'claude-test',
+      parent_tool_use_id: null,
+      message: {
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 'tool-sub',
+            is_error: failed,
+            content: failed ? 'review failed' : 'reviewed',
+            ...(failed
+              ? {}
+              : { usage: { input_tokens: 12104, output_tokens: 6316, total_tokens: 18420 } })
+          }
+        ]
+      }
+    })
+    claudeFinish(failed ? 'The review failed.' : 'Review finished.')
+    return
+  }
   send({ type: 'system', subtype: 'init', session_id: 'claude-test', tools: [], model: 'test' })
   if (prompt.includes('slow')) return
   if (prompt.includes('steer')) {

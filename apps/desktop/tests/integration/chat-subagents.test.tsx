@@ -1,0 +1,101 @@
+import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { describe, expect, it } from 'vitest'
+import type { AgentSession, AgentSubagent } from '@cerebro/core'
+import { ChatSessionChips } from '@/components/chat/chat-session-chips'
+
+const child = (
+  patch: Partial<AgentSubagent> & Pick<AgentSubagent, 'id' | 'status'>
+): AgentSubagent => ({
+  title: '',
+  createdAt: 0,
+  ...patch
+})
+
+const session = (subagents: AgentSession['subagents']): AgentSession =>
+  ({ id: 'session', subagents }) as AgentSession
+
+describe('ChatSubagents', () => {
+  it('opens a grid above the Sub-agent button', async () => {
+    render(
+      <ChatSessionChips
+        session={session([
+          child({ id: 'explore', status: 'created', title: 'explore-auth' }),
+          child({ id: 'review', status: 'running', title: 'review-diff', startedAt: 1_000 }),
+          child({
+            id: 'write',
+            status: 'completed',
+            title: 'write-tests',
+            startedAt: 0,
+            finishedAt: 153_000,
+            tokens: { input: 12_104, output: 6_316, total: 18_420 }
+          }),
+          child({
+            id: 'lint',
+            status: 'completed',
+            title: 'lint-pass',
+            startedAt: 0,
+            finishedAt: 18_000
+          }),
+          child({
+            id: 'nameless',
+            status: 'stopped',
+            startedAt: 0,
+            finishedAt: 3_660_000
+          })
+        ])}
+      />
+    )
+    const chip = screen.getByRole('button', { name: '5 sub-agents' })
+    expect(chip).toHaveTextContent('Sub-agent')
+    expect(screen.queryByTestId('chat-subagents')).toBeNull()
+    await userEvent.setup().click(chip)
+    const dropdown = await screen.findByTestId('chat-subagents')
+    const grid = within(dropdown).getByLabelText('Sub-agents')
+    expect(grid).toHaveClass('grid')
+    const cells = (row: HTMLElement): string[] =>
+      [...row.querySelectorAll('[data-cell]')].map((cell) => cell.textContent ?? '')
+    const rows = within(grid).getAllByTestId('chat-subagent')
+    expect(rows.map((row) => row.getAttribute('data-status'))).toEqual([
+      'created',
+      'running',
+      'completed',
+      'completed',
+      'stopped'
+    ])
+    expect(cells(rows[0])).toEqual(['', 'explore-auth', '', ''])
+    expect(cells(rows[1])).toEqual(['', 'review-diff', '', ''])
+    expect(cells(rows[2])).toEqual(['', 'write-tests', '2m 33s', '18,420 (12,104 in, 6,316 out)'])
+    expect(cells(rows[3])).toEqual(['', 'lint-pass', '18s', 'no tokens'])
+    expect(cells(rows[4])).toEqual(['', 'nameless', '1h 1m', 'no tokens'])
+  })
+
+  it('sits to the right of Todo and Background', () => {
+    const mixed = {
+      id: 'session',
+      todo: {
+        kind: 'todo',
+        listId: 'session:chat:todo',
+        items: [{ id: '1', label: 'Inspect', status: 'pending' }]
+      },
+      background: [{ id: 'server', title: 'nr dev', status: 'running', startedAt: 1 }],
+      subagents: [child({ id: 'explore', status: 'running', title: 'explore-auth' })]
+    } as AgentSession
+    render(<ChatSessionChips session={mixed} />)
+    const buttons = within(screen.getByRole('toolbar', { name: 'Session status' })).getAllByRole(
+      'button'
+    )
+    expect(buttons.map((button) => button.getAttribute('aria-label'))).toEqual([
+      '1 task',
+      '1 background job',
+      '1 sub-agent'
+    ])
+  })
+
+  it('renders nothing when the session has no sub-agents', () => {
+    const { container } = render(<ChatSessionChips session={session(undefined)} />)
+    expect(container).toBeEmptyDOMElement()
+    render(<ChatSessionChips session={session([])} />)
+    expect(screen.queryByTestId('chat-subagent-chip')).toBeNull()
+  })
+})

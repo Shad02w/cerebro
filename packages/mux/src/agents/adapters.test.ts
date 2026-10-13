@@ -8,7 +8,8 @@ import {
   claudeModelLabel,
   runTurn,
   type BackgroundTaskUpdate,
-  type RunAttachment
+  type RunAttachment,
+  type SubagentUpdate
 } from './adapters'
 import type { AgentDelta, AgentHarness, AgentSession } from '@cerebro/core'
 const fixture = resolve(__dirname, 'fixtures/fake-harness.cjs')
@@ -631,6 +632,7 @@ const liveSession = (model: AgentSession['model'], id: string): AgentSession => 
 const idleHost = {
   autonomous: () => undefined,
   task: () => {},
+  subagent: () => {},
   idle: () => {},
   exited: () => {}
 }
@@ -854,6 +856,53 @@ test(
       cleared.some((event) => event.type === 'item' && event.item.kind === 'plan'),
       false
     )
+  }
+)
+
+test(
+  'Claude: a child frame becomes a sub-agent, and a checklist tool does not',
+  { timeout: 15_000 },
+  async () => {
+    process.env.CEREBRO_CLAUDE_PATH = fixture
+    const model = (await adapters.claude.models('/tmp'))[0]
+    const updates: SubagentUpdate[] = []
+    const tasks: BackgroundTaskUpdate[] = []
+    await runTurn(
+      adapters.claude,
+      {
+        session: liveSession(model, 'subagent'),
+        text: 'subagent',
+        signal: new AbortController().signal,
+        emit: () => {},
+        ask: async () => ({ allow: false, answers: {} })
+      },
+      {
+        subagent: (update) => updates.push(update),
+        task: (update) => tasks.push(update)
+      }
+    )
+    assert.deepEqual(updates, [
+      { id: 'tool-sub', status: 'running', title: 'Review the diff' },
+      {
+        id: 'tool-sub',
+        status: 'completed',
+        tokens: { input: 12104, output: 6316, total: 18420 }
+      }
+    ])
+    assert.equal(tasks.length, 0)
+    const ignored: SubagentUpdate[] = []
+    await runTurn(
+      adapters.claude,
+      {
+        session: liveSession(model, 'tasks-not-children'),
+        text: 'tasks',
+        signal: new AbortController().signal,
+        emit: () => {},
+        ask: async () => ({ allow: false, answers: {} })
+      },
+      { subagent: (update) => ignored.push(update) }
+    )
+    assert.equal(ignored.length, 0)
   }
 )
 

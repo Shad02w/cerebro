@@ -114,6 +114,29 @@ export type AgentContextUsage = {
   contextWindow: number
   percentage: number
 }
+export type AgentSubagentStatus = 'created' | 'running' | 'completed' | 'failed' | 'stopped'
+/** Token counts a harness reported for one child. Each field is absent when the harness did not send it. */
+export type AgentSubagentTokens = {
+  input?: number
+  output?: number
+  total?: number
+}
+/**
+ * One child agent, normalized across harnesses. `created` has been named and has not started.
+ * `running` is executing. The other three statuses are finished and stay on the list.
+ */
+export type AgentSubagent = {
+  id: string
+  title: string
+  status: AgentSubagentStatus
+  createdAt: number
+  /** Set when the child starts running. Absent until then, and the panel hides elapsed. */
+  startedAt?: number
+  finishedAt?: number
+  tokens?: AgentSubagentTokens
+  summary?: string
+  model?: string
+}
 export type AgentBackgroundTaskStatus = 'running' | 'completed' | 'failed' | 'stopped'
 /**
  * Native work that outlives the turn that started it, owned by the session's live harness
@@ -180,6 +203,11 @@ export type AgentSession = {
   attention?: { kind: 'finished'; at: number }
   /** Running background tasks. Settled ones move into the transcript as `notice` items. */
   background?: AgentBackgroundTask[]
+  /**
+   * Child agents named by this session. Finished rows stay on the list. They do not become
+   * transcript notices.
+   */
+  subagents?: AgentSubagent[]
 }
 export type AgentSessionSummary = Pick<
   AgentSession,

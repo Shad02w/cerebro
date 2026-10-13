@@ -58,6 +58,8 @@ export const codexAdapter: AgentAdapter = {
     }
   },
   connect(session, host) {
+    // Codex notifications name thread items and shell jobs, not child agents. host.subagent
+    // stays unused until a frame is actually a child. Thread token usage is the parent window.
     let rpc: JsonProcess | undefined
     let closed = false
     let current: AutonomousTurn | undefined

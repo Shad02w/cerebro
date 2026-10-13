@@ -33,6 +33,7 @@ import {
   type ChatImageType,
   type AgentActivityStatus,
   type AgentBackgroundTask,
+  type AgentSubagent,
   type ChatActivityOverview,
   type ChatAgentActivity,
   type ChatView,
@@ -45,6 +46,7 @@ import {
   type AutonomousTurn,
   type BackgroundTaskUpdate,
   type ConnectionHost,
+  type SubagentUpdate,
   type RunAttachment,
   type RunContext
 } from './adapters'
@@ -269,9 +271,14 @@ export class AgentSessions {
         session.sequence++
         this.persist(session)
       }
-      if (session.background) {
-        // Background tasks belonged to a harness process that no longer exists.
-        this.stopBackground(session, 'Stopped because the agent host restarted.')
+      const stoppedChildren = this.stopSubagents(
+        session,
+        'Stopped because the agent host restarted.'
+      )
+      if (session.background || stoppedChildren) {
+        // Background tasks and child agents belonged to a harness process that no longer exists.
+        if (session.background)
+          this.stopBackground(session, 'Stopped because the agent host restarted.')
         session.sequence++
         this.persist(session)
       }
@@ -530,10 +537,14 @@ export class AgentSessions {
     this.live.delete(sessionId)
     entry.connection?.close()
     const session = this.sessions.get(sessionId)
-    if (session?.background) {
+    if (!session) return
+    let changed = false
+    if (session.background) {
       this.stopBackground(session, 'Stopped when the agent closed.')
-      this.changed(session, true)
+      changed = true
     }
+    if (this.stopSubagents(session, 'Stopped when the agent closed.')) changed = true
+    if (changed) this.changed(session, true)
   }
   /** Settles every running task as stopped: its process is gone and will never report back. */
   private stopBackground(session: AgentSession, summary: string): void {
@@ -593,6 +604,73 @@ export class AgentSessions {
       text: task.summary || backgroundTaskOutcome(task),
       task
     })
+  }
+  /**
+   * Folds one child-agent patch onto `session.subagents`. Finished rows stay on the list.
+   * A later patch leaves out fields it does not know, and those keep their previous value.
+   */
+  private updateSubagent(session: AgentSession, update: SubagentUpdate): void {
+    const now = Date.now()
+    const terminal = update.status !== 'created' && update.status !== 'running'
+    const list = session.subagents ?? []
+    const index = list.findIndex((child) => child.id === update.id)
+    const { tokens, ...rest } = update
+    const fields = Object.fromEntries(
+      Object.entries(rest).filter(([, value]) => value !== undefined)
+    ) as Partial<SubagentUpdate>
+    const merge = (previous: AgentSubagent['tokens']): AgentSubagent['tokens'] | undefined => {
+      if (!tokens) return previous
+      const next = { ...previous }
+      let touched = false
+      if (tokens.input !== undefined) {
+        next.input = tokens.input
+        touched = true
+      }
+      if (tokens.output !== undefined) {
+        next.output = tokens.output
+        touched = true
+      }
+      if (tokens.total !== undefined) {
+        next.total = tokens.total
+        touched = true
+      }
+      return touched ? next : previous
+    }
+    if (index === -1) {
+      const child: AgentSubagent = {
+        id: update.id,
+        title: '',
+        status: update.status,
+        createdAt: now,
+        ...fields
+      }
+      const merged = merge(undefined)
+      if (merged) child.tokens = merged
+      if (update.status === 'running' && child.startedAt === undefined) child.startedAt = now
+      if (terminal && child.finishedAt === undefined) child.finishedAt = now
+      list.push(child)
+      session.subagents = list
+      return
+    }
+    const existing = list[index]
+    const next: AgentSubagent = { ...existing, ...fields, id: existing.id }
+    const merged = merge(existing.tokens)
+    if (merged) next.tokens = merged
+    else delete next.tokens
+    if (update.status === 'running' && next.startedAt === undefined) next.startedAt = now
+    if (terminal && next.finishedAt === undefined) next.finishedAt = now
+    list[index] = next
+    session.subagents = list
+  }
+  /** Settles every child that has not finished. The row stays on the list. */
+  private stopSubagents(session: AgentSession, summary: string): boolean {
+    const open = (session.subagents ?? []).filter(
+      (child) => child.status === 'created' || child.status === 'running'
+    )
+    if (!open.length) return false
+    for (const child of open)
+      this.updateSubagent(session, { id: child.id, status: 'stopped', summary })
+    return true
   }
   /** Outcomes reported while idle share one trailing turn until something else is added. */
   private eventTurn(session: AgentSession): string {
@@ -889,9 +967,14 @@ export class AgentSessions {
     const existing = this.live.get(session.id)
     if (existing?.connection && existing.accessMode === accessMode && existing.cwd === session.cwd)
       return existing.connection
-    if (existing?.connection && session.background) {
-      this.stopBackground(session, 'Stopped because access settings changed.')
-      this.changed(session, true)
+    if (existing?.connection) {
+      let changed = false
+      if (session.background) {
+        this.stopBackground(session, 'Stopped because access settings changed.')
+        changed = true
+      }
+      if (this.stopSubagents(session, 'Stopped because access settings changed.')) changed = true
+      if (changed) this.changed(session, true)
     }
     this.release(session.id)
     const entry: Live = { accessMode, cwd: session.cwd }
@@ -912,6 +995,11 @@ export class AgentSessions {
         this.updateTask(session, update)
         this.changed(session, true)
       },
+      subagent: (update) => {
+        if (!current()) return
+        this.updateSubagent(session, update)
+        this.changed(session, true)
+      },
       idle: (event) => {
         if (!current()) return
         try {
@@ -923,9 +1011,13 @@ export class AgentSessions {
       exited: () => {
         if (!current()) return
         this.live.delete(session.id)
-        if (!session.background) return
-        this.stopBackground(session, 'Stopped because the agent process exited.')
-        this.changed(session, true)
+        let changed = false
+        if (session.background) {
+          this.stopBackground(session, 'Stopped because the agent process exited.')
+          changed = true
+        }
+        if (this.stopSubagents(session, 'Stopped because the agent process exited.')) changed = true
+        if (changed) this.changed(session, true)
       }
     }
   }
