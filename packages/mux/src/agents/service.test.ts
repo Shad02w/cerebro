@@ -1130,7 +1130,7 @@ test('a todo snapshot replaces the session checklist and survives restart', asyn
   }
 })
 
-test('a thread title starts as the slice, then the prompt pass, then the first response', async () => {
+test('a thread title starts as the prompt, then the prompt pass, then the first response', async () => {
   const calls: Array<{ user: string; response?: string }> = []
   const gates: Array<(title: string | null) => void> = []
   const f = fixture(async (context) => {
@@ -1163,30 +1163,34 @@ test('a thread title starts as the slice, then the prompt pass, then the first r
     assert.equal(calls[0].response, undefined)
     assert.equal(calls[0].user, prompt)
     assert.equal(calls[1].response, 'The button is now called Save.')
-    gates[1]('Save button')
-    await new Promise((resolve) => setImmediate(resolve))
-    assert.equal(
-      (await service.command(scope, { ...send, action: 'get' })).session?.title,
-      'Save button'
-    )
+    const sessionId = created.session!.id
+    const readTitle = async (): Promise<string | undefined> =>
+      (await service.command(scope, { ...send, action: 'get' })).session?.title
     gates[0]('Only the prompt')
     await new Promise((resolve) => setImmediate(resolve))
-    assert.equal(
-      (await service.command(scope, { ...send, action: 'get' })).session?.title,
-      'Save button'
-    )
-    const sourceId = created.session!.id
+    assert.equal(await readTitle(), 'Only the prompt')
+    gates[1]('Save button')
+    await new Promise((resolve) => setImmediate(resolve))
+    assert.equal(await readTitle(), 'Save button')
+    const named = JSON.parse(
+      readFileSync(join(f.dir, `session-${sessionId}.json`), 'utf8')
+    ) as AgentSession
+    assert.equal(named.title, 'Save button')
+    assert.equal('slice' in named, false)
+    assert.equal('first' in named, false)
+    assert.equal('settled' in named, false)
     const turnId = created.session!.items[0].turnId
     const forked = await service.command(scope, {
       ...send,
       action: 'fork',
-      sessionId: sourceId,
+      sessionId,
       turnId
     })
     assert.equal(forked.session?.title, 'Save button (fork)')
     await service.command(scope, { ...send, commandId: 'second', text: 'another message' })
     await new Promise((resolve) => setImmediate(resolve))
     assert.equal(calls.length, 2)
+    assert.equal(await readTitle(), 'Save button')
     await service.shutdown()
   } finally {
     rmSync(f.dir, { recursive: true, force: true })

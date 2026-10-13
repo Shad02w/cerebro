@@ -49,12 +49,7 @@ import {
   type RunContext
 } from './adapters'
 import { executable } from './transport'
-import {
-  nextThreadTitle,
-  suggestThreadTitle,
-  threadTitleSlice,
-  type ThreadTitleInput
-} from './title'
+import { suggestThreadTitle, threadTitleSlice, type ThreadTitleInput } from './title'
 
 export type AgentScope = {
   workspaceId: number
@@ -248,8 +243,6 @@ export class AgentSessions {
   private catalog?: AgentCatalog
   private loadingCatalog?: Promise<AgentCatalog>
   private stopping = false
-  /** Titles this process wrote for a thread, so a rename is left alone. */
-  private autoTitle = new Map<string, { slice: string; first: string | null; settled: boolean }>()
   constructor(
     private directory: string,
     private publish: (workspaceId: number) => void,
@@ -790,7 +783,6 @@ export class AgentSessions {
         items: [],
         commands: []
       }
-      this.autoTitle.set(session.id, { slice, first: null, settled: false })
       this.sessions.set(session.id, session)
       this.persist(session)
       const next = { ...this.bindings, [scope.paneId]: session.id }
@@ -809,7 +801,7 @@ export class AgentSessions {
       throw error
     }
     this.beginTurn(session, command.text, stored, selected, command.reasoning, accessMode)
-    if (created) this.scheduleTitle(session.id, 'prompt', command.text)
+    if (created) this.scheduleTitle(session.id, command.text)
     return this.view(scope)
   }
   /** Writes attachment bytes to disk and returns their host-owned paths. Pure I/O — callers decide how to handle failure. */
@@ -1086,14 +1078,9 @@ export class AgentSessions {
     })
   }
   /** Asks the cheap model for a thread title without holding the send or the turn. */
-  private scheduleTitle(
-    sessionId: string,
-    pass: 'prompt' | 'response',
-    user: string,
-    response?: string
-  ): void {
+  private scheduleTitle(sessionId: string, user: string, response?: string): void {
     const session = this.sessions.get(sessionId)
-    if (!session || !this.autoTitle.has(sessionId)) return
+    if (!session) return
     const harness = session.model.harness
     void (async () => {
       try {
@@ -1104,42 +1091,26 @@ export class AgentSessions {
           user,
           ...(response === undefined ? {} : { response })
         })
-        this.applyTitle(sessionId, pass, suggestion)
+        this.applyTitle(sessionId, suggestion)
       } catch {
-        // The slice already names the thread. A title failure is not a failed turn.
+        // The current title already names the thread. A title failure is not a failed turn.
       }
     })()
   }
-  private applyTitle(
-    sessionId: string,
-    pass: 'prompt' | 'response',
-    suggestion: string | null
-  ): void {
+  private applyTitle(sessionId: string, suggestion: string | null): void {
     const session = this.sessions.get(sessionId)
-    const record = this.autoTitle.get(sessionId)
-    if (!session || !record) return
-    const next = nextThreadTitle({
-      current: session.title,
-      slice: record.slice,
-      firstPass: record.first,
-      suggestion,
-      pass
-    })
-    if (!next) return
-    session.title = next
-    if (pass === 'prompt') record.first = next
+    if (!session || !suggestion || suggestion === session.title) return
+    session.title = suggestion
     this.changed(session, true)
   }
   /** Second pass, once, when this thread's first turn settles with assistant text. */
   private noteFirstTurn(session: AgentSession): void {
-    const record = this.autoTitle.get(session.id)
-    if (!record || record.settled) return
-    record.settled = true
     if (this.stopping || session.status !== 'idle') return
-    const user = session.items.find((item) => item.kind === 'user' && item.text.trim())
+    const users = session.items.filter((item) => item.kind === 'user' && item.text.trim())
+    if (users.length !== 1) return
     const reply = session.items.find((item) => item.kind === 'text' && item.text.trim())
-    if (!user || !reply) return
-    this.scheduleTitle(session.id, 'response', user.text, reply.text)
+    if (!reply) return
+    this.scheduleTitle(session.id, users[0].text, reply.text)
   }
   /** Drives one turn. `start` must receive its context synchronously; `autonomous` relies on it. */
   private async run(
