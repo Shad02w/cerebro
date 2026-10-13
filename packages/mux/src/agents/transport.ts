@@ -6,6 +6,21 @@ import { homedir } from 'node:os'
 import type { AgentHarness } from '@cerebro/core'
 import { shellEnv } from '../shell-env'
 
+/** Pane identity injected into a harness child so it can call `cerebro chat`. */
+export type AgentRouting = {
+  workspaceId: number
+  paneId: number
+  sessionId: string
+}
+export function routingEnv(routing?: AgentRouting): NodeJS.ProcessEnv {
+  if (!routing) return {}
+  return {
+    CEREBRO_WORKSPACE_ID: String(routing.workspaceId),
+    CEREBRO_PANE_ID: String(routing.paneId),
+    CEREBRO_SESSION_ID: routing.sessionId
+  }
+}
+
 // Native protocols are versioned externally. Keep their permissive boundary inside adapters.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Frame = Record<string, any>
@@ -61,11 +76,12 @@ export class JsonProcess {
     binary: string,
     args: string[],
     cwd: string,
-    private pi = false
+    private pi = false,
+    routing?: AgentRouting
   ) {
     this.child = spawn(binary, args, {
       cwd,
-      env: shellEnv(),
+      env: { ...shellEnv(), ...routingEnv(routing) },
       stdio: 'pipe',
       windowsHide: true,
       detached: process.platform !== 'win32'

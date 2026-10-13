@@ -2,7 +2,7 @@ import type { AgentDelta, ChatItem } from '@cerebro/core'
 import { randomUUID } from 'node:crypto'
 import type { Query, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import { shellEnv } from '../../shell-env'
-import { executable, describe, type Frame } from '../transport'
+import { executable, describe, routingEnv, type AgentRouting, type Frame } from '../transport'
 import type { AgentAdapter, AutonomousTurn, RunAttachment } from './adapter'
 import { activeTurn, inline, item, model } from './shared'
 import { ClaudeTodoList } from '../todo'
@@ -137,7 +137,7 @@ export const claudeAdapter: AgentAdapter = {
       q.close()
     }
   },
-  connect(session, host) {
+  connect(session, host, routing?: AgentRouting) {
     const prompt = new PushableQueue<SDKUserMessage>()
     let q: Query | undefined
     let closed = false
@@ -410,7 +410,7 @@ export const claudeAdapter: AgentAdapter = {
           cwd: session.cwd,
           pathToClaudeCodeExecutable: executable('claude'),
           // Models Claude Code does not recognize omit Task tools unless the session opts in.
-          env: { ...shellEnv(), CLAUDE_CODE_ENABLE_TODO_TOOLS: '1' },
+          env: { ...shellEnv(), CLAUDE_CODE_ENABLE_TODO_TOOLS: '1', ...routingEnv(routing) },
           model: session.model.id || undefined,
           ...(effort ? { effort } : {}),
           resume: session.nativeId,

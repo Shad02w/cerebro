@@ -119,6 +119,13 @@ export async function startServer(): Promise<void> {
       else peer.wire.socket.destroy()
     }
   })
+  const chatPaneIds = (): number[] => {
+    const ids: number[] = []
+    for (const workspace of Object.values(layout.workspaces))
+      for (const tab of workspace.tabs)
+        for (const pane of leaves(tab.root)) if (pane.kind === 'chat') ids.push(pane.id)
+    return ids
+  }
   const findPane = (workspaceId: number, paneId: number): { pane: Pane; tabId: number } => {
     for (const tab of layout.workspaces[workspaceId]?.tabs ?? []) {
       const pane = leaves(tab.root).find((pane) => pane.id === paneId)
@@ -142,6 +149,7 @@ export async function startServer(): Promise<void> {
     else delete workspaces[workspaceId]
     layout = { revision, workspaces, epoch }
     publish('layout', { epoch, revision, workspaceId, workspace })
+    agents.noteLivePanes(chatPaneIds())
   }
   // The database decides which workspaces exist: adopt its layout and announce what vanished.
   const adoptLayout = (fresh: LayoutState): void => {
@@ -151,7 +159,9 @@ export async function startServer(): Promise<void> {
     layout = { ...fresh, epoch }
     for (const workspaceId of gone)
       publish('layout', { epoch, revision: layout.revision, workspaceId, workspace: null })
+    agents.noteLivePanes(chatPaneIds())
   }
+  agents.noteLivePanes(chatPaneIds())
   const providers = new Map<string, Peer>()
   const gitPending = new Map<
     string,
@@ -314,11 +324,8 @@ export async function startServer(): Promise<void> {
             peer.subscribed = true
             return layout
           case 'chat.overview': {
-            const liveChatPanes: number[] = []
-            for (const workspace of Object.values(layout.workspaces))
-              for (const tab of workspace.tabs)
-                for (const pane of leaves(tab.root))
-                  if (pane.kind === 'chat') liveChatPanes.push(pane.id)
+            const liveChatPanes = chatPaneIds()
+            agents.noteLivePanes(liveChatPanes)
             return agents.overview(liveChatPanes)
           }
           case 'chat.catalog':
@@ -343,6 +350,7 @@ export async function startServer(): Promise<void> {
                 paneId = positive(p.paneId)
               const { pane } = findPane(workspaceId, paneId)
               if (pane.kind !== 'chat') throw new MuxError('conflict', 'Pane is not a chat.')
+              agents.noteLivePanes(chatPaneIds())
               const context = await storage.call<{ cwd: string; repositoryId: number | null }>(
                 'context',
                 { workspaceId, repositoryId: pane.repositoryId ?? undefined }
@@ -352,6 +360,57 @@ export async function startServer(): Promise<void> {
                 p as unknown as ChatCommand
               )
             })
+          case 'chat.peers': {
+            const workspaceId = positive(p.workspaceId)
+            agents.noteLivePanes(chatPaneIds())
+            const from = p.sessionId ? String(p.sessionId) : undefined
+            return { peers: agents.peers(workspaceId, from) }
+          }
+          case 'chat.deliver': {
+            await environment
+            const workspaceId = positive(p.workspaceId)
+            const toPaneId = positive(p.paneId)
+            if (!p.sessionId) throw new MuxError('usage', 'Sender session is required.')
+            if (typeof p.text !== 'string') throw new MuxError('usage', 'Write a message first.')
+            const text = p.text
+            const { pane } = findPane(workspaceId, toPaneId)
+            if (pane.kind !== 'chat') throw new MuxError('conflict', 'Pane is not a chat.')
+            const live = chatPaneIds()
+            return exclusive(async () =>
+              agents.deliver({
+                workspaceId,
+                fromSessionId: String(p.sessionId),
+                toPaneId,
+                text,
+                livePanes: live
+              })
+            )
+          }
+          case 'chat.read': {
+            await environment
+            const workspaceId = positive(p.workspaceId)
+            if (!p.sessionId || !p.turnId)
+              throw new MuxError('usage', 'Session and turn are required.')
+            const timeoutMs = p.timeoutMs === undefined ? 60_000 : Number(p.timeoutMs)
+            const watch = await exclusive(async () =>
+              agents.prepareRead({
+                workspaceId,
+                sessionId: String(p.sessionId),
+                turnId: String(p.turnId),
+                fromSessionId: p.fromSessionId ? String(p.fromSessionId) : undefined,
+                timeoutMs
+              })
+            )
+            try {
+              await agents.waitRead(watch)
+            } catch (error) {
+              await exclusive(async () => {
+                agents.cancelRead(watch)
+              })
+              throw error
+            }
+            return exclusive(async () => agents.completeRead(watch))
+          }
           case 'layout.get':
             return layout
           case 'changes.list':

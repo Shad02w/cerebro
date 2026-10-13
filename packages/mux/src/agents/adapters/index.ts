@@ -7,6 +7,7 @@ import { piAdapter } from './pi'
 export type {
   AgentAdapter,
   AgentConnection,
+  AgentRouting,
   AutonomousTurn,
   BackgroundTaskUpdate,
   ConnectionHost,

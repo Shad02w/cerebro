@@ -1,6 +1,6 @@
 import type { AgentDelta } from '@cerebro/core'
 import { randomUUID } from 'node:crypto'
-import { JsonProcess, executable, describe, type Frame } from '../transport'
+import { JsonProcess, executable, describe, type AgentRouting, type Frame } from '../transport'
 import type { AgentAdapter, AutonomousTurn } from './adapter'
 import { activeTurn, inline, item, model, modalities } from './shared'
 
@@ -28,7 +28,7 @@ export const piAdapter: AgentAdapter = {
       rpc.close()
     }
   },
-  connect(session, host) {
+  connect(session, host, routing?: AgentRouting) {
     const rpc = new JsonProcess(
       executable('pi'),
       [
@@ -42,7 +42,8 @@ export const piAdapter: AgentAdapter = {
         ...(session.nativeId ? ['--session', session.nativeId] : [])
       ],
       session.cwd,
-      true
+      true,
+      routing
     )
     let closed = false
     let current: AutonomousTurn | undefined
