@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, type ComponentProps } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import '@/assets/sidebar.css'
 import {
@@ -633,26 +633,27 @@ function MultiRootRepoRow({
             aria-current={active ? 'location' : undefined}
             onClick={(): void => onSelect(workspace.id)}
           >
-            <span className="flex min-w-0 items-center gap-1.5">
-              <span
-                className="min-w-0 truncate text-[13px] font-medium leading-none"
-                data-workspace-label=""
-                data-testid={`workspace-repo-${workspace.id}`}
-              >
-                {name}
-              </span>
+            <span
+              className="block min-w-0 truncate text-[13px] leading-normal font-medium"
+              data-workspace-label=""
+              data-testid={`workspace-repo-${workspace.id}`}
+            >
+              {name}
             </span>
             {branch ? (
               <span
-                className="mt-0.5 flex min-w-0 items-center gap-1 text-[11px] leading-3 text-sidebar-foreground/65"
+                className="mt-0.5 block min-w-0 truncate text-[11px] leading-4 text-sidebar-foreground/65"
                 data-testid={`workspace-branch-${workspace.id}`}
               >
                 <span
                   aria-hidden
-                  className="mb-px ml-0.5 h-2.5 w-2 shrink-0 rounded-bl-[3px] border-b border-l border-current opacity-40"
+                  className="mr-1 inline-block h-2.5 w-2 rounded-bl-[3px] border-b border-l border-current align-baseline opacity-40"
                 />
-                <WorkspacePrPopover workspace={workspace} className="size-3 shrink-0" />
-                <span className="min-w-0 flex-1 truncate">{branch}</span>
+                <WorkspacePrPopover
+                  workspace={workspace}
+                  className="mr-1 inline-block size-3 overflow-hidden align-baseline"
+                />
+                {branch}
               </span>
             ) : null}
             <WorkspaceAgents agents={agents} onOpenAgent={onOpenAgent} />
@@ -664,29 +665,70 @@ function MultiRootRepoRow({
   )
 }
 
-function workspaceBranchIconClass(singleLine: boolean): string {
-  return cn(
-    'absolute left-2 inline-flex size-4 items-center justify-center leading-none',
-    singleLine ? 'top-1/2 -translate-y-1/2' : 'top-1.5'
+/** Full glyph box. `leading-none` plus `truncate` crops ascenders and descenders. */
+const workspaceNameClass = 'block w-full min-w-0 truncate text-left leading-normal'
+
+/** `overflow: hidden` makes a flex item align on its margin edge. An inline box
+    with hidden overflow uses its bottom edge, which `vertical-align: baseline` puts
+    on the text baseline. */
+const baselineIconClass = 'mr-1.5 inline-block size-4 overflow-hidden align-baseline'
+
+function WorkspaceLine({
+  icon,
+  className,
+  children,
+  ...props
+}: ComponentProps<'span'> & { icon: React.ReactNode }): React.JSX.Element {
+  return (
+    <span className={cn(workspaceNameClass, className)} data-workspace-label="" {...props}>
+      {icon}
+      {children}
+    </span>
   )
 }
 
-function workspaceBranchButtonClass(singleLine: boolean, indented = true): string {
+function branchAnchor(workspaceId: number): string {
+  return `--branch-icon-${workspaceId}`
+}
+
+function branchAnchorStyle(workspaceId: number): React.CSSProperties {
+  return { '--branch-anchor': branchAnchor(workspaceId) } as React.CSSProperties
+}
+
+/** Git branch mark on the name's baseline. A pull request uses a spacer; the control is anchored outside the row button. */
+function BranchIconSlot({ workspace }: { workspace: Workspace }): React.JSX.Element {
+  if (workspace.pullRequest)
+    return (
+      <span
+        aria-hidden
+        data-branch-icon-anchor=""
+        className={baselineIconClass}
+        style={branchAnchorStyle(workspace.id)}
+      />
+    )
+  return <WorkspacePrPopover workspace={workspace} className={baselineIconClass} />
+}
+
+function BranchIconOverlay({ workspace }: { workspace: Workspace }): React.JSX.Element | null {
+  if (!workspace.pullRequest) return null
+  return (
+    <span className="workspace-branch-icon-anchor" style={branchAnchorStyle(workspace.id)}>
+      <WorkspacePrPopover workspace={workspace} className="size-full" />
+    </span>
+  )
+}
+
+function workspaceBranchButtonClass(singleLine: boolean): string {
   return cn(
-    'app-no-drag flex w-full min-w-0 gap-0 pr-8',
-    indented && 'pl-8',
-    singleLine
-      ? 'h-8! flex-row items-center py-0 leading-none'
-      : 'h-auto! flex-col items-stretch py-1.5'
+    'app-no-drag flex w-full min-w-0 gap-0 px-2 pr-8',
+    singleLine ? 'h-8! flex-row items-center py-0' : 'h-auto! flex-col items-stretch py-1.5'
   )
 }
 
 function rootWorkspaceButtonClass(compact: boolean): string {
   return cn(
     'app-no-drag peer/menu-button flex min-w-0 flex-1 rounded-md px-2 text-left text-xs hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
-    compact
-      ? 'h-8 flex-row items-center py-0 leading-none'
-      : 'h-auto min-h-7 flex-col items-stretch py-1'
+    compact ? 'h-8 flex-row items-center py-0' : 'h-auto min-h-7 flex-col items-stretch py-1'
   )
 }
 
@@ -773,15 +815,18 @@ function MultiRootWorkspaceTree({
                 }}
               >
                 <span className="flex w-full min-w-0 items-center gap-2">
-                  <FolderTree className="size-4 shrink-0 text-sidebar-accent-foreground" />
-                  <span
-                    className="min-w-0 flex-1 truncate font-medium leading-none"
-                    data-workspace-label=""
+                  <WorkspaceLine
+                    className="w-auto flex-1 font-medium"
+                    icon={
+                      <span className={cn(baselineIconClass, 'text-sidebar-accent-foreground')}>
+                        <FolderTree className="size-full" />
+                      </span>
+                    }
                   >
                     {rootWorkspace ? workspaceRowLabel(project, rootWorkspace) : 'root'}
-                  </span>
+                  </WorkspaceLine>
                   <span
-                    className="shrink-0 text-[10px] leading-none text-sidebar-foreground/55 tabular-nums"
+                    className="shrink-0 text-[10px] leading-normal text-sidebar-foreground/55 tabular-nums"
                     aria-label={`${repos.length} repositories in root`}
                     data-testid={`root-repo-count-${project.id}`}
                   >
@@ -1011,18 +1056,12 @@ function ProjectItem({
                             />
                           }
                         >
-                          <span
-                            className="min-w-0 flex-1 truncate text-left leading-none"
-                            data-workspace-label=""
-                          >
+                          <WorkspaceLine icon={<BranchIconSlot workspace={workspace} />}>
                             {workspaceRowLabel(project, workspace)}
-                          </span>
+                          </WorkspaceLine>
                           <WorkspaceAgents agents={agents} onOpenAgent={onOpenAgent} />
                         </SidebarMenuSubButton>
-                        <WorkspacePrPopover
-                          workspace={workspace}
-                          className={workspaceBranchIconClass(singleLine)}
-                        />
+                        <BranchIconOverlay workspace={workspace} />
                         <WorkspaceOverflowMenu
                           workspace={workspace}
                           onRename={(): void => onRenameWorkspace(workspace)}
@@ -1412,7 +1451,7 @@ function StatusGroup({
                                   render={
                                     <button
                                       type="button"
-                                      className={workspaceBranchButtonClass(singleLine, !rootRow)}
+                                      className={workspaceBranchButtonClass(singleLine)}
                                       data-testid={`workspace-row-${workspace.id}`}
                                       data-workspace-id={workspace.id}
                                       data-workspace-status={workspaceStatus(workspace.status)}
@@ -1425,25 +1464,27 @@ function StatusGroup({
                                     />
                                   }
                                 >
-                                  <span className="flex min-w-0 items-center gap-1.5 text-left">
-                                    {rootRow ? (
-                                      <FolderTree className="size-4 shrink-0 text-sidebar-accent-foreground" />
-                                    ) : null}
-                                    <span
-                                      className="min-w-0 flex-1 truncate leading-none"
-                                      data-workspace-label=""
-                                    >
-                                      {statusGroupLabel(project, workspace)}
-                                    </span>
-                                  </span>
+                                  <WorkspaceLine
+                                    icon={
+                                      rootRow ? (
+                                        <span
+                                          className={cn(
+                                            baselineIconClass,
+                                            'text-sidebar-accent-foreground'
+                                          )}
+                                        >
+                                          <FolderTree className="size-full" />
+                                        </span>
+                                      ) : (
+                                        <BranchIconSlot workspace={workspace} />
+                                      )
+                                    }
+                                  >
+                                    {statusGroupLabel(project, workspace)}
+                                  </WorkspaceLine>
                                   <WorkspaceAgents agents={agents} onOpenAgent={onOpenAgent} />
                                 </SidebarMenuSubButton>
-                                {rootRow ? null : (
-                                  <WorkspacePrPopover
-                                    workspace={workspace}
-                                    className={workspaceBranchIconClass(singleLine)}
-                                  />
-                                )}
+                                {rootRow ? null : <BranchIconOverlay workspace={workspace} />}
                                 <WorkspaceOverflowMenu
                                   workspace={workspace}
                                   allowRemove={workspace.kind === 'worktree'}

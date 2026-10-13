@@ -56,12 +56,32 @@
   font-size: 12px;
 }
 
-/* Single-line rows center the letters themselves, not the font's em box.
-   The em box leaves the extra leading under the glyphs, so "main" sits high. */
-.cerebro-sidebar [data-workspace-lines='1'] [data-workspace-label] {
-  line-height: 1;
-  text-box-trim: trim-both;
-  text-box-edge: ex alphabetic;
+/* A pull-request icon sits on the same anchor as the in-row spacer, so it
+   shares the name's baseline. The fallback centers it if anchor positioning
+   is unavailable. */
+[data-branch-icon-anchor] {
+  anchor-name: var(--branch-anchor);
+}
+
+.workspace-branch-icon-anchor {
+  position: absolute;
+  z-index: 10;
+  top: 50%;
+  left: 0.5rem;
+  width: 1rem;
+  height: 1rem;
+  translate: 0 -50%;
+}
+
+@supports (anchor-name: --a) {
+  .workspace-branch-icon-anchor {
+    position-anchor: var(--branch-anchor);
+    top: anchor(top);
+    left: anchor(left);
+    width: anchor-size(width);
+    height: anchor-size(height);
+    translate: none;
+  }
 }
 
 .cerebro-sidebar [data-workspace-lines='1'] [data-sidebar='menu-action'].workspace-row-menu {
