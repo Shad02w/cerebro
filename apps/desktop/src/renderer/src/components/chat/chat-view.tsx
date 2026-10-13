@@ -19,7 +19,7 @@ import { Button } from '@/components/ui/button'
 import { StarsBackground } from '@/lib/stars-background'
 import { cn } from '@/lib/utils'
 import { ChatItem, WorkingGroup } from './chat-item'
-import { transcriptEntries } from './tool-groups'
+import { transcriptEntries, workingAnchorId } from './tool-groups'
 import { TurnClock } from './turn-clock'
 import { WorkingFor } from './working-for'
 import { ChatScrollEndButton } from './chat-scroll-end'
@@ -388,6 +388,12 @@ export function ChatView({
     const timeout = window.setTimeout(() => setStarPhase('off'), reduce ? 0 : 480)
     return () => window.clearTimeout(timeout)
   }, [starPhase])
+  const transcript = session?.items.length ? session : null
+  const entries = transcript
+    ? transcriptEntries(transcript.items, busy ? transcript.turnId : undefined)
+    : []
+  const workingAnchor =
+    transcript?.status === 'running' ? workingAnchorId(entries, transcript.turnId) : null
   return (
     <div
       ref={viewRef}
@@ -424,73 +430,73 @@ export function ChatView({
           >
             <div className="mx-auto flex max-w-3xl flex-col gap-4">
               <TurnClock active={busy} turnId={session?.turnId} />
-              {session?.items.length
-                ? transcriptEntries(session.items, busy ? session.turnId : undefined).map(
-                    (entry, index, entries) => {
-                      const first = entry.type === 'item' ? entry.item : entry.items[0]
-                      const last =
-                        entry.type === 'item' ? entry.item : entry.items[entry.items.length - 1]
-                      const next = entries[index + 1]
-                      const nextTurn = next
-                        ? next.type === 'item'
-                          ? next.item.turnId
-                          : next.items[0]?.turnId
-                        : undefined
-                      const message =
-                        entry.type === 'item' ? (
-                          <ChatItem
-                            item={entry.item}
-                            onReply={reply}
-                            workspaceId={workspaceId}
-                            sessionId={session.id}
-                            streaming={busy && entry.item.id === session.items.at(-1)?.id}
-                          />
-                        ) : (
-                          <WorkingGroup items={entry.items} live={entry.live} />
-                        )
-                      return (
-                        <Fragment key={first.id}>
-                          {turnAnchors.has(first.id) ? (
-                            <div
-                              data-turn-anchor={first.turnId}
-                              data-testid="chat-turn"
-                              className="scroll-mt-3"
-                            >
-                              {message}
-                            </div>
-                          ) : (
-                            message
-                          )}
-                          {last.kind !== 'user' &&
-                          nextTurn !== last.turnId &&
-                          (last.turnId !== session.turnId || !busy) ? (
-                            <div
-                              role="separator"
-                              aria-label="End of response"
-                              className="flex items-center gap-3 py-2 text-xs text-muted-foreground"
-                            >
-                              <span className="h-px flex-1 bg-border" />
-                              <ChatTurnActions
-                                workspaceId={workspaceId}
-                                paneId={paneId}
-                                repositoryId={session.repositoryId}
-                                sessionId={session.id}
-                                turnId={last.turnId}
-                                text={turnTexts.get(last.turnId) ?? ''}
-                                forkCapability={
-                                  catalog.data?.capabilities[session.model.harness]?.fork
-                                }
-                              />
-                              <span>End of response</span>
-                              <span className="h-px flex-1 bg-border" />
-                            </div>
-                          ) : null}
-                        </Fragment>
+              {transcript
+                ? entries.map((entry, index, listed) => {
+                    const first = entry.type === 'item' ? entry.item : entry.items[0]
+                    const last =
+                      entry.type === 'item' ? entry.item : entry.items[entry.items.length - 1]
+                    const next = listed[index + 1]
+                    const nextTurn = next
+                      ? next.type === 'item'
+                        ? next.item.turnId
+                        : next.items[0]?.turnId
+                      : undefined
+                    const showWorking = first?.id === workingAnchor
+                    const message =
+                      entry.type === 'item' ? (
+                        <ChatItem
+                          item={entry.item}
+                          onReply={reply}
+                          workspaceId={workspaceId}
+                          sessionId={transcript.id}
+                          streaming={busy && entry.item.id === transcript.items.at(-1)?.id}
+                        />
+                      ) : (
+                        <WorkingGroup items={entry.items} live={entry.live} />
                       )
-                    }
-                  )
+                    return (
+                      <Fragment key={first.id}>
+                        {showWorking ? <WorkingFor /> : null}
+                        {turnAnchors.has(first.id) ? (
+                          <div
+                            data-turn-anchor={first.turnId}
+                            data-testid="chat-turn"
+                            className="scroll-mt-3"
+                          >
+                            {message}
+                          </div>
+                        ) : (
+                          message
+                        )}
+                        {last.kind !== 'user' &&
+                        nextTurn !== last.turnId &&
+                        (last.turnId !== transcript.turnId || !busy) ? (
+                          <div
+                            role="separator"
+                            aria-label="End of response"
+                            className="flex items-center gap-3 py-2 text-xs text-muted-foreground"
+                          >
+                            <span className="h-px flex-1 bg-border" />
+                            <ChatTurnActions
+                              workspaceId={workspaceId}
+                              paneId={paneId}
+                              repositoryId={transcript.repositoryId}
+                              sessionId={transcript.id}
+                              turnId={last.turnId}
+                              text={turnTexts.get(last.turnId) ?? ''}
+                              forkCapability={
+                                catalog.data?.capabilities[transcript.model.harness]?.fork
+                              }
+                            />
+                            <span>End of response</span>
+                            <span className="h-px flex-1 bg-border" />
+                          </div>
+                        ) : null}
+                      </Fragment>
+                    )
+                  })
                 : null}
-              {session?.status === 'running' ? <WorkingFor /> : null}
+              {session?.status === 'running' && !workingAnchor ? <WorkingFor /> : null}
               {!empty && alertText ? (
                 <p
                   role="alert"

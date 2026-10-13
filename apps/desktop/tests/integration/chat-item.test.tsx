@@ -126,7 +126,8 @@ describe('ChatItem command runs', () => {
     )
     const group = screen.getByTestId('working-group')
     expect(group).not.toHaveAttribute('open')
-    expect(screen.getByText('Working for 4s · Working on a.ts, Where am I')).toBeInTheDocument()
+    expect(screen.getByText('Working for 4s')).toBeInTheDocument()
+    expect(screen.queryByText(/Working on/)).toBeNull()
 
     await userEvent.click(screen.getByText(/Working for 4s/))
     expect(group).toHaveAttribute('open')

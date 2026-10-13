@@ -131,18 +131,6 @@ export function toolCallSummary(item: CommandFields): ToolCallSummary {
   return { label, description, line: collapsedLine(label, description) }
 }
 
-/** `Working on` the calls in one turn, from each call's description. */
-export function workingOn(items: readonly CommandFields[]): string {
-  const parts = new Set<string>()
-  for (const item of items) {
-    const summary = toolCallSummary(item)
-    const part = summary.description ?? summary.label
-    if (part) parts.add(part)
-  }
-  if (parts.size === 0) return 'Working on tools'
-  return cutLine(`Working on ${[...parts].join(', ')}`)
-}
-
 /** Input fields other than the command itself, shown only after the row is expanded. */
 export function commandInputDetail(input: string | undefined, command: string): string | null {
   if (!input?.trim() || input.trim() === command) return null

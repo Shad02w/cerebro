@@ -35,3 +35,18 @@ export function transcriptEntries(
   }
   return entries
 }
+
+/** First assistant entry in a turn. The live Working status sits above this entry. */
+export function workingAnchorId(
+  entries: readonly TranscriptEntry[],
+  turnId: string | undefined
+): string | null {
+  if (!turnId) return null
+  for (const entry of entries) {
+    const item = entry.type === 'item' ? entry.item : entry.items[0]
+    if (!item || item.turnId !== turnId) continue
+    if (entry.type === 'item' && entry.item.kind === 'user') continue
+    return item.id
+  }
+  return null
+}

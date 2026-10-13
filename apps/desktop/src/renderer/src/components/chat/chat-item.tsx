@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { AgentMarkdown } from '@/components/markdown/agent-markdown'
 import { cn } from '@/lib/utils'
 import './chat-status.css'
-import { commandInputDetail, commandRun, toolCallSummary, workingOn } from './command-preview'
+import { commandInputDetail, commandRun, toolCallSummary } from './command-preview'
 import { workingHeading } from './working-label'
 import { useTurnDuration } from './turn-durations'
 import { ChatDiff } from './chat-diff'
@@ -160,7 +160,7 @@ export function WorkingGroup({
   return (
     <details className="min-w-0" data-testid="working-group">
       <summary className="flex min-w-0 cursor-pointer list-none items-baseline py-1 text-xs text-muted-foreground [&::-webkit-details-marker]:hidden [&::marker]:content-none">
-        <span className="min-w-0 truncate">{workingHeading(seconds, workingOn(items))}</span>
+        <span className="min-w-0 truncate">{workingHeading(seconds)}</span>
       </summary>
       <div className="pl-4">
         {items.map((item) => (

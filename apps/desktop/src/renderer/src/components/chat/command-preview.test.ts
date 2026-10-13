@@ -4,8 +4,7 @@ import {
   COMMAND_PREVIEW_LENGTH,
   commandInputDetail,
   commandRun,
-  toolCallSummary,
-  workingOn
+  toolCallSummary
 } from './command-preview'
 
 const tool = (patch: {
@@ -86,13 +85,6 @@ test('describes a tool after the dot instead of its status', () => {
   assert.equal(
     toolCallSummary(tool({ title: 'WebSearch', input: '{"query":"cerebro"}' })).line,
     'WebSearch · cerebro'
-  )
-  assert.equal(
-    workingOn([
-      tool({ title: 'Read', input: '{"file_path":"a.ts"}' }),
-      tool({ title: 'Bash', input: JSON.stringify({ command: 'pwd', description: 'Where am I' }) })
-    ]),
-    'Working on a.ts, Where am I'
   )
 })
 
