@@ -2,6 +2,7 @@ import { memo, useState } from 'react'
 import type { AgentAnswer, ChatItem as Item } from '@cerebro/core'
 import { Button } from '@/components/ui/button'
 import { AgentMarkdown } from '@/components/markdown/agent-markdown'
+import { commandInputDetail, commandRun, type CommandRun } from './command-preview'
 import { ChatDiff } from './chat-diff'
 import { ChatTaskOutcome } from './chat-task-outcome'
 import { ChatUserMessage } from './chat-user-message'
@@ -89,6 +90,51 @@ function RequestCard({
   )
 }
 
+function CommandRunRow({ item, run }: { item: Item; run: CommandRun }): React.JSX.Element {
+  const detail = commandInputDetail(item.input, run.command)
+  const title = item.title?.trim()
+  const label = title && title !== run.command ? title : 'Command'
+  return (
+    <details
+      className="group min-w-0 rounded-xl border border-border/70 bg-muted/15 px-3 py-2"
+      data-testid="command-run"
+    >
+      <summary className="cursor-pointer text-xs text-muted-foreground">
+        <span className="block truncate">
+          {label}
+          {item.status ? ` · ${item.status}` : ''}
+        </span>
+        {run.preview ? (
+          <span
+            data-testid="command-preview"
+            className="mt-1 block font-mono text-[11px] leading-4 break-all text-foreground/80 group-open:hidden"
+          >
+            {run.preview}
+          </span>
+        ) : null}
+      </summary>
+      {run.command ? (
+        <pre
+          data-testid="command-full"
+          className="mt-2 max-h-60 overflow-auto font-mono text-xs leading-5 whitespace-pre-wrap break-words"
+        >
+          {run.command}
+        </pre>
+      ) : null}
+      {detail ? (
+        <pre className="my-2 max-h-60 overflow-auto text-xs whitespace-pre-wrap break-words text-muted-foreground">
+          {detail}
+        </pre>
+      ) : null}
+      {item.text ? (
+        <pre className="mt-2 max-h-96 overflow-auto text-xs leading-5 whitespace-pre-wrap break-words">
+          {item.text}
+        </pre>
+      ) : null}
+    </details>
+  )
+}
+
 export const ChatItem = memo(function ChatItem({
   item,
   onReply,
@@ -129,6 +175,10 @@ export const ChatItem = memo(function ChatItem({
         {item.text}
       </p>
     )
+  if (item.kind === 'tool') {
+    const run = commandRun(item)
+    if (run) return <CommandRunRow item={item} run={run} />
+  }
   return (
     <details
       className="min-w-0 rounded-xl border border-border/70 bg-muted/15 px-3 py-2"
