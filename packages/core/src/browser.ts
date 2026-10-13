@@ -4,3 +4,4 @@
  */
 export * from './chat'
 export * from './agent-defaults'
+export * from './panes'
