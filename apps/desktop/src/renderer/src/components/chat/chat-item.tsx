@@ -4,11 +4,13 @@ import { Button } from '@/components/ui/button'
 import { AgentMarkdown } from '@/components/markdown/agent-markdown'
 import { cn } from '@/lib/utils'
 import './chat-status.css'
-import { commandInputDetail, commandRun, type CommandRun } from './command-preview'
+import { commandInputDetail, commandRun } from './command-preview'
 import { ChatDiff } from './chat-diff'
 import { ToolTypeIcon } from './tool-type-icon'
 import { ChatTaskOutcome } from './chat-task-outcome'
 import { ChatUserMessage } from './chat-user-message'
+import { workingLabel } from './working-label'
+import { useWorkingSeconds } from './working-seconds'
 
 function RequestCard({
   item,
@@ -93,42 +95,46 @@ function RequestCard({
   )
 }
 
-function CommandRunRow({ item, run }: { item: Item; run: CommandRun }): React.JSX.Element {
-  const detail = commandInputDetail(item.input, run.command)
+function ToolCallLine({ item }: { item: Item }): React.JSX.Element {
+  const run = commandRun(item)
   const running = item.status === 'running'
+  const seconds = useWorkingSeconds(running)
+  const label = run?.label ?? item.title ?? 'Tool'
+  const summary = run
+    ? run.preview
+    : `${label}${item.status && !running ? ` · ${item.status}` : ''}`
+  const detail = run ? commandInputDetail(item.input, run.command) : item.input
   return (
-    <details
-      className="group min-w-0 rounded-xl border border-border/70 bg-muted/15 px-3 py-2"
-      data-testid="command-run"
-    >
-      <summary className="flex min-w-0 cursor-pointer list-none items-center gap-2 text-xs text-muted-foreground [&::-webkit-details-marker]:hidden">
-        <ToolTypeIcon name="shell" />
+    <details className="min-w-0" data-testid={run ? 'command-run' : 'tool-call'}>
+      <summary className="flex min-w-0 cursor-pointer list-none items-center gap-2 py-1 text-xs text-muted-foreground [&::-webkit-details-marker]:hidden [&::marker]:content-none">
+        <ToolTypeIcon name={run ? 'shell' : undefined} title={run ? undefined : item.title} />
         <span
-          data-testid="command-preview"
-          className={cn(
-            'min-w-0 truncate font-mono group-open:hidden',
-            running ? 'chat-working' : 'text-muted-foreground'
-          )}
+          data-testid={run ? 'command-preview' : undefined}
+          className={cn('min-w-0 flex-1 truncate', running && 'chat-working')}
         >
-          {run.preview}
+          {summary}
         </span>
-        <span className="hidden min-w-0 truncate group-open:inline">{`> ${run.shell}`}</span>
+        {running ? (
+          <span data-testid="tool-working" className="chat-working shrink-0">
+            {workingLabel(seconds)}
+          </span>
+        ) : null}
       </summary>
-      {run.command ? (
+      {run?.command ? (
         <pre
           data-testid="command-full"
-          className="mt-2 max-h-60 overflow-auto font-mono text-xs leading-5 whitespace-pre-wrap break-words"
+          className="mt-1 max-h-60 overflow-auto pl-6 font-mono text-xs leading-5 whitespace-pre-wrap break-words"
         >
           {run.command}
         </pre>
       ) : null}
       {detail ? (
-        <pre className="my-2 max-h-60 overflow-auto text-xs whitespace-pre-wrap break-words text-muted-foreground">
+        <pre className="my-1 max-h-60 overflow-auto pl-6 text-xs whitespace-pre-wrap break-words text-muted-foreground">
           {detail}
         </pre>
       ) : null}
       {item.text ? (
-        <pre className="mt-2 max-h-96 overflow-auto text-xs leading-5 whitespace-pre-wrap break-words">
+        <pre className="mt-1 max-h-96 overflow-auto pl-6 text-xs leading-5 whitespace-pre-wrap break-words">
           {item.text}
         </pre>
       ) : null}
@@ -176,30 +182,7 @@ export const ChatItem = memo(function ChatItem({
         {item.text}
       </p>
     )
-  if (item.kind === 'tool') {
-    const run = commandRun(item)
-    if (run) return <CommandRunRow item={item} run={run} />
-    const label = item.title ?? 'Tool'
-    return (
-      <details className="min-w-0 rounded-xl border border-border/70 bg-muted/15 px-3 py-2">
-        <summary className="flex min-w-0 cursor-pointer list-none items-center gap-2 text-xs text-muted-foreground [&::-webkit-details-marker]:hidden">
-          <ToolTypeIcon title={item.title} />
-          <span className={cn('min-w-0 truncate', item.status === 'running' && 'chat-working')}>
-            {label}
-            {item.status ? ` · ${item.status}` : ''}
-          </span>
-        </summary>
-        {item.input ? (
-          <pre className="my-2 max-h-60 overflow-auto text-xs whitespace-pre-wrap break-words text-muted-foreground">
-            {item.input}
-          </pre>
-        ) : null}
-        <pre className="mt-2 max-h-96 overflow-auto text-xs leading-5 whitespace-pre-wrap break-words">
-          {item.text}
-        </pre>
-      </details>
-    )
-  }
+  if (item.kind === 'tool') return <ToolCallLine item={item} />
   return (
     <details
       className="min-w-0 rounded-xl border border-border/70 bg-muted/15 px-3 py-2"

@@ -5,14 +5,23 @@ export const COMMAND_PREVIEW_LENGTH = 80
 
 const SHELL_TOOLS = new Set(['bash', 'shell', 'powershell', 'cmd', 'terminal'])
 
+/** Display name for a shell tool, matching the way `Read` is written. */
+const SHELL_LABELS: Record<string, string> = {
+  bash: 'Bash',
+  shell: 'Shell',
+  powershell: 'PowerShell',
+  cmd: 'Cmd',
+  terminal: 'Terminal'
+}
+
 type CommandFields = Pick<ChatItem, 'kind' | 'title' | 'input' | 'text'>
 
 export type CommandRun = {
   /** The shell command, when the row has one. */
   command: string
-  /** Lowercase shell name used in the collapsed line, such as `bash`. */
-  shell: string
-  /** One collapsed line: `> bash <command>`, ending in `....` when it is longer. */
+  /** Tool name shown like other calls: `Bash`, or `Shell` when the title is the command. */
+  label: string
+  /** One line: `Bash <command>`, ending in `....` when it is longer. */
   preview: string
 }
 
@@ -46,14 +55,13 @@ function isToolName(title: string): boolean {
   return /^[A-Za-z][A-Za-z0-9_.:-]*$/.test(title) && /[A-Z]/.test(title)
 }
 
-function shellName(title: string): string {
-  const lower = title.toLowerCase()
-  return SHELL_TOOLS.has(lower) ? lower : 'bash'
+function shellLabel(title: string): string {
+  return SHELL_LABELS[title.toLowerCase()] ?? 'Shell'
 }
 
-/** `> bash <command>`, cut to one line with `....` when the command is longer. */
-function collapsedLine(shell: string, command: string): string {
-  const line = command ? `> ${shell} ${command}` : `> ${shell}`
+/** `Bash <command>`, cut to one line with `....` when the command is longer. */
+function collapsedLine(label: string, command: string): string {
+  const line = command ? `${label} ${command}` : label
   if (line.length <= COMMAND_PREVIEW_LENGTH) return line
   return `${line.slice(0, COMMAND_PREVIEW_LENGTH).trimEnd()}....`
 }
@@ -67,7 +75,7 @@ export function commandRun(item: CommandFields): CommandRun | null {
   const title = item.title?.trim() ?? ''
   const fromInput = commandFromInput(item.input)
   const shellTool = SHELL_TOOLS.has(title.toLowerCase())
-  const shell = shellName(title)
+  const label = shellLabel(title)
   let command: string | null = null
   if (shellTool) command = fromInput ?? ''
   else if (fromInput) command = fromInput
@@ -76,7 +84,7 @@ export function commandRun(item: CommandFields): CommandRun | null {
 
   const commandFlat = oneLine(command)
   if (!commandFlat && !shellTool) return null
-  return { command: commandFlat, shell, preview: collapsedLine(shell, commandFlat) }
+  return { command: commandFlat, label, preview: collapsedLine(label, commandFlat) }
 }
 
 /** Input fields other than the command itself, shown only after the row is expanded. */

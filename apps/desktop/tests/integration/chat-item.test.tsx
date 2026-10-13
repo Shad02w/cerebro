@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { ChatItem as Item } from '@cerebro/core'
@@ -34,12 +34,16 @@ describe('ChatItem command runs', () => {
       />
     )
     const preview = screen.getByTestId('command-preview')
-    expect(preview).toHaveTextContent(/^> bash echo segment/)
+    const row = screen.getByTestId('command-run')
+    expect(preview).toHaveTextContent(/^Bash echo segment/)
     expect(preview).toHaveTextContent(/\.\.\.\.$/)
+    expect(preview.textContent).not.toContain('>')
     expect(preview.textContent).not.toContain('tail')
     expect(preview.textContent).not.toContain('printed-line')
     expect(preview.className).toContain('truncate')
     expect(preview.className).not.toContain('chat-working')
+    expect(row.className).not.toContain('border')
+    expect(screen.queryByTestId('tool-working')).toBeNull()
 
     await userEvent.click(preview)
     expect(screen.getByTestId('command-run')).toHaveAttribute('open')
@@ -48,23 +52,36 @@ describe('ChatItem command runs', () => {
     expect(screen.getByText(/printed-line/)).toBeInTheDocument()
   })
 
-  it('uses the shimmer while the command is running', () => {
-    render(
-      <ChatItem
-        item={item({
-          title: 'Bash',
-          status: 'running',
-          input: JSON.stringify({ command: 'npm test' })
-        })}
-        onReply={() => {}}
-        workspaceId={1}
-        sessionId="session"
-      />
-    )
-    const preview = screen.getByTestId('command-preview')
-    expect(preview).toHaveTextContent('> bash npm test')
-    expect(preview).toHaveClass('chat-working')
-    expect(screen.getByTestId('command-run').querySelector('[data-tool-icon="shell"]')).toBeTruthy()
+  it('uses the shimmer and a working timer while the command is running', () => {
+    vi.useFakeTimers()
+    try {
+      render(
+        <ChatItem
+          item={item({
+            title: 'Bash',
+            status: 'running',
+            input: JSON.stringify({ command: 'npm test' })
+          })}
+          onReply={() => {}}
+          workspaceId={1}
+          sessionId="session"
+        />
+      )
+      const preview = screen.getByTestId('command-preview')
+      expect(preview).toHaveTextContent('Bash npm test')
+      expect(preview).toHaveClass('chat-working')
+      expect(screen.getByTestId('tool-working')).toHaveTextContent('working for 0s')
+      expect(screen.getByTestId('tool-working')).toHaveClass('chat-working')
+      expect(
+        screen.getByTestId('command-run').querySelector('[data-tool-icon="shell"]')
+      ).toBeTruthy()
+      act(() => {
+        vi.advanceTimersByTime(2000)
+      })
+      expect(screen.getByTestId('tool-working')).toHaveTextContent('working for 2s')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('uses a different icon for each tool', () => {
@@ -89,6 +106,8 @@ describe('ChatItem command runs', () => {
     )
     expect(document.querySelector('[data-tool-icon="web"]')).toBeTruthy()
     expect(screen.getByText(/WebSearch/)).toHaveClass('chat-working')
+    expect(screen.getByTestId('tool-call').className).not.toContain('border')
+    expect(screen.getByTestId('tool-working')).toHaveTextContent(/^working for \d+s$/)
   })
 
   it('does not preview a file tool', () => {

@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button'
 import { StarsBackground } from '@/lib/stars-background'
 import { cn } from '@/lib/utils'
 import { ChatItem } from './chat-item'
+import { WorkingFor } from './working-for'
 import { ChatScrollEndButton } from './chat-scroll-end'
 import { ChatTurnActions } from './chat-turn-actions'
 import { ChatTurnRail } from './chat-turn-rail'
@@ -472,11 +473,7 @@ export function ChatView({
                     )
                   })
                 : null}
-              {session?.status === 'running' ? (
-                <div role="status" className="text-sm text-muted-foreground">
-                  <span className="chat-working">Working…</span>
-                </div>
-              ) : null}
+              {session?.status === 'running' ? <WorkingFor /> : null}
               {!empty && alertText ? (
                 <p
                   role="alert"
