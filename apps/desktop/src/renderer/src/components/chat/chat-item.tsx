@@ -2,8 +2,11 @@ import { memo, useState } from 'react'
 import type { AgentAnswer, ChatItem as Item } from '@cerebro/core'
 import { Button } from '@/components/ui/button'
 import { AgentMarkdown } from '@/components/markdown/agent-markdown'
+import { cn } from '@/lib/utils'
+import './chat-status.css'
 import { commandInputDetail, commandRun, type CommandRun } from './command-preview'
 import { ChatDiff } from './chat-diff'
+import { ToolTypeIcon } from './tool-type-icon'
 import { ChatTaskOutcome } from './chat-task-outcome'
 import { ChatUserMessage } from './chat-user-message'
 
@@ -92,26 +95,24 @@ function RequestCard({
 
 function CommandRunRow({ item, run }: { item: Item; run: CommandRun }): React.JSX.Element {
   const detail = commandInputDetail(item.input, run.command)
-  const title = item.title?.trim()
-  const label = title && title !== run.command ? title : 'Command'
+  const running = item.status === 'running'
   return (
     <details
       className="group min-w-0 rounded-xl border border-border/70 bg-muted/15 px-3 py-2"
       data-testid="command-run"
     >
-      <summary className="cursor-pointer text-xs text-muted-foreground">
-        <span className="block truncate">
-          {label}
-          {item.status ? ` · ${item.status}` : ''}
+      <summary className="flex min-w-0 cursor-pointer list-none items-center gap-2 text-xs text-muted-foreground [&::-webkit-details-marker]:hidden">
+        <ToolTypeIcon name="shell" />
+        <span
+          data-testid="command-preview"
+          className={cn(
+            'min-w-0 truncate font-mono group-open:hidden',
+            running ? 'chat-working' : 'text-muted-foreground'
+          )}
+        >
+          {run.preview}
         </span>
-        {run.preview ? (
-          <span
-            data-testid="command-preview"
-            className="mt-1 block font-mono text-[11px] leading-4 break-all text-foreground/80 group-open:hidden"
-          >
-            {run.preview}
-          </span>
-        ) : null}
+        <span className="hidden min-w-0 truncate group-open:inline">{`> ${run.shell}`}</span>
       </summary>
       {run.command ? (
         <pre
@@ -178,6 +179,26 @@ export const ChatItem = memo(function ChatItem({
   if (item.kind === 'tool') {
     const run = commandRun(item)
     if (run) return <CommandRunRow item={item} run={run} />
+    const label = item.title ?? 'Tool'
+    return (
+      <details className="min-w-0 rounded-xl border border-border/70 bg-muted/15 px-3 py-2">
+        <summary className="flex min-w-0 cursor-pointer list-none items-center gap-2 text-xs text-muted-foreground [&::-webkit-details-marker]:hidden">
+          <ToolTypeIcon title={item.title} />
+          <span className={cn('min-w-0 truncate', item.status === 'running' && 'chat-working')}>
+            {label}
+            {item.status ? ` · ${item.status}` : ''}
+          </span>
+        </summary>
+        {item.input ? (
+          <pre className="my-2 max-h-60 overflow-auto text-xs whitespace-pre-wrap break-words text-muted-foreground">
+            {item.input}
+          </pre>
+        ) : null}
+        <pre className="mt-2 max-h-96 overflow-auto text-xs leading-5 whitespace-pre-wrap break-words">
+          {item.text}
+        </pre>
+      </details>
+    )
   }
   return (
     <details

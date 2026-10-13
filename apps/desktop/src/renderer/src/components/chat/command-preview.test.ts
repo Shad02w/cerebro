@@ -23,10 +23,12 @@ test('previews a long Bash command with a .... marker and keeps the command', ()
     })
   )
   assert.ok(run)
+  assert.equal(run.shell, 'bash')
   assert.equal(run.command, command.replace(/\s+/g, ' ').trim())
-  assert.equal(run.preview.length, COMMAND_PREVIEW_LENGTH + '....'.length)
+  assert.ok(run.preview.startsWith('> bash echo hello'))
   assert.ok(run.preview.endsWith('....'))
-  assert.ok(run.preview.startsWith('echo hello'))
+  assert.ok(run.preview.length <= COMMAND_PREVIEW_LENGTH + '....'.length)
+  assert.equal(run.preview.includes('hello\n'), false)
   assert.equal(run.preview.includes(command), false)
   assert.equal(
     commandInputDetail(JSON.stringify({ command, description: 'Say hello' }), run.command),
@@ -34,9 +36,9 @@ test('previews a long Bash command with a .... marker and keeps the command', ()
   )
 })
 
-test('shows a short command and its output without a marker', () => {
+test('shows a short command on one line without a marker or the output', () => {
   const run = commandRun(tool({ title: 'pwd', text: '/tmp\n' }))
-  assert.deepEqual(run, { command: 'pwd', preview: 'pwd /tmp' })
+  assert.deepEqual(run, { command: 'pwd', shell: 'bash', preview: '> bash pwd' })
 })
 
 test('reads a command out of a partial JSON input while it is still streaming', () => {
@@ -47,6 +49,7 @@ test('reads a command out of a partial JSON input while it is still streaming', 
     })
   )
   assert.equal(run?.command, 'git status --short && echo still-streaming')
+  assert.equal(run?.preview, '> bash git status --short && echo still-streaming')
 })
 
 test('leaves file tools collapsed to their name', () => {

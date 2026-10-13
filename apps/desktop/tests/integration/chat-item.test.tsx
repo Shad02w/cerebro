@@ -34,17 +34,61 @@ describe('ChatItem command runs', () => {
       />
     )
     const preview = screen.getByTestId('command-preview')
-    expect(preview).toHaveTextContent(/^echo segment/)
+    expect(preview).toHaveTextContent(/^> bash echo segment/)
     expect(preview).toHaveTextContent(/\.\.\.\.$/)
     expect(preview.textContent).not.toContain('tail')
-    expect(preview.className).toContain('group-open:hidden')
-    expect(screen.getByText(/Bash/)).toBeInTheDocument()
+    expect(preview.textContent).not.toContain('printed-line')
+    expect(preview.className).toContain('truncate')
+    expect(preview.className).not.toContain('chat-working')
 
-    await userEvent.click(screen.getByText(/Bash/))
+    await userEvent.click(preview)
     expect(screen.getByTestId('command-run')).toHaveAttribute('open')
     expect(screen.getByTestId('command-full')).toHaveTextContent(command)
     expect(screen.getByText(/Print segments/)).toBeInTheDocument()
     expect(screen.getByText(/printed-line/)).toBeInTheDocument()
+  })
+
+  it('uses the shimmer while the command is running', () => {
+    render(
+      <ChatItem
+        item={item({
+          title: 'Bash',
+          status: 'running',
+          input: JSON.stringify({ command: 'npm test' })
+        })}
+        onReply={() => {}}
+        workspaceId={1}
+        sessionId="session"
+      />
+    )
+    const preview = screen.getByTestId('command-preview')
+    expect(preview).toHaveTextContent('> bash npm test')
+    expect(preview).toHaveClass('chat-working')
+    expect(screen.getByTestId('command-run').querySelector('[data-tool-icon="shell"]')).toBeTruthy()
+  })
+
+  it('uses a different icon for each tool', () => {
+    const { rerender } = render(
+      <ChatItem
+        item={item({ title: 'Read', input: '{"file_path":"a.ts"}', text: 'export const a = 1\n' })}
+        onReply={() => {}}
+        workspaceId={1}
+        sessionId="session"
+      />
+    )
+    expect(screen.queryByTestId('command-preview')).toBeNull()
+    expect(document.querySelector('[data-tool-icon="read"]')).toBeTruthy()
+
+    rerender(
+      <ChatItem
+        item={item({ title: 'WebSearch', status: 'running', text: 'results' })}
+        onReply={() => {}}
+        workspaceId={1}
+        sessionId="session"
+      />
+    )
+    expect(document.querySelector('[data-tool-icon="web"]')).toBeTruthy()
+    expect(screen.getByText(/WebSearch/)).toHaveClass('chat-working')
   })
 
   it('does not preview a file tool', () => {

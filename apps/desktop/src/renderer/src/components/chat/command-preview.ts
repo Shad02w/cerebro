@@ -10,7 +10,9 @@ type CommandFields = Pick<ChatItem, 'kind' | 'title' | 'input' | 'text'>
 export type CommandRun = {
   /** The shell command, when the row has one. */
   command: string
-  /** One line shown while the row is collapsed. Longer runs end with `....`. */
+  /** Lowercase shell name used in the collapsed line, such as `bash`. */
+  shell: string
+  /** One collapsed line: `> bash <command>`, ending in `....` when it is longer. */
   preview: string
 }
 
@@ -44,6 +46,18 @@ function isToolName(title: string): boolean {
   return /^[A-Za-z][A-Za-z0-9_.:-]*$/.test(title) && /[A-Z]/.test(title)
 }
 
+function shellName(title: string): string {
+  const lower = title.toLowerCase()
+  return SHELL_TOOLS.has(lower) ? lower : 'bash'
+}
+
+/** `> bash <command>`, cut to one line with `....` when the command is longer. */
+function collapsedLine(shell: string, command: string): string {
+  const line = command ? `> ${shell} ${command}` : `> ${shell}`
+  if (line.length <= COMMAND_PREVIEW_LENGTH) return line
+  return `${line.slice(0, COMMAND_PREVIEW_LENGTH).trimEnd()}....`
+}
+
 /**
  * Bash and shell rows. Claude names the tool `Bash` and puts the command in `input`.
  * Codex puts the command in the title. Other tools stay null.
@@ -53,6 +67,7 @@ export function commandRun(item: CommandFields): CommandRun | null {
   const title = item.title?.trim() ?? ''
   const fromInput = commandFromInput(item.input)
   const shellTool = SHELL_TOOLS.has(title.toLowerCase())
+  const shell = shellName(title)
   let command: string | null = null
   if (shellTool) command = fromInput ?? ''
   else if (fromInput) command = fromInput
@@ -60,14 +75,8 @@ export function commandRun(item: CommandFields): CommandRun | null {
   else return null
 
   const commandFlat = oneLine(command)
-  const output = oneLine(item.text)
-  const flat = [commandFlat, output].filter(Boolean).join(' ')
-  if (!flat) return null
-  const preview =
-    flat.length <= COMMAND_PREVIEW_LENGTH
-      ? flat
-      : `${flat.slice(0, COMMAND_PREVIEW_LENGTH).trimEnd()}....`
-  return { command: commandFlat, preview }
+  if (!commandFlat && !shellTool) return null
+  return { command: commandFlat, shell, preview: collapsedLine(shell, commandFlat) }
 }
 
 /** Input fields other than the command itself, shown only after the row is expanded. */
