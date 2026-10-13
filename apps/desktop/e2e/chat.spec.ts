@@ -280,7 +280,7 @@ test('chat works through native adapters, survives reload, handles requests, and
     await page.reload()
     await expect(page.getByRole('button', { name: 'Stop agent' })).toBeVisible()
     const working = page.getByTestId('chat-transcript').getByRole('status')
-    await expect(working).toHaveText('Working')
+    await expect(working).toHaveText('Working...')
     await expect(page.getByRole('separator', { name: 'End of response' })).toHaveCount(3)
     await expect(page.getByTestId('chat-view').getByRole('status')).toHaveCount(1)
     const workingText = working.locator('span')

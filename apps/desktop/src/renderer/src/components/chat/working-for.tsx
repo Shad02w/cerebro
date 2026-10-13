@@ -4,7 +4,7 @@ import './chat-status.css'
 export function WorkingFor(): React.JSX.Element {
   return (
     <div role="status" className="text-sm text-muted-foreground">
-      <span className="chat-working">Working</span>
+      <span className="chat-working">Working...</span>
     </div>
   )
 }
