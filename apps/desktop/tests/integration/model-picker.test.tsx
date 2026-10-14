@@ -17,11 +17,16 @@ const capabilities: AgentCapabilities = {
   fork: 'native'
 }
 
-const model = (harness: AgentHarness, id: string, label: string): AgentModel => ({
-  key: JSON.stringify([harness, 'local', 'configured', id]),
+const model = (
+  harness: AgentHarness,
+  id: string,
+  label: string,
+  provider = 'configured'
+): AgentModel => ({
+  key: JSON.stringify([harness, 'local', provider, id]),
   instance: 'local',
   harness,
-  provider: 'configured',
+  provider,
   id,
   label,
   source: 'native',
@@ -30,13 +35,16 @@ const model = (harness: AgentHarness, id: string, label: string): AgentModel => 
 })
 
 const sonnet = model('claude', 'sonnet', 'Sonnet 5.5')
+const accountDefault = model('claude', 'default', 'Default (recommended) · Sonnet 5.5')
 const gpt = model('codex', 'gpt-5.5', 'GPT-5.5')
 const pi = model('pi', 'pi-model', 'Pi Model')
+const piAnthropic = model('pi', 'claude-sonnet', 'Claude Sonnet', 'anthropic')
+const piRouter = model('pi', 'claude-sonnet', 'Claude Sonnet', 'openrouter')
 
-function catalog(favorites: AgentModel[]): AgentCatalog {
+function catalog(favorites: AgentModel[], models = [sonnet, gpt, pi]): AgentCatalog {
   return {
     capabilities: { claude: capabilities, codex: capabilities, pi: capabilities },
-    models: [sonnet, gpt, pi],
+    models,
     favorites,
     issues: {}
   }
@@ -53,15 +61,20 @@ function Picker({
   return <ModelPicker selected={selected} sessionStarted={sessionStarted} onSelect={setSelected} />
 }
 
-function renderPicker(favorites: AgentModel[], sessionStarted = false): void {
+function renderPicker(
+  favorites: AgentModel[],
+  sessionStarted = false,
+  models?: AgentModel[],
+  initial?: AgentModel
+): void {
   window.cerebro = {
-    agentCatalog: async () => catalog(favorites),
-    agentFavorite: async () => catalog(favorites)
+    agentCatalog: async () => catalog(favorites, models),
+    agentFavorite: async () => catalog(favorites, models)
   } as unknown as typeof window.cerebro
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={client}>
-      <Picker sessionStarted={sessionStarted} />
+      <Picker sessionStarted={sessionStarted} initial={initial} />
     </QueryClientProvider>
   )
 }
@@ -122,5 +135,31 @@ describe('ModelPicker', () => {
     await user.type(screen.getByRole('combobox', { name: 'Search models' }), 'gpt')
     expect(await screen.findByRole('option', { name: /GPT-5.5/ })).toBeInTheDocument()
     expect(screen.queryByRole('option', { name: /Sonnet 5.5/ })).not.toBeInTheDocument()
+  })
+
+  it('lists one Sonnet when the account default names that model', async () => {
+    const user = userEvent.setup()
+    renderPicker([], true, [accountDefault, sonnet, gpt], accountDefault)
+    await waitFor(() =>
+      expect(screen.getByTestId('chat-model-picker-label')).toHaveTextContent(/^Sonnet 5\.5$/)
+    )
+    await user.click(screen.getByTestId('chat-model-picker'))
+    expect(await screen.findByRole('option', { name: 'Sonnet 5.5' })).toBeInTheDocument()
+    expect(screen.getAllByRole('option', { name: /Sonnet 5\.5/ })).toHaveLength(1)
+    expect(screen.queryByRole('option', { name: /Default/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: /Claude Code/ })).not.toBeInTheDocument()
+  })
+
+  it('names the Pi provider when the same model is listed twice', async () => {
+    const user = userEvent.setup()
+    renderPicker([], true, [piAnthropic, piRouter], piAnthropic)
+    await waitFor(() =>
+      expect(screen.getByTestId('chat-model-picker-label')).toHaveTextContent(
+        'Claude Sonnet · anthropic'
+      )
+    )
+    await user.click(screen.getByTestId('chat-model-picker'))
+    expect(await screen.findByRole('option', { name: 'Claude Sonnet · anthropic' })).toBeVisible()
+    expect(screen.getByRole('option', { name: 'Claude Sonnet · openrouter' })).toBeVisible()
   })
 })

@@ -10,6 +10,7 @@ import {
   type AgentModel
 } from '@cerebro/core'
 import type { AppSettings, AppSettingsPatch } from '@shared/types'
+import { catalogOptions, harnessLabels } from '@/components/chat/queries'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import {
@@ -19,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select'
-import { catalogOptions, harnessLabels } from '@/components/chat/queries'
+import { claudeAliasSelection, collapseClaudeDefaultAliases } from '@/lib/claude-default-alias'
 
 type AgentModelSettingsProps = {
   settings: AppSettings
@@ -93,8 +94,10 @@ function ProviderModelGroup({
   piIssue?: string
   onPersist: (model: AgentModel, makeCurrent: boolean) => void
 }): React.JSX.Element | null {
-  const selected = defaultModelForScope(group.models, defaults, group.harness, group.provider)
-  const value = selected?.key ?? group.models[0]?.key
+  const stored = defaultModelForScope(group.models, defaults, group.harness, group.provider)
+  const choices = collapseClaudeDefaultAliases(group.models, group.models)
+  const selected = claudeAliasSelection(stored, group.models) ?? choices[0]
+  const value = selected?.key
   if (!value) return null
   return (
     <div
@@ -106,13 +109,13 @@ function ProviderModelGroup({
       <div className="flex items-center justify-between gap-6">
         <Label className="text-[13px] font-medium">{group.label}</Label>
         <Select
-          items={group.models.map((model) => ({
+          items={choices.map((model) => ({
             value: model.key,
             label: `${model.label}${model.available ? '' : ' (unavailable)'}`
           }))}
           value={value}
           onValueChange={(key): void => {
-            const model = group.models.find((entry) => entry.key === key)
+            const model = choices.find((entry) => entry.key === key)
             if (model) onPersist(model, makeCurrent)
           }}
         >
@@ -126,7 +129,7 @@ function ProviderModelGroup({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {group.models.map((model) => (
+            {choices.map((model) => (
               <SelectItem
                 key={model.key}
                 value={model.key}

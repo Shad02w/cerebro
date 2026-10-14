@@ -84,8 +84,8 @@ describe('agent adapters', { concurrency: 1 }, () => {
       }),
       'Default (recommended) · claude-opus-5-5'
     )
-    // The account default and the sonnet alias both resolve to Sonnet 5.5. The description
-    // tip is that name for both rows, so the default alias must stay labeled as Default.
+    // The account default and the sonnet alias both resolve to Sonnet 5.5. Name the model
+    // on the default alias so the picker can collapse the two rows into Sonnet 5.5.
     assert.equal(
       claudeModelLabel({
         value: 'default',

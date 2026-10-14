@@ -44,3 +44,20 @@ test('a Pi row names the provider when the model name does not', () => {
   })
   assert.equal(modelRowLabel(named, [named]), 'Anthropic Claude Sonnet')
 })
+
+test('the same Pi model from two providers shows the provider, not a repeated id', () => {
+  const anthropic = row({
+    key: 'anthropic',
+    label: 'Claude Sonnet',
+    provider: 'anthropic',
+    id: 'claude-sonnet'
+  })
+  const openrouter = row({
+    key: 'openrouter',
+    label: 'Claude Sonnet',
+    provider: 'openrouter',
+    id: 'claude-sonnet'
+  })
+  assert.equal(modelRowLabel(anthropic, [anthropic, openrouter]), 'Claude Sonnet · anthropic')
+  assert.equal(modelRowLabel(openrouter, [anthropic, openrouter]), 'Claude Sonnet · openrouter')
+})

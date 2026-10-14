@@ -38,9 +38,9 @@ const versionedTip = (description?: string): string | undefined => {
  * Newer builds put capability blurbs first in `description`; older ones put "Opus 5.5" first.
  *
  * `default` is not a model. It clears any override and follows the account default, which
- * currently resolves to the same Sonnet 5.5 as the `sonnet` alias. Claude puts that resolved
- * name first in `description`, so using the tip as the title lists two identical "Sonnet 5.5"
- * rows (`default` and `sonnet`). Keep the alias labeled as Default and name what it points at.
+ * currently resolves to the same Sonnet 5.5 as the `sonnet` alias. Name that model in the
+ * label (`Default · Sonnet 5.5`) so the picker can drop this row when the named model is
+ * already listed. A default that points at nothing else stays, still labeled as Default.
  */
 export const claudeModelLabel = (entry: {
   value?: string
