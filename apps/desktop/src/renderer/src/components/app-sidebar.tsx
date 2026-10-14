@@ -31,6 +31,7 @@ import { HarnessIcon, HarnessStatusIcon } from '@/components/harness-icon'
 import { harnessLabels } from '@/components/chat/queries'
 import { sortAgentActivity, useAgentActivity } from '@/lib/agent-activity'
 import { acceptLayout, layoutOptions } from '@/lib/query-client'
+import { ShortcutKbd, useKeybindBinding } from '@/keybinds'
 import { SETTINGS_SECTIONS } from '@/lib/settings-sections'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -1583,6 +1584,7 @@ export function AppSidebar({
   onBack
 }: AppSidebarProps): React.JSX.Element {
   const isSettings = mode === 'settings'
+  const settingsHotkey = useKeybindBinding('openSettings')
   const [search, setSearch] = useState('')
   const [groupBy, setGroupBy] = useState(sidebarGroupBy)
   const [trackedGroup, setTrackedGroup] = useState(sidebarGroupBy)
@@ -1746,6 +1748,7 @@ export function AppSidebar({
                 >
                   <Settings />
                   <span>Settings</span>
+                  <ShortcutKbd hotkey={settingsHotkey} decorative className="ml-auto shrink-0" />
                 </SidebarMenuButton>
               )}
             </SidebarMenuItem>

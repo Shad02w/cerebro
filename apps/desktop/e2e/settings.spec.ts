@@ -376,8 +376,12 @@ test('settings reuses the app sidebar and navigates by hash route', async ({ pag
   await expect(page.getByTestId('keybind-row-closeTab')).toBeVisible()
   await expect(page.getByTestId('keybind-row-newTerminal')).toBeVisible()
   await expect(page.getByTestId('keybind-row-openChanges')).toBeVisible()
+  await expect(page.getByTestId('keybind-row-openSettings')).toBeVisible()
   await expect(page.getByTestId('keybind-row-toggleSidebar')).toBeVisible()
   await expect(page.getByTestId('keybind-row-toggleDevTools')).toBeVisible()
+  await expect(
+    page.getByTestId('keybind-edit-openSettings').getByTestId('shortcut-kbd')
+  ).toHaveAttribute('data-hotkey', 'Mod+,')
   await expect(page.getByTestId('keybind-edit-closeTab').getByTestId('shortcut-kbd')).toBeVisible()
   await expect(
     page.getByTestId('keybind-edit-newTerminal').getByTestId('shortcut-kbd')
@@ -429,6 +433,49 @@ test('persists the default clone location from settings', async ({ page }) => {
 
   const settings = await page.evaluate(async () => window.cerebro.getSettings())
   expect(settings.defaultCloneDir).toBe(custom)
+})
+
+function openSettingsChord(): string {
+  return process.platform === 'darwin' ? 'Meta+Comma' : 'Control+Comma'
+}
+
+test('opens settings with Mod+, and lists the shortcut', async ({ page }) => {
+  await mkdir(artifactsDir, { recursive: true })
+  await expect(page.getByRole('button', { name: 'Settings', exact: true })).toBeVisible()
+  await expect(page.getByTestId('settings-button').getByTestId('shortcut-kbd')).toHaveAttribute(
+    'data-hotkey',
+    'Mod+,'
+  )
+
+  await page.screenshot({
+    path: path.join(artifactsDir, 'settings-shortcut-sidebar.png'),
+    fullPage: true
+  })
+
+  await page.keyboard.press(openSettingsChord())
+  await expect.poll(() => page.evaluate(() => window.location.hash)).toBe('#/settings/general')
+  await expect(page.getByRole('heading', { name: 'General' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Back' })).toBeVisible()
+
+  await page.screenshot({
+    path: path.join(artifactsDir, 'settings-opened-by-shortcut.png'),
+    fullPage: true
+  })
+
+  await page.getByTestId('settings-nav-keyboard').click()
+  await expect.poll(() => page.evaluate(() => window.location.hash)).toBe('#/settings/keyboard')
+  const row = page.getByTestId('keybind-row-openSettings')
+  await expect(row.getByText('Open Settings')).toBeVisible()
+  await expect(row.getByText('Open the settings page.')).toBeVisible()
+  await expect(row.getByTestId('shortcut-kbd')).toHaveAttribute('data-hotkey', 'Mod+,')
+
+  await page.keyboard.press(openSettingsChord())
+  await expect.poll(() => page.evaluate(() => window.location.hash)).toBe('#/settings/keyboard')
+
+  await page.screenshot({
+    path: path.join(artifactsDir, 'settings-keyboard-open-settings.png'),
+    fullPage: true
+  })
 })
 
 test('persists remapped keyboard shortcuts from settings', async ({ page }) => {

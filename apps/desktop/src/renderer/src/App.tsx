@@ -89,6 +89,15 @@ function SidebarKeybindBridge(): null {
   return null
 }
 
+function SettingsKeybindBridge(): null {
+  const route = useAppRoute()
+  useKeybindHandler('openSettings', () => {
+    if (route.name !== 'settings') navigate(settingsPath('general'))
+    return true
+  })
+  return null
+}
+
 function App(): React.JSX.Element {
   const layoutQuery = useQuery(layoutOptions)
   const [startupComplete, setStartupComplete] = useState(false)
@@ -175,6 +184,7 @@ function App(): React.JSX.Element {
       <SidebarProvider className="h-full">
         <KeybindProvider overrides={settings?.keybinds}>
           <SidebarKeybindBridge />
+          <SettingsKeybindBridge />
           <ExpandSidebarOnSettings enabled={isSettings} />
           <WindowDragOverlay
             showSidebarTrigger={!isSettings}
