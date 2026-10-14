@@ -10,9 +10,14 @@ import {
 import { ChevronDown, Search, Star, RefreshCw } from 'lucide-react'
 import type { AgentCatalog, AgentHarness, AgentModel } from '@cerebro/core'
 import { Button } from '@/components/ui/button'
+import {
+  claudeAliasSelection,
+  claudeDefaultAliasTarget,
+  collapseClaudeDefaultAliases
+} from '@/lib/claude-default-alias'
+import { sortAgentModels } from '@/lib/model-order'
 import { cn } from '@/lib/utils'
 import { modelRowLabel } from './model-row-label'
-import { sortAgentModels } from '@/lib/model-order'
 import { harnessLabels, catalogOptions } from './queries'
 import claudeIcon from '@/assets/agents/claude.svg'
 import codexIcon from '@/assets/agents/codex.svg'
@@ -52,6 +57,7 @@ interface ModelCatalogState {
   favorite: UseMutationResult<AgentCatalog, Error, { key: string; value: boolean }>
   refresh: UseMutationResult<AgentCatalog, Error, void>
   favorites: AgentCatalog['favorites']
+  models: AgentModel[]
   rows: AgentModel[]
   peers: AgentModel[]
   error: Error | null
@@ -80,11 +86,13 @@ function useModelCatalog(
   // Before a chat exists, open on favorites when the user has any. A chosen rail wins after that.
   const filter: PickerFilter =
     manualFilter ?? (!sessionStarted && favorites.length > 0 ? 'favorites' : (harness ?? 'claude'))
-  const candidates = query
+  const listed = query
     ? models
     : filter === 'favorites'
       ? favorites.map((f) => models.find((m) => m.key === f.key) ?? { ...f, available: false })
       : models.filter((m) => m.harness === filter)
+  // `default` and `sonnet` both resolve to Sonnet 5.5. Show the named model once.
+  const candidates = collapseClaudeDefaultAliases(listed, models)
   const matched = query ? candidates.filter((m) => matchesSearch(m, query)) : candidates
   // Favorites stay in the order the user starred them. Every other list leads with the newest model.
   const rows = !query && filter === 'favorites' ? matched : sortAgentModels(matched)
@@ -94,6 +102,7 @@ function useModelCatalog(
     favorite,
     refresh,
     favorites,
+    models,
     rows,
     peers: candidates,
     error,
@@ -255,13 +264,24 @@ export function ModelPicker({
   const [search, setSearch] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
   const [manualFilter, setManualFilter] = useState<PickerFilter | null>(null)
-  const { catalog, favorite, refresh, favorites, rows, peers, error, filter, searching } =
+  const { catalog, favorite, refresh, favorites, models, rows, peers, error, filter, searching } =
     useModelCatalog(manualFilter, search, sessionStarted, selected?.harness)
+  // A selected account default highlights the Sonnet (or other model) it currently names.
+  const shown = claudeAliasSelection(selected, models)
+  const shownLabel = shown
+    ? modelRowLabel(
+        shown,
+        collapseClaudeDefaultAliases(
+          models.filter((model) => model.harness === shown.harness),
+          models
+        )
+      )
+    : ''
   return (
     <Combobox.Root
       items={rows}
       filter={null}
-      value={selected ?? null}
+      value={shown ?? null}
       onValueChange={(model) => {
         if (model) onSelect(model)
       }}
@@ -284,20 +304,18 @@ export function ModelPicker({
             variant="ghost"
             size="sm"
             data-testid="chat-model-picker"
-            title={
-              selected ? `${selected.label} · ${harnessLabels[selected.harness]}` : 'Choose model'
-            }
+            title={shown ? `${shownLabel} · ${harnessLabels[shown.harness]}` : 'Choose model'}
             className="max-w-full min-w-0 gap-1 px-2 text-xs"
           />
         }
       >
-        {selected ? (
+        {shown ? (
           <>
-            <HarnessIcon harness={selected.harness} compact />
+            <HarnessIcon harness={shown.harness} compact />
             <span data-testid="chat-model-picker-label" className="truncate">
-              {selected.label}
+              {shownLabel}
             </span>
-            <span className="sr-only">{harnessLabels[selected.harness]}</span>
+            <span className="sr-only">{harnessLabels[shown.harness]}</span>
           </>
         ) : (
           <span className="truncate">Choose model</span>
@@ -346,17 +364,27 @@ export function ModelPicker({
                 <div className="model-picker-list min-h-0 flex-1 overflow-y-auto">
                   <Combobox.List aria-label="Models">
                     {(m: AgentModel) => {
-                      const isFavorite = favorites.some((f) => f.key === m.key)
+                      const alias = models.find(
+                        (model) => claudeDefaultAliasTarget(model, models)?.key === m.key
+                      )
+                      const isFavorite = favorites.some(
+                        (favoriteModel) =>
+                          favoriteModel.key === m.key || favoriteModel.key === alias?.key
+                      )
                       return (
                         <ModelRow
                           key={m.key}
                           model={m}
                           peers={peers}
-                          selected={selected?.key === m.key}
+                          selected={shown?.key === m.key}
                           isFavorite={isFavorite}
                           onToggleFavorite={() => {
-                            if (!favorite.isPending)
-                              favorite.mutate({ key: m.key, value: !isFavorite })
+                            if (favorite.isPending) return
+                            const key =
+                              !isFavorite || favorites.some((entry) => entry.key === m.key)
+                                ? m.key
+                                : alias?.key
+                            if (key) favorite.mutate({ key, value: !isFavorite })
                           }}
                         />
                       )
