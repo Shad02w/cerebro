@@ -1,4 +1,4 @@
-import { useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import { useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   EditorContent,
@@ -18,18 +18,23 @@ import { Extension, Node, mergeAttributes, type Editor, type Extensions } from '
 import { Plugin, PluginKey, NodeSelection, TextSelection } from '@tiptap/pm/state'
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view'
 import { common, createLowlight } from 'lowlight'
-import { chatImageMarker, type ChatAttachmentUpload } from '@cerebro/core'
+import {
+  chatImageMarker,
+  skillTrigger,
+  type AgentHarness,
+  type AgentSkill,
+  type ChatAttachmentUpload,
+  type ChatSkillRef
+} from '@cerebro/core'
 import { cn } from '@/lib/utils'
 import { imageFiles, type Chip } from './chat-attachments'
 import {
-  addTags,
   codeLanguages,
-  promoteAddTagTransaction,
+  promoteSkillTransaction,
   serializeDocument,
   serializedOffset,
   textToContent,
-  visitAddTagText,
-  type TagOption
+  visitSkillText
 } from './composer-document'
 import {
   composerVimKey,
@@ -43,46 +48,53 @@ import type { Mode } from 'vim-prosemirror'
 import './composer-editor.css'
 
 const lowlight = createLowlight(common)
-const addTagKey = new PluginKey('addTag')
-const addTagHighlightKey = new PluginKey('addTagHighlight')
+const skillMentionKey = new PluginKey('skillMention')
+const skillHighlightKey = new PluginKey('skillHighlight')
 
-const AddTagHighlight = Extension.create({
-  name: 'addTagHighlight',
-  addProseMirrorPlugins() {
-    return [
-      new Plugin({
-        key: addTagHighlightKey,
-        appendTransaction(transactions, _oldState, state) {
-          if (
-            !transactions.some((transaction) => transaction.docChanged || transaction.selectionSet)
-          )
-            return null
-          if (transactions.some((transaction) => transaction.getMeta('addTagPromotion')))
-            return null
-          if (transactions.some((transaction) => transaction.getMeta('composition'))) return null
-          const tr = promoteAddTagTransaction(state)
-          if (!tr) return null
-          tr.setMeta('addTagPromotion', true)
-          return tr
-        },
-        props: {
-          decorations(state) {
-            const decorations: Decoration[] = []
-            visitAddTagText(state, (_match, from, to) => {
-              decorations.push(
-                Decoration.inline(from, to, {
-                  class: 'composer-tag',
-                  'data-testid': 'composer-tag'
-                })
+type SkillCatalog = { current: readonly AgentSkill[] }
+
+const skillHighlight = (catalog: SkillCatalog): Extension =>
+  Extension.create({
+    name: 'skillHighlight',
+    addProseMirrorPlugins() {
+      return [
+        new Plugin({
+          key: skillHighlightKey,
+          appendTransaction(transactions, _oldState, state) {
+            const refresh = transactions.some((transaction) => transaction.getMeta('skillRefresh'))
+            if (
+              !refresh &&
+              !transactions.some(
+                (transaction) => transaction.docChanged || transaction.selectionSet
               )
-            })
-            return DecorationSet.create(state.doc, decorations)
+            )
+              return null
+            if (transactions.some((transaction) => transaction.getMeta('skillPromotion')))
+              return null
+            if (transactions.some((transaction) => transaction.getMeta('composition'))) return null
+            const tr = promoteSkillTransaction(state, catalog.current)
+            if (!tr) return null
+            tr.setMeta('skillPromotion', true)
+            return tr
+          },
+          props: {
+            decorations(state) {
+              const decorations: Decoration[] = []
+              visitSkillText(state, catalog.current, (_match, from, to) => {
+                decorations.push(
+                  Decoration.inline(from, to, {
+                    class: 'composer-tag',
+                    'data-testid': 'composer-tag'
+                  })
+                )
+              })
+              return DecorationSet.create(state.doc, decorations)
+            }
           }
-        }
-      })
-    ]
-  }
-})
+        })
+      ]
+    }
+  })
 
 export type ComposerEditorHandle = {
   insertAttachment: (attachmentId: string) => void
@@ -262,14 +274,18 @@ const ImageChip = Node.create({
   }
 })
 
-function TagMenu({
+function SkillMenu({
   ref,
   items,
-  command
+  query,
+  command,
+  issue
 }: {
   ref?: React.Ref<TagMenuHandle>
-  items: TagOption[]
-  command: (item: TagOption) => void
+  items: AgentSkill[]
+  query: string
+  command: (item: AgentSkill) => void
+  issue?: string
 }): React.JSX.Element {
   const itemsKey = items.map((item) => item.id).join('\0')
   const [selected, setSelected] = useState(0)
@@ -299,12 +315,12 @@ function TagMenu({
   }))
   return (
     <div
-      data-testid="composer-add-menu"
+      data-testid="composer-skill-menu"
       role="listbox"
-      aria-label="Add"
-      className="w-52 overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+      aria-label="Skills"
+      className="max-h-64 w-72 overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
     >
-      <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Add</p>
+      <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Skills</p>
       {items.length ? (
         items.map((item, index) => (
           <button
@@ -312,9 +328,9 @@ function TagMenu({
             type="button"
             role="option"
             aria-selected={index === highlighted}
-            data-testid={`composer-add-option-${item.label}`}
+            data-testid={`composer-skill-option-${item.name}`}
             className={cn(
-              'flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm',
+              'flex w-full flex-col items-start rounded-sm px-2 py-1.5 text-left',
               index === highlighted && 'bg-accent text-accent-foreground'
             )}
             onMouseEnter={() => setSelected(index)}
@@ -323,17 +339,36 @@ function TagMenu({
               command(item)
             }}
           >
-            {item.label}
+            <span className="text-sm">{item.name}</span>
+            {item.description ? (
+              <span className="w-full truncate text-xs text-muted-foreground">
+                {item.description}
+              </span>
+            ) : null}
           </button>
         ))
       ) : (
-        <p className="px-2 py-3 text-center text-sm text-muted-foreground">No matches</p>
+        <p className="px-2 py-3 text-center text-sm break-words text-muted-foreground">
+          {query ? 'No matches' : issue || 'No skills'}
+        </p>
       )}
     </div>
   )
 }
 
-const extensionsFor = (menuOpen: { current: boolean }, interactive: boolean): Extensions => {
+const skillOptions = (catalog: SkillCatalog, query: string): AgentSkill[] =>
+  catalog.current
+    .filter((skill) => skill.name.toLowerCase().startsWith(query.toLowerCase()))
+    .slice(0, 50)
+
+const extensionsFor = (
+  menuOpen: { current: boolean },
+  catalog: SkillCatalog,
+  trigger: '$' | '@',
+  interactive: boolean,
+  menuRefresh?: { current: (() => void) | null },
+  issue?: { current: string }
+): Extensions => {
   const CodeBlock = CodeBlockLowlight.extend({
     addNodeView() {
       return ReactNodeViewRenderer(CodeBlockView)
@@ -356,11 +391,23 @@ const extensionsFor = (menuOpen: { current: boolean }, interactive: boolean): Ex
     ImageChip,
     ...(interactive
       ? [
-          AddTagHighlight,
-          Placeholder.configure({ placeholder: 'Ask your agent to work on something…' })
+          skillHighlight(catalog),
+          Placeholder.configure({
+            placeholder:
+              trigger === '$'
+                ? 'Ask your agent to work on something…  $ mentions a skill'
+                : 'Ask your agent to work on something…  @ mentions a skill'
+          })
         ]
       : []),
     Mention.extend({
+      addAttributes() {
+        return {
+          ...this.parent?.(),
+          path: { default: null },
+          prompt: { default: null }
+        }
+      },
       addKeyboardShortcuts() {
         const shortcuts = this.parent?.() ?? {}
         return {
@@ -379,7 +426,8 @@ const extensionsFor = (menuOpen: { current: boolean }, interactive: boolean): Ex
     }).configure({
       deleteTriggerWithBackspace: true,
       HTMLAttributes: { class: 'composer-tag', 'data-testid': 'composer-tag' },
-      renderText: ({ node }) => `@${node.attrs.label ?? node.attrs.id ?? ''}`,
+      renderText: ({ node }) =>
+        `${node.attrs.mentionSuggestionChar ?? trigger}${node.attrs.label ?? node.attrs.id ?? ''}`,
       renderHTML: ({ node }) => [
         'span',
         {
@@ -388,41 +436,72 @@ const extensionsFor = (menuOpen: { current: boolean }, interactive: boolean): Ex
           'data-testid': 'composer-tag',
           'data-id': node.attrs.id
         },
-        `@${node.attrs.label ?? node.attrs.id ?? ''}`
+        `${node.attrs.mentionSuggestionChar ?? trigger}${node.attrs.label ?? node.attrs.id ?? ''}`
       ],
       suggestion: {
-        char: '@',
-        pluginKey: addTagKey,
+        char: trigger,
+        pluginKey: skillMentionKey,
         placement: 'top-start',
-        items: ({ query }) =>
-          addTags.filter((tag) => tag.label.toLowerCase().startsWith(query.toLowerCase())),
+        allow: ({ state, range }) => {
+          const $from = state.doc.resolve(range.from)
+          if ($from.parent.type.spec.code) return false
+          return !$from.marks().some((mark) => mark.type.name === 'code')
+        },
+        items: ({ query }) => skillOptions(catalog, query),
         command: ({ editor, range, props }) => {
+          const skill = props as AgentSkill
           editor
             .chain()
             .focus()
             .insertContentAt(range, [
-              { type: 'mention', attrs: { id: props.id, label: props.label } },
+              {
+                type: 'mention',
+                attrs: {
+                  id: skill.name,
+                  label: skill.name,
+                  mentionSuggestionChar: skill.token.slice(0, 1) || trigger,
+                  path: skill.path,
+                  prompt: skill.prompt
+                }
+              },
               { type: 'text', text: ' ' }
             ])
             .run()
         },
         render: () => {
-          let component: ReactRenderer<TagMenuHandle>
+          let component: ReactRenderer<TagMenuHandle> | undefined
           let unmount: (() => void) | undefined
+          let latest: { query: string; command: (item: AgentSkill) => void } | null = null
+          const show = (props: { query: string; command: (item: AgentSkill) => void }): void => {
+            latest = props
+            component?.updateProps({
+              ...props,
+              items: skillOptions(catalog, props.query),
+              issue: issue?.current
+            })
+          }
+          if (menuRefresh) {
+            menuRefresh.current = () => {
+              if (menuOpen.current && latest) show(latest)
+            }
+          }
           return {
             onStart: (props) => {
               menuOpen.current = true
-              component = new ReactRenderer(TagMenu, { props, editor: props.editor })
+              component = new ReactRenderer(SkillMenu, { props, editor: props.editor })
               unmount = props.mount(component.element)
+              show(props)
             },
             onUpdate: (props) => {
-              component.updateProps(props)
+              show(props)
             },
-            onKeyDown: (props) => component.ref?.onKeyDown(props) ?? false,
+            onKeyDown: (props) => component?.ref?.onKeyDown(props) ?? false,
             onExit: () => {
               menuOpen.current = false
+              latest = null
               unmount?.()
-              component.destroy()
+              component?.destroy()
+              component = undefined
             }
           }
         }
@@ -435,6 +514,9 @@ export function ComposerEditor({
   ref,
   defaultText,
   attachments,
+  skills,
+  harness = 'claude',
+  skillIssue = '',
   getAttachments,
   onDocument,
   onAttachFiles,
@@ -445,8 +527,12 @@ export function ComposerEditor({
   ref?: React.Ref<ComposerEditorHandle>
   defaultText: string
   attachments: ChatAttachmentUpload[]
+  skills: readonly AgentSkill[]
+  harness?: AgentHarness
+  /** Shown in the empty skill menu when the harness could not be asked. */
+  skillIssue?: string
   getAttachments: () => ChatAttachmentUpload[]
-  onDocument: (text: string, chips: Chip[]) => void
+  onDocument: (text: string, chips: Chip[], skills: ChatSkillRef[]) => void
   onAttachFiles: (files: File[]) => void
   onSubmit: () => void
   vim?: ComposerVimOptions
@@ -460,13 +546,37 @@ export function ComposerEditor({
   const getAttachmentsRef = useRef(getAttachments)
   const onAttachFilesRef = useRef(onAttachFiles)
   const editorBox = useRef<Editor | null>(null)
+  const catalogRef = useRef<SkillCatalog>({ current: skills })
+  const issueRef = useRef(skillIssue)
+  const menuRefreshRef = useRef<(() => void) | null>(null)
+  useLayoutEffect(() => {
+    catalogRef.current.current = skills
+    issueRef.current = skillIssue
+  }, [skillIssue, skills])
+  const trigger = skillTrigger(harness)
   const setup = useMemo(() => {
     const menuOpen = { current: false }
-    return { extensions: extensionsFor(menuOpen, true), menuOpen }
+    return {
+      menuOpen,
+      // The plugin is created once per trigger and reads the latest list on each keystroke.
+      extensions: extensionsFor(
+        menuOpen,
+        // eslint-disable-next-line react-hooks/refs -- shared with the ProseMirror plugin created below
+        catalogRef.current,
+        trigger,
+        true,
+        // eslint-disable-next-line react-hooks/refs -- the suggestion renderer stores its refresh here
+        menuRefreshRef,
+        // eslint-disable-next-line react-hooks/refs -- read when the menu renders, not during this render
+        issueRef
+      )
+    }
+    // The editor is remounted when the harness trigger changes, so this runs once per trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-  const mirror = (view: EditorView): { text: string; chips: Chip[] } => {
+  const mirror = (view: EditorView): { text: string; chips: Chip[]; skills: ChatSkillRef[] } => {
     const attachments = getAttachmentsRef.current()
-    const serialized = serializeDocument(view.state.doc, attachments)
+    const serialized = serializeDocument(view.state.doc, attachments, catalogRef.current.current)
     view.dom.setAttribute('data-composer-text', serialized.text)
     view.dom.setAttribute(
       'data-composer-caret',
@@ -476,11 +586,11 @@ export function ComposerEditor({
   }
   const publish = (view: EditorView): void => {
     const serialized = mirror(view)
-    onDocumentRef.current(serialized.text, serialized.chips)
+    onDocumentRef.current(serialized.text, serialized.chips, serialized.skills)
   }
   const editor = useEditor({
     extensions: setup.extensions,
-    content: textToContent(defaultText),
+    content: textToContent(defaultText, { skills }),
     editorProps: {
       attributes: {
         'aria-label': 'Message agent',
@@ -587,6 +697,21 @@ export function ComposerEditor({
     vimRef.current = vim
   }, [editor, getAttachments, onAttachFiles, onDocument, onSubmit, vim])
   const vimEnabled = vim.enabled
+  const skillKey = skills.map((skill) => skill.id).join('\0')
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return
+    publish(editor.view)
+    // Reserialize once per editor so a harness remount drops skill refs from the previous trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor])
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return
+    editor.view.dispatch(editor.state.tr.setMeta('skillRefresh', true))
+    menuRefreshRef.current?.()
+  }, [editor, skillKey])
+  useEffect(() => {
+    menuRefreshRef.current?.()
+  }, [skillIssue])
   useEffect(() => {
     if (!editor || !vimEnabled) return
     const plugin = createComposerVimPlugin(editor)
@@ -677,7 +802,9 @@ export function ComposerEditor({
       },
       replaceText: (text: string) => {
         if (!editor) return
-        editor.commands.setContent(textToContent(text), { emitUpdate: true })
+        editor.commands.setContent(textToContent(text, { skills: catalogRef.current.current }), {
+          emitUpdate: true
+        })
         editor.commands.focus('end')
       },
       focus: () => {
@@ -690,21 +817,28 @@ export function ComposerEditor({
   return <EditorContent editor={editor} />
 }
 
+const noMessageSkills: readonly AgentSkill[] = []
+
 /** The same composer document, without a caret, so a sent message matches what was typed. */
 export function ComposerMessage({
   text,
   attachments,
+  skills = noMessageSkills,
   onImageChip
 }: {
   text: string
   attachments: Array<{ id: string }>
+  skills?: readonly AgentSkill[]
   onImageChip?: (attachmentId: string) => void
 }): React.JSX.Element {
-  const extensions = useMemo(() => extensionsFor({ current: false }, false), [])
+  const extensions = useMemo(
+    () => extensionsFor({ current: false }, { current: [] }, '@', false),
+    []
+  )
   const editor = useEditor({
     editable: false,
     extensions,
-    content: textToContent(text, { attachments }),
+    content: textToContent(text, { attachments, skills }),
     editorProps: {
       attributes: {
         class:
@@ -714,6 +848,12 @@ export function ComposerMessage({
       }
     }
   })
+  const skillKey = skills.map((skill) => `${skill.id}:${skill.token}`).join('\0')
+  const attachmentKey = attachments.map((item) => item.id).join('\0')
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return
+    editor.commands.setContent(textToContent(text, { attachments, skills }), { emitUpdate: false })
+  }, [attachmentKey, attachments, editor, skillKey, skills, text])
   if (editor && onImageChip) imageChipOpeners.set(editor, onImageChip)
   return <EditorContent editor={editor} />
 }

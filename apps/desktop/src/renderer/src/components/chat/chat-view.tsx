@@ -6,6 +6,7 @@ import {
   type AgentAccessMode,
   type AgentAnswer,
   type AgentModel,
+  type AgentSkill,
   type ChatCommand,
   type ChatView as ChatSnapshot
 } from '@cerebro/core'
@@ -44,10 +45,12 @@ import { chatImageAccept, useComposerDraft } from './use-composer-draft'
 import { ModelPicker } from './model-picker'
 import { ContextUsageRing } from './context-usage-ring'
 import { messageToResend } from './model-switch'
-import { catalogOptions, harnessLabels } from './queries'
+import { agentSkillOptions, catalogOptions, harnessLabels } from './queries'
 import { observeChatLayout } from './chat-layout'
 import './chat-scrollbars.css'
 import './chat-status.css'
+
+const noSkills: readonly AgentSkill[] = []
 
 function chatScrollBehavior(): ScrollBehavior {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
@@ -153,6 +156,8 @@ export function ChatView({
     [catalogModels, agentModelDefaults, lastAgent]
   )
   const selected = selection ?? session?.model ?? resolved
+  const skillQuery = useQuery(agentSkillOptions(workspaceId, paneId, selected?.harness))
+  const skillList = skillQuery.data?.skills ?? noSkills
   const inFlight = useRef(false)
   const pendingSend = useRef<{ id: string; text: string; key?: string } | null>(null)
   const viewRef = useRef<HTMLDivElement>(null)
@@ -171,22 +176,13 @@ export function ChatView({
         : null,
     [selected]
   )
-  const {
-    draft,
-    initialText,
-    dragging,
-    attachFiles,
-    remove,
-    clear,
-    onDocument,
-    readDraft,
-    dropHandlers
-  } = useComposerDraft({
-    storageKey: draftKey,
-    editorRef,
-    canAttach: imageRejection,
-    onError: setError
-  })
+  const { draft, dragging, attachFiles, remove, clear, onDocument, readDraft, dropHandlers } =
+    useComposerDraft({
+      storageKey: draftKey,
+      editorRef,
+      canAttach: imageRejection,
+      onError: setError
+    })
   const stick = useRef(true)
   const scrollingToEnd = useRef(false)
   const lastScrollTop = useRef(0)
@@ -374,7 +370,11 @@ export function ChatView({
       setError('Choose an available model first.')
       return
     }
-    const fingerprint = [message.text, ...message.attachments.map((a) => a.id)].join('\u0000')
+    const fingerprint = [
+      message.text,
+      ...message.attachments.map((a) => a.id),
+      ...message.skills.map((skill) => `${skill.name}\u0001${skill.path}`)
+    ].join('\u0000')
     if (
       !pendingSend.current ||
       pendingSend.current.text !== fingerprint ||
@@ -391,6 +391,7 @@ export function ChatView({
         sessionId: session?.id,
         text: message.text,
         ...(message.attachments.length ? { attachments: message.attachments } : {}),
+        ...(message.skills.length ? { skills: message.skills } : {}),
         model: selected,
         reasoning: reasoning || undefined,
         accessMode
@@ -491,6 +492,7 @@ export function ChatView({
                           onReply={reply}
                           workspaceId={workspaceId}
                           sessionId={transcript.id}
+                          skills={skillList}
                           streaming={busy && entry.item.id === transcript.items.at(-1)?.id}
                         />
                       ) : (
@@ -608,9 +610,13 @@ export function ChatView({
                   <DropOverlay visible={dragging} />
                   <AttachmentStrip attachments={draft.attachments} onRemove={remove} />
                   <ComposerEditor
+                    key={selected?.harness ?? 'claude'}
                     ref={editorRef}
-                    defaultText={initialText}
+                    defaultText={draft.text}
                     attachments={draft.attachments}
+                    skills={skillList}
+                    harness={selected?.harness ?? 'claude'}
+                    skillIssue={skillList.length ? '' : (skillQuery.data?.issue ?? '')}
                     getAttachments={() => readDraft().attachments}
                     onDocument={onDocument}
                     vim={vimOptions}

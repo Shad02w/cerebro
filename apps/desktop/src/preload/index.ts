@@ -13,6 +13,8 @@ const api: CerebroApi = {
   chatCommand: (command) => ipcRenderer.invoke(IPC.chat.command, command),
   chatOverview: () => ipcRenderer.invoke(IPC.chat.overview),
   agentCatalog: (refresh) => ipcRenderer.invoke(IPC.chat.catalog, refresh),
+  agentSkills: (workspaceId, paneId, harness) =>
+    ipcRenderer.invoke(IPC.chat.skills, workspaceId, paneId, harness),
   agentFavorite: (key, favorite) => ipcRenderer.invoke(IPC.chat.favorite, key, favorite),
   chatAttachment: (workspaceId, sessionId, attachmentId) =>
     ipcRenderer.invoke(IPC.chat.attachment, workspaceId, sessionId, attachmentId),

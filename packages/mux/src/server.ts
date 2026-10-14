@@ -16,7 +16,7 @@ import { muxDirectory, socketPath, databasePath } from './paths'
 import { readRuntimeManifest } from './runtime-manifest'
 import { StorageWorker } from './worker-client'
 import { AgentSessions } from './agents/service'
-import type { ChatCommand } from '@cerebro/core'
+import { isAgentHarness, type ChatCommand } from '@cerebro/core'
 import { Terminals } from './terminals'
 import { loadShellEnv } from './shell-env'
 import type { LayoutChange } from './layout'
@@ -324,6 +324,20 @@ export async function startServer(): Promise<void> {
           case 'chat.catalog':
             await environment
             return agents.models(Boolean((p as unknown as { refresh?: boolean }).refresh))
+          case 'chat.skills': {
+            await environment
+            const workspaceId = positive(p.workspaceId)
+            const paneId = positive(p.paneId)
+            const harness = (p as { harness?: unknown }).harness
+            if (!isAgentHarness(harness)) throw new MuxError('usage', 'Invalid harness.')
+            const { pane } = findPane(workspaceId, paneId)
+            if (pane.kind !== 'chat') throw new MuxError('conflict', 'Pane is not a chat.')
+            const context = await storage.call<{ cwd: string; repositoryId: number | null }>(
+              'context',
+              { workspaceId, repositoryId: pane.repositoryId ?? undefined }
+            )
+            return agents.skills(harness, context.cwd)
+          }
           case 'chat.favorite': {
             const favorite = p as unknown as { key: string; favorite: boolean }
             if (typeof favorite.key !== 'string' || typeof favorite.favorite !== 'boolean')

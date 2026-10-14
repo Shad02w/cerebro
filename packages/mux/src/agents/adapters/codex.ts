@@ -1,10 +1,36 @@
-import { chatImageMarkerPattern, type AgentDelta, type AgentModel } from '@cerebro/core'
+import {
+  chatImageMarkerPattern,
+  skillPromptText,
+  type AgentDelta,
+  type AgentModel,
+  type ChatSkillMention
+} from '@cerebro/core'
 import { randomUUID } from 'node:crypto'
 import { describe, type Frame } from '../transport'
 import { codexAppServer, interruptCodexTurn } from '../codex-server'
-import type { AgentAdapter, AutonomousTurn } from './adapter'
+import type { AgentAdapter, AutonomousTurn, RunAttachment } from './adapter'
 import { activeTurn, item, model, modalities } from './shared'
 import { codexTodoSnapshot } from '../todo'
+import { codexSkills } from '../skills'
+
+/** Text plus the skill inputs Codex needs beside a `$name` mention, then any images. */
+const codexTurnInput = (
+  text: string,
+  attachments: RunAttachment[],
+  skills: ChatSkillMention[] = []
+): Array<Record<string, unknown>> => {
+  const outbound = skillPromptText(text, skills)
+  const skillItems = skills
+    .filter((skill) => skill.path && outbound.includes(skill.token))
+    .map((skill) => ({ type: 'skill', name: skill.name, path: skill.path }))
+  return [
+    attachments.length
+      ? { type: 'text', text: outbound, text_elements: textElements(outbound) }
+      : { type: 'text', text: outbound },
+    ...skillItems,
+    ...attachments.map((attachment) => ({ type: 'localImage', path: attachment.path }))
+  ]
+}
 
 /** Byte spans of `[Image #N]` markers, the shape Codex clients use for UI-owned text elements. */
 const textElements = (
@@ -15,6 +41,10 @@ const textElements = (
     return { byteRange: { start, end: start + Buffer.byteLength(match[0]) }, placeholder: match[0] }
   })
 export const codexAdapter: AgentAdapter = {
+  async skills(cwd) {
+    const server = codexAppServer()
+    return codexSkills(await server.request('skills/list', { cwds: [cwd], forceReload: true }), cwd)
+  },
   async models(_cwd) {
     const server = codexAppServer()
     const result: AgentModel[] = []
@@ -343,30 +373,17 @@ export const codexAdapter: AgentAdapter = {
           const attachments = context.attachments ?? []
           const started = await server.request('turn/start', {
             threadId,
-            input: [
-              attachments.length
-                ? { type: 'text', text: context.text, text_elements: textElements(context.text) }
-                : { type: 'text', text: context.text },
-              ...attachments.map((attachment) => ({ type: 'localImage', path: attachment.path }))
-            ],
+            input: codexTurnInput(context.text, attachments, context.skills),
             model: context.session.model.id || undefined,
             effort: context.session.reasoning
           })
           if (current !== turn) return await done
           turnId = started.turn.id
-          context.registerSteer?.(async (text, steerAttachments) => {
+          context.registerSteer?.(async (text, steerAttachments, skills) => {
             await server.request('turn/steer', {
               threadId,
               expectedTurnId: turnId,
-              input: [
-                steerAttachments.length
-                  ? { type: 'text', text, text_elements: textElements(text) }
-                  : { type: 'text', text },
-                ...steerAttachments.map((attachment) => ({
-                  type: 'localImage',
-                  path: attachment.path
-                }))
-              ]
+              input: codexTurnInput(text, steerAttachments, skills)
             })
           })
           if (context.signal.aborted) native.interrupt()

@@ -1,4 +1,9 @@
-import type { AgentDelta, ChatItem } from '@cerebro/core'
+import {
+  skillPromptText,
+  type AgentDelta,
+  type ChatItem,
+  type ChatSkillMention
+} from '@cerebro/core'
 import { randomUUID } from 'node:crypto'
 import type { Query, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import { shellEnv } from '../../shell-env'
@@ -6,6 +11,10 @@ import { executable, describe, type Frame } from '../transport'
 import type { AgentAdapter, AutonomousTurn, RunAttachment } from './adapter'
 import { activeTurn, inline, item, model } from './shared'
 import { ClaudeTodoList } from '../todo'
+import { claudeExposedSkills } from '../skills'
+
+const promptText = (text: string, skills?: ChatSkillMention[]): string =>
+  skillPromptText(text, skills ?? [])
 
 /** Capability blurbs Claude sometimes puts first in `description` — never use these as titles. */
 const claudeCapabilityBlurb =
@@ -114,50 +123,62 @@ class PushableQueue<T> implements AsyncIterable<T> {
   }
 }
 
-export const claudeAdapter: AgentAdapter = {
-  async models(cwd) {
-    const binary = executable('claude')
-    const { query } = await import('@anthropic-ai/claude-agent-sdk')
-    let release: () => void = () => {}
-    const wait = new Promise<void>((resolve) => {
-      release = resolve
-    })
-    const prompt: AsyncIterable<SDKUserMessage> = {
-      [Symbol.asyncIterator]: () => ({
-        next: async () => {
-          await wait
-          return { done: true, value: undefined }
-        }
-      })
-    }
-    const abortController = new AbortController()
-    const timeout = setTimeout(() => abortController.abort(), 15_000)
-    const q = query({
-      prompt,
-      options: {
-        abortController,
-        cwd,
-        pathToClaudeCodeExecutable: binary,
-        env: { ...shellEnv() },
-        settingSources: ['user', 'project', 'local']
+/**
+ * Opens a Claude Code process with the same settings sources as a chat, reads one answer, and closes it.
+ * Skill listing uses this so the menu is the set Claude itself exposes, including enabled plugin skills.
+ */
+const askClaude = async <T>(cwd: string, read: (query: Query) => Promise<T>): Promise<T> => {
+  const binary = executable('claude')
+  const { query } = await import('@anthropic-ai/claude-agent-sdk')
+  let release: () => void = () => {}
+  const wait = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const prompt: AsyncIterable<SDKUserMessage> = {
+    [Symbol.asyncIterator]: () => ({
+      next: async () => {
+        await wait
+        return { done: true, value: undefined }
       }
     })
-    try {
-      const entries = await q.supportedModels()
-      return entries.map((entry) =>
-        model(
-          'claude',
-          'configured',
-          entry.value,
-          claudeModelLabel(entry),
-          entry.supportedEffortLevels ?? []
-        )
-      )
-    } finally {
-      clearTimeout(timeout)
-      release()
-      q.close()
+  }
+  const abortController = new AbortController()
+  const timeout = setTimeout(() => abortController.abort(), 15_000)
+  const q = query({
+    prompt,
+    options: {
+      abortController,
+      cwd,
+      pathToClaudeCodeExecutable: binary,
+      env: { ...shellEnv() },
+      settingSources: ['user', 'project', 'local']
     }
+  })
+  try {
+    return await read(q)
+  } finally {
+    clearTimeout(timeout)
+    release()
+    q.close()
+  }
+}
+
+export const claudeAdapter: AgentAdapter = {
+  async skills(cwd) {
+    const listed = await askClaude(cwd, (q) => q.reloadSkills())
+    return claudeExposedSkills(listed.skills ?? [])
+  },
+  async models(cwd) {
+    const entries = await askClaude(cwd, (q) => q.supportedModels())
+    return entries.map((entry) =>
+      model(
+        'claude',
+        'configured',
+        entry.value,
+        claudeModelLabel(entry),
+        entry.supportedEffortLevels ?? []
+      )
+    )
   },
   connect(session, host) {
     const prompt = new PushableQueue<SDKUserMessage>()
@@ -511,10 +532,12 @@ export const claudeAdapter: AgentAdapter = {
             applied.effort = context.session.reasoning
           }
           if (current !== turn) return await done
-          context.registerSteer?.(async (text, attachments) => {
-            prompt.push(userMessage(text, attachments))
+          context.registerSteer?.(async (text, attachments, skills) => {
+            prompt.push(userMessage(promptText(text, skills), attachments))
           })
-          prompt.push(userMessage(context.text, context.attachments ?? []))
+          prompt.push(
+            userMessage(promptText(context.text, context.skills), context.attachments ?? [])
+          )
         } catch (error) {
           if (current === turn) finish(error instanceof Error ? error : new Error(String(error)))
         }
