@@ -4,97 +4,160 @@ import { TERMINAL_FONT_FAMILY_AUTO } from '@shared/types'
 export const BUNDLED_TERMINAL_FONT = 'Cerebro Mono'
 
 /**
- * Prefer a Nerd Font already on the machine (the user's terminal font), then
- * the bundled MesloLGS NF. xterm measures the first family in this string, so
- * it must be a face that actually loaded.
+ * Monospace Nerd Fonts whose icons fit one cell. Names that are not installed
+ * must not be selected: xterm measures the first family, and a missing name
+ * falls through to the app's proportional UI font.
+ * `MesloLGS NF` is the Powerlevel10k face; its icons are already cell-sized.
  */
-const PREFERRED_TERMINAL_FONTS = [
-  'FiraCode Nerd Font Mono',
-  'FiraCode Nerd Font',
-  'JetBrainsMono Nerd Font',
-  'JetBrainsMono NF',
+export const NERD_TERMINAL_FONTS = [
   'MesloLGS NF',
-  'Hack Nerd Font',
-  BUNDLED_TERMINAL_FONT
+  'MesloLGS Nerd Font Mono',
+  'JetBrainsMono Nerd Font Mono',
+  'FiraCode Nerd Font Mono',
+  'Hack Nerd Font Mono',
+  'CaskaydiaCove Nerd Font Mono',
+  'SauceCodePro Nerd Font Mono',
+  'CascadiaMono Nerd Font Mono',
+  'DejaVuSansM Nerd Font Mono'
 ] as const
+
+/** Installed system monospace faces. Offered explicitly; Auto keeps a Nerd Font. */
+export const SYSTEM_TERMINAL_FONTS = [
+  'SF Mono',
+  'Menlo',
+  'Monaco',
+  'JetBrains Mono',
+  'Cascadia Mono'
+] as const
+
+const FONT_CANDIDATES = [...NERD_TERMINAL_FONTS, ...SYSTEM_TERMINAL_FONTS] as const
+
+const PROBE_SIZE = '72px'
+const ASCII_SAMPLE = 'MWIl10'
 
 export type TerminalFontOption = {
   value: string
   label: string
 }
 
-function canRenderFamily(family: string): boolean {
+export type FontWidthProbe = {
+  /** Width of an ASCII sample drawn as `"family", monospace`. */
+  monoStack: number
+  /** Width of the same sample drawn as `"family", sans-serif`. */
+  sansStack: number
+  mono: number
+  sans: number
+}
+
+export type ResolvedTerminalFont = {
+  /** Face xterm measures. A loaded family, or the bundled face. */
+  family: string
+  /** CSS font-family. The bundled face supplies glyphs the primary face lacks. */
+  css: string
+}
+
+/**
+ * True when both generic stacks resolve to the same face and that face is not
+ * merely the fallback. `document.fonts.check()` cannot do this: it returns
+ * true whenever any fallback can paint the sample.
+ */
+export function fontProbeShowsFace(probe: FontWidthProbe): boolean {
+  const stacksAgree = probe.monoStack === probe.sansStack
+  const differsFromGeneric = probe.monoStack !== probe.mono || probe.sansStack !== probe.sans
+  return stacksAgree && differsFromGeneric
+}
+
+export function chooseTerminalFont(preference: string, available: ReadonlySet<string>): string {
+  if (
+    preference !== TERMINAL_FONT_FAMILY_AUTO &&
+    (available.has(preference) || preference === BUNDLED_TERMINAL_FONT)
+  ) {
+    return preference
+  }
+  for (const family of NERD_TERMINAL_FONTS) {
+    if (available.has(family)) return family
+  }
+  return BUNDLED_TERMINAL_FONT
+}
+
+export function terminalFontCss(family: string): string {
+  if (family === BUNDLED_TERMINAL_FONT) return `"${BUNDLED_TERMINAL_FONT}"`
+  return `"${family}", "${BUNDLED_TERMINAL_FONT}"`
+}
+
+function measure(font: string, sample: string): number {
   const canvas = document.createElement('canvas')
   const ctx = canvas.getContext('2d')
-  if (!ctx) return false
-
-  const sample = 'mmmmmmmmmmlli'
-  ctx.font = '16px monospace'
-  const fallbackWidth = ctx.measureText(sample).width
-  ctx.font = `16px "${family}", monospace`
-  const familyWidth = ctx.measureText(sample).width
-  if (familyWidth !== fallbackWidth) return true
-
-  // Distinguishes a loaded Nerd Font from tofu for Powerline/P10k glyphs.
-  const nerdSample = '\uE0A0\uE0B0'
-  ctx.font = `16px "${family}"`
-  const nerdWidth = ctx.measureText(nerdSample).width
-  ctx.font = '16px Menlo, Monaco, monospace'
-  const menloWidth = ctx.measureText(nerdSample).width
-  return nerdWidth > 0 && nerdWidth !== menloWidth
+  if (!ctx) return Number.NaN
+  ctx.font = font
+  return ctx.measureText(sample).width
 }
 
-async function ensureFontsReady(): Promise<void> {
-  await document.fonts.load(`13px "${BUNDLED_TERMINAL_FONT}"`)
-  await document.fonts.ready
-}
-
-async function isFamilyAvailable(family: string): Promise<boolean> {
+async function loadFamily(family: string): Promise<void> {
   try {
-    await document.fonts.load(`13px "${family}"`)
+    await Promise.all([
+      document.fonts.load(`16px "${family}"`),
+      document.fonts.load(`bold 16px "${family}"`)
+    ])
   } catch {
-    return false
+    // A missing face rejects on some engines; the width probe treats it as absent.
   }
-  return document.fonts.check(`13px "${family}"`) && canRenderFamily(family)
 }
 
-export async function resolveTerminalFontFamily(
+function familyIsInstalled(family: string, generic: { mono: number; sans: number }): boolean {
+  return fontProbeShowsFace({
+    monoStack: measure(`${PROBE_SIZE} "${family}", monospace`, ASCII_SAMPLE),
+    sansStack: measure(`${PROBE_SIZE} "${family}", sans-serif`, ASCII_SAMPLE),
+    mono: generic.mono,
+    sans: generic.sans
+  })
+}
+
+let availableFontsCache: Promise<ReadonlySet<string>> | null = null
+
+async function probeAvailableFonts(): Promise<ReadonlySet<string>> {
+  await loadFamily(BUNDLED_TERMINAL_FONT)
+  await document.fonts.ready
+  const generic = {
+    mono: measure(`${PROBE_SIZE} monospace`, ASCII_SAMPLE),
+    sans: measure(`${PROBE_SIZE} sans-serif`, ASCII_SAMPLE)
+  }
+  const found = new Set<string>()
+  await Promise.all(
+    FONT_CANDIDATES.map(async (family) => {
+      await loadFamily(family)
+      if (familyIsInstalled(family, generic)) found.add(family)
+    })
+  )
+  if (familyIsInstalled(BUNDLED_TERMINAL_FONT, generic)) found.add(BUNDLED_TERMINAL_FONT)
+  return found
+}
+
+function availableFonts(): Promise<ReadonlySet<string>> {
+  availableFontsCache ??= probeAvailableFonts()
+  return availableFontsCache
+}
+
+export async function resolveTerminalFont(
   preference: string = TERMINAL_FONT_FAMILY_AUTO
-): Promise<string> {
-  await ensureFontsReady()
-
-  if (preference !== TERMINAL_FONT_FAMILY_AUTO) {
-    if (await isFamilyAvailable(preference)) {
-      return `"${preference}"`
-    }
-    // Fall through to auto-detect when the saved family is no longer available.
-  }
-
-  for (const family of PREFERRED_TERMINAL_FONTS) {
-    if (await isFamilyAvailable(family)) {
-      return `"${family}"`
-    }
-  }
-
-  return `"${BUNDLED_TERMINAL_FONT}"`
+): Promise<ResolvedTerminalFont> {
+  const available = await availableFonts()
+  const family = chooseTerminalFont(preference, available)
+  await loadFamily(family)
+  await loadFamily(BUNDLED_TERMINAL_FONT)
+  await document.fonts.ready
+  return { family, css: terminalFontCss(family) }
 }
 
 export async function listAvailableTerminalFonts(): Promise<TerminalFontOption[]> {
-  await ensureFontsReady()
-
+  const available = await availableFonts()
   const options: TerminalFontOption[] = [
     { value: TERMINAL_FONT_FAMILY_AUTO, label: 'Auto' },
     { value: BUNDLED_TERMINAL_FONT, label: BUNDLED_TERMINAL_FONT }
   ]
-
-  const seen = new Set<string>([BUNDLED_TERMINAL_FONT])
-  for (const family of PREFERRED_TERMINAL_FONTS) {
-    if (seen.has(family)) continue
-    seen.add(family)
-    if (await isFamilyAvailable(family)) {
-      options.push({ value: family, label: family })
-    }
+  for (const family of FONT_CANDIDATES) {
+    if (!available.has(family)) continue
+    options.push({ value: family, label: family })
   }
-
   return options
 }

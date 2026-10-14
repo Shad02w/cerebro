@@ -30,7 +30,7 @@ import {
   type AgentModelDefaults,
   type LastAgent
 } from '@shared/types'
-import { resolveTerminalFontFamily } from '@/lib/terminal-font'
+import { resolveTerminalFont } from '@/lib/terminal-font'
 import { encodeExtendedKey } from '@/lib/terminal-keys'
 import { useKeybindHandler } from '@/keybinds'
 import { ChangesView } from '@/components/changes-view'
@@ -212,13 +212,13 @@ function useTerminalAppearance(
     let cancelled = false
 
     void (async () => {
-      const resolvedFamily = await resolveTerminalFontFamily(fontFamilyPreference)
+      const resolved = await resolveTerminalFont(fontFamilyPreference)
       if (cancelled || !terminalRef.current) return
 
       terminalRef.current.options.fontSize = fontSize
-      terminalRef.current.options.fontFamily = resolvedFamily
+      terminalRef.current.options.fontFamily = resolved.css
       if (host) {
-        host.dataset.terminalFont = resolvedFamily.replaceAll('"', '')
+        host.dataset.terminalFont = resolved.family
         host.dataset.terminalFontSize = String(fontSize)
       }
       fitSession(terminalRef.current, fitAddon, sessionIdRef.current, exitedRef.current)
@@ -308,7 +308,7 @@ function TerminalSession({
 
     void (async () => {
       try {
-        const fontFamily = await resolveTerminalFontFamily(fontFamilyPreference)
+        const resolvedFont = await resolveTerminalFont(fontFamilyPreference)
         if (cancelled || !hostRef.current) return
 
         await waitForUsableSize(hostRef.current, () => cancelled)
@@ -327,7 +327,7 @@ function TerminalSession({
           reflowCursorLine: false,
           rescaleOverlappingGlyphs: true,
           theme: { ...TERMINAL_PALETTES[themeRef.current] },
-          fontFamily
+          fontFamily: resolvedFont.css
         })
         forwardUserInputOnly(terminal)
         terminal.loadAddon(fitAddon)
@@ -338,7 +338,7 @@ function TerminalSession({
             ? proposedGrid(fitAddon)
             : undefined
         if (initialGrid) terminal.resize(initialGrid.cols, initialGrid.rows)
-        hostRef.current.dataset.terminalFont = fontFamily.replaceAll('"', '')
+        hostRef.current.dataset.terminalFont = resolvedFont.family
         hostRef.current.dataset.terminalFontSize = String(fontSize)
 
         const xterm = terminal
