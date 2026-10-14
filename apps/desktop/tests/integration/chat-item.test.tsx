@@ -177,6 +177,19 @@ describe('ChatItem command runs', () => {
     expect(group).toHaveTextContent('Skill')
     expect(group).toHaveTextContent('second thought')
     expect(group.querySelectorAll('summary')).toHaveLength(4)
+
+    const reasoning = screen.getAllByTestId('reasoning')
+    const skill = screen.getByTestId('tool-call')
+    expect(reasoning[0].className).not.toContain('border')
+    expect(reasoning[0].querySelector('summary')?.className).toBe(
+      skill.querySelector('summary')?.className
+    )
+    expect(screen.getAllByTestId('reasoning-summary').map((node) => node.textContent)).toEqual([
+      'Reasoning',
+      'Reasoning'
+    ])
+    expect(reasoning[0].querySelector('pre')).toHaveTextContent('first thought')
+    expect(reasoning[1].querySelector('pre')).toHaveTextContent('second thought')
   })
 
   it('shows Working for Ns after a turn the view watched', () => {
@@ -190,6 +203,8 @@ describe('ChatItem command runs', () => {
       </>
     )
     expect(screen.queryByTestId('working-group')).toBeNull()
+    expect(screen.getByTestId('reasoning-summary')).toHaveTextContent('Reasoning')
+    expect(screen.getByTestId('reasoning-summary')).toHaveClass('chat-working')
     rerender(
       <>
         <TurnClock active={false} activeIds={[]} knownIds={['turn']} />

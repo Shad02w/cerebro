@@ -1,6 +1,6 @@
 import { memo, useState } from 'react'
 import type { AgentAnswer, AgentSkill, ChatItem as Item } from '@cerebro/core'
-import { ChevronRight } from 'lucide-react'
+import { Brain, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { AgentMarkdown } from '@/components/markdown/agent-markdown'
 import { cn } from '@/lib/utils'
@@ -96,6 +96,14 @@ function RequestCard({
   )
 }
 
+/** Shared with reasoning rows so the working-section chrome cannot drift. */
+const workingRowSummaryClass =
+  'flex min-w-0 cursor-pointer list-none items-baseline gap-2 py-1 text-xs text-muted-foreground [&::-webkit-details-marker]:hidden [&::marker]:content-none'
+
+/** Tool output and expanded reasoning use the same body. */
+const workingRowOutputClass =
+  'mt-1 max-h-96 overflow-auto pl-6 text-xs leading-5 whitespace-pre-wrap break-words'
+
 function ToolCallLine({ item }: { item: Item }): React.JSX.Element {
   const run = commandRun(item)
   const summary = toolCallSummary(item)
@@ -103,7 +111,7 @@ function ToolCallLine({ item }: { item: Item }): React.JSX.Element {
   const detail = run ? commandInputDetail(item.input, run.command) : item.input
   return (
     <details className="min-w-0" data-testid={run ? 'command-run' : 'tool-call'}>
-      <summary className="flex min-w-0 cursor-pointer list-none items-baseline gap-2 py-1 text-xs text-muted-foreground [&::-webkit-details-marker]:hidden [&::marker]:content-none">
+      <summary className={workingRowSummaryClass}>
         <ToolTypeIcon
           name={run ? 'shell' : undefined}
           title={run ? undefined : item.title}
@@ -131,11 +139,28 @@ function ToolCallLine({ item }: { item: Item }): React.JSX.Element {
           {detail}
         </pre>
       ) : null}
-      {item.text ? (
-        <pre className="mt-1 max-h-96 overflow-auto pl-6 text-xs leading-5 whitespace-pre-wrap break-words">
-          {item.text}
-        </pre>
-      ) : null}
+      {item.text ? <pre className={workingRowOutputClass}>{item.text}</pre> : null}
+    </details>
+  )
+}
+
+function ReasoningLine({ item }: { item: Item }): React.JSX.Element {
+  const running = item.status === 'running'
+  const label = item.title?.trim() || 'Reasoning'
+  return (
+    <details className="min-w-0" data-testid="reasoning">
+      <summary className={workingRowSummaryClass}>
+        <Brain aria-hidden="true" className="size-3.5 shrink-0 relative top-px" />
+        <span className="min-w-0 flex-1">
+          <span
+            data-testid="reasoning-summary"
+            className={cn('block w-full truncate', running && 'chat-working')}
+          >
+            {label}
+          </span>
+        </span>
+      </summary>
+      {item.text ? <pre className={workingRowOutputClass}>{item.text}</pre> : null}
     </details>
   )
 }
@@ -179,6 +204,7 @@ export function WorkingGroup({
 
 function WorkingEntry({ item }: { item: Item }): React.JSX.Element {
   if (item.kind === 'tool') return <ToolCallLine item={item} />
+  if (item.kind === 'reasoning') return <ReasoningLine item={item} />
   return <TranscriptDetails item={item} />
 }
 
@@ -228,6 +254,7 @@ export const ChatItem = memo(function ChatItem({
       </p>
     )
   if (item.kind === 'tool') return <ToolCallLine item={item} />
+  if (item.kind === 'reasoning') return <ReasoningLine item={item} />
   return <TranscriptDetails item={item} />
 })
 
