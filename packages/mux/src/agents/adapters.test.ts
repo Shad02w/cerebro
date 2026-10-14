@@ -84,6 +84,35 @@ describe('agent adapters', { concurrency: 1 }, () => {
       }),
       'Default (recommended) · claude-opus-5-5'
     )
+    // The account default and the sonnet alias both resolve to Sonnet 5.5. The description
+    // tip is that name for both rows, so the default alias must stay labeled as Default.
+    assert.equal(
+      claudeModelLabel({
+        value: 'default',
+        displayName: 'Default',
+        description: 'Sonnet 5.5 · Efficient for routine tasks · $2/$10 per Mtok',
+        resolvedModel: 'claude-sonnet-5-5'
+      }),
+      'Default · Sonnet 5.5'
+    )
+    assert.equal(
+      claudeModelLabel({
+        value: 'default',
+        displayName: 'Sonnet',
+        description: 'Efficient for routine tasks · $2/$10 per Mtok',
+        resolvedModel: 'claude-sonnet-5-5'
+      }),
+      'Default · Sonnet 5.5'
+    )
+    assert.equal(
+      claudeModelLabel({
+        value: 'sonnet',
+        displayName: 'Sonnet',
+        description: 'Sonnet 5.5 · Efficient for routine tasks · $2/$10 per Mtok',
+        resolvedModel: 'claude-sonnet-5-5'
+      }),
+      'Sonnet 5.5'
+    )
     assert.equal(claudeModelLabel({ displayName: 'Fable' }), 'Fable')
   })
   for (const harness of ['claude', 'codex', 'pi'] as AgentHarness[]) {
