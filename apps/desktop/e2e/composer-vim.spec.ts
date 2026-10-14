@@ -95,7 +95,7 @@ test('composer vim mode edits modally and keeps Enter and @ tags to insert mode'
       .click()
     await page
       .getByTestId('model-picker')
-      .getByRole('option', { name: /^Test Model.*Claude Code/ })
+      .getByRole('option', { name: 'Test Model', exact: true })
       .click()
     await expect(page.getByTestId('chat-model-picker')).toContainText('Claude Code')
     const composer = page.getByRole('textbox', { name: 'Message agent' })

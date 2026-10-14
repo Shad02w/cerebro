@@ -13,21 +13,17 @@ import { activeTurn, item, model, modalities } from './shared'
 import { codexTodoSnapshot } from '../todo'
 import { codexSkills } from '../skills'
 
-/** Text plus the skill inputs Codex needs beside a `$name` mention, then any images. */
+/** Text plus any images. A `/name` chip is rewritten to `$name`; Codex resolves that mention itself. */
 const codexTurnInput = (
   text: string,
   attachments: RunAttachment[],
   skills: ChatSkillMention[] = []
 ): Array<Record<string, unknown>> => {
   const outbound = skillPromptText(text, skills)
-  const skillItems = skills
-    .filter((skill) => skill.path && skill.prompt && outbound.includes(skill.prompt))
-    .map((skill) => ({ type: 'skill', name: skill.name, path: skill.path }))
   return [
     attachments.length
       ? { type: 'text', text: outbound, text_elements: textElements(outbound) }
       : { type: 'text', text: outbound },
-    ...skillItems,
     ...attachments.map((attachment) => ({ type: 'localImage', path: attachment.path }))
   ]
 }

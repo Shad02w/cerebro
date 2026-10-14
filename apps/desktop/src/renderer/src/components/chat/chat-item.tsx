@@ -153,7 +153,7 @@ export function WorkingGroup({
     return (
       <div data-testid="working-live">
         {items.map((item) => (
-          <ToolCallLine key={item.id} item={item} />
+          <WorkingEntry key={item.id} item={item} />
         ))}
       </div>
     )
@@ -170,11 +170,16 @@ export function WorkingGroup({
       </summary>
       <div className="pl-4">
         {items.map((item) => (
-          <ToolCallLine key={item.id} item={item} />
+          <WorkingEntry key={item.id} item={item} />
         ))}
       </div>
     </details>
   )
+}
+
+function WorkingEntry({ item }: { item: Item }): React.JSX.Element {
+  if (item.kind === 'tool') return <ToolCallLine item={item} />
+  return <TranscriptDetails item={item} />
 }
 
 const noSkills: readonly AgentSkill[] = []
@@ -223,6 +228,10 @@ export const ChatItem = memo(function ChatItem({
       </p>
     )
   if (item.kind === 'tool') return <ToolCallLine item={item} />
+  return <TranscriptDetails item={item} />
+})
+
+function TranscriptDetails({ item }: { item: Item }): React.JSX.Element {
   return (
     <details
       className="min-w-0 rounded-xl border border-border/70 bg-muted/15 px-3 py-2"
@@ -247,4 +256,4 @@ export const ChatItem = memo(function ChatItem({
       )}
     </details>
   )
-})
+}

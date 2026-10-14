@@ -4,15 +4,15 @@ import type { AgentHarness } from './chat'
  * A skill the composer can mention. `token` is what the transcript shows.
  * `prompt` is the text the harness must actually receive.
  *
- * The composer shows every skill as `/name`. Codex still receives `$name` plus a skill
- * input (`name` + `path`). Claude Code receives `/name`. Pi receives `/skill:name`.
- * `@` in the composer is a workspace file, not a skill.
+ * The composer shows every skill as `/name`. `@` mentions a workspace file.
+ * Codex receives `$name` in the prompt and resolves the skill itself.
+ * Claude Code receives `/name`. Pi receives `/skill:name`.
  */
 export type AgentSkill = {
   id: string
   name: string
   description: string
-  /** Absolute path to the skill file. Codex sends this on the skill input. */
+  /** Absolute path to the skill file, when the harness reported one. */
   path: string
   token: string
   prompt: string
