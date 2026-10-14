@@ -18,9 +18,20 @@ const shortClaudeVersion = (id?: string): string | undefined => {
   const match = id.match(/^claude-(?:opus|sonnet|haiku|fable)-(\d+(?:-\d+)?)(?:-|$|\[)/i)
   return match?.[1]?.replace(/-/g, '.')
 }
+/** Versioned name at the start of a description, such as "Sonnet 5.5". Blurbs are not titles. */
+const versionedTip = (description?: string): string | undefined => {
+  const tip = description?.split(' · ')[0]?.trim()
+  if (tip && tip.length <= 48 && claudeVersionedName.test(tip) && !claudeCapabilityBlurb.test(tip))
+    return tip
+}
 /**
  * Build a picker title that keeps the model name visible across Claude Code catalog shapes.
  * Newer builds put capability blurbs first in `description`; older ones put "Opus 5.5" first.
+ *
+ * `default` is not a model. It clears any override and follows the account default, which
+ * currently resolves to the same Sonnet 5.5 as the `sonnet` alias. Claude puts that resolved
+ * name first in `description`, so using the tip as the title lists two identical "Sonnet 5.5"
+ * rows (`default` and `sonnet`). Keep the alias labeled as Default and name what it points at.
  */
 export const claudeModelLabel = (entry: {
   value?: string
@@ -28,11 +39,22 @@ export const claudeModelLabel = (entry: {
   description?: string
   resolvedModel?: string
 }): string => {
-  const tip = entry.description?.split(' · ')[0]?.trim()
-  if (tip && tip.length <= 48 && claudeVersionedName.test(tip) && !claudeCapabilityBlurb.test(tip))
-    return tip
+  const tip = versionedTip(entry.description)
   const wire = entry.resolvedModel || entry.value
-  if (/^Default\b/i.test(entry.displayName) && wire) return `${entry.displayName} · ${wire}`
+  if (entry.value === 'default' || /^default\b/i.test(entry.displayName)) {
+    const name = /^default\b/i.test(entry.displayName) ? entry.displayName : 'Default'
+    const version = shortClaudeVersion(wire)
+    const current =
+      tip ??
+      (claudeVersionedName.test(entry.displayName) ? entry.displayName : undefined) ??
+      (version && entry.displayName && !/^default\b/i.test(entry.displayName)
+        ? `${entry.displayName} ${version}`
+        : undefined)
+    if (current && current !== name) return `${name} · ${current}`
+    if (wire && wire !== 'default') return `${name} · ${wire}`
+    return name
+  }
+  if (tip) return tip
   const version = shortClaudeVersion(wire)
   if (
     version &&
