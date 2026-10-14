@@ -26,7 +26,14 @@ export type AgentSkillList = {
 export type ChatSkillRef = { name: string; path: string }
 export type ChatSkillMention = ChatSkillRef & { token: string; prompt: string }
 
-const skillNamePattern = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/
+/**
+ * A skill name Claude, Codex, or Pi will dispatch.
+ * Plugin skills are `plugin:skill`. Directory-scoped Claude skills are `apps/web:deploy`.
+ */
+const skillNamePattern =
+  /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}(?:[/:][A-Za-z0-9][A-Za-z0-9_-]{0,63}){0,8}$/
+/** Characters that can continue a skill token, so `@plugin` does not match inside `@plugin:skill`. */
+const skillNameChars = 'A-Za-z0-9_/:-'
 
 export function safeSkillName(name: string): boolean {
   return skillNamePattern.test(name)
@@ -51,7 +58,7 @@ export function skillPromptFor(harness: AgentHarness, name: string): string {
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 const bounded = (token: string): RegExp =>
-  new RegExp(`${escapeRegExp(token)}(?![A-Za-z0-9_-])`, 'g')
+  new RegExp(`${escapeRegExp(token)}(?![${skillNameChars}])`, 'g')
 
 /**
  * Rewrites display tokens into the harness prompt. Fenced and inline code stay literal so a

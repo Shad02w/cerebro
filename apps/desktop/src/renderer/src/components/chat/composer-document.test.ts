@@ -92,6 +92,17 @@ test('an exact skill matches without a menu commit, and a longer token does not'
     { ...skills[0], id: 'review', name: 'review', token: '$review', prompt: '$review' }
   ]
   assert.equal(findSkillMatches('use $review.', null, codex)[0]?.skill.token, '$review')
+  const plugin = [
+    {
+      ...skills[0],
+      id: 'lint',
+      name: 'formatter:lint',
+      token: '@formatter:lint',
+      prompt: '/formatter:lint'
+    }
+  ]
+  assert.equal(findSkillMatches('@formatter', null, plugin).length, 0)
+  assert.equal(findSkillMatches('@formatter:lint.', null, plugin)[0]?.skill.name, 'formatter:lint')
 })
 
 test('a finished skill becomes a mention and an in-progress skill stays text', () => {

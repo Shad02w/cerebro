@@ -1,17 +1,29 @@
 #!/usr/bin/env node
 // Deterministic native-protocol fixture; no network or model credentials are used.
 const { createInterface } = require('node:readline')
+const { existsSync, readdirSync, readFileSync } = require('node:fs')
+const { homedir } = require('node:os')
+const { dirname, join, resolve } = require('node:path')
 const mode = process.argv.includes('app-server')
   ? 'codex'
   : process.argv.includes('rpc')
     ? 'pi'
     : 'claude'
 const send = (value) => process.stdout.write(JSON.stringify(value) + '\n')
-const notify = (method, params) => send({ method, params })
-let resume = false
+let codexActive
+const codexThreads = new Map()
+const codexApprovals = new Map()
+let codexSeq = 0
+const notify = (method, params = {}) => {
+  const body = { ...params }
+  if (codexActive) {
+    const foreign = typeof body.threadId === 'string' && body.threadId !== 'thread-test'
+    body.threadId = foreign ? body.threadId : codexActive
+  }
+  send({ method, params: body })
+}
 let backgroundStarted = 0
 const backgroundLive = new Map()
-let accessSettings
 let finishApproval
 const text =
   '**Adapter connected.**\n\n- Native tools stay with the harness.\n- Cerebro renders the conversation.'
@@ -31,7 +43,22 @@ const codexDone = () => {
     turn: { id: 'turn-test', status: 'completed' }
   })
 }
-function codexPrompt(prompt, input) {
+function codexPrompt(threadId, prompt, input) {
+  codexActive = threadId
+  const thread = codexThreads.get(threadId) ?? { resume: false, access: undefined }
+  const resume = thread.resume
+  const accessSettings = thread.access
+  if (prompt === 'crash') process.exit(1)
+  if (prompt === 'fatal-error') {
+    notify('error', { error: { message: 'Codex rejected the turn.' }, willRetry: false })
+    return
+  }
+  if (prompt === 'retry-then-ok') {
+    notify('error', { error: { message: 'Model overloaded.' }, willRetry: true })
+    // Leave the alert visible briefly, the way a real overloaded model retries.
+    setTimeout(() => codexPrompt(threadId, 'hello', input), 1200)
+    return
+  }
   if (prompt.includes('skill-wire')) {
     notify('item/completed', {
       item: { type: 'agentMessage', id: 'skills', text: JSON.stringify(input) }
@@ -88,14 +115,21 @@ function codexPrompt(prompt, input) {
     })
     codexDone()
     setTimeout(() => {
-      notify('item/commandExecution/outputDelta', { itemId: 'bg-command', delta: '/tmp\n' })
-      notify('item/completed', {
-        item: {
-          ...command,
-          status: failed ? 'failed' : 'completed',
-          aggregatedOutput: '/tmp\n',
-          exitCode: failed ? 3 : 0,
-          durationMs: 1000
+      send({
+        method: 'item/commandExecution/outputDelta',
+        params: { threadId, itemId: 'bg-command', delta: '/tmp\n' }
+      })
+      send({
+        method: 'item/completed',
+        params: {
+          threadId,
+          item: {
+            ...command,
+            status: failed ? 'failed' : 'completed',
+            aggregatedOutput: '/tmp\n',
+            exitCode: failed ? 3 : 0,
+            durationMs: 1000
+          }
         }
       })
     }, 50)
@@ -175,30 +209,33 @@ function codexPrompt(prompt, input) {
   })
   if (prompt.includes('slow')) return
   if (prompt.includes('approval')) {
-    finishApproval = () => {
+    codexApprovals.set('approval-test', () => {
+      codexActive = threadId
       notify('item/completed', {
         item: { type: 'agentMessage', id: 'message-test', text: 'Permission resolved.' }
       })
       codexDone()
-    }
+    })
     send({
       id: 'approval-test',
       method: 'item/commandExecution/requestApproval',
-      params: { command: 'git status --short', threadId: 'thread-test' }
+      params: { command: 'git status --short', threadId }
     })
     return
   }
   if (prompt.includes('question')) {
-    finishApproval = () => {
+    codexApprovals.set('question-test', () => {
+      codexActive = threadId
       notify('item/completed', {
         item: { type: 'agentMessage', id: 'message-test', text: 'Answer received.' }
       })
       codexDone()
-    }
+    })
     send({
       id: 'question-test',
       method: 'item/tool/requestUserInput',
       params: {
+        threadId,
         questions: [
           {
             id: 'color',
@@ -578,6 +615,101 @@ function claudePrompt(prompt, content) {
   }
   claudeFinish(text)
 }
+const skillNamePattern =
+  /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}(?:[/:][A-Za-z0-9][A-Za-z0-9_-]{0,63}){0,8}$/
+function claudeFrontmatter(text) {
+  const match = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)
+  if (!match) return {}
+  const fields = {}
+  for (const line of match[1].split(/\r?\n/)) {
+    const field = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(line)
+    if (!field) continue
+    let value = field[2].trim()
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    )
+      value = value.slice(1, -1)
+    fields[field[1]] = value
+  }
+  return fields
+}
+function claudeSkillFile(file, fallbackName, qualify) {
+  let text = ''
+  try {
+    text = readFileSync(file, 'utf8')
+  } catch {
+    return null
+  }
+  const fields = claudeFrontmatter(text)
+  if (/^(false|no|0)$/i.test(fields['user-invocable'] ?? '')) return null
+  const named = fields.name?.trim()
+  let name = named && skillNamePattern.test(named) ? named : fallbackName
+  if (qualify && !name.includes(':') && !name.includes('/')) name = `${qualify}:${name}`
+  if (!skillNamePattern.test(name)) return null
+  return {
+    name,
+    description: (fields.description ?? '').replace(/\s+/g, ' ').trim(),
+    argumentHint: '',
+    path: file
+  }
+}
+function claudeEntries(dir) {
+  try {
+    return readdirSync(dir, { withFileTypes: true })
+  } catch {
+    return []
+  }
+}
+function collectClaudeDir(root, found) {
+  for (const entry of claudeEntries(join(root, '.claude', 'skills'))) {
+    if (!entry.isDirectory()) continue
+    const file = join(root, '.claude', 'skills', entry.name, 'SKILL.md')
+    if (!existsSync(file)) continue
+    const skill = claudeSkillFile(file, entry.name)
+    if (skill && !found.has(skill.name)) found.set(skill.name, skill)
+  }
+  for (const entry of claudeEntries(join(root, '.claude', 'commands'))) {
+    if (!entry.isFile() || !entry.name.endsWith('.md')) continue
+    const skill = claudeSkillFile(
+      join(root, '.claude', 'commands', entry.name),
+      entry.name.slice(0, -3)
+    )
+    if (skill && !found.has(skill.name)) found.set(skill.name, skill)
+  }
+  for (const plugin of claudeEntries(join(root, '.claude', 'plugins'))) {
+    if (!plugin.isDirectory()) continue
+    for (const entry of claudeEntries(join(root, '.claude', 'plugins', plugin.name, 'skills'))) {
+      if (!entry.isDirectory()) continue
+      const file = join(root, '.claude', 'plugins', plugin.name, 'skills', entry.name, 'SKILL.md')
+      if (!existsSync(file)) continue
+      const skill = claudeSkillFile(file, entry.name, plugin.name)
+      if (skill && !found.has(skill.name)) found.set(skill.name, skill)
+    }
+  }
+}
+function claudeProjectRoots(cwd) {
+  const start = resolve(cwd)
+  const chain = [start]
+  let current = start
+  for (let depth = 0; depth < 40; depth++) {
+    if (existsSync(join(current, '.git'))) return chain
+    const parent = dirname(current)
+    if (parent === current) break
+    current = parent
+    chain.push(current)
+  }
+  return [start]
+}
+/** Skills this fixture reports as the ones Claude Code exposed for its cwd, including plugin skills. */
+function claudeSkillList() {
+  const found = new Map()
+  const cwd = process.cwd()
+  const home = process.env.CEREBRO_SKILL_HOME || homedir()
+  for (const root of claudeProjectRoots(cwd)) collectClaudeDir(root, found)
+  if (resolve(home) !== resolve(cwd)) collectClaudeDir(home, found)
+  return [...found.values()].sort((left, right) => left.name.localeCompare(right.name))
+}
 function claudeFinish(value) {
   send({
     type: 'stream_event',
@@ -611,8 +743,10 @@ function claudeFinish(value) {
 createInterface({ input: process.stdin }).on('line', (line) => {
   const frame = JSON.parse(line)
   if (mode === 'codex') {
-    if (frame.id === 'approval-test' || frame.id === 'question-test') {
-      finishApproval?.()
+    if (codexApprovals.has(frame.id)) {
+      const finish = codexApprovals.get(frame.id)
+      codexApprovals.delete(frame.id)
+      finish()
       return
     }
     const reply = (result) => send({ id: frame.id, result })
@@ -652,24 +786,40 @@ createInterface({ input: process.stdin }).on('line', (line) => {
         })
         break
       case 'thread/resume':
-        accessSettings = frame.params
-        resume = true
-        reply({ thread: { id: 'thread-test' } })
+        if (frame.params.threadId === 'missing-thread') {
+          send({ id: frame.id, error: { code: -32000, message: 'Thread not found.' } })
+          break
+        }
+        {
+          const id = frame.params.threadId || `thread-${++codexSeq}`
+          codexThreads.set(id, { resume: true, access: frame.params })
+          reply({ thread: { id } })
+        }
         break
       case 'thread/start':
-        accessSettings = frame.params
-        reply({ thread: { id: 'thread-test' } })
+        {
+          const id = `thread-${++codexSeq}`
+          codexThreads.set(id, { resume: false, access: frame.params })
+          reply({ thread: { id } })
+        }
         break
       case 'turn/start':
         reply({ turn: { id: 'turn-test' } })
-        setTimeout(() => codexPrompt(frame.params.input[0].text, frame.params.input), 30)
+        setTimeout(
+          () => codexPrompt(frame.params.threadId, frame.params.input[0].text, frame.params.input),
+          30
+        )
         break
       case 'turn/interrupt':
         reply({})
-        notify('turn/completed', { turn: { id: 'turn-test', status: 'interrupted' } })
+        codexActive = frame.params.threadId
+        notify('turn/completed', {
+          turn: { id: frame.params.turnId ?? 'turn-test', status: 'interrupted' }
+        })
         break
       case 'turn/steer':
         reply({})
+        codexActive = frame.params.threadId
         notify('item/agentMessage/delta', {
           itemId: 'message-test',
           delta: `[steered: ${frame.params.input[0].text}]`
@@ -778,6 +928,17 @@ createInterface({ input: process.stdin }).on('line', (line) => {
         is_error: true,
         errors: ['[Request interrupted by user]'],
         session_id: 'claude-test'
+      })
+      return
+    }
+    if (frame.type === 'control_request' && frame.request?.subtype === 'reload_skills') {
+      send({
+        type: 'control_response',
+        response: {
+          subtype: 'success',
+          request_id: frame.request_id,
+          response: { skills: claudeSkillList() }
+        }
       })
       return
     }

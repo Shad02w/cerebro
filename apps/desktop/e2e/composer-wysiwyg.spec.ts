@@ -15,7 +15,7 @@ async function writeClaudeSkill(directory: string, name: string): Promise<void> 
 }
 
 async function chooseModel(page: Page, harness: 'Claude Code' | 'Codex' | 'Pi'): Promise<void> {
-  const picker = page.getByRole('combobox').filter({ hasText: /Test Model|Choose model/ })
+  const picker = page.locator('[data-testid="chat-model-picker"]:visible')
   await expect(picker).toBeVisible()
   const label = (await picker.innerText()).replace(/\s+/g, ' ')
   if (label.startsWith('Test Model') && label.includes(harness)) return
@@ -231,6 +231,7 @@ test('agent composer renders bullets, inline code, a code block, and skill menti
 
     await page.getByTestId('new-content-tab').click()
     await page.getByTestId('open-chat-tab').click()
+    await expect(page.getByRole('heading', { name: 'What would you like to build?' })).toBeVisible()
     await chooseModel(page, 'Pi')
     const piComposer = page.getByRole('textbox', { name: 'Message agent' })
     await piComposer.click()

@@ -43,10 +43,13 @@ export type ConnectionHost = {
   task: (update: BackgroundTaskUpdate) => void
   /** Output that arrived between turns. Items update in whichever turn owns them. */
   idle: (event: AgentDelta) => void
-  /** The native process ended on its own; its background work is gone. */
+  /** The native runtime ended on its own; its background work is gone. */
   exited: (error: Error) => void
 }
-/** One live native process owned by a session. Background work it starts lives until `close`. */
+/**
+ * One live harness connection. `close` stops this session's native work.
+ * Claude and Pi own a process. Codex is a thread on the shared app-server.
+ */
 export interface AgentConnection {
   run(context: RunContext): Promise<void>
   close(): void

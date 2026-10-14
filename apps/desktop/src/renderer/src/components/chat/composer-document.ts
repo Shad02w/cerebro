@@ -68,7 +68,7 @@ export function findSkillMatches(
 ): SkillMatch[] {
   if (!skills.length || !text) return []
   const byFold = new Map(skills.map((skill) => [skill.token.toLowerCase(), skill]))
-  const expression = new RegExp(`(${skillPatternSource(skills)})(?![A-Za-z0-9_-])`, 'g')
+  const expression = new RegExp(`(${skillPatternSource(skills)})(?![A-Za-z0-9_/:-])`, 'g')
   const matches: SkillMatch[] = []
   for (const match of text.matchAll(expression)) {
     const raw = match[1]

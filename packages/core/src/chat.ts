@@ -248,5 +248,7 @@ export type AgentDelta =
   | { type: 'usage'; usage: AgentContextUsage }
   /** Replaces the session checklist. Not a patch and not a provider event. */
   | { type: 'todo'; todo: TodoSnapshot }
+  /** Shown on the session while a turn continues, or while idle after the runtime reports a problem. */
+  | { type: 'alert'; message: string }
 export type AgentAnswer = { allow: boolean; answers: Record<string, string[]> }
 export type AgentRequest = NonNullable<ChatItem['request']> & { title: string; text: string }

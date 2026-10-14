@@ -16,6 +16,8 @@ test('each harness has its own trigger and prompt form', () => {
   assert.equal(skillPromptFor('codex', 'review'), '$review')
   assert.equal(skillPromptFor('claude', 'review'), '/review')
   assert.equal(skillPromptFor('pi', 'review'), '/skill:review')
+  assert.equal(skillPromptFor('claude', 'formatter:lint'), '/formatter:lint')
+  assert.equal(skillTokenFor('claude', 'formatter:lint'), '@formatter:lint')
 })
 
 test('skill prompt rewrite leaves code alone and prefers the longer token', () => {
@@ -72,4 +74,12 @@ test('skill mentions are derived for the harness and must appear in the message'
     /Invalid skill/
   )
   assert.throws(() => skillMentionsFor('claude', '@review-docs', [{ name: 'review' }]), /missing/)
+  assert.throws(
+    () => skillMentionsFor('claude', '@formatter', [{ name: 'formatter:lint' }]),
+    /missing/
+  )
+  assert.equal(
+    skillMentionsFor('claude', 'run @formatter:lint now', [{ name: 'formatter:lint' }])[0]?.prompt,
+    '/formatter:lint'
+  )
 })
