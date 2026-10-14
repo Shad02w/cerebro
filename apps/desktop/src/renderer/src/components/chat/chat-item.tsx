@@ -1,6 +1,6 @@
 import { memo, useState } from 'react'
 import type { AgentAnswer, AgentSkill, ChatItem as Item } from '@cerebro/core'
-import { ChevronRight } from 'lucide-react'
+import { Brain, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { AgentMarkdown } from '@/components/markdown/agent-markdown'
 import { cn } from '@/lib/utils'
@@ -96,6 +96,35 @@ function RequestCard({
   )
 }
 
+/** Shared with reasoning rows so the working-section chrome cannot drift. */
+const workingRowSummaryClass =
+  'flex min-w-0 cursor-pointer list-none items-baseline gap-2 py-1 text-xs text-muted-foreground [&::-webkit-details-marker]:hidden [&::marker]:content-none'
+
+/** Tool output and expanded reasoning use the same body. */
+const workingRowOutputClass =
+  'mt-1 max-h-96 overflow-auto pl-6 text-xs leading-5 whitespace-pre-wrap break-words'
+
+/**
+ * The truncating line stays `display: block`. The shimmer paints an inner inline span.
+ * `.chat-working` used to set `inline-block` on this line, and a long Bash command then
+ * changed the flex baseline and row height for the whole time it was running.
+ */
+function WorkingLabel({
+  testId,
+  line,
+  running
+}: {
+  testId: string
+  line: string
+  running: boolean
+}): React.JSX.Element {
+  return (
+    <span data-testid={testId} className="block w-full truncate">
+      <span className={cn(running && 'chat-working')}>{line}</span>
+    </span>
+  )
+}
+
 function ToolCallLine({ item }: { item: Item }): React.JSX.Element {
   const run = commandRun(item)
   const summary = toolCallSummary(item)
@@ -103,19 +132,18 @@ function ToolCallLine({ item }: { item: Item }): React.JSX.Element {
   const detail = run ? commandInputDetail(item.input, run.command) : item.input
   return (
     <details className="min-w-0" data-testid={run ? 'command-run' : 'tool-call'}>
-      <summary className="flex min-w-0 cursor-pointer list-none items-baseline gap-2 py-1 text-xs text-muted-foreground [&::-webkit-details-marker]:hidden [&::marker]:content-none">
+      <summary className={workingRowSummaryClass}>
         <ToolTypeIcon
           name={run ? 'shell' : undefined}
           title={run ? undefined : item.title}
           className="relative top-px"
         />
         <span className="min-w-0 flex-1">
-          <span
-            data-testid={run ? 'command-preview' : 'tool-summary'}
-            className={cn('block w-full truncate', running && 'chat-working')}
-          >
-            {summary.line}
-          </span>
+          <WorkingLabel
+            testId={run ? 'command-preview' : 'tool-summary'}
+            line={summary.line}
+            running={running}
+          />
         </span>
       </summary>
       {run?.command ? (
@@ -131,13 +159,37 @@ function ToolCallLine({ item }: { item: Item }): React.JSX.Element {
           {detail}
         </pre>
       ) : null}
-      {item.text ? (
-        <pre className="mt-1 max-h-96 overflow-auto pl-6 text-xs leading-5 whitespace-pre-wrap break-words">
-          {item.text}
-        </pre>
-      ) : null}
+      {item.text ? <pre className={workingRowOutputClass}>{item.text}</pre> : null}
     </details>
   )
+}
+
+function ReasoningLine({ item }: { item: Item }): React.JSX.Element {
+  const running = item.status === 'running'
+  const label = item.title?.trim() || 'Reasoning'
+  return (
+    <details className="min-w-0" data-testid="reasoning">
+      <summary className={workingRowSummaryClass}>
+        <Brain aria-hidden="true" className="relative top-px size-3.5 shrink-0" />
+        <span className="min-w-0 flex-1">
+          <WorkingLabel testId="reasoning-summary" line={label} running={running} />
+        </span>
+      </summary>
+      {item.text ? <pre className={workingRowOutputClass}>{item.text}</pre> : null}
+    </details>
+  )
+}
+
+/** The latest item that has not settled. Completed calls stay in the finished group. */
+function liveWorkingItem(items: readonly Item[]): Item | undefined {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index]
+    if (!item) continue
+    if (item.status === 'completed' || item.status === 'failed' || item.status === 'interrupted')
+      continue
+    return item
+  }
+  return undefined
 }
 
 /** Every tool call from one turn, as a single expandable once the reply has ended. */
@@ -150,11 +202,10 @@ export function WorkingGroup({
 }): React.JSX.Element {
   const seconds = useTurnDuration(items[0]?.turnId)
   if (live) {
+    const current = liveWorkingItem(items)
     return (
       <div data-testid="working-live">
-        {items.map((item) => (
-          <WorkingEntry key={item.id} item={item} />
-        ))}
+        {current ? <WorkingEntry key={current.id} item={current} /> : null}
       </div>
     )
   }
@@ -179,6 +230,7 @@ export function WorkingGroup({
 
 function WorkingEntry({ item }: { item: Item }): React.JSX.Element {
   if (item.kind === 'tool') return <ToolCallLine item={item} />
+  if (item.kind === 'reasoning') return <ReasoningLine item={item} />
   return <TranscriptDetails item={item} />
 }
 
@@ -228,6 +280,7 @@ export const ChatItem = memo(function ChatItem({
       </p>
     )
   if (item.kind === 'tool') return <ToolCallLine item={item} />
+  if (item.kind === 'reasoning') return <ReasoningLine item={item} />
   return <TranscriptDetails item={item} />
 })
 
