@@ -453,9 +453,9 @@ test('chat works through native adapters, survives reload, handles requests, and
     await page.getByRole('button', { name: 'Codex', exact: true }).click()
     await page.screenshot({ path: '/tmp/cerebro-chat-evidence/model-picker-icons.png' })
     const models = page.locator('.model-picker-list')
-    // Constrain the list to exercise overflow with the two native fixture models.
+    // Rows are a single line, so this has to be shorter than two of them.
     await models.evaluate((element) => {
-      element.style.maxHeight = '96px'
+      element.style.maxHeight = '48px'
     })
     expect(
       await models.evaluate((element) => getComputedStyle(element, '::-webkit-scrollbar').width)
