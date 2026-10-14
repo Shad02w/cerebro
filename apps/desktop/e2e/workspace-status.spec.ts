@@ -265,7 +265,7 @@ test('marks workspace rows and groups the sidebar by project or status', async (
     await expect(page.getByTestId('status-count-done')).toHaveText('1')
 
     const group = (status: string): Locator =>
-      page.locator('[data-sidebar="menu-item"]').filter({
+      page.locator('[data-slot="collapsible"]').filter({
         has: page.getByTestId(`status-group-${status}`)
       })
     for (const status of ['ready_to_review', 'done']) {
