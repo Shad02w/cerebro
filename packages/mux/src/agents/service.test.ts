@@ -12,7 +12,8 @@ import {
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { AgentSessions } from './service'
-import type { AgentModel, AgentSession, AgentStatusEvent } from '@cerebro/core'
+import type { AgentHarness, AgentModel, AgentSession, AgentStatusEvent } from '@cerebro/core'
+import { MuxError } from '../protocol'
 import type { AgentAdapter, ConnectionHost, RunContext } from './adapters'
 const model: AgentModel = {
   key: 'test',
@@ -1223,6 +1224,269 @@ test('a thread title starts as the prompt, then the prompt pass, then the first 
     assert.equal(await readTitle(), 'Save button')
     await service.shutdown()
   } finally {
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
+
+const harnessModel = (harness: AgentHarness, label: string): AgentModel => ({
+  ...model,
+  key: harness,
+  harness,
+  id: harness,
+  label
+})
+
+async function settled(service: AgentSessions, paneId: number): Promise<AgentSession> {
+  let session: AgentSession | null = null
+  for (let i = 0; i < 50; i++) {
+    session = (await service.command({ ...scope, paneId }, { ...send, action: 'get', paneId }))
+      .session
+    if (session && session.status !== 'running' && session.status !== 'waiting') return session
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  }
+  assert(session && session.status !== 'running' && session.status !== 'waiting')
+  return session!
+}
+
+test('deliver messages another harness, prefixes the sender, and read records a notice', async () => {
+  const seen: Array<{ harness: AgentHarness; text: string; paneId?: number }> = []
+  const dir = mkdtempSync(join(tmpdir(), 'cerebro-agents-deliver-'))
+  const make = (harness: AgentHarness): AgentAdapter => ({
+    models: async () => [harnessModel(harness, harness)],
+    connect: (_session, _host, routing) => ({
+      run: async (context) => {
+        seen.push({ harness, text: context.text, paneId: routing?.paneId })
+        context.emit({
+          type: 'item',
+          item: { id: 'reply', kind: 'text', text: `reply-${harness}` }
+        })
+      },
+      close: () => {}
+    })
+  })
+  const service = new AgentSessions(dir, () => {}, {
+    claude: make('claude'),
+    codex: make('codex'),
+    pi: make('pi')
+  })
+  try {
+    service.noteLivePanes([1, 2])
+    await service.command(
+      { ...scope, paneId: 1 },
+      { ...send, commandId: 'a', text: 'alpha', model: harnessModel('claude', 'claude') }
+    )
+    const sender = await settled(service, 1)
+    await service.command(
+      { ...scope, paneId: 2 },
+      { ...send, commandId: 'b', text: 'beta', model: harnessModel('pi', 'pi') }
+    )
+    const target = await settled(service, 2)
+    const hinted = seen.find((entry) => entry.harness === 'pi' && entry.text.startsWith('beta'))
+    assert(hinted)
+    assert.match(hinted.text, /cerebro chat send --workspace 1 --pane 1/)
+    assert.equal(hinted.paneId, 2)
+    const delivery = service.deliver({
+      workspaceId: 1,
+      fromSessionId: sender.id,
+      toPaneId: 2,
+      text: 'ping',
+      livePanes: [1, 2]
+    })
+    assert.equal(delivery.queued, false)
+    assert.equal(delivery.sessionId, target.id)
+    const after = await settled(service, 2)
+    const stored = after.items.filter((item) => item.kind === 'user').at(-1)
+    assert.equal(stored?.text, `From ${sender.title} (claude) session ${sender.id}:\nping`)
+    assert.equal(stored?.text.includes('Other agents'), false)
+    const spoken = seen.filter((entry) => entry.text.includes('ping')).at(-1)
+    assert(spoken)
+    assert.match(spoken.text, /From .* \(claude\) session/)
+    assert.match(spoken.text, /cerebro chat send --workspace 1 --pane 1/)
+    const reply = await service.read({
+      workspaceId: 1,
+      sessionId: target.id,
+      turnId: delivery.turnId,
+      fromSessionId: sender.id,
+      timeoutMs: 1000
+    })
+    assert.equal(reply.text, 'reply-pi')
+    assert.equal(reply.status, 'idle')
+    const senderAfter = await settled(service, 1)
+    const notice = senderAfter.items.find((item) => item.kind === 'notice')
+    assert.equal(notice?.title, 'Agent reply')
+    assert.match(notice?.text ?? '', /Reply from/)
+    assert.match(notice?.text ?? '', /reply-pi/)
+  } finally {
+    await service.shutdown()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('two sessions of one harness can deliver, and a second pane of the same session is self', async () => {
+  const f = fixture(async (context) => {
+    context.emit({ type: 'item', item: { id: 'reply', kind: 'text', text: 'ok' } })
+  })
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    service.noteLivePanes([1, 2, 3])
+    await service.command(scope, send)
+    const first = await settled(service, 1)
+    await service.command({ ...scope, paneId: 2 }, { ...send, commandId: 'other', text: 'second' })
+    const second = await settled(service, 2)
+    const delivery = service.deliver({
+      workspaceId: 1,
+      fromSessionId: first.id,
+      toPaneId: 2,
+      text: 'hello other',
+      livePanes: [1, 2, 3]
+    })
+    assert.equal(delivery.sessionId, second.id)
+    assert.equal(delivery.queued, false)
+    await service.command({ ...scope, paneId: 3 }, { ...send, action: 'open', sessionId: first.id })
+    assert.throws(
+      () =>
+        service.deliver({
+          workspaceId: 1,
+          fromSessionId: first.id,
+          toPaneId: 3,
+          text: 'me',
+          livePanes: [1, 2, 3]
+        }),
+      (error: unknown) => error instanceof MuxError && /own session/.test(error.message)
+    )
+  } finally {
+    await service.shutdown()
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
+
+test('a busy target enqueues the delivered turn, read waits, and a reverse deliver conflicts', async () => {
+  const releases: Array<() => void> = []
+  const f = fixture(async (context) => {
+    await new Promise<void>((resolve) => releases.push(resolve))
+    context.emit({ type: 'item', item: { id: 'reply', kind: 'text', text: 'later' } })
+  })
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    service.noteLivePanes([1, 2])
+    await service.command(scope, { ...send, text: 'hold-a' })
+    await service.command({ ...scope, paneId: 2 }, { ...send, commandId: 'b', text: 'hold-b' })
+    const sender = (await service.command(scope, { ...send, action: 'get' })).session!
+    const target = (
+      await service.command({ ...scope, paneId: 2 }, { ...send, action: 'get', paneId: 2 })
+    ).session!
+    assert.equal(sender.status, 'running')
+    assert.equal(target.status, 'running')
+    const delivery = service.deliver({
+      workspaceId: 1,
+      fromSessionId: sender.id,
+      toPaneId: 2,
+      text: 'while busy',
+      livePanes: [1, 2]
+    })
+    assert.equal(delivery.queued, true)
+    assert.match(
+      (await service.command({ ...scope, paneId: 2 }, { ...send, action: 'get', paneId: 2 }))
+        .session?.queue?.[0].text ?? '',
+      /From .* \(codex\) session .*while busy/s
+    )
+    const pending = service.read({
+      workspaceId: 1,
+      sessionId: target.id,
+      turnId: target.turnId!,
+      fromSessionId: sender.id,
+      timeoutMs: 2000
+    })
+    assert.throws(
+      () =>
+        service.deliver({
+          workspaceId: 1,
+          fromSessionId: target.id,
+          toPaneId: 1,
+          text: 'back',
+          livePanes: [1, 2]
+        }),
+      (error: unknown) => error instanceof MuxError && error.code === 'conflict'
+    )
+    releases.splice(0).forEach((release) => release())
+    assert.equal((await pending).text, 'later')
+    const delivered = service.read({
+      workspaceId: 1,
+      sessionId: target.id,
+      turnId: delivery.turnId,
+      fromSessionId: sender.id,
+      timeoutMs: 2000
+    })
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    releases.splice(0).forEach((release) => release())
+    assert.equal((await delivered).text, 'later')
+    const senderAfter = await settled(service, 1)
+    assert.equal(senderAfter.items.filter((item) => item.kind === 'notice').length, 2)
+  } finally {
+    releases.splice(0).forEach((release) => release())
+    await service.shutdown()
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
+
+test('read times out without a notice, and a closed pane or other workspace is rejected', async () => {
+  const releases: Array<() => void> = []
+  const f = fixture(async (context) => {
+    await new Promise<void>((resolve) => {
+      const done = (): void => resolve()
+      releases.push(done)
+      context.signal.addEventListener('abort', done, { once: true })
+    })
+  })
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    service.noteLivePanes([1, 2])
+    await service.command(scope, send)
+    await service.command({ ...scope, paneId: 2 }, { ...send, commandId: 'b', text: 'other' })
+    const sender = (await service.command(scope, { ...send, action: 'get' })).session!
+    const target = (
+      await service.command({ ...scope, paneId: 2 }, { ...send, action: 'get', paneId: 2 })
+    ).session!
+    await assert.rejects(
+      service.read({
+        workspaceId: 1,
+        sessionId: target.id,
+        turnId: target.turnId!,
+        fromSessionId: sender.id,
+        timeoutMs: 30
+      }),
+      (error: unknown) => error instanceof MuxError && error.code === 'unavailable'
+    )
+    const afterTimeout = (await service.command(scope, { ...send, action: 'get' })).session!
+    assert.equal(
+      afterTimeout.items.some((item) => item.kind === 'notice'),
+      false
+    )
+    assert.throws(
+      () =>
+        service.deliver({
+          workspaceId: 1,
+          fromSessionId: sender.id,
+          toPaneId: 2,
+          text: 'closed',
+          livePanes: [1]
+        }),
+      (error: unknown) => error instanceof MuxError && /open chat/.test(error.message)
+    )
+    assert.throws(
+      () =>
+        service.deliver({
+          workspaceId: 9,
+          fromSessionId: sender.id,
+          toPaneId: 2,
+          text: 'elsewhere',
+          livePanes: [1, 2]
+        }),
+      (error: unknown) => error instanceof MuxError && error.code === 'not_found'
+    )
+  } finally {
+    releases.splice(0).forEach((release) => release())
+    await service.shutdown()
     rmSync(f.dir, { recursive: true, force: true })
   }
 })

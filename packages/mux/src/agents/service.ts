@@ -38,10 +38,12 @@ import {
   type ChatView,
   type QueuedMessage
 } from '@cerebro/core'
+import { MuxError } from '../protocol'
 import {
   adapters,
   type AgentAdapter,
   type AgentConnection,
+  type AgentRouting,
   type AutonomousTurn,
   type BackgroundTaskUpdate,
   type ConnectionHost,
@@ -56,6 +58,34 @@ export type AgentScope = {
   paneId: number
   repositoryId: number | null
   cwd: string
+}
+export type ChatDelivery = {
+  sessionId: string
+  paneId: number
+  turnId: string
+  queued: boolean
+}
+export type ChatReadInput = {
+  workspaceId: number
+  sessionId: string
+  turnId: string
+  fromSessionId?: string
+  timeoutMs: number
+}
+export type ChatReadResult = {
+  sessionId: string
+  turnId: string
+  status: AgentSession['status']
+  text: string
+}
+export type ChatReadWatch = {
+  token: string
+  fromSessionId?: string
+  targetId: string
+  turnId: string
+  timeoutMs: number
+  done: Promise<void>
+  settled: boolean
 }
 type Running = {
   controller: AbortController
@@ -239,6 +269,14 @@ export class AgentSessions {
   private live = new Map<string, Live>()
   /** Per session, the trailing turn that holds background outcomes reported while idle. */
   private events = new Map<string, string>()
+  /** Chat pane ids currently in the layout. `beginTurn` uses this to tell a model who it can message. */
+  private openChatPanes = new Set<number>()
+  /** Queue item id → turn id reserved for a delivery that is waiting behind a running turn. */
+  private deliveryTurns = new Map<string, string>()
+  private gates = new Map<string, { promise: Promise<void>; resolve: () => void }>()
+  private outcomes = new Map<string, { status: AgentSession['status']; error?: string }>()
+  /** Reader session → the session whose turn it is blocked inside `read` on. */
+  private reading = new Map<string, { targetId: string; token: string }>()
   private timers = new Map<string, ReturnType<typeof setTimeout>>()
   private catalog?: AgentCatalog
   private loadingCatalog?: Promise<AgentCatalog>
@@ -606,6 +644,239 @@ export class AgentSessions {
   private releaseIfDetached(sessionId: string | undefined): void {
     if (sessionId && !this.bound(sessionId) && !this.running.has(sessionId)) this.release(sessionId)
   }
+  noteLivePanes(paneIds: Iterable<number>): void {
+    const next = new Set<number>()
+    for (const paneId of paneIds) if (Number.isInteger(paneId) && paneId > 0) next.add(paneId)
+    this.openChatPanes = next
+  }
+  /** Open chat panes in one workspace. Pass `fromSessionId` to omit that session (every pane bound to it). */
+  peers(workspaceId: number, fromSessionId?: string): ChatAgentActivity[] {
+    if (fromSessionId) this.sessionInWorkspace(fromSessionId, workspaceId)
+    return visibleAgents(
+      [...this.sessions.values()].filter((session) => session.workspaceId === workspaceId),
+      this.bindings,
+      this.openChatPanes
+    ).filter((agent) => agent.paneId != null && agent.sessionId !== fromSessionId)
+  }
+  /**
+   * Push a user turn into another open chat pane. Does not wait for the target turn.
+   * A busy target keeps the message on its queue and returns that future turn id.
+   */
+  deliver(input: {
+    workspaceId: number
+    fromSessionId: string
+    toPaneId: number
+    text: string
+    livePanes: Iterable<number>
+  }): ChatDelivery {
+    this.noteLivePanes(input.livePanes)
+    const sender = this.sessionInWorkspace(input.fromSessionId, input.workspaceId)
+    if (typeof input.text !== 'string' || !input.text.trim())
+      throw new MuxError('usage', 'Write a message first.')
+    if (input.text.length > 100_000)
+      throw new MuxError('usage', 'Message exceeds 100,000 characters.')
+    if (!this.openChatPanes.has(input.toPaneId))
+      throw new MuxError('conflict', 'Pane is not an open chat.')
+    const targetId = this.bindings[String(input.toPaneId)]
+    const target = targetId ? this.sessions.get(targetId) : undefined
+    if (!target || target.workspaceId !== input.workspaceId)
+      throw new MuxError('conflict', 'Chat pane has no conversation.')
+    if (target.id === sender.id)
+      throw new MuxError('conflict', 'An agent cannot message its own session.')
+    if (this.reading.get(target.id)?.targetId === sender.id)
+      throw new MuxError('conflict', 'That agent is waiting on this session.')
+    const text = `From ${sender.title} (${sender.model.harness}) session ${sender.id}:\n${input.text}`
+    if (busy(target)) {
+      const turnId = randomUUID()
+      const id = randomUUID()
+      this.deliveryTurns.set(id, turnId)
+      this.armTurn(target.id, turnId)
+      const queued: QueuedMessage = {
+        id,
+        text,
+        model: target.model,
+        reasoning: target.reasoning,
+        accessMode: target.accessMode ?? 'full'
+      }
+      target.queue = [...(target.queue ?? []), queued]
+      this.changed(target, true)
+      return { sessionId: target.id, paneId: input.toPaneId, turnId, queued: true }
+    }
+    const turnId = randomUUID()
+    this.armTurn(target.id, turnId)
+    this.beginTurn(
+      target,
+      text,
+      [],
+      target.model,
+      target.reasoning,
+      target.accessMode ?? 'full',
+      turnId
+    )
+    return { sessionId: target.id, paneId: input.toPaneId, turnId, queued: false }
+  }
+  /** Wait until a delivered turn settles, then record the reply on the sender. */
+  async read(input: ChatReadInput): Promise<ChatReadResult> {
+    const watch = this.prepareRead(input)
+    try {
+      await this.waitRead(watch)
+    } catch (error) {
+      this.cancelRead(watch)
+      throw error
+    }
+    return this.completeRead(watch)
+  }
+  prepareRead(input: ChatReadInput): ChatReadWatch {
+    const target = this.sessionInWorkspace(input.sessionId, input.workspaceId)
+    if (!input.turnId) throw new MuxError('usage', 'Turn id is required.')
+    if (input.fromSessionId) {
+      const reader = this.sessionInWorkspace(input.fromSessionId, input.workspaceId)
+      if (reader.id === target.id)
+        throw new MuxError('conflict', 'An agent cannot read its own turn.')
+    }
+    if (!Number.isFinite(input.timeoutMs) || input.timeoutMs < 0 || input.timeoutMs > 90_000)
+      throw new MuxError('usage', 'Timeout must be between 0 and 90000 milliseconds.')
+    const state = this.turnState(target, input.turnId)
+    if (state === 'missing') throw new MuxError('not_found', 'Turn not found.')
+    const token = randomUUID()
+    if (input.fromSessionId) this.reading.set(input.fromSessionId, { targetId: target.id, token })
+    return {
+      token,
+      fromSessionId: input.fromSessionId,
+      targetId: target.id,
+      turnId: input.turnId,
+      timeoutMs: input.timeoutMs,
+      done: state === 'done' ? Promise.resolve() : this.armTurn(target.id, input.turnId),
+      settled: false
+    }
+  }
+  async waitRead(watch: ChatReadWatch): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new MuxError('unavailable', 'Timed out waiting for the agent reply.')),
+        watch.timeoutMs
+      )
+    })
+    try {
+      await Promise.race([watch.done, timeout])
+    } finally {
+      if (timer) clearTimeout(timer)
+    }
+  }
+  cancelRead(watch: ChatReadWatch): void {
+    if (watch.settled) return
+    watch.settled = true
+    this.clearReading(watch)
+  }
+  completeRead(watch: ChatReadWatch): ChatReadResult {
+    if (watch.settled) throw new MuxError('conflict', 'This read already finished.')
+    watch.settled = true
+    this.clearReading(watch)
+    const target = this.sessions.get(watch.targetId)
+    if (!target) throw new MuxError('not_found', 'Conversation not found in this workspace.')
+    const outcome = this.outcomes.get(this.turnKey(target.id, watch.turnId))
+    this.outcomes.delete(this.turnKey(target.id, watch.turnId))
+    const reply =
+      target.items
+        .filter((item) => item.turnId === watch.turnId && item.kind === 'text' && item.text.trim())
+        .map((item) => item.text.trim())
+        .join('\n') ||
+      outcome?.error ||
+      ''
+    if (watch.fromSessionId) this.noteReply(watch.fromSessionId, target, reply)
+    return {
+      sessionId: target.id,
+      turnId: watch.turnId,
+      status: outcome?.status ?? (reply ? 'idle' : target.status),
+      text: reply
+    }
+  }
+  private noteReply(fromSessionId: string, target: AgentSession, reply: string): void {
+    const sender = this.sessions.get(fromSessionId)
+    if (!sender || sender.items.length >= 2000) return
+    const body = reply.trim() || 'No reply text.'
+    sender.items.push({
+      id: randomUUID(),
+      turnId: sender.turnId && busy(sender) ? sender.turnId : randomUUID(),
+      kind: 'notice',
+      title: 'Agent reply',
+      text: `Reply from ${target.title} (${target.model.harness}) session ${target.id}:\n${body}`.slice(
+        0,
+        8000
+      )
+    })
+    this.changed(sender, true)
+  }
+  private clearReading(watch: ChatReadWatch): void {
+    if (!watch.fromSessionId) return
+    const current = this.reading.get(watch.fromSessionId)
+    if (current?.token === watch.token) this.reading.delete(watch.fromSessionId)
+  }
+  private sessionInWorkspace(sessionId: string, workspaceId: number): AgentSession {
+    const session = this.sessions.get(sessionId)
+    if (!session || session.workspaceId !== workspaceId)
+      throw new MuxError('not_found', 'Conversation not found in this workspace.')
+    return session
+  }
+  private turnKey(sessionId: string, turnId: string): string {
+    return `${sessionId}\0${turnId}`
+  }
+  private armTurn(sessionId: string, turnId: string): Promise<void> {
+    const key = this.turnKey(sessionId, turnId)
+    const existing = this.gates.get(key)
+    if (existing) return existing.promise
+    let resolve!: () => void
+    const promise = new Promise<void>((r) => {
+      resolve = r
+    })
+    this.gates.set(key, { promise, resolve })
+    return promise
+  }
+  private finishTurn(
+    sessionId: string,
+    turnId: string,
+    status: AgentSession['status'],
+    error?: string
+  ): void {
+    const key = this.turnKey(sessionId, turnId)
+    if (!this.outcomes.has(key)) this.outcomes.set(key, { status, error })
+    const gate = this.gates.get(key)
+    if (!gate) return
+    this.gates.delete(key)
+    gate.resolve()
+  }
+  private turnState(
+    session: AgentSession,
+    turnId: string
+  ): 'queued' | 'active' | 'done' | 'missing' {
+    if ((session.queue ?? []).some((item) => this.deliveryTurns.get(item.id) === turnId))
+      return 'queued'
+    if (session.turnId === turnId && this.running.has(session.id)) return 'active'
+    if (
+      session.items.some((item) => item.turnId === turnId) ||
+      this.outcomes.has(this.turnKey(session.id, turnId))
+    )
+      return 'done'
+    return 'missing'
+  }
+  private peerHint(session: AgentSession): string {
+    const peers = this.peers(session.workspaceId, session.id)
+    if (!peers.length) return ''
+    const lines = peers.map(
+      (peer) => `- ${peer.title} (${peer.harness}) pane ${peer.paneId} session ${peer.sessionId}`
+    )
+    const sample = peers[0]
+    return (
+      `\n\nOther agents in this workspace:\n${lines.join('\n')}\n` +
+      `Message one with: cerebro chat send --workspace ${session.workspaceId} --pane ${sample.paneId} --text "your message"\n`
+    )
+  }
+  private routingFor(session: AgentSession): AgentRouting | undefined {
+    const paneId = this.paneFor(session.id)
+    if (!paneId) return
+    return { workspaceId: session.workspaceId, paneId, sessionId: session.id }
+  }
   async command(scope: AgentScope, command: ChatCommand): Promise<ChatView> {
     if (this.stopping) throw new Error('Agent host is stopping.')
     if (command.action === 'get') return this.view(scope)
@@ -846,13 +1117,15 @@ export class AgentSessions {
     attachments: RunAttachment[],
     model: AgentModel,
     reasoning: string | undefined,
-    accessMode: AgentAccessMode
+    accessMode: AgentAccessMode,
+    pinnedTurnId?: string
   ): void {
     if (session.items.length > 1500) {
       session.status = 'failed'
       session.error =
         'This conversation reached its display limit. Start a new Agent; the saved transcript is retained.'
       this.changed(session, true)
+      if (pinnedTurnId) this.finishTurn(session.id, pinnedTurnId, 'failed', session.error)
       return
     }
     session.model = model
@@ -862,7 +1135,8 @@ export class AgentSessions {
     session.error = undefined
     session.attention = undefined
     session.generation = randomUUID()
-    session.turnId = randomUUID()
+    session.turnId = pinnedTurnId ?? randomUUID()
+    this.armTurn(session.id, session.turnId)
     session.items.push({
       id: randomUUID(),
       turnId: session.turnId,
@@ -873,6 +1147,7 @@ export class AgentSessions {
         : {})
     })
     this.changed(session, true)
+    const spoken = `${text}${this.peerHint(session)}`
     const runtime: Running = {
       controller: new AbortController(),
       requests: new Map(),
@@ -880,7 +1155,7 @@ export class AgentSessions {
     }
     this.running.set(session.id, runtime)
     runtime.done = this.run(session, runtime, (context) =>
-      this.connectionFor(session).run({ ...context, text, attachments })
+      this.connectionFor(session).run({ ...context, text: spoken, attachments })
     )
   }
   /** The session's live harness process, opened on first use and reused by every later turn. */
@@ -898,7 +1173,8 @@ export class AgentSessions {
     this.live.set(session.id, entry)
     entry.connection = this.drivers[session.model.harness].connect(
       structuredClone(session),
-      this.host(session, entry)
+      this.host(session, entry),
+      this.routingFor(session)
     )
     return entry.connection
   }
@@ -1211,22 +1487,29 @@ export class AgentSessions {
         this.notify(session, 'finished', finishedNotice)
       // A message queued while this turn ran becomes the next turn automatically, unless this one failed
       // (left for the user to act on) or the host is tearing down (stopWorkspace/shutdown own the queue then).
-      if (!this.stopping && session.status !== 'failed' && session.queue?.length) {
+      const settledStatus = session.status
+      const settledError = session.error
+      const finishedTurn = session.turnId
+      if (!this.stopping && settledStatus !== 'failed' && session.queue?.length) {
         const [next, ...rest] = session.queue
         session.queue = rest
         const attachments = (next.attachments ?? []).map((meta) => ({
           ...meta,
           path: this.attachmentPath(meta)
         }))
+        const pinned = this.deliveryTurns.get(next.id)
+        this.deliveryTurns.delete(next.id)
         this.beginTurn(
           session,
           next.text,
           attachments,
           next.model,
           next.reasoning,
-          next.accessMode ?? 'full'
+          next.accessMode ?? 'full',
+          pinned
         )
       }
+      if (finishedTurn) this.finishTurn(session.id, finishedTurn, settledStatus, settledError)
       this.releaseIfDetached(session.id)
     }
   }
@@ -1261,6 +1544,8 @@ export class AgentSessions {
     for (const id of [...this.live.keys()]) this.release(id)
     for (const timer of this.timers.values()) clearTimeout(timer)
     this.timers.clear()
+    for (const gate of this.gates.values()) gate.resolve()
+    this.gates.clear()
     for (const session of this.sessions.values()) this.persist(session)
   }
 }

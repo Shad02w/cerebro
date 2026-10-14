@@ -21,6 +21,7 @@ import { serverCommand } from './commands/server'
  * Run any command with --help for details.
  */
 
+import { chatCommand } from './commands/chat'
 import { layoutCommand } from './commands/layout'
 import { projectCommand } from './commands/project'
 import { workspaceCommand } from './commands/workspace'
@@ -35,6 +36,7 @@ Commands:
   workspace  Manage workspaces (default branch + git worktrees) and their status
   tab        Manage persistent workspace tabs
   pane       Manage persistent BSP panes inside tabs
+  chat       Message another agent pane (peers, send, read)
   server     Manage the background terminal server
 
 Options:
@@ -74,6 +76,11 @@ async function main(): Promise<void> {
 
   if (command === 'tab' || command === 'pane') {
     await layoutCommand(command, rest)
+    return
+  }
+
+  if (command === 'chat') {
+    await chatCommand(rest)
     return
   }
 

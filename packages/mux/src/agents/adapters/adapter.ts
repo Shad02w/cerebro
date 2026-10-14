@@ -7,6 +7,9 @@ import type {
   AgentSession,
   ChatAttachment
 } from '@cerebro/core'
+import type { AgentRouting } from '../transport'
+
+export type { AgentRouting }
 
 /** A host-owned image file sent with the prompt. Bytes are read only when a harness needs them inline. */
 export type RunAttachment = ChatAttachment & { path: string }
@@ -43,5 +46,5 @@ export interface AgentConnection {
 }
 export interface AgentAdapter {
   models(cwd: string): Promise<AgentModel[]>
-  connect(session: AgentSession, host: ConnectionHost): AgentConnection
+  connect(session: AgentSession, host: ConnectionHost, routing?: AgentRouting): AgentConnection
 }

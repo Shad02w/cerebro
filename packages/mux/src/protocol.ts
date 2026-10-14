@@ -148,6 +148,10 @@ export type RequestParams = {
   attachmentId?: string
   takeOwnership?: boolean
   sessionId?: string
+  fromSessionId?: string
+  turnId?: string
+  timeoutMs?: number
+  text?: string
   data: string
   scrollback?: number
   format?: string

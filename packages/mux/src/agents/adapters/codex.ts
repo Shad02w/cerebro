@@ -1,6 +1,6 @@
 import { chatImageMarkerPattern, type AgentDelta, type AgentModel } from '@cerebro/core'
 import { randomUUID } from 'node:crypto'
-import { JsonProcess, executable, describe, type Frame } from '../transport'
+import { JsonProcess, executable, describe, type AgentRouting, type Frame } from '../transport'
 import type { AgentAdapter, AutonomousTurn } from './adapter'
 import { activeTurn, item, model, modalities } from './shared'
 import { codexTodoSnapshot } from '../todo'
@@ -13,8 +13,8 @@ const textElements = (
     const start = Buffer.byteLength(text.slice(0, match.index))
     return { byteRange: { start, end: start + Buffer.byteLength(match[0]) }, placeholder: match[0] }
   })
-async function startCodex(cwd: string): Promise<JsonProcess> {
-  const rpc = new JsonProcess(executable('codex'), ['app-server'], cwd)
+async function startCodex(cwd: string, routing?: AgentRouting): Promise<JsonProcess> {
+  const rpc = new JsonProcess(executable('codex'), ['app-server'], cwd, false, routing)
   try {
     await rpc.request('initialize', {
       clientInfo: { name: 'cerebro', title: 'Cerebro', version: '0.1.0' },
@@ -57,7 +57,7 @@ export const codexAdapter: AgentAdapter = {
       rpc.close()
     }
   },
-  connect(session, host) {
+  connect(session, host, routing?: AgentRouting) {
     let rpc: JsonProcess | undefined
     let closed = false
     let current: AutonomousTurn | undefined
@@ -297,7 +297,7 @@ export const codexAdapter: AgentAdapter = {
       }
     }
     const ready = (async () => {
-      const started = await startCodex(session.cwd)
+      const started = await startCodex(session.cwd, routing)
       if (closed) {
         started.close()
         return
