@@ -1112,8 +1112,8 @@ describe('agent adapters', { concurrency: 1 }, () => {
             }>
             assert.equal(input[0]?.text, 'skill-wire $review please')
             assert.equal(
-              input.some((item) => item.type === 'skill' && item.name === 'review'),
-              true
+              input.some((item) => item.type === 'skill'),
+              false
             )
           } else {
             assert.match(reply, new RegExp(prompt.replaceAll('/', '\\/')))
