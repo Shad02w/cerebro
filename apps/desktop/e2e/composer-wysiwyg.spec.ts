@@ -148,7 +148,6 @@ test('agent composer renders bullets, inline code, a code block, and skill menti
     await expect(addMenu).toBeVisible()
     await expect(addMenu.getByRole('option')).toHaveText(['A', 'B', 'C'])
     await page.screenshot({ path: testInfo.outputPath('composer-skill-menu.png') })
-    await page.screenshot({ path: '/opt/cursor/artifacts/composer-skill-menu.png' })
     await addMenu.getByTestId('composer-skill-option-B').click()
     await expect(composer.getByTestId('composer-tag')).toHaveText('/B')
     const markdown = await composer.getAttribute('data-composer-text')
@@ -251,7 +250,7 @@ test('agent composer renders bullets, inline code, a code block, and skill menti
 test('agent composer mentions a file under the working directory', async ({
   page,
   electronApp
-}) => {
+}, testInfo) => {
   const directory = await mkdtemp(join(tmpdir(), 'cerebro-composer-files-'))
   try {
     await mkdir(join(directory, 'src'), { recursive: true })
@@ -281,11 +280,11 @@ test('agent composer mentions a file under the working directory', async ({
     await expect(option).toBeVisible()
     await expect(option.locator('img')).toBeVisible()
     await expect(option).toContainText('src/app.ts')
-    await page.screenshot({ path: '/opt/cursor/artifacts/composer-file-menu.png' })
+    await page.screenshot({ path: testInfo.outputPath('composer-file-menu.png') })
     await option.click()
     await expect(composer.getByTestId('composer-tag')).toHaveText('@src/app.ts')
     expect(await composer.getAttribute('data-composer-text')).toContain('@src/app.ts')
-    await page.screenshot({ path: '/opt/cursor/artifacts/composer-file-tag.png' })
+    await page.screenshot({ path: testInfo.outputPath('composer-file-tag.png') })
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
