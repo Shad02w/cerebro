@@ -5,7 +5,8 @@ import {
   BUNDLED_TERMINAL_FONT,
   chooseTerminalFont,
   fontProbeShowsFace,
-  terminalFontCss
+  terminalFontCss,
+  terminalLetterSpacing
 } from './terminal-font'
 
 test('a face is installed only when both generic stacks resolve to it', () => {
@@ -38,6 +39,21 @@ test('an explicit family is used only when that face is installed', () => {
     chooseTerminalFont('FiraCode Nerd Font Mono', new Set(['MesloLGS NF'])),
     'MesloLGS NF'
   )
+})
+
+test('letter spacing restores the device pixel WebGL floors away', () => {
+  // MesloLGS at 13px is 1233/2048 em. At dpr 2 that is 15.653 device px,
+  // which WebGL floors to 15 and clips.
+  assert.equal(terminalLetterSpacing(7.82666015625, 2), 1)
+  assert.equal(terminalLetterSpacing(7.82666015625, 1), 1)
+  assert.equal(terminalLetterSpacing(8, 2), 0)
+  assert.equal(terminalLetterSpacing(7.1, 2), 0)
+  assert.equal(terminalLetterSpacing(0, 2), 0)
+  assert.equal(terminalLetterSpacing(8, 0), 0)
+})
+
+test('an explicit bundled face is kept even when the probe missed it', () => {
+  assert.equal(chooseTerminalFont(BUNDLED_TERMINAL_FONT, new Set()), BUNDLED_TERMINAL_FONT)
 })
 
 test('the bundled face is the glyph fallback after any other family', () => {

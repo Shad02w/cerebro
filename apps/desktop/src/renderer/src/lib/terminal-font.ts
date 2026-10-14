@@ -85,6 +85,32 @@ export function terminalFontCss(family: string): string {
   return `"${family}", "${BUNDLED_TERMINAL_FONT}"`
 }
 
+/**
+ * xterm's WebGL renderer sets the device cell to
+ * `floor(charWidth * devicePixelRatio) + round(letterSpacing)`.
+ * The floor drops any fractional device pixel, so a 15.65px glyph is drawn
+ * into a 15px cell and the right edge is clipped. `letterSpacing` is added
+ * in device pixels, not CSS pixels. Returning 1 asks for the nearest whole
+ * device pixel when that is wider than the floor; returning 0 leaves an
+ * already-aligned or nearer-to-floor advance alone.
+ */
+export function terminalLetterSpacing(charWidth: number, devicePixelRatio: number): number {
+  if (!(charWidth > 0) || !(devicePixelRatio > 0)) return 0
+  const device = charWidth * devicePixelRatio
+  const padding = Math.round(device) - Math.floor(device + 1e-6)
+  return padding > 0 ? 1 : 0
+}
+
+/** Advance of "W", matching the string xterm measures (`${fontSize}px ${family}`). */
+export function measureTerminalCharWidth(fontFamilyCss: string, fontSize: number): number {
+  const canvas = document.createElement('canvas')
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return 0
+  ctx.font = `${fontSize}px ${fontFamilyCss}`
+  const width = ctx.measureText('W').width
+  return Number.isFinite(width) ? width : 0
+}
+
 function measure(font: string, sample: string): number {
   const canvas = document.createElement('canvas')
   const ctx = canvas.getContext('2d')
