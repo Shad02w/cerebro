@@ -60,10 +60,8 @@ test('chat works through native adapters, survives reload, handles requests, and
     await expect(page.getByRole('combobox', { name: 'Chat history' })).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'New chat', exact: true })).toHaveCount(0)
     await page.getByRole('button', { name: 'Send message', exact: true }).click()
-    await expect(page.getByRole('alert')).toContainText('Write a message first')
-    await expect(page.getByTestId('chat-composer').getByRole('alert')).toContainText(
-      'Write a message first'
-    )
+    await expect(page.getByTestId('chat-notice-toast')).toContainText('Write a message first')
+    await expect(page.getByTestId('chat-composer').getByRole('alert')).toHaveCount(0)
     await expect(page.getByTestId('chat-transcript').getByRole('alert')).toHaveCount(0)
     await expect(page.getByTestId('chat-composer')).toHaveAttribute('data-dock', 'center')
     await expect(page.getByTestId('chat-empty-hero')).toBeVisible()
@@ -158,7 +156,10 @@ test('chat works through native adapters, survives reload, handles requests, and
       const copyBox = await copyButton.boundingBox()
       expect(copyBox!.y).toBeGreaterThanOrEqual(bubbleBox!.y + bubbleBox!.height)
       await page.screenshot({ path: '/tmp/cerebro-chat-evidence/user-copy-success.png' })
-      await page.getByRole('button', { name: 'Dismiss notification' }).click()
+      await page
+        .getByTestId('chat-copy-toast')
+        .getByRole('button', { name: 'Dismiss notification' })
+        .click()
       await expect(page.getByTestId('chat-copy-toast')).toHaveCount(0)
       await copyButton.click()
       await expect(page.getByTestId('chat-copy-toast')).toBeVisible()
@@ -548,7 +549,9 @@ test('Claude and Pi keep separate chat sessions, with a mixed Terminal pane', as
       .getByTestId('model-picker')
       .getByRole('option', { name: 'Test Model · test-provider', exact: true })
       .click()
-    await expect(page.getByRole('alert')).toContainText('Open a new Agent tab or pane to use Pi.')
+    await expect(page.getByTestId('chat-notice-toast')).toContainText(
+      'Open a new Agent tab or pane to use Pi.'
+    )
     await expectPickerHarness(chat.getByTestId('chat-model-picker'), 'claude')
     await expect
       .poll(
@@ -673,15 +676,16 @@ test.describe('unavailable native installations', () => {
       )
       await page.reload()
       await page.locator(`button[data-workspace-id="${project.workspaces[0].id}"]`).click()
+      await mkdir('/tmp/cerebro-chat-evidence', { recursive: true })
       await page.getByRole('textbox', { name: 'Message agent' }).fill('hello')
       await page.getByRole('button', { name: 'Send message', exact: true }).click()
-      await expect(page.getByRole('alert')).toContainText('Choose an available model')
+      await expect(page.getByTestId('chat-notice-toast')).toContainText('Choose an available model')
+      await page.screenshot({ path: '/tmp/cerebro-chat-evidence/model-required-toast.png' })
       await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled()
       await page.getByTestId('chat-model-picker').click()
       await expect(page.getByTestId('model-picker')).toContainText('Unavailable')
       await page.getByText('Claude Code setup details', { exact: true }).click()
       await expect(page.getByTestId('model-picker')).toContainText('not installed or not on PATH')
-      await mkdir('/tmp/cerebro-chat-evidence', { recursive: true })
       await page.screenshot({ path: '/tmp/cerebro-chat-evidence/setup.png' })
     } finally {
       await rm(directory, { recursive: true, force: true })
@@ -934,7 +938,9 @@ test('image attachments use atomic chips, reach the harness, render in the trans
       .getByRole('option', { name: 'Second Model', exact: true })
       .click()
     await paste('refused.png')
-    await expect(chat.getByRole('alert')).toContainText('Second Model does not accept images')
+    await expect(page.getByTestId('chat-notice-toast')).toContainText(
+      'Second Model does not accept images'
+    )
     await expect(attachments).toHaveCount(0)
     await page.screenshot({ path: '/tmp/cerebro-chat-evidence/attachments-text-only.png' })
   } finally {
