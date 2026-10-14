@@ -1102,7 +1102,7 @@ describe('agent adapters', { concurrency: 1 }, () => {
           process.env[`CEREBRO_${harness.toUpperCase()}_PATH`] = fixture
           const listed = await adapters[harness].skills?.(directory)
           const review = listed?.find((skill) => skill.name === 'review')
-          const token = harness === 'codex' ? '$review' : '@review'
+          const token = '/review'
           const prompt =
             harness === 'pi' ? '/skill:review' : harness === 'claude' ? '/review' : '$review'
           assert.equal(review?.token, token)
@@ -1110,7 +1110,7 @@ describe('agent adapters', { concurrency: 1 }, () => {
           if (harness === 'claude') {
             const plugin = listed?.find((skill) => skill.name === 'formatter:lint')
             assert.equal(plugin?.description, 'Lint with the plugin')
-            assert.equal(plugin?.token, '@formatter:lint')
+            assert.equal(plugin?.token, '/formatter:lint')
             assert.equal(plugin?.prompt, '/formatter:lint')
           }
           const models = await adapters[harness].models(directory)

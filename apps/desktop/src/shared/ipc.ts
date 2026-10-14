@@ -43,7 +43,8 @@ export const IPC = {
     remove: 'cerebro:workspaces:remove',
     setStatus: 'cerebro:workspaces:set-status',
     listChanges: 'cerebro:workspaces:list-changes',
-    getFileDiff: 'cerebro:workspaces:get-file-diff'
+    getFileDiff: 'cerebro:workspaces:get-file-diff',
+    listFiles: 'cerebro:workspaces:list-files'
   },
   settings: {
     get: 'cerebro:settings:get',

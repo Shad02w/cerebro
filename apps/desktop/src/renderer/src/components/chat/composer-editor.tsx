@@ -15,13 +15,11 @@ import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 import Mention from '@tiptap/extension-mention'
 import Placeholder from '@tiptap/extension-placeholder'
 import { Extension, Node, mergeAttributes, type Editor, type Extensions } from '@tiptap/core'
-import { Plugin, PluginKey, NodeSelection, TextSelection } from '@tiptap/pm/state'
+import { Plugin, PluginKey, NodeSelection, TextSelection, type EditorState } from '@tiptap/pm/state'
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view'
 import { common, createLowlight } from 'lowlight'
 import {
   chatImageMarker,
-  skillTrigger,
-  type AgentHarness,
   type AgentSkill,
   type ChatAttachmentUpload,
   type ChatSkillRef
@@ -30,12 +28,16 @@ import { cn } from '@/lib/utils'
 import { imageFiles, type Chip } from './chat-attachments'
 import {
   codeLanguages,
-  promoteSkillTransaction,
+  promoteMentionTransaction,
   serializeDocument,
   serializedOffset,
   textToContent,
+  visitFileText,
   visitSkillText
 } from './composer-document'
+import { searchFiles } from './file-search'
+import { ComposerFileMenu, type FileMenuHandle, type FileOption } from './composer-file-menu'
+import { loadWorkspaceFiles } from './workspace-files'
 import {
   composerVimKey,
   handleComposerVimKey,
@@ -49,11 +51,13 @@ import './composer-editor.css'
 
 const lowlight = createLowlight(common)
 const skillMentionKey = new PluginKey('skillMention')
+const fileMentionKey = new PluginKey('fileMention')
 const skillHighlightKey = new PluginKey('skillHighlight')
 
 type SkillCatalog = { current: readonly AgentSkill[] }
+type FileIndex = { current: ReadonlySet<string> }
 
-const skillHighlight = (catalog: SkillCatalog): Extension =>
+const mentionHighlight = (catalog: SkillCatalog, files: FileIndex): Extension =>
   Extension.create({
     name: 'skillHighlight',
     addProseMirrorPlugins() {
@@ -61,7 +65,10 @@ const skillHighlight = (catalog: SkillCatalog): Extension =>
         new Plugin({
           key: skillHighlightKey,
           appendTransaction(transactions, _oldState, state) {
-            const refresh = transactions.some((transaction) => transaction.getMeta('skillRefresh'))
+            const refresh = transactions.some(
+              (transaction) =>
+                transaction.getMeta('skillRefresh') || transaction.getMeta('filesLoaded')
+            )
             if (
               !refresh &&
               !transactions.some(
@@ -72,7 +79,7 @@ const skillHighlight = (catalog: SkillCatalog): Extension =>
             if (transactions.some((transaction) => transaction.getMeta('skillPromotion')))
               return null
             if (transactions.some((transaction) => transaction.getMeta('composition'))) return null
-            const tr = promoteSkillTransaction(state, catalog.current)
+            const tr = promoteMentionTransaction(state, catalog.current, files.current)
             if (!tr) return null
             tr.setMeta('skillPromotion', true)
             return tr
@@ -80,14 +87,16 @@ const skillHighlight = (catalog: SkillCatalog): Extension =>
           props: {
             decorations(state) {
               const decorations: Decoration[] = []
-              visitSkillText(state, catalog.current, (_match, from, to) => {
+              const mark = (from: number, to: number): void => {
                 decorations.push(
                   Decoration.inline(from, to, {
                     class: 'composer-tag',
                     'data-testid': 'composer-tag'
                   })
                 )
-              })
+              }
+              visitSkillText(state, catalog.current, (_match, from, to) => mark(from, to))
+              visitFileText(state, files.current, (_match, from, to) => mark(from, to))
               return DecorationSet.create(state.doc, decorations)
             }
           }
@@ -361,14 +370,22 @@ const skillOptions = (catalog: SkillCatalog, query: string): AgentSkill[] =>
     .filter((skill) => skill.name.toLowerCase().startsWith(query.toLowerCase()))
     .slice(0, 50)
 
+const outsideCode = (state: EditorState, range: { from: number }): boolean => {
+  const $from = state.doc.resolve(range.from)
+  if ($from.parent.type.spec.code) return false
+  return !$from.marks().some((mark) => mark.type.name === 'code')
+}
+
 const extensionsFor = (
   menuOpen: { current: boolean },
   catalog: SkillCatalog,
-  trigger: '$' | '@',
   interactive: boolean,
   menuRefresh?: { current: (() => void) | null },
-  issue?: { current: string }
+  issue?: { current: string },
+  files?: FileIndex,
+  workspaceId?: { current: number | null }
 ): Extensions => {
+  const fileIndex = files ?? { current: new Set<string>() }
   const CodeBlock = CodeBlockLowlight.extend({
     addNodeView() {
       return ReactNodeViewRenderer(CodeBlockView)
@@ -391,12 +408,10 @@ const extensionsFor = (
     ImageChip,
     ...(interactive
       ? [
-          skillHighlight(catalog),
+          mentionHighlight(catalog, fileIndex),
           Placeholder.configure({
             placeholder:
-              trigger === '$'
-                ? 'Ask your agent to work on something…  $ mentions a skill'
-                : 'Ask your agent to work on something…  @ mentions a skill'
+              'Ask your agent to work on something…  / mentions a skill, @ mentions a file'
           })
         ]
       : []),
@@ -427,7 +442,7 @@ const extensionsFor = (
       deleteTriggerWithBackspace: true,
       HTMLAttributes: { class: 'composer-tag', 'data-testid': 'composer-tag' },
       renderText: ({ node }) =>
-        `${node.attrs.mentionSuggestionChar ?? trigger}${node.attrs.label ?? node.attrs.id ?? ''}`,
+        `${node.attrs.mentionSuggestionChar ?? '/'}${node.attrs.label ?? node.attrs.id ?? ''}`,
       renderHTML: ({ node }) => [
         'span',
         {
@@ -436,76 +451,153 @@ const extensionsFor = (
           'data-testid': 'composer-tag',
           'data-id': node.attrs.id
         },
-        `${node.attrs.mentionSuggestionChar ?? trigger}${node.attrs.label ?? node.attrs.id ?? ''}`
+        `${node.attrs.mentionSuggestionChar ?? '/'}${node.attrs.label ?? node.attrs.id ?? ''}`
       ],
-      suggestion: {
-        char: trigger,
-        pluginKey: skillMentionKey,
-        placement: 'top-start',
-        allow: ({ state, range }) => {
-          const $from = state.doc.resolve(range.from)
-          if ($from.parent.type.spec.code) return false
-          return !$from.marks().some((mark) => mark.type.name === 'code')
-        },
-        items: ({ query }) => skillOptions(catalog, query),
-        command: ({ editor, range, props }) => {
-          const skill = props as AgentSkill
-          editor
-            .chain()
-            .focus()
-            .insertContentAt(range, [
-              {
-                type: 'mention',
-                attrs: {
-                  id: skill.name,
-                  label: skill.name,
-                  mentionSuggestionChar: skill.token.slice(0, 1) || trigger,
-                  path: skill.path,
-                  prompt: skill.prompt
-                }
+      suggestions: [
+        {
+          char: '/',
+          pluginKey: skillMentionKey,
+          placement: 'top-start',
+          allowToIncludeChar: true,
+          allow: ({ state, range }) => outsideCode(state, range),
+          items: ({ query }) => skillOptions(catalog, query),
+          command: ({ editor, range, props }) => {
+            const skill = props as AgentSkill
+            editor
+              .chain()
+              .focus()
+              .insertContentAt(range, [
+                {
+                  type: 'mention',
+                  attrs: {
+                    id: skill.name,
+                    label: skill.name,
+                    mentionSuggestionChar: '/',
+                    path: skill.path,
+                    prompt: skill.prompt
+                  }
+                },
+                { type: 'text', text: ' ' }
+              ])
+              .run()
+          },
+          render: () => {
+            let component: ReactRenderer<TagMenuHandle> | undefined
+            let unmount: (() => void) | undefined
+            let latest: { query: string; command: (item: AgentSkill) => void } | null = null
+            const show = (props: { query: string; command: (item: AgentSkill) => void }): void => {
+              latest = props
+              component?.updateProps({
+                ...props,
+                items: skillOptions(catalog, props.query),
+                issue: issue?.current
+              })
+            }
+            if (menuRefresh) {
+              menuRefresh.current = () => {
+                if (menuOpen.current && latest) show(latest)
+              }
+            }
+            return {
+              onStart: (props) => {
+                menuOpen.current = true
+                component = new ReactRenderer(SkillMenu, { props, editor: props.editor })
+                unmount = props.mount(component.element)
+                show(props)
               },
-              { type: 'text', text: ' ' }
-            ])
-            .run()
+              onUpdate: (props) => {
+                show(props)
+              },
+              onKeyDown: (props) => component?.ref?.onKeyDown(props) ?? false,
+              onExit: () => {
+                menuOpen.current = false
+                latest = null
+                unmount?.()
+                component?.destroy()
+                component = undefined
+              }
+            }
+          }
         },
-        render: () => {
-          let component: ReactRenderer<TagMenuHandle> | undefined
-          let unmount: (() => void) | undefined
-          let latest: { query: string; command: (item: AgentSkill) => void } | null = null
-          const show = (props: { query: string; command: (item: AgentSkill) => void }): void => {
-            latest = props
-            component?.updateProps({
-              ...props,
-              items: skillOptions(catalog, props.query),
-              issue: issue?.current
-            })
-          }
-          if (menuRefresh) {
-            menuRefresh.current = () => {
-              if (menuOpen.current && latest) show(latest)
-            }
-          }
-          return {
-            onStart: (props) => {
-              menuOpen.current = true
-              component = new ReactRenderer(SkillMenu, { props, editor: props.editor })
-              unmount = props.mount(component.element)
-              show(props)
-            },
-            onUpdate: (props) => {
-              show(props)
-            },
-            onKeyDown: (props) => component?.ref?.onKeyDown(props) ?? false,
-            onExit: () => {
-              menuOpen.current = false
-              latest = null
-              unmount?.()
-              component?.destroy()
-              component = undefined
-            }
-          }
-        }
-      }
+        ...(interactive
+          ? [
+              {
+                char: '@',
+                pluginKey: fileMentionKey,
+                placement: 'top-start' as const,
+                debounce: 40,
+                allow: ({ state, range }) => outsideCode(state, range),
+                items: async ({ query, signal }) => {
+                  const id = workspaceId?.current
+                  if (id == null) return []
+                  try {
+                    const listed = await loadWorkspaceFiles(id)
+                    if (signal.aborted) return []
+                    fileIndex.current = new Set(listed)
+                    await new Promise<void>((resolve) => {
+                      setTimeout(resolve, 0)
+                    })
+                    if (signal.aborted) return []
+                    return searchFiles(listed, query).map((path) => ({ id: path, label: path }))
+                  } catch {
+                    return []
+                  }
+                },
+                command: ({ editor, range, props }) => {
+                  const file = props as FileOption
+                  editor
+                    .chain()
+                    .focus()
+                    .insertContentAt(range, [
+                      {
+                        type: 'mention',
+                        attrs: {
+                          id: file.label,
+                          label: file.label,
+                          mentionSuggestionChar: '@'
+                        }
+                      },
+                      { type: 'text', text: ' ' }
+                    ])
+                    .run()
+                },
+                render: () => {
+                  let component: ReactRenderer<FileMenuHandle> | undefined
+                  let unmount: (() => void) | undefined
+                  return {
+                    onStart: (props) => {
+                      menuOpen.current = true
+                      component = new ReactRenderer(ComposerFileMenu, {
+                        props: {
+                          items: props.items,
+                          loading: props.loading,
+                          command: props.command
+                        },
+                        editor: props.editor
+                      })
+                      unmount = props.mount(component.element)
+                    },
+                    onUpdate: (props) => {
+                      component?.updateProps({
+                        items: props.items,
+                        loading: props.loading,
+                        command: props.command
+                      })
+                    },
+                    onKeyDown: (props: { event: KeyboardEvent }) =>
+                      component?.ref?.onKeyDown(props) ?? false,
+                    onExit: () => {
+                      menuOpen.current = false
+                      unmount?.()
+                      component?.destroy()
+                      component = undefined
+                    }
+                  }
+                }
+              }
+            ]
+          : [])
+      ]
     })
   ]
 }
@@ -515,8 +607,8 @@ export function ComposerEditor({
   defaultText,
   attachments,
   skills,
-  harness = 'claude',
   skillIssue = '',
+  workspaceId = null,
   getAttachments,
   onDocument,
   onAttachFiles,
@@ -528,9 +620,10 @@ export function ComposerEditor({
   defaultText: string
   attachments: ChatAttachmentUpload[]
   skills: readonly AgentSkill[]
-  harness?: AgentHarness
   /** Shown in the empty skill menu when the harness could not be asked. */
   skillIssue?: string
+  /** Workspace whose working directory `@` searches. */
+  workspaceId?: number | null
   getAttachments: () => ChatAttachmentUpload[]
   onDocument: (text: string, chips: Chip[], skills: ChatSkillRef[]) => void
   onAttachFiles: (files: File[]) => void
@@ -549,30 +642,34 @@ export function ComposerEditor({
   const catalogRef = useRef<SkillCatalog>({ current: skills })
   const issueRef = useRef(skillIssue)
   const menuRefreshRef = useRef<(() => void) | null>(null)
+  const filesRef = useRef<FileIndex>({ current: new Set() })
+  const workspaceIdRef = useRef<number | null>(workspaceId)
   useLayoutEffect(() => {
     catalogRef.current.current = skills
     issueRef.current = skillIssue
-  }, [skillIssue, skills])
-  const trigger = skillTrigger(harness)
+    workspaceIdRef.current = workspaceId
+  }, [skillIssue, skills, workspaceId])
   const setup = useMemo(() => {
     const menuOpen = { current: false }
     return {
       menuOpen,
-      // The plugin is created once per trigger and reads the latest list on each keystroke.
+      // Created once. The parent remounts this editor when the harness changes, and the
+      // plugins read the latest catalog and file index from these refs on each keystroke.
       extensions: extensionsFor(
         menuOpen,
         // eslint-disable-next-line react-hooks/refs -- shared with the ProseMirror plugin created below
         catalogRef.current,
-        trigger,
         true,
         // eslint-disable-next-line react-hooks/refs -- the suggestion renderer stores its refresh here
         menuRefreshRef,
         // eslint-disable-next-line react-hooks/refs -- read when the menu renders, not during this render
-        issueRef
+        issueRef,
+        // eslint-disable-next-line react-hooks/refs -- the file index is filled after the walk resolves
+        filesRef.current,
+        // eslint-disable-next-line react-hooks/refs -- read when @ is typed, not during this render
+        workspaceIdRef
       )
     }
-    // The editor is remounted when the harness trigger changes, so this runs once per trigger.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   const mirror = (view: EditorView): { text: string; chips: Chip[]; skills: ChatSkillRef[] } => {
     const attachments = getAttachmentsRef.current()
@@ -713,6 +810,18 @@ export function ComposerEditor({
     menuRefreshRef.current?.()
   }, [skillIssue])
   useEffect(() => {
+    if (!editor || editor.isDestroyed || workspaceId == null) return
+    let cancel = false
+    void loadWorkspaceFiles(workspaceId).then((listed) => {
+      if (cancel || editor.isDestroyed) return
+      filesRef.current.current = new Set(listed)
+      editor.view.dispatch(editor.state.tr.setMeta('filesLoaded', true))
+    })
+    return () => {
+      cancel = true
+    }
+  }, [editor, workspaceId])
+  useEffect(() => {
     if (!editor || !vimEnabled) return
     const plugin = createComposerVimPlugin(editor)
     editor.registerPlugin(plugin)
@@ -802,9 +911,13 @@ export function ComposerEditor({
       },
       replaceText: (text: string) => {
         if (!editor) return
-        editor.commands.setContent(textToContent(text, { skills: catalogRef.current.current }), {
-          emitUpdate: true
-        })
+        editor.commands.setContent(
+          textToContent(text, {
+            skills: catalogRef.current.current,
+            files: [...filesRef.current.current]
+          }),
+          { emitUpdate: true }
+        )
         editor.commands.focus('end')
       },
       focus: () => {
@@ -818,27 +931,28 @@ export function ComposerEditor({
 }
 
 const noMessageSkills: readonly AgentSkill[] = []
+const noMessageFiles: readonly string[] = []
 
 /** The same composer document, without a caret, so a sent message matches what was typed. */
 export function ComposerMessage({
   text,
   attachments,
   skills = noMessageSkills,
+  files = noMessageFiles,
   onImageChip
 }: {
   text: string
   attachments: Array<{ id: string }>
   skills?: readonly AgentSkill[]
+  /** Workspace-relative paths so `@path` in a sent message becomes a chip. */
+  files?: readonly string[]
   onImageChip?: (attachmentId: string) => void
 }): React.JSX.Element {
-  const extensions = useMemo(
-    () => extensionsFor({ current: false }, { current: [] }, '@', false),
-    []
-  )
+  const extensions = useMemo(() => extensionsFor({ current: false }, { current: [] }, false), [])
   const editor = useEditor({
     editable: false,
     extensions,
-    content: textToContent(text, { attachments, skills }),
+    content: textToContent(text, { attachments, skills, files }),
     editorProps: {
       attributes: {
         class:
@@ -850,10 +964,13 @@ export function ComposerMessage({
   })
   const skillKey = skills.map((skill) => `${skill.id}:${skill.token}`).join('\0')
   const attachmentKey = attachments.map((item) => item.id).join('\0')
+  const fileKey = files.join('\0')
   useEffect(() => {
     if (!editor || editor.isDestroyed) return
-    editor.commands.setContent(textToContent(text, { attachments, skills }), { emitUpdate: false })
-  }, [attachmentKey, attachments, editor, skillKey, skills, text])
+    editor.commands.setContent(textToContent(text, { attachments, skills, files }), {
+      emitUpdate: false
+    })
+  }, [attachmentKey, attachments, editor, fileKey, files, skillKey, skills, text])
   if (editor && onImageChip) imageChipOpeners.set(editor, onImageChip)
   return <EditorContent editor={editor} />
 }

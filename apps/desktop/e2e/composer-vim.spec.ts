@@ -126,8 +126,9 @@ test('composer vim mode edits modally and keeps Enter and @ tags to insert mode'
     await page.screenshot({ path: join(artifactsDir, 'vim-normal.png') })
     await page.keyboard.type('0x')
     await expect(composer).toHaveAttribute('data-composer-text', 'lain text')
-    await page.keyboard.type('@')
+    await page.keyboard.type('@/')
     await expect(page.getByTestId('composer-skill-menu')).toHaveCount(0)
+    await expect(page.getByTestId('composer-file-menu')).toHaveCount(0)
     await expect(composer).toHaveAttribute('data-composer-text', 'lain text')
 
     // Enter does not send from normal mode.
@@ -144,10 +145,10 @@ test('composer vim mode edits modally and keeps Enter and @ tags to insert mode'
     await page.keyboard.press('Escape')
     await expect(mode).toHaveText('N')
 
-    // Insert again: @ autocomplete works.
+    // Insert again: / skill autocomplete works.
     await page.keyboard.type('A')
     await expect(mode).toHaveText('I')
-    await page.keyboard.type(' @')
+    await page.keyboard.type(' /')
     await expect(page.getByTestId('composer-skill-menu')).toBeVisible()
     await page.screenshot({ path: join(artifactsDir, 'vim-insert-autocomplete.png') })
     await page.keyboard.press('Escape')

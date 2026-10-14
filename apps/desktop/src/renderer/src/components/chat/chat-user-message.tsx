@@ -8,6 +8,7 @@ import { SuccessToast } from '@/components/success-toast'
 import { useClipboard } from '@/hooks/use-clipboard'
 import { dataUrl } from './chat-attachments'
 import { ComposerMessage } from './composer-editor'
+import { loadWorkspaceFiles } from './workspace-files'
 
 const noAttachments: ChatAttachment[] = []
 const noSkills: readonly AgentSkill[] = []
@@ -52,6 +53,11 @@ export function ChatUserMessage({
   workspaceId: number
   sessionId: string
 }): React.JSX.Element {
+  const files = useQuery({
+    queryKey: ['workspace-files', workspaceId],
+    queryFn: () => loadWorkspaceFiles(workspaceId),
+    staleTime: 15_000
+  })
   const copy = useClipboard()
   const [toast, setToast] = useState<{ id: number; message: string } | null>(null)
   const [error, setError] = useState(false)
@@ -98,6 +104,7 @@ export function ChatUserMessage({
           <ComposerMessage
             text={text}
             attachments={attachments}
+            files={files.data}
             skills={skills}
             onImageChip={(attachmentId) => {
               const attachment = attachments.find((item) => item.id === attachmentId)

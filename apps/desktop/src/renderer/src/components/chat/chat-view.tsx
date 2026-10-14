@@ -615,7 +615,7 @@ export function ChatView({
                     defaultText={draft.text}
                     attachments={draft.attachments}
                     skills={skillList}
-                    harness={selected?.harness ?? 'claude'}
+                    workspaceId={workspaceId}
                     skillIssue={skillList.length ? '' : (skillQuery.data?.issue ?? '')}
                     getAttachments={() => readDraft().attachments}
                     onDocument={onDocument}

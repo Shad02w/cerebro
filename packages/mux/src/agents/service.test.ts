@@ -1238,14 +1238,14 @@ test('a mentioned skill is passed through and a mention missing from the text is
     const sent = await service.command(scope, {
       ...send,
       commandId: 'skill-ok',
-      text: 'use $review please',
+      text: 'use /review please',
       skills: [{ name: 'review', path: '/tmp/skills/review/SKILL.md' }]
     })
     assert.equal(
       sent.session?.items.find((item) => item.kind === 'user')?.text,
-      'use $review please'
+      'use /review please'
     )
-    assert.equal(seen[0]?.[0]?.token, '$review')
+    assert.equal(seen[0]?.[0]?.token, '/review')
     assert.equal(seen[0]?.[0]?.prompt, '$review')
     assert.equal(seen[0]?.[0]?.path, '/tmp/skills/review/SKILL.md')
     await assert.rejects(

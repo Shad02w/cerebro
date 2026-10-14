@@ -361,6 +361,8 @@ export type CerebroApi = {
     repositoryId: number,
     file: ChangedFile
   ) => Promise<FileDiffContents>
+  /** Paths relative to the workspace working directory, for composer `@` mentions. */
+  listWorkspaceFiles: (workspaceId: number) => Promise<string[]>
   openExternal: (url: string) => Promise<void>
   getSettings: () => Promise<AppSettings>
   setSettings: (patch: AppSettingsPatch) => Promise<AppSettings>

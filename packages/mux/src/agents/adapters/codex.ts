@@ -21,7 +21,7 @@ const codexTurnInput = (
 ): Array<Record<string, unknown>> => {
   const outbound = skillPromptText(text, skills)
   const skillItems = skills
-    .filter((skill) => skill.path && outbound.includes(skill.token))
+    .filter((skill) => skill.path && skill.prompt && outbound.includes(skill.prompt))
     .map((skill) => ({ type: 'skill', name: skill.name, path: skill.path }))
   return [
     attachments.length
