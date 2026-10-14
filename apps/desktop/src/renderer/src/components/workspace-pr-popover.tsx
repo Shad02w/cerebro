@@ -55,10 +55,13 @@ const providerLabels = { 'github-app': 'GitHub App', gh: 'GitHub CLI', git: 'Git
 
 export function WorkspacePrPopover({
   workspace,
-  className
+  className,
+  muted = false
 }: {
   workspace: Workspace
   className?: string
+  /** Quieter branch glyph for workspace rows inside the Todo group. */
+  muted?: boolean
 }): React.JSX.Element {
   const pr = workspace.pullRequest
   const status = workspace.prStatus
@@ -68,7 +71,11 @@ export function WorkspacePrPopover({
       <span
         aria-hidden
         data-testid={`workspace-default-icon-${workspace.id}`}
-        className={cn('pointer-events-none text-sidebar-foreground/70', className)}
+        className={cn(
+          'pointer-events-none',
+          muted ? 'text-sidebar-foreground/45' : 'text-sidebar-foreground/70',
+          className
+        )}
       >
         <GitBranch className="size-full" />
       </span>
