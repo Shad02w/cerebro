@@ -16,7 +16,7 @@ export type RunContext = {
   session: AgentSession
   text: string
   attachments?: RunAttachment[]
-  /** Skills mentioned in `text`. Claude and Pi rewrite those tokens into the harness prompt. */
+  /** Skills mentioned in `text`. Adapters rewrite those tokens into the harness prompt. Codex resolves `$name` from that text. */
   skills?: ChatSkillMention[]
   signal: AbortSignal
   emit: (event: AgentDelta) => void

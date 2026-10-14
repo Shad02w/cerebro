@@ -22,6 +22,7 @@ import {
   setWorkspaceStatus
 } from './projects'
 import { getSettings, pickDirectory, pickProjectDirectory, setSettings } from './settings'
+import { listWorkspaceFiles } from './workspace-files'
 
 function parseChangedFile(file: unknown): ChangedFile {
   if (!file || typeof file !== 'object') {
@@ -255,6 +256,18 @@ export function registerWorkspaceIpc(): void {
       }
     }
   )
+
+  ipcMain.handle(IPC.workspaces.listFiles, async (_event, workspaceId: unknown) => {
+    if (typeof workspaceId !== 'number' || !Number.isInteger(workspaceId)) {
+      throw new Error('Workspace id is required.')
+    }
+    const { projects } = await listProjects()
+    const workspace = projects
+      .flatMap((project) => project.workspaces)
+      .find((item) => item.id === workspaceId)
+    if (!workspace) throw new Error('Workspace not found.')
+    return listWorkspaceFiles(workspace.localPath)
+  })
 
   ipcMain.handle(IPC.projects.remove, async (_event, projectId: unknown, deleteFiles: unknown) => {
     if (typeof projectId !== 'number' || !Number.isInteger(projectId)) {

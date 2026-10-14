@@ -104,6 +104,7 @@ const api: CerebroApi = {
     ipcRenderer.invoke(IPC.workspaces.listChanges, workspaceId, repositoryId),
   getWorkspaceFileDiff: (workspaceId, repositoryId, file) =>
     ipcRenderer.invoke(IPC.workspaces.getFileDiff, workspaceId, repositoryId, file),
+  listWorkspaceFiles: (workspaceId) => ipcRenderer.invoke(IPC.workspaces.listFiles, workspaceId),
   openExternal: (url) => ipcRenderer.invoke(IPC.shell.openExternal, url),
   getSettings: () => ipcRenderer.invoke(IPC.settings.get),
   setSettings: (patch) => ipcRenderer.invoke(IPC.settings.set, patch),

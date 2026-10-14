@@ -31,6 +31,8 @@ export const codeLanguages: Array<[string, string]> = [
   ['sql', 'SQL']
 ]
 
+const emptyFiles: ReadonlySet<string> = new Set()
+
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 const caseFold = (char: string): string => {
@@ -58,7 +60,7 @@ export type SkillMatch = {
 }
 
 /**
- * Skill tokens in plain text. Codex tokens start with `$`; Claude and Pi tokens start with `@`.
+ * Skill tokens in plain text. Every harness shows `/name`.
  * Matching is case-insensitive and keeps the catalog name.
  */
 export function findSkillMatches(
@@ -122,9 +124,121 @@ export function promoteSkillTransaction(
       mention.create({
         id: match.skill.name,
         label: match.skill.name,
-        mentionSuggestionChar: match.skill.token.slice(0, 1) || '@',
+        mentionSuggestionChar: match.skill.token.slice(0, 1) || '/',
         path: match.skill.path,
         prompt: match.skill.prompt
+      })
+    )
+  }
+  return tr
+}
+
+export type FileMatch = {
+  start: number
+  end: number
+  path: string
+  /** A boundary follows the token, or the caret has left it. Still-open typing stays editable. */
+  closed: boolean
+}
+
+/** `@path` tokens whose path is a file under the workspace, relative to the cwd. */
+export function findFileMatches(
+  text: string,
+  caret: number | null,
+  files: ReadonlySet<string>
+): FileMatch[] {
+  if (!files.size || !text) return []
+  const matches: FileMatch[] = []
+  for (const match of text.matchAll(/@[^\s@]+/g)) {
+    const path = match[0].slice(1)
+    if (!files.has(path) || match.index === undefined) continue
+    const start = match.index
+    const end = start + match[0].length
+    const stillTyping = end === text.length && caret === end
+    matches.push({ start, end, path, closed: !stillTyping })
+  }
+  return matches
+}
+
+export const visitFileText = (
+  state: EditorState,
+  files: ReadonlySet<string>,
+  visit: (match: FileMatch, from: number, to: number) => void
+): void => {
+  state.doc.descendants((node, pos) => {
+    if (!node.isText || !node.text) return
+    if (node.marks.some((mark) => mark.type.name === 'code')) return
+    if (state.doc.resolve(pos).parent.type.spec.code) return
+    const caret =
+      state.selection.empty &&
+      state.selection.from >= pos &&
+      state.selection.from <= pos + node.text.length
+        ? state.selection.from - pos
+        : null
+    for (const match of findFileMatches(node.text, caret, files))
+      visit(match, pos + match.start, pos + match.end)
+  })
+}
+
+/** Turns finished skill tokens and exact file paths into mentions, from the end of the document. */
+export function promoteMentionTransaction(
+  state: EditorState,
+  skills: readonly AgentSkill[],
+  files: ReadonlySet<string>
+): Transaction | null {
+  const mention = state.schema.nodes.mention
+  if (!mention) return null
+  const found: Array<{ from: number; to: number; attrs: Record<string, unknown> }> = []
+  visitSkillText(state, skills, (match, from, to) => {
+    if (!match.closed) return
+    found.push({
+      from,
+      to,
+      attrs: {
+        id: match.skill.name,
+        label: match.skill.name,
+        mentionSuggestionChar: match.skill.token.slice(0, 1) || '/',
+        path: match.skill.path,
+        prompt: match.skill.prompt
+      }
+    })
+  })
+  visitFileText(state, files, (match, from, to) => {
+    if (!match.closed) return
+    found.push({
+      from,
+      to,
+      attrs: { id: match.path, label: match.path, mentionSuggestionChar: '@' }
+    })
+  })
+  if (!found.length) return null
+  found.sort((left, right) => right.from - left.from)
+  let tr = state.tr
+  for (const match of found) tr = tr.replaceWith(match.from, match.to, mention.create(match.attrs))
+  return tr
+}
+
+/** Turns a finished `@path` into a mention once that path is in the workspace index. */
+export function promoteFileTransaction(
+  state: EditorState,
+  files: ReadonlySet<string>
+): Transaction | null {
+  const mention = state.schema.nodes.mention
+  if (!mention || !files.size) return null
+  const found: Array<{ from: number; to: number; path: string }> = []
+  visitFileText(state, files, (match, from, to) => {
+    if (match.closed) found.push({ from, to, path: match.path })
+  })
+  if (!found.length) return null
+  let tr = state.tr
+  for (const match of found.reverse()) {
+    tr = tr.replaceWith(
+      match.from,
+      match.to,
+      mention.create({
+        id: match.path,
+        label: match.path,
+        mentionSuggestionChar: '@'
       })
     )
   }
@@ -185,7 +299,8 @@ const writeInline = (
       const label = String(child.attrs.label ?? child.attrs.id ?? '')
       const trigger = String(child.attrs.mentionSuggestionChar ?? '@')
       push(writer, `${trigger}${label}`)
-      rememberSkill(writer, label, typeof child.attrs.path === 'string' ? child.attrs.path : '')
+      if (trigger === '/')
+        rememberSkill(writer, label, typeof child.attrs.path === 'string' ? child.attrs.path : '')
     }
   })
 }
@@ -291,7 +406,8 @@ type InlineSpan = { start: number; end: number; part: JSONContent }
 const inlineFromText = (
   line: string,
   attachments?: Array<{ id: string }>,
-  skills: readonly AgentSkill[] = []
+  skills: readonly AgentSkill[] = [],
+  files: ReadonlySet<string> = emptyFiles
 ): JSONContent[] => {
   if (!line) return []
   const spans: InlineSpan[] = []
@@ -326,9 +442,25 @@ const inlineFromText = (
         attrs: {
           id: match.skill.name,
           label: match.skill.name,
-          mentionSuggestionChar: match.skill.token.slice(0, 1) || '@',
+          mentionSuggestionChar: match.skill.token.slice(0, 1) || '/',
           path: match.skill.path,
           prompt: match.skill.prompt
+        }
+      }
+    })
+  }
+  for (const match of findFileMatches(line, null, files)) {
+    const overlaps = spans.some((span) => match.start < span.end && match.end > span.start)
+    if (overlaps) continue
+    spans.push({
+      start: match.start,
+      end: match.end,
+      part: {
+        type: 'mention',
+        attrs: {
+          id: match.path,
+          label: match.path,
+          mentionSuggestionChar: '@'
         }
       }
     })
@@ -349,9 +481,10 @@ const inlineFromText = (
 const paragraph = (
   line: string,
   attachments?: Array<{ id: string }>,
-  skills: readonly AgentSkill[] = []
+  skills: readonly AgentSkill[] = [],
+  files: ReadonlySet<string> = emptyFiles
 ): JSONContent => {
-  const content = inlineFromText(line, attachments, skills)
+  const content = inlineFromText(line, attachments, skills, files)
   return content.length ? { type: 'paragraph', content } : { type: 'paragraph' }
 }
 
@@ -380,7 +513,8 @@ const parseBlocks = (
   lines: string[],
   start: number,
   attachments?: Array<{ id: string }>,
-  skills: readonly AgentSkill[] = []
+  skills: readonly AgentSkill[] = [],
+  files: ReadonlySet<string> = emptyFiles
 ): { nodes: JSONContent[]; next: number } => {
   const nodes: JSONContent[] = []
   let index = start
@@ -402,16 +536,16 @@ const parseBlocks = (
           nested.push((lines[index] ?? '').replace(/^ {2}/, ''))
           index += 1
         }
-        const nestedBlocks = parseBlocks(nested, 0, attachments, skills).nodes
+        const nestedBlocks = parseBlocks(nested, 0, attachments, skills, files).nodes
         items.push({
           type: 'listItem',
-          content: [paragraph(first, attachments, skills), ...nestedBlocks]
+          content: [paragraph(first, attachments, skills, files), ...nestedBlocks]
         })
       }
       nodes.push({ type: 'bulletList', content: items })
       continue
     }
-    nodes.push(paragraph(line, attachments, skills))
+    nodes.push(paragraph(line, attachments, skills, files))
     index += 1
   }
   return { nodes, next: index }
@@ -423,9 +557,19 @@ const parseBlocks = (
  */
 export function textToContent(
   text: string,
-  options?: { attachments?: Array<{ id: string }>; skills?: readonly AgentSkill[] }
+  options?: {
+    attachments?: Array<{ id: string }>
+    skills?: readonly AgentSkill[]
+    files?: readonly string[]
+  }
 ): JSONContent {
   if (!text) return { type: 'doc', content: [{ type: 'paragraph' }] }
-  const content = parseBlocks(text.split('\n'), 0, options?.attachments, options?.skills).nodes
+  const content = parseBlocks(
+    text.split('\n'),
+    0,
+    options?.attachments,
+    options?.skills,
+    new Set(options?.files ?? [])
+  ).nodes
   return { type: 'doc', content: content.length ? content : [{ type: 'paragraph' }] }
 }

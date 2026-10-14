@@ -18,9 +18,9 @@ test('claude skills are the ones Claude Code exposed, including plugin skills', 
   assert.deepEqual(
     listed.map((skill) => [skill.name, skill.token, skill.prompt, skill.description]),
     [
-      ['apps/web:deploy', '@apps/web:deploy', '/apps/web:deploy', 'Deploy the web app'],
-      ['formatter:lint', '@formatter:lint', '/formatter:lint', 'Lint with the plugin'],
-      ['review', '@review', '/review', 'Review the diff']
+      ['apps/web:deploy', '/apps/web:deploy', '/apps/web:deploy', 'Deploy the web app'],
+      ['formatter:lint', '/formatter:lint', '/formatter:lint', 'Lint with the plugin'],
+      ['review', '/review', '/review', 'Review the diff']
     ]
   )
   assert.equal(
@@ -52,7 +52,7 @@ test('codex and pi skill lists keep invocable skills and their prompt forms', ()
   )
   assert.deepEqual(
     codex.map((skill) => [skill.name, skill.token, skill.prompt, skill.description, skill.path]),
-    [['review', '$review', '$review', 'Review the change', '/repo/.agents/skills/review/SKILL.md']]
+    [['review', '/review', '$review', 'Review the change', '/repo/.agents/skills/review/SKILL.md']]
   )
   const pi = piSkills({
     commands: [
@@ -67,6 +67,6 @@ test('codex and pi skill lists keep invocable skills and their prompt forms', ()
   })
   assert.deepEqual(
     pi.map((skill) => [skill.name, skill.token, skill.prompt, skill.path]),
-    [['review', '@review', '/skill:review', '/home/.pi/agent/skills/review/SKILL.md']]
+    [['review', '/review', '/skill:review', '/home/.pi/agent/skills/review/SKILL.md']]
   )
 })

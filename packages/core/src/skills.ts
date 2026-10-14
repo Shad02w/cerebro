@@ -4,9 +4,9 @@ import type { AgentHarness } from './chat'
  * A skill the composer can mention. `token` is what the transcript shows.
  * `prompt` is the text the harness must actually receive.
  *
- * Codex reads `$name` in the prompt and resolves the skill itself.
- * Claude Code dispatches `/name`. Pi expands `/skill:name` before the model sees it.
- * The composer opens the list with `$` for Codex and `@` for Claude and Pi.
+ * The composer shows every skill as `/name`. `@` mentions a workspace file.
+ * Codex receives `$name` in the prompt and resolves the skill itself.
+ * Claude Code receives `/name`. Pi receives `/skill:name`.
  */
 export type AgentSkill = {
   id: string
@@ -32,25 +32,25 @@ export type ChatSkillMention = ChatSkillRef & { token: string; prompt: string }
  */
 const skillNamePattern =
   /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}(?:[/:][A-Za-z0-9][A-Za-z0-9_-]{0,63}){0,8}$/
-/** Characters that can continue a skill token, so `@plugin` does not match inside `@plugin:skill`. */
+/** Characters that can continue a skill token, so `/plugin` does not match inside `/plugin:skill`. */
 const skillNameChars = 'A-Za-z0-9_/:-'
 
 export function safeSkillName(name: string): boolean {
   return skillNamePattern.test(name)
 }
 
-/** Character that opens the skill list for this harness. */
-export function skillTrigger(harness: AgentHarness): '$' | '@' {
-  return harness === 'codex' ? '$' : '@'
+/** Character that opens the skill list. The same character is used for every harness. */
+export function skillTrigger(_harness: AgentHarness): '/' {
+  return '/'
 }
 
-export function skillTokenFor(harness: AgentHarness, name: string): string {
-  return `${skillTrigger(harness)}${name}`
+export function skillTokenFor(_harness: AgentHarness, name: string): string {
+  return `/${name}`
 }
 
 /** Invocation the harness process expects inside the user prompt. */
 export function skillPromptFor(harness: AgentHarness, name: string): string {
-  if (harness === 'codex') return skillTokenFor(harness, name)
+  if (harness === 'codex') return `$${name}`
   if (harness === 'pi') return `/skill:${name}`
   return `/${name}`
 }
