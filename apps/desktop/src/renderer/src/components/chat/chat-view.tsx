@@ -18,13 +18,15 @@ import {
   type LastAgent
 } from '@shared/types'
 import { Button } from '@/components/ui/button'
+import { SuccessToast } from '@/components/success-toast'
 import { acceptLayout } from '@/lib/query-client'
 import { StarsBackground } from '@/lib/stars-background'
 import { defaultChatTabLabel, generatedTabLabel, promptTabLabel } from '@/lib/thread-tab-title'
 import { cn } from '@/lib/utils'
 import { ChatItem, WorkingGroup } from './chat-item'
-import { transcriptEntries, workingAnchorId } from './tool-groups'
+import { transcriptEntries, transcriptTurnIds, watchedTurns, workingAnchorId } from './tool-groups'
 import { TurnClock } from './turn-clock'
+import { syncTurnClock } from './turn-durations'
 import { WorkingFor } from './working-for'
 import { ChatScrollEndButton } from './chat-scroll-end'
 import { ChatTurnActions } from './chat-turn-actions'
@@ -142,7 +144,12 @@ export function ChatView({
   const [selection, setSelection] = useState<AgentModel>()
   const [reasoning, setReasoning] = useState('')
   const [accessSelection, setAccessSelection] = useState<AgentAccessMode>()
-  const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<{ id: number; message: string } | null>(null)
+  const noticeId = useRef(0)
+  const notify = useCallback((message: string) => {
+    noticeId.current += 1
+    setNotice({ id: noticeId.current, message })
+  }, [])
   const catalogModels = catalog.data?.models
   if (
     selection &&
@@ -181,7 +188,7 @@ export function ChatView({
       storageKey: draftKey,
       editorRef,
       canAttach: imageRejection,
-      onError: setError
+      onError: notify
     })
   const stick = useRef(true)
   const scrollingToEnd = useRef(false)
@@ -245,14 +252,31 @@ export function ChatView({
       return window.cerebro.chatCommand(command)
     },
     onSuccess: (data) => {
-      client.setQueryData<typeof data>(queryKey, (previous) =>
-        previous?.session?.id === data.session?.id &&
-        previous?.session &&
-        data.session &&
-        previous.session.sequence > data.session.sequence
-          ? previous
-          : data
-      )
+      const incoming = data.session
+      if (incoming && (incoming.status === 'running' || incoming.status === 'waiting'))
+        syncTurnClock(
+          true,
+          watchedTurns(incoming.items, true, incoming.turnId),
+          transcriptTurnIds(incoming.items, incoming.turnId)
+        )
+      let shown = incoming
+      client.setQueryData<typeof data>(queryKey, (previous) => {
+        if (
+          previous?.session?.id === incoming?.id &&
+          previous.session &&
+          incoming &&
+          previous.session.sequence > incoming.sequence
+        ) {
+          shown = previous.session
+          return previous
+        }
+        shown = incoming
+        return data
+      })
+      // The send result can be the running snapshot while a newer refetch is already idle.
+      // Starting the clock here still records a duration for that turn.
+      if (!shown || (shown.status !== 'running' && shown.status !== 'waiting'))
+        syncTurnClock(false, [], transcriptTurnIds(shown?.items, shown?.turnId))
       void client.invalidateQueries({ queryKey: ['chat', workspaceId] })
     }
   })
@@ -260,18 +284,17 @@ export function ChatView({
     async (command: Omit<ChatCommand, 'workspaceId' | 'paneId'>): Promise<boolean> => {
       if (inFlight.current) return false
       inFlight.current = true
-      setError(null)
       try {
         await mutateAsync({ ...command, workspaceId, paneId })
         return true
       } catch (error) {
-        setError(error instanceof Error ? error.message : String(error))
+        notify(error instanceof Error ? error.message : String(error))
         return false
       } finally {
         inFlight.current = false
       }
     },
-    [mutateAsync, workspaceId, paneId]
+    [mutateAsync, notify, workspaceId, paneId]
   )
   const reply = useCallback(
     (requestId: string, answer: AgentAnswer): void => {
@@ -295,7 +318,7 @@ export function ChatView({
     if (stick.current && scrolling.current)
       scrolling.current.scrollTop = scrolling.current.scrollHeight
     readScroll()
-  }, [session?.sequence, session?.error, error, view.error, readScroll])
+  }, [session?.sequence, session?.error, view.error, readScroll])
   useLayoutEffect(() => {
     // Wait until the query confirms empty vs conversation — never center or animate on load.
     if (loading) return
@@ -358,16 +381,16 @@ export function ChatView({
     if (inFlight.current) return
     const message = readDraft()
     if (!message.text.trim()) {
-      setError('Write a message first.')
+      notify('Write a message first.')
       return
     }
     const rejection = message.attachments.length ? imageRejection() : null
     if (rejection) {
-      setError(rejection)
+      notify(rejection)
       return
     }
     if (!selected) {
-      setError('Choose an available model first.')
+      notify('Choose an available model first.')
       return
     }
     const fingerprint = [
@@ -420,7 +443,7 @@ export function ChatView({
     if (document.activeElement?.matches('[role="tablist"] :focus-visible')) return
     editorRef.current?.focus()
   }, [active, loading])
-  const alertText = error ?? session?.error ?? (view.error ? String(view.error) : null)
+  const alertText = session?.error ?? (view.error ? String(view.error) : null)
   const starsWanted = agentBackground === 'stars' && empty
   const [starPhase, setStarPhase] = useState<'on' | 'out' | 'off'>('off')
   if (starsWanted && starPhase !== 'on') setStarPhase('on')
@@ -432,11 +455,12 @@ export function ChatView({
     return () => window.clearTimeout(timeout)
   }, [starPhase])
   const transcript = session?.items.length ? session : null
-  const entries = transcript
-    ? transcriptEntries(transcript.items, busy ? transcript.turnId : undefined)
-    : []
+  const knownTurnIds = transcriptTurnIds(transcript?.items, transcript?.turnId)
+  const watchedTurnIds = watchedTurns(transcript?.items, busy, transcript?.turnId)
+  const liveTurnId = busy ? (transcript?.turnId ?? watchedTurnIds[0]) : undefined
+  const entries = transcript ? transcriptEntries(transcript.items, liveTurnId) : []
   const workingAnchor =
-    transcript?.status === 'running' ? workingAnchorId(entries, transcript.turnId) : null
+    transcript?.status === 'running' ? workingAnchorId(entries, liveTurnId) : null
   return (
     <div
       ref={viewRef}
@@ -445,6 +469,12 @@ export function ChatView({
       data-agent-background={agentBackground}
       data-loading={loading || undefined}
     >
+      <SuccessToast
+        toast={notice}
+        onDismiss={() => setNotice(null)}
+        testId="chat-notice-toast"
+        tone="error"
+      />
       {starPhase !== 'off' ? (
         <StarsBackground
           aria-hidden="true"
@@ -472,7 +502,7 @@ export function ChatView({
             aria-label="Conversation"
           >
             <div className="mx-auto flex max-w-3xl flex-col gap-4">
-              <TurnClock active={busy} turnId={session?.turnId} />
+              <TurnClock active={busy} activeIds={watchedTurnIds} knownIds={knownTurnIds} />
               {transcript
                 ? entries.map((entry, index, listed) => {
                     const first = entry.type === 'item' ? entry.item : entry.items[0]
@@ -649,12 +679,11 @@ export function ChatView({
                         onSelect={(model) => {
                           onRememberAgent?.(model)
                           if (session && session.model.harness !== model.harness) {
-                            setError(
+                            notify(
                               `Open a new Agent tab or pane to use ${harnessLabels[model.harness]}.`
                             )
                             return
                           }
-                          setError(null)
                           const draft = readDraft()
                           const restored = messageToResend({
                             composerText: draft.text,

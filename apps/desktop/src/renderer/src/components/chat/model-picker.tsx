@@ -7,10 +7,11 @@ import {
   type UseMutationResult,
   type UseQueryResult
 } from '@tanstack/react-query'
-import { Check, ChevronDown, Search, Star, RefreshCw } from 'lucide-react'
+import { ChevronDown, Search, Star, RefreshCw } from 'lucide-react'
 import type { AgentCatalog, AgentHarness, AgentModel } from '@cerebro/core'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { modelRowLabel } from './model-row-label'
 import { sortAgentModels } from '@/lib/model-order'
 import { harnessLabels, catalogOptions } from './queries'
 import claudeIcon from '@/assets/agents/claude.svg'
@@ -52,6 +53,7 @@ interface ModelCatalogState {
   refresh: UseMutationResult<AgentCatalog, Error, void>
   favorites: AgentCatalog['favorites']
   rows: AgentModel[]
+  peers: AgentModel[]
   error: Error | null
 }
 
@@ -87,7 +89,17 @@ function useModelCatalog(
   // Favorites stay in the order the user starred them. Every other list leads with the newest model.
   const rows = !query && filter === 'favorites' ? matched : sortAgentModels(matched)
   const error = catalog.error ?? favorite.error ?? refresh.error
-  return { catalog, favorite, refresh, favorites, rows, error, filter, searching: query.length > 0 }
+  return {
+    catalog,
+    favorite,
+    refresh,
+    favorites,
+    rows,
+    peers: candidates,
+    error,
+    filter,
+    searching: query.length > 0
+  }
 }
 
 function HarnessIcon({
@@ -150,25 +162,24 @@ function HarnessRail({
   )
 }
 
-function ModelDetail({ model }: { model: AgentModel }): React.JSX.Element {
-  const provider =
-    model.provider === 'configured' ? model.id || 'Native configuration' : model.provider
-  return (
-    <span className="block truncate text-[11px] leading-4 text-muted-foreground">
-      {harnessLabels[model.harness]} · {provider}
-      {model.source === 'fallback' ? ' · Fallback' : ''}
-      {!model.available ? ' · Unavailable' : ''}
-    </span>
-  )
+function ModelStatus({ model }: { model: AgentModel }): React.JSX.Element | null {
+  const notes = [
+    model.source === 'fallback' ? 'Fallback' : '',
+    !model.available ? 'Unavailable' : ''
+  ].filter(Boolean)
+  if (!notes.length) return null
+  return <span className="block truncate text-xs text-muted-foreground">{notes.join(' · ')}</span>
 }
 
 function ModelRow({
   model,
+  peers,
   selected,
   isFavorite,
   onToggleFavorite
 }: {
   model: AgentModel
+  peers: AgentModel[]
   selected: boolean
   isFavorite: boolean
   onToggleFavorite: () => void
@@ -185,13 +196,10 @@ function ModelRow({
         disabled={!model.available}
         className="min-w-0 flex-1 cursor-default px-2 py-1 text-left outline-none data-disabled:opacity-50"
       >
-        <span className="flex items-center gap-1.5 truncate text-[13px] leading-4 font-medium">
-          {model.label}
-          <Combobox.ItemIndicator>
-            <Check className="size-3" />
-          </Combobox.ItemIndicator>
+        <span className="block truncate text-[13px] leading-4 font-medium">
+          {modelRowLabel(model, peers)}
         </span>
-        <ModelDetail model={model} />
+        <ModelStatus model={model} />
       </Combobox.Item>
       <button
         type="button"
@@ -247,12 +255,8 @@ export function ModelPicker({
   const [search, setSearch] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
   const [manualFilter, setManualFilter] = useState<PickerFilter | null>(null)
-  const { catalog, favorite, refresh, favorites, rows, error, filter, searching } = useModelCatalog(
-    manualFilter,
-    search,
-    sessionStarted,
-    selected?.harness
-  )
+  const { catalog, favorite, refresh, favorites, rows, peers, error, filter, searching } =
+    useModelCatalog(manualFilter, search, sessionStarted, selected?.harness)
   return (
     <Combobox.Root
       items={rows}
@@ -347,6 +351,7 @@ export function ModelPicker({
                         <ModelRow
                           key={m.key}
                           model={m}
+                          peers={peers}
                           selected={selected?.key === m.key}
                           isFavorite={isFavorite}
                           onToggleFavorite={() => {

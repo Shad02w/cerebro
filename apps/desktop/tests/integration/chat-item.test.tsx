@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChatItem as Item } from '@cerebro/core'
 import { clearTurnDurations, recordTurnSeconds } from '@/components/chat/turn-durations'
+import { TurnClock } from '@/components/chat/turn-clock'
 
 vi.mock('@/components/chat/chat-user-message', () => ({ ChatUserMessage: () => null }))
 vi.mock('@/components/markdown/agent-markdown', () => ({ AgentMarkdown: () => null }))
@@ -157,5 +158,54 @@ describe('ChatItem command runs', () => {
     expect(screen.queryByTestId('working-group')).toBeNull()
     expect(screen.getByTestId('working-live')).toHaveTextContent('Bash · Run tests')
     expect(screen.queryByText(/working for/i)).toBeNull()
+  })
+
+  it('keeps reasoning inside the finished working section', () => {
+    recordTurnSeconds('turn', 4)
+    render(
+      <WorkingGroup
+        items={[
+          item({ id: 'r1', kind: 'reasoning', status: 'completed', text: 'first thought' }),
+          item({ id: 'skill', kind: 'tool', title: 'Skill', status: 'completed' }),
+          item({ id: 'r2', kind: 'reasoning', status: 'completed', text: 'second thought' })
+        ]}
+      />
+    )
+    const group = screen.getByTestId('working-group')
+    expect(group).toHaveTextContent('Working for 4s')
+    expect(group).toHaveTextContent('first thought')
+    expect(group).toHaveTextContent('Skill')
+    expect(group).toHaveTextContent('second thought')
+    expect(group.querySelectorAll('summary')).toHaveLength(4)
+  })
+
+  it('shows Working for Ns after a turn the view watched', () => {
+    const { rerender } = render(
+      <>
+        <TurnClock active activeIds={['turn']} knownIds={['turn']} />
+        <WorkingGroup
+          live
+          items={[item({ id: 'r1', kind: 'reasoning', status: 'running', text: 'first thought' })]}
+        />
+      </>
+    )
+    expect(screen.queryByTestId('working-group')).toBeNull()
+    rerender(
+      <>
+        <TurnClock active={false} activeIds={[]} knownIds={['turn']} />
+        <WorkingGroup
+          items={[
+            item({ id: 'r1', kind: 'reasoning', status: 'completed', text: 'first thought' }),
+            item({ id: 'skill', kind: 'tool', title: 'Skill', status: 'completed' }),
+            item({ id: 'r2', kind: 'reasoning', status: 'completed', text: 'second thought' })
+          ]}
+        />
+      </>
+    )
+    const group = screen.getByTestId('working-group')
+    expect(group).toHaveTextContent(/Working for \d+s/)
+    expect(group).toHaveTextContent('first thought')
+    expect(group).toHaveTextContent('Skill')
+    expect(group).toHaveTextContent('second thought')
   })
 })

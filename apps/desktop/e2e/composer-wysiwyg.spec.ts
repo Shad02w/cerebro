@@ -21,10 +21,8 @@ async function chooseModel(page: Page, harness: 'Claude Code' | 'Codex' | 'Pi'):
   if (label.startsWith('Test Model') && label.includes(harness)) return
   await picker.click()
   await page.getByTestId('model-picker').getByRole('button', { name: harness, exact: true }).click()
-  await page
-    .getByTestId('model-picker')
-    .getByRole('option', { name: new RegExp(`^Test Model.*${harness}`) })
-    .click()
+  const option = harness === 'Pi' ? 'Test Model · test-provider' : 'Test Model'
+  await page.getByTestId('model-picker').getByRole('option', { name: option, exact: true }).click()
   await expect(picker).toContainText(harness)
 }
 

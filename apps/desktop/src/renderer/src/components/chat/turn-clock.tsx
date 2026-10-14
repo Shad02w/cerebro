@@ -1,15 +1,28 @@
-import { useLayoutEffect, useRef } from 'react'
-import { recordTurnSeconds } from './turn-durations'
-import { useWorkingSeconds } from './working-seconds'
+import { useLayoutEffect } from 'react'
+import { syncTurnClock } from './turn-durations'
 
-/** Remember how long a turn ran, once it leaves the running state. */
-export function TurnClock({ active, turnId }: { active: boolean; turnId?: string }): null {
-  const seconds = useWorkingSeconds(active)
-  const previous = useRef({ active, turnId, seconds })
+/**
+ * Remember how long each busy turn ran.
+ * The start is kept outside this component, so a remount while the reply is still
+ * streaming does not drop the time, and settling does not depend on a one-second ticker.
+ */
+export function TurnClock({
+  active,
+  activeIds,
+  knownIds
+}: {
+  active: boolean
+  activeIds: readonly string[]
+  knownIds: readonly string[]
+}): null {
+  const activeKey = activeIds.join('\0')
+  const knownKey = knownIds.join('\0')
   useLayoutEffect(() => {
-    const prior = previous.current
-    if (prior.active && !active && prior.turnId) recordTurnSeconds(prior.turnId, prior.seconds)
-    previous.current = { active, turnId, seconds }
-  }, [active, seconds, turnId])
+    syncTurnClock(
+      active,
+      activeKey ? activeKey.split('\0') : [],
+      knownKey ? knownKey.split('\0') : []
+    )
+  }, [active, activeKey, knownKey])
   return null
 }
