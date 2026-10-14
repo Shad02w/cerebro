@@ -49,6 +49,7 @@ import {
   type RunContext
 } from './adapters'
 import { executable } from './transport'
+import { stopCodexAppServer } from './codex-server'
 import { suggestThreadTitle, threadTitleSlice, type ThreadTitleInput } from './title'
 
 export type AgentScope = {
@@ -523,7 +524,7 @@ export class AgentSessions {
   private bound(sessionId: string): boolean {
     return Object.values(this.bindings).includes(sessionId)
   }
-  /** Closes the session's harness process, which stops every background task it owns. */
+  /** Closes the session's harness connection, which stops every background task it owns. */
   private release(sessionId: string): void {
     const entry = this.live.get(sessionId)
     if (!entry) return
@@ -920,12 +921,20 @@ export class AgentSessions {
           // Display limit reached; the native transcript still has it.
         }
       },
-      exited: () => {
+      exited: (error) => {
         if (!current()) return
         this.live.delete(session.id)
-        if (!session.background) return
-        this.stopBackground(session, 'Stopped because the agent process exited.')
-        this.changed(session, true)
+        // A running turn records the failure when it rejects. An idle session has no turn to do that.
+        let changed = false
+        if (!this.running.has(session.id)) {
+          session.error = error.message
+          changed = true
+        }
+        if (session.background) {
+          this.stopBackground(session, 'Stopped because the agent process exited.')
+          changed = true
+        }
+        if (changed) this.changed(session, true)
       }
     }
   }
@@ -995,6 +1004,11 @@ export class AgentSessions {
     if (event.type === 'todo') {
       session.todo = event.todo
       this.changed(session, idle)
+      return
+    }
+    if (event.type === 'alert') {
+      session.error = event.message
+      this.changed(session, true)
       return
     }
     const owner = idle
@@ -1173,6 +1187,7 @@ export class AgentSessions {
         session.attention = undefined
       } else {
         session.status = 'idle'
+        session.error = undefined
         session.attention = { kind: 'finished', at: Date.now() }
         finishedNotice = lastReply(session)
       }
@@ -1259,6 +1274,7 @@ export class AgentSessions {
       await Promise.all(active.map(([, runtime]) => runtime.done))
     }
     for (const id of [...this.live.keys()]) this.release(id)
+    stopCodexAppServer()
     for (const timer of this.timers.values()) clearTimeout(timer)
     this.timers.clear()
     for (const session of this.sessions.values()) this.persist(session)

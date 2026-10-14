@@ -1226,3 +1226,59 @@ test('a thread title starts as the prompt, then the prompt pass, then the first 
     rmSync(f.dir, { recursive: true, force: true })
   }
 })
+
+test('a retryable error is shown while the turn continues and cleared when it finishes', async () => {
+  let release: () => void = () => {}
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const f = fixture(async (context) => {
+    context.emit({ type: 'alert', message: 'Model overloaded.' })
+    await gate
+    context.emit({ type: 'item', item: { id: 'answer', kind: 'text', text: 'recovered' } })
+  })
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    await service.command(scope, send)
+    await waitFor(() => {
+      const session = [...service['sessions'].values()][0]
+      return session?.error === 'Model overloaded.' && session.status === 'running'
+    })
+    release()
+    await waitFor(() => !service['running'].size)
+    const state = await service.command(scope, { ...send, action: 'get' })
+    assert.equal(state.session?.status, 'idle')
+    assert.equal(state.session?.error, undefined)
+    assert.equal(
+      state.session?.items.some((item) => item.text === 'recovered'),
+      true
+    )
+  } finally {
+    await service.shutdown()
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
+
+test('an idle harness exit is shown until the next turn finishes', async () => {
+  const f = liveFixture()
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    await service.command(scope, send)
+    await waitFor(() => !service['running'].size)
+    f.opened[0].host.exited(new Error('Agent exited (1).'))
+    assert.equal(
+      (await service.command(scope, { ...send, action: 'get' })).session?.error,
+      'Agent exited (1).'
+    )
+    await service.command(scope, { ...send, commandId: 'next', text: 'again' })
+    await waitFor(() => !service['running'].size)
+    assert.equal(f.opened.length, 2)
+    assert.equal(
+      (await service.command(scope, { ...send, action: 'get' })).session?.error,
+      undefined
+    )
+  } finally {
+    await service.shutdown()
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
