@@ -1,6 +1,7 @@
 import type { AgentHarness, AgentModel } from '@cerebro/core'
 import { homedir } from 'node:os'
 import { shellEnv } from '../shell-env'
+import { codexAppServer } from './codex-server'
 import { JsonProcess, executable, type Frame } from './transport'
 
 /** Sidebar thread titles stay on one short line. */
@@ -140,48 +141,59 @@ async function completeClaude(modelId: string, prompt: string): Promise<string> 
 }
 
 async function completeCodex(modelId: string, prompt: string): Promise<string> {
-  const rpc = new JsonProcess(executable('codex'), ['app-server'], homedir())
-  const timeout = setTimeout(() => rpc.close(), titleTimeoutMs)
+  const server = codexAppServer()
+  const started = await server.request('thread/start', {
+    cwd: homedir(),
+    model: modelId,
+    approvalPolicy: 'never',
+    sandbox: 'read-only',
+    persistExtendedHistory: false
+  })
+  const threadId = started.thread?.id
+  if (!threadId) throw new Error('Codex did not open a thread.')
+  let streamed = ''
+  let completed = ''
+  let turnId: string | undefined
+  let settled = false
+  let finish: (error?: Error, value?: string) => void = () => {}
+  const text = new Promise<string>((resolve, reject) => {
+    finish = (error, value) => {
+      if (settled) return
+      settled = true
+      if (error) reject(error)
+      else resolve(value ?? '')
+    }
+  })
+  const offExit = server.onExit((error) => finish(error))
+  const unsubscribe = server.subscribe(threadId, (frame) => {
+    const params: Frame = frame.params ?? {}
+    if (frame.method === 'item/agentMessage/delta') streamed += params.delta ?? ''
+    if (frame.method === 'item/completed' && params.item?.type === 'agentMessage')
+      completed = params.item.text ?? completed
+    if (frame.method === 'error' && !params.willRetry)
+      finish(new Error(params.error?.message ?? 'Codex error.'))
+    if (frame.method !== 'turn/completed') return
+    if (params.turn?.status === 'failed')
+      finish(new Error(params.turn.error?.message ?? 'Codex turn failed.'))
+    else finish(undefined, completed || streamed)
+  })
+  const timeout = setTimeout(() => {
+    if (turnId) server.interrupt(threadId, turnId)
+    finish(new Error('Codex title timed out.'))
+  }, titleTimeoutMs)
+  void text.catch(() => {})
   try {
-    await rpc.request('initialize', {
-      clientInfo: { name: 'cerebro', title: 'Cerebro', version: '0.1.0' },
-      capabilities: { experimentalApi: true }
-    })
-    rpc.send({ method: 'initialized', params: {} })
-    const started = await rpc.request('thread/start', {
-      cwd: homedir(),
-      model: modelId,
-      approvalPolicy: 'never',
-      sandbox: 'read-only',
-      persistExtendedHistory: false
-    })
-    const threadId = started.thread?.id
-    if (!threadId) throw new Error('Codex did not open a thread.')
-    let streamed = ''
-    let completed = ''
-    const text = new Promise<string>((resolve, reject) => {
-      rpc.onExit = reject
-      rpc.onFrame = (frame) => {
-        const params: Frame = frame.params ?? {}
-        if (frame.method === 'item/agentMessage/delta') streamed += params.delta ?? ''
-        if (frame.method === 'item/completed' && params.item?.type === 'agentMessage')
-          completed = params.item.text ?? completed
-        if (frame.method !== 'turn/completed') return
-        if (params.turn?.status === 'failed')
-          reject(new Error(params.turn.error?.message ?? 'Codex turn failed.'))
-        else resolve(completed || streamed)
-      }
-    })
-    void text.catch(() => {})
-    await rpc.request('turn/start', {
+    const turn = await server.request('turn/start', {
       threadId,
       input: [{ type: 'text', text: prompt }],
       model: modelId
     })
+    turnId = turn.turn?.id
     return await text
   } finally {
     clearTimeout(timeout)
-    rpc.close()
+    unsubscribe()
+    offExit()
   }
 }
 
@@ -217,7 +229,7 @@ async function completePi(provider: string, modelId: string, prompt: string): Pr
   }
 }
 
-/** One shot on a fresh process. This is not the thread's live harness. */
+/** One shot on its own thread. This is not the conversation's live thread. */
 export async function completeTitle(target: TitleTarget, prompt: string): Promise<string> {
   if (target.harness === 'claude') return completeClaude(target.id, prompt)
   if (target.harness === 'codex') return completeCodex(target.id, prompt)

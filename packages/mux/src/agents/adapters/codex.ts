@@ -1,6 +1,7 @@
 import { chatImageMarkerPattern, type AgentDelta, type AgentModel } from '@cerebro/core'
 import { randomUUID } from 'node:crypto'
-import { JsonProcess, executable, describe, type Frame } from '../transport'
+import { describe, type Frame } from '../transport'
+import { codexAppServer, interruptCodexTurn } from '../codex-server'
 import type { AgentAdapter, AutonomousTurn } from './adapter'
 import { activeTurn, item, model, modalities } from './shared'
 import { codexTodoSnapshot } from '../todo'
@@ -13,52 +14,35 @@ const textElements = (
     const start = Buffer.byteLength(text.slice(0, match.index))
     return { byteRange: { start, end: start + Buffer.byteLength(match[0]) }, placeholder: match[0] }
   })
-async function startCodex(cwd: string): Promise<JsonProcess> {
-  const rpc = new JsonProcess(executable('codex'), ['app-server'], cwd)
-  try {
-    await rpc.request('initialize', {
-      clientInfo: { name: 'cerebro', title: 'Cerebro', version: '0.1.0' },
-      capabilities: { experimentalApi: true }
-    })
-    rpc.send({ method: 'initialized', params: {} })
-    return rpc
-  } catch (error) {
-    rpc.close()
-    throw error
-  }
-}
-
 export const codexAdapter: AgentAdapter = {
-  async models(cwd) {
-    const rpc = await startCodex(cwd)
-    try {
-      const result: AgentModel[] = []
-      let cursor: string | undefined
-      do {
-        const page = await rpc.request('model/list', { limit: 100, cursor })
-        for (const entry of page.data ?? [])
-          if (!entry.hidden)
-            result.push(
-              model(
-                'codex',
-                'configured',
-                entry.model,
-                entry.displayName,
-                (entry.supportedReasoningEfforts ?? []).map(
-                  (effort: Frame) => effort.reasoningEffort
-                ),
-                modalities(entry.inputModalities)
-              )
+  async models(_cwd) {
+    const server = codexAppServer()
+    const result: AgentModel[] = []
+    let cursor: string | undefined
+    do {
+      const page = await server.request('model/list', { limit: 100, cursor })
+      for (const entry of page.data ?? [])
+        if (!entry.hidden)
+          result.push(
+            model(
+              'codex',
+              'configured',
+              entry.model,
+              entry.displayName,
+              (entry.supportedReasoningEfforts ?? []).map(
+                (effort: Frame) => effort.reasoningEffort
+              ),
+              modalities(entry.inputModalities)
             )
-        cursor = page.nextCursor ?? undefined
-      } while (cursor && result.length < 1000)
-      return result
-    } finally {
-      rpc.close()
-    }
+          )
+      cursor = page.nextCursor ?? undefined
+    } while (cursor && result.length < 1000)
+    return result
   },
   connect(session, host) {
-    let rpc: JsonProcess | undefined
+    const server = codexAppServer()
+    let unsubscribe = (): void => {}
+    let offExit = (): void => {}
     let closed = false
     let current: AutonomousTurn | undefined
     let threadId: string | undefined
@@ -79,13 +63,16 @@ export const codexAdapter: AgentAdapter = {
     const close = (): void => {
       if (closed) return
       closed = true
-      rpc?.close()
-      finish(new Error('Agent stopped.'))
+      unsubscribe()
+      offExit()
+      if (threadId && turnId) interruptCodexTurn(threadId, turnId)
+      const error = new Error('Agent stopped.')
+      finish(error)
+      host.exited(error)
     }
     const native = {
       interrupt: (): void => {
-        if (turnId && threadId)
-          void rpc?.request('turn/interrupt', { threadId, turnId }).catch(() => {})
+        if (turnId && threadId) interruptCodexTurn(threadId, turnId)
       },
       close
     }
@@ -95,7 +82,7 @@ export const codexAdapter: AgentAdapter = {
         const turn = current
         void (async () => {
           if (!turn) {
-            rpc?.send({
+            server.send({
               id: frame.id,
               error: { code: -32000, message: 'No Cerebro turn is waiting on this request.' }
             })
@@ -113,7 +100,7 @@ export const codexAdapter: AgentAdapter = {
                 options: q.options?.map((o: Frame) => o.label)
               }))
             })
-            rpc?.send({
+            server.send({
               id: frame.id,
               result: {
                 answers: Object.fromEntries(
@@ -135,9 +122,9 @@ export const codexAdapter: AgentAdapter = {
                     text: describe(p.command ?? p.reason ?? p)
                   })
                 : { allow: session.accessMode !== 'read' }
-            rpc?.send({ id: frame.id, result: { decision: answer.allow ? 'accept' : 'decline' } })
+            server.send({ id: frame.id, result: { decision: answer.allow ? 'accept' : 'decline' } })
           } else {
-            rpc?.send({
+            server.send({
               id: frame.id,
               error: { code: -32601, message: `Cerebro does not support ${frame.method}` }
             })
@@ -291,40 +278,54 @@ export const codexAdapter: AgentAdapter = {
           else finish()
           break
         }
-        case 'error':
-          if (!p.willRetry && current) finish(new Error(p.error?.message ?? 'Codex error.'))
+        case 'error': {
+          const message = p.error?.message ?? (p.willRetry ? 'Codex will retry.' : 'Codex error.')
+          if (p.willRetry) emit({ type: 'alert', message })
+          else if (current) finish(new Error(message))
+          else emit({ type: 'alert', message })
           break
+        }
       }
     }
     const ready = (async () => {
-      const started = await startCodex(session.cwd)
-      if (closed) {
-        started.close()
-        return
-      }
-      rpc = started
-      rpc.onFrame = onFrame
-      rpc.onExit = (error) => {
+      // A saved nativeId always resumes. A failed resume leaves that id in place for the next send.
+      try {
+        offExit = server.onExit((error) => {
+          if (closed) return
+          closed = true
+          unsubscribe()
+          finish(error)
+          host.exited(error)
+        })
         if (closed) return
-        closed = true
-        finish(error)
-        host.exited(error)
+        const result = await server.request(session.nativeId ? 'thread/resume' : 'thread/start', {
+          ...(session.nativeId ? { threadId: session.nativeId } : {}),
+          cwd: session.cwd,
+          model: session.model.id || undefined,
+          approvalPolicy: session.accessMode === 'edit' ? 'on-request' : 'never',
+          sandbox:
+            session.accessMode === 'read'
+              ? 'read-only'
+              : session.accessMode === 'edit'
+                ? 'workspace-write'
+                : 'danger-full-access',
+          persistExtendedHistory: true
+        })
+        if (closed) return
+        const opened = result.thread?.id
+        if (typeof opened !== 'string' || !opened) throw new Error('Codex did not open a thread.')
+        threadId = opened
+        unsubscribe = server.subscribe(opened, onFrame)
+        emit({ type: 'binding', nativeId: opened })
+      } catch (error) {
+        if (!closed) {
+          closed = true
+          unsubscribe()
+          offExit()
+          host.exited(error instanceof Error ? error : new Error(String(error)))
+        }
+        throw error
       }
-      const result = await rpc.request(session.nativeId ? 'thread/resume' : 'thread/start', {
-        ...(session.nativeId ? { threadId: session.nativeId } : {}),
-        cwd: session.cwd,
-        model: session.model.id || undefined,
-        approvalPolicy: session.accessMode === 'edit' ? 'on-request' : 'never',
-        sandbox:
-          session.accessMode === 'read'
-            ? 'read-only'
-            : session.accessMode === 'edit'
-              ? 'workspace-write'
-              : 'danger-full-access',
-        persistExtendedHistory: true
-      })
-      threadId = result.thread.id
-      emit({ type: 'binding', nativeId: threadId! })
     })()
     void ready.catch(() => {})
     return {
@@ -338,9 +339,9 @@ export const codexAdapter: AgentAdapter = {
         const turn = current
         try {
           await ready
-          if (!rpc || closed) throw new Error('Codex process is closed.')
+          if (closed || !threadId) throw new Error('Codex process is closed.')
           const attachments = context.attachments ?? []
-          const started = await rpc.request('turn/start', {
+          const started = await server.request('turn/start', {
             threadId,
             input: [
               attachments.length
@@ -354,7 +355,7 @@ export const codexAdapter: AgentAdapter = {
           if (current !== turn) return await done
           turnId = started.turn.id
           context.registerSteer?.(async (text, steerAttachments) => {
-            await rpc!.request('turn/steer', {
+            await server.request('turn/steer', {
               threadId,
               expectedTurnId: turnId,
               input: [

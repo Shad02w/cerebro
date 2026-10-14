@@ -7,11 +7,20 @@ const mode = process.argv.includes('app-server')
     ? 'pi'
     : 'claude'
 const send = (value) => process.stdout.write(JSON.stringify(value) + '\n')
-const notify = (method, params) => send({ method, params })
-let resume = false
+let codexActive
+const codexThreads = new Map()
+const codexApprovals = new Map()
+let codexSeq = 0
+const notify = (method, params = {}) => {
+  const body = { ...params }
+  if (codexActive) {
+    const foreign = typeof body.threadId === 'string' && body.threadId !== 'thread-test'
+    body.threadId = foreign ? body.threadId : codexActive
+  }
+  send({ method, params: body })
+}
 let backgroundStarted = 0
 const backgroundLive = new Map()
-let accessSettings
 let finishApproval
 const text =
   '**Adapter connected.**\n\n- Native tools stay with the harness.\n- Cerebro renders the conversation.'
@@ -31,7 +40,22 @@ const codexDone = () => {
     turn: { id: 'turn-test', status: 'completed' }
   })
 }
-function codexPrompt(prompt, input) {
+function codexPrompt(threadId, prompt, input) {
+  codexActive = threadId
+  const thread = codexThreads.get(threadId) ?? { resume: false, access: undefined }
+  const resume = thread.resume
+  const accessSettings = thread.access
+  if (prompt === 'crash') process.exit(1)
+  if (prompt === 'fatal-error') {
+    notify('error', { error: { message: 'Codex rejected the turn.' }, willRetry: false })
+    return
+  }
+  if (prompt === 'retry-then-ok') {
+    notify('error', { error: { message: 'Model overloaded.' }, willRetry: true })
+    // Leave the alert visible briefly, the way a real overloaded model retries.
+    setTimeout(() => codexPrompt(threadId, 'hello', input), 1200)
+    return
+  }
   if (prompt.includes('attachments')) {
     notify('item/completed', {
       item: { type: 'agentMessage', id: 'attachments', text: JSON.stringify(input) }
@@ -81,14 +105,21 @@ function codexPrompt(prompt, input) {
     })
     codexDone()
     setTimeout(() => {
-      notify('item/commandExecution/outputDelta', { itemId: 'bg-command', delta: '/tmp\n' })
-      notify('item/completed', {
-        item: {
-          ...command,
-          status: failed ? 'failed' : 'completed',
-          aggregatedOutput: '/tmp\n',
-          exitCode: failed ? 3 : 0,
-          durationMs: 1000
+      send({
+        method: 'item/commandExecution/outputDelta',
+        params: { threadId, itemId: 'bg-command', delta: '/tmp\n' }
+      })
+      send({
+        method: 'item/completed',
+        params: {
+          threadId,
+          item: {
+            ...command,
+            status: failed ? 'failed' : 'completed',
+            aggregatedOutput: '/tmp\n',
+            exitCode: failed ? 3 : 0,
+            durationMs: 1000
+          }
         }
       })
     }, 50)
@@ -168,30 +199,33 @@ function codexPrompt(prompt, input) {
   })
   if (prompt.includes('slow')) return
   if (prompt.includes('approval')) {
-    finishApproval = () => {
+    codexApprovals.set('approval-test', () => {
+      codexActive = threadId
       notify('item/completed', {
         item: { type: 'agentMessage', id: 'message-test', text: 'Permission resolved.' }
       })
       codexDone()
-    }
+    })
     send({
       id: 'approval-test',
       method: 'item/commandExecution/requestApproval',
-      params: { command: 'git status --short', threadId: 'thread-test' }
+      params: { command: 'git status --short', threadId }
     })
     return
   }
   if (prompt.includes('question')) {
-    finishApproval = () => {
+    codexApprovals.set('question-test', () => {
+      codexActive = threadId
       notify('item/completed', {
         item: { type: 'agentMessage', id: 'message-test', text: 'Answer received.' }
       })
       codexDone()
-    }
+    })
     send({
       id: 'question-test',
       method: 'item/tool/requestUserInput',
       params: {
+        threadId,
         questions: [
           {
             id: 'color',
@@ -600,8 +634,10 @@ function claudeFinish(value) {
 createInterface({ input: process.stdin }).on('line', (line) => {
   const frame = JSON.parse(line)
   if (mode === 'codex') {
-    if (frame.id === 'approval-test' || frame.id === 'question-test') {
-      finishApproval?.()
+    if (codexApprovals.has(frame.id)) {
+      const finish = codexApprovals.get(frame.id)
+      codexApprovals.delete(frame.id)
+      finish()
       return
     }
     const reply = (result) => send({ id: frame.id, result })
@@ -621,24 +657,40 @@ createInterface({ input: process.stdin }).on('line', (line) => {
         })
         break
       case 'thread/resume':
-        accessSettings = frame.params
-        resume = true
-        reply({ thread: { id: 'thread-test' } })
+        if (frame.params.threadId === 'missing-thread') {
+          send({ id: frame.id, error: { code: -32000, message: 'Thread not found.' } })
+          break
+        }
+        {
+          const id = frame.params.threadId || `thread-${++codexSeq}`
+          codexThreads.set(id, { resume: true, access: frame.params })
+          reply({ thread: { id } })
+        }
         break
       case 'thread/start':
-        accessSettings = frame.params
-        reply({ thread: { id: 'thread-test' } })
+        {
+          const id = `thread-${++codexSeq}`
+          codexThreads.set(id, { resume: false, access: frame.params })
+          reply({ thread: { id } })
+        }
         break
       case 'turn/start':
         reply({ turn: { id: 'turn-test' } })
-        setTimeout(() => codexPrompt(frame.params.input[0].text, frame.params.input), 30)
+        setTimeout(
+          () => codexPrompt(frame.params.threadId, frame.params.input[0].text, frame.params.input),
+          30
+        )
         break
       case 'turn/interrupt':
         reply({})
-        notify('turn/completed', { turn: { id: 'turn-test', status: 'interrupted' } })
+        codexActive = frame.params.threadId
+        notify('turn/completed', {
+          turn: { id: frame.params.turnId ?? 'turn-test', status: 'interrupted' }
+        })
         break
       case 'turn/steer':
         reply({})
+        codexActive = frame.params.threadId
         notify('item/agentMessage/delta', {
           itemId: 'message-test',
           delta: `[steered: ${frame.params.input[0].text}]`
