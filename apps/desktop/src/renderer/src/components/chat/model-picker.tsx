@@ -7,10 +7,11 @@ import {
   type UseMutationResult,
   type UseQueryResult
 } from '@tanstack/react-query'
-import { Check, ChevronDown, Search, Star, RefreshCw } from 'lucide-react'
+import { ChevronDown, Search, Star, RefreshCw } from 'lucide-react'
 import type { AgentCatalog, AgentHarness, AgentModel } from '@cerebro/core'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { modelRowLabel } from './model-row-label'
 import { harnessLabels, catalogOptions } from './queries'
 import claudeIcon from '@/assets/agents/claude.svg'
 import codexIcon from '@/assets/agents/codex.svg'
@@ -45,6 +46,7 @@ interface ModelCatalogState {
   refresh: UseMutationResult<AgentCatalog, Error, void>
   favorites: AgentCatalog['favorites']
   rows: AgentModel[]
+  peers: AgentModel[]
   error: Error | null
 }
 
@@ -68,7 +70,7 @@ function useModelCatalog(filter: PickerFilter, search: string): ModelCatalogStat
       : models.filter((m) => m.harness === filter)
   const rows = candidates.filter((m) => matchesSearch(m, search))
   const error = catalog.error ?? favorite.error ?? refresh.error
-  return { catalog, favorite, refresh, favorites, rows, error }
+  return { catalog, favorite, refresh, favorites, rows, peers: candidates, error }
 }
 
 function HarnessIcon({ harness }: { harness: AgentHarness }): React.JSX.Element {
@@ -122,25 +124,24 @@ function HarnessRail({
   )
 }
 
-function ModelDetail({ model }: { model: AgentModel }): React.JSX.Element {
-  const provider =
-    model.provider === 'configured' ? model.id || 'Native configuration' : model.provider
-  return (
-    <span className="block truncate text-xs text-muted-foreground">
-      {harnessLabels[model.harness]} · {provider}
-      {model.source === 'fallback' ? ' · Fallback' : ''}
-      {!model.available ? ' · Unavailable' : ''}
-    </span>
-  )
+function ModelStatus({ model }: { model: AgentModel }): React.JSX.Element | null {
+  const notes = [
+    model.source === 'fallback' ? 'Fallback' : '',
+    !model.available ? 'Unavailable' : ''
+  ].filter(Boolean)
+  if (!notes.length) return null
+  return <span className="block truncate text-xs text-muted-foreground">{notes.join(' · ')}</span>
 }
 
 function ModelRow({
   model,
+  peers,
   selected,
   isFavorite,
   onToggleFavorite
 }: {
   model: AgentModel
+  peers: AgentModel[]
   selected: boolean
   isFavorite: boolean
   onToggleFavorite: () => void
@@ -157,13 +158,8 @@ function ModelRow({
         disabled={!model.available}
         className="min-w-0 flex-1 cursor-default px-3 py-3 text-left outline-none data-disabled:opacity-50"
       >
-        <span className="flex items-center gap-2 truncate text-sm font-medium">
-          {model.label}
-          <Combobox.ItemIndicator>
-            <Check className="size-3" />
-          </Combobox.ItemIndicator>
-        </span>
-        <ModelDetail model={model} />
+        <span className="block truncate text-sm font-medium">{modelRowLabel(model, peers)}</span>
+        <ModelStatus model={model} />
       </Combobox.Item>
       <button
         type="button"
@@ -204,7 +200,10 @@ export function ModelPicker({
   const [search, setSearch] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
   const [filter, setFilter] = useState<PickerFilter>(selected?.harness ?? 'claude')
-  const { catalog, favorite, refresh, favorites, rows, error } = useModelCatalog(filter, search)
+  const { catalog, favorite, refresh, favorites, rows, peers, error } = useModelCatalog(
+    filter,
+    search
+  )
   return (
     <Combobox.Root
       items={rows}
@@ -281,6 +280,7 @@ export function ModelPicker({
                         <ModelRow
                           key={m.key}
                           model={m}
+                          peers={peers}
                           selected={selected?.key === m.key}
                           isFavorite={isFavorite}
                           onToggleFavorite={() => {
