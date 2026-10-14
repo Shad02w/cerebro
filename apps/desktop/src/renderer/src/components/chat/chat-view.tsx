@@ -22,8 +22,9 @@ import { StarsBackground } from '@/lib/stars-background'
 import { defaultChatTabLabel, generatedTabLabel, promptTabLabel } from '@/lib/thread-tab-title'
 import { cn } from '@/lib/utils'
 import { ChatItem, WorkingGroup } from './chat-item'
-import { transcriptEntries, workingAnchorId } from './tool-groups'
+import { transcriptEntries, transcriptTurnIds, watchedTurns, workingAnchorId } from './tool-groups'
 import { TurnClock } from './turn-clock'
+import { syncTurnClock } from './turn-durations'
 import { WorkingFor } from './working-for'
 import { ChatScrollEndButton } from './chat-scroll-end'
 import { ChatTurnActions } from './chat-turn-actions'
@@ -249,14 +250,31 @@ export function ChatView({
       return window.cerebro.chatCommand(command)
     },
     onSuccess: (data) => {
-      client.setQueryData<typeof data>(queryKey, (previous) =>
-        previous?.session?.id === data.session?.id &&
-        previous?.session &&
-        data.session &&
-        previous.session.sequence > data.session.sequence
-          ? previous
-          : data
-      )
+      const incoming = data.session
+      if (incoming && (incoming.status === 'running' || incoming.status === 'waiting'))
+        syncTurnClock(
+          true,
+          watchedTurns(incoming.items, true, incoming.turnId),
+          transcriptTurnIds(incoming.items, incoming.turnId)
+        )
+      let shown = incoming
+      client.setQueryData<typeof data>(queryKey, (previous) => {
+        if (
+          previous?.session?.id === incoming?.id &&
+          previous.session &&
+          incoming &&
+          previous.session.sequence > incoming.sequence
+        ) {
+          shown = previous.session
+          return previous
+        }
+        shown = incoming
+        return data
+      })
+      // The send result can be the running snapshot while a newer refetch is already idle.
+      // Starting the clock here still records a duration for that turn.
+      if (!shown || (shown.status !== 'running' && shown.status !== 'waiting'))
+        syncTurnClock(false, [], transcriptTurnIds(shown?.items, shown?.turnId))
       void client.invalidateQueries({ queryKey: ['chat', workspaceId] })
     }
   })
@@ -431,11 +449,12 @@ export function ChatView({
     return () => window.clearTimeout(timeout)
   }, [starPhase])
   const transcript = session?.items.length ? session : null
-  const entries = transcript
-    ? transcriptEntries(transcript.items, busy ? transcript.turnId : undefined)
-    : []
+  const knownTurnIds = transcriptTurnIds(transcript?.items, transcript?.turnId)
+  const watchedTurnIds = watchedTurns(transcript?.items, busy, transcript?.turnId)
+  const liveTurnId = busy ? (transcript?.turnId ?? watchedTurnIds[0]) : undefined
+  const entries = transcript ? transcriptEntries(transcript.items, liveTurnId) : []
   const workingAnchor =
-    transcript?.status === 'running' ? workingAnchorId(entries, transcript.turnId) : null
+    transcript?.status === 'running' ? workingAnchorId(entries, liveTurnId) : null
   return (
     <div
       ref={viewRef}
@@ -471,7 +490,7 @@ export function ChatView({
             aria-label="Conversation"
           >
             <div className="mx-auto flex max-w-3xl flex-col gap-4">
-              <TurnClock active={busy} turnId={session?.turnId} />
+              <TurnClock active={busy} activeIds={watchedTurnIds} knownIds={knownTurnIds} />
               {transcript
                 ? entries.map((entry, index, listed) => {
                     const first = entry.type === 'item' ? entry.item : entry.items[0]
