@@ -1,10 +1,4 @@
-import {
-  chatImageMarkerPattern,
-  skillPromptText,
-  type AgentDelta,
-  type AgentModel,
-  type ChatSkillMention
-} from '@cerebro/core'
+import { chatImageMarkerPattern, type AgentDelta, type AgentModel } from '@cerebro/core'
 import { randomUUID } from 'node:crypto'
 import { describe, type Frame } from '../transport'
 import { codexAppServer, interruptCodexTurn } from '../codex-server'
@@ -13,24 +7,16 @@ import { activeTurn, item, model, modalities } from './shared'
 import { codexTodoSnapshot } from '../todo'
 import { codexSkills } from '../skills'
 
-/** Text plus the skill inputs Codex needs beside a `$name` mention, then any images. */
+/** Text plus any images. Codex resolves a `$name` mention in the text itself. */
 const codexTurnInput = (
   text: string,
-  attachments: RunAttachment[],
-  skills: ChatSkillMention[] = []
-): Array<Record<string, unknown>> => {
-  const outbound = skillPromptText(text, skills)
-  const skillItems = skills
-    .filter((skill) => skill.path && outbound.includes(skill.token))
-    .map((skill) => ({ type: 'skill', name: skill.name, path: skill.path }))
-  return [
-    attachments.length
-      ? { type: 'text', text: outbound, text_elements: textElements(outbound) }
-      : { type: 'text', text: outbound },
-    ...skillItems,
-    ...attachments.map((attachment) => ({ type: 'localImage', path: attachment.path }))
-  ]
-}
+  attachments: RunAttachment[]
+): Array<Record<string, unknown>> => [
+  attachments.length
+    ? { type: 'text', text, text_elements: textElements(text) }
+    : { type: 'text', text },
+  ...attachments.map((attachment) => ({ type: 'localImage', path: attachment.path }))
+]
 
 /** Byte spans of `[Image #N]` markers, the shape Codex clients use for UI-owned text elements. */
 const textElements = (
@@ -373,17 +359,17 @@ export const codexAdapter: AgentAdapter = {
           const attachments = context.attachments ?? []
           const started = await server.request('turn/start', {
             threadId,
-            input: codexTurnInput(context.text, attachments, context.skills),
+            input: codexTurnInput(context.text, attachments),
             model: context.session.model.id || undefined,
             effort: context.session.reasoning
           })
           if (current !== turn) return await done
           turnId = started.turn.id
-          context.registerSteer?.(async (text, steerAttachments, skills) => {
+          context.registerSteer?.(async (text, steerAttachments) => {
             await server.request('turn/steer', {
               threadId,
               expectedTurnId: turnId,
-              input: codexTurnInput(text, steerAttachments, skills)
+              input: codexTurnInput(text, steerAttachments)
             })
           })
           if (context.signal.aborted) native.interrupt()
