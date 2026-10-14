@@ -458,7 +458,7 @@ test('chat works through native adapters, survives reload, handles requests, and
     const models = page.locator('.model-picker-list')
     // Constrain the list to exercise overflow with the two native fixture models.
     await models.evaluate((element) => {
-      element.style.maxHeight = '96px'
+      element.style.maxHeight = '40px'
     })
     expect(
       await models.evaluate((element) => getComputedStyle(element, '::-webkit-scrollbar').width)
