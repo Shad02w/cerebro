@@ -12,6 +12,7 @@ import type { AgentCatalog, AgentHarness, AgentModel } from '@cerebro/core'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { modelRowLabel } from './model-row-label'
+import { sortAgentModels } from '@/lib/model-order'
 import { harnessLabels, catalogOptions } from './queries'
 import claudeIcon from '@/assets/agents/claude.svg'
 import codexIcon from '@/assets/agents/codex.svg'
@@ -29,9 +30,9 @@ type PickerFilter = AgentHarness | 'favorites'
 const filterValues: PickerFilter[] = ['favorites', 'claude', 'codex', 'pi']
 
 const harnessIconSizes: Record<AgentHarness, string> = {
-  claude: '28px',
-  codex: '22px',
-  pi: '20px'
+  claude: '20px',
+  codex: '16px',
+  pi: '14px'
 }
 
 const inlineIconSizes: Record<AgentHarness, string> = {
@@ -84,7 +85,9 @@ function useModelCatalog(
     : filter === 'favorites'
       ? favorites.map((f) => models.find((m) => m.key === f.key) ?? { ...f, available: false })
       : models.filter((m) => m.harness === filter)
-  const rows = query ? candidates.filter((m) => matchesSearch(m, query)) : candidates
+  const matched = query ? candidates.filter((m) => matchesSearch(m, query)) : candidates
+  // Favorites stay in the order the user starred them. Every other list leads with the newest model.
+  const rows = !query && filter === 'favorites' ? matched : sortAgentModels(matched)
   const error = catalog.error ?? favorite.error ?? refresh.error
   return {
     catalog,
@@ -112,7 +115,7 @@ function HarnessIcon({
       data-harness-icon={harness}
       className={cn(
         'shrink-0 bg-current [mask-repeat:no-repeat] [mask-position:center]',
-        compact ? 'size-4' : 'size-8',
+        compact ? 'size-4' : 'size-6',
         harness === 'claude' && 'text-[#D97757]'
       )}
       style={{
@@ -133,7 +136,7 @@ function HarnessRail({
   onFilter: (value: PickerFilter) => void
 }): React.JSX.Element {
   return (
-    <div className="flex w-20 shrink-0 flex-col gap-1 border-r p-2" aria-label="Filter harness">
+    <div className="flex w-11 shrink-0 flex-col gap-0.5 border-r p-1" aria-label="Filter harness">
       {filterValues.map((value) => (
         <button
           type="button"
@@ -141,7 +144,7 @@ function HarnessRail({
           aria-label={value === 'favorites' ? 'Favorites' : harnessLabels[value]}
           aria-pressed={!searching && filter === value}
           className={cn(
-            'flex h-12 items-center justify-center rounded-lg px-1 text-xs',
+            'flex h-8 items-center justify-center rounded-md px-1 text-xs',
             !searching && filter === value
               ? 'bg-muted text-foreground'
               : 'text-muted-foreground hover:bg-muted/60'
@@ -149,7 +152,7 @@ function HarnessRail({
           onClick={() => onFilter(value)}
         >
           {value === 'favorites' ? (
-            <Star aria-hidden="true" className="size-[22px]" />
+            <Star aria-hidden="true" className="size-4" />
           ) : (
             <HarnessIcon harness={value} />
           )}
@@ -184,16 +187,18 @@ function ModelRow({
   return (
     <div
       className={cn(
-        'mb-1 flex items-center rounded-xl has-data-highlighted:bg-muted/50',
+        'mb-0.5 flex items-center rounded-md has-data-highlighted:bg-muted/50',
         selected ? 'bg-muted' : 'hover:bg-muted/50'
       )}
     >
       <Combobox.Item
         value={model}
         disabled={!model.available}
-        className="min-w-0 flex-1 cursor-default px-3 py-3 text-left outline-none data-disabled:opacity-50"
+        className="min-w-0 flex-1 cursor-default px-2 py-1 text-left outline-none data-disabled:opacity-50"
       >
-        <span className="block truncate text-sm font-medium">{modelRowLabel(model, peers)}</span>
+        <span className="block truncate text-[13px] leading-4 font-medium">
+          {modelRowLabel(model, peers)}
+        </span>
         <ModelStatus model={model} />
       </Combobox.Item>
       <button
@@ -201,10 +206,10 @@ function ModelRow({
         tabIndex={-1}
         aria-label={`${isFavorite ? 'Unfavorite' : 'Favorite'} ${model.label} via ${harnessLabels[model.harness]}`}
         aria-pressed={isFavorite}
-        className="mr-2 rounded-lg p-2 text-muted-foreground hover:bg-background"
+        className="mr-1 rounded-md p-1 text-muted-foreground hover:bg-background"
         onClick={onToggleFavorite}
       >
-        <Star className={cn('size-4', isFavorite && 'fill-current text-foreground')} />
+        <Star className={cn('size-3.5', isFavorite && 'fill-current text-foreground')} />
       </button>
     </div>
   )
@@ -216,13 +221,24 @@ function emptyMessage(pending: boolean, filter: PickerFilter, searching: boolean
   return 'Star a model to keep it here.'
 }
 
-function CatalogIssues({ issues }: { issues: Record<string, string> }): React.JSX.Element[] {
-  return Object.entries(issues).map(([harness, issue]) => (
-    <details key={harness} className="mt-2 text-xs text-muted-foreground">
-      <summary>{harnessLabels[harness as AgentHarness]} setup details</summary>
+function CatalogIssues({
+  issues,
+  filter,
+  searching
+}: {
+  issues: Partial<Record<AgentHarness, string>>
+  filter: PickerFilter
+  searching: boolean
+}): React.JSX.Element | null {
+  if (searching || filter === 'favorites') return null
+  const issue = issues[filter]
+  if (!issue) return null
+  return (
+    <details className="mt-2 text-xs text-muted-foreground">
+      <summary>{harnessLabels[filter]} setup details</summary>
       <p className="max-h-20 overflow-auto break-words py-1">{issue}</p>
     </details>
-  ))
+  )
 }
 
 export function ModelPicker({
@@ -294,9 +310,9 @@ export function ModelPicker({
             initialFocus={inputRef}
             aria-label="Choose model"
             data-testid="model-picker"
-            className="chat-scrollbars z-50 w-[min(520px,calc(100vw-32px))] origin-(--transform-origin) overflow-hidden rounded-2xl border bg-popover p-0 text-popover-foreground shadow-md outline-hidden transition-[opacity,transform] duration-150 data-ending-style:scale-95 data-ending-style:opacity-0 data-starting-style:scale-95 data-starting-style:opacity-0"
+            className="chat-scrollbars z-50 w-[min(400px,calc(100vw-32px))] origin-(--transform-origin) overflow-hidden rounded-xl border bg-popover p-0 text-popover-foreground shadow-md outline-hidden transition-[opacity,transform] duration-150 data-ending-style:scale-95 data-ending-style:opacity-0 data-starting-style:scale-95 data-starting-style:opacity-0"
           >
-            <div className="flex max-h-[min(520px,70vh)] min-h-72">
+            <div className="flex max-h-[min(360px,60vh)]">
               <HarnessRail
                 filter={filter}
                 searching={searching}
@@ -305,15 +321,15 @@ export function ModelPicker({
                   setSearch('')
                 }}
               />
-              <div className="flex min-w-0 flex-1 flex-col p-3">
-                <div className="mb-2 flex items-center gap-2">
-                  <label className="flex min-w-0 flex-1 items-center gap-2 rounded-xl bg-muted/60 px-3 py-2">
-                    <Search className="size-4 text-muted-foreground" />
+              <div className="flex min-w-0 flex-1 flex-col p-2">
+                <div className="mb-1.5 flex items-center gap-1.5">
+                  <label className="flex min-w-0 flex-1 items-center gap-1.5 rounded-lg bg-muted/60 px-2 py-1">
+                    <Search className="size-3.5 text-muted-foreground" />
                     <Combobox.Input
                       ref={inputRef}
                       aria-label="Search models"
                       placeholder="Search models…"
-                      className="w-full bg-transparent text-sm outline-none"
+                      className="w-full bg-transparent text-[13px] outline-none"
                     />
                   </label>
                   <button
@@ -346,11 +362,15 @@ export function ModelPicker({
                       )
                     }}
                   </Combobox.List>
-                  <Combobox.Empty className="p-4 text-sm text-muted-foreground empty:p-0">
+                  <Combobox.Empty className="px-2 py-3 text-xs text-muted-foreground empty:p-0">
                     {emptyMessage(catalog.isPending, filter, searching)}
                   </Combobox.Empty>
                 </div>
-                <CatalogIssues issues={catalog.data?.issues ?? {}} />
+                <CatalogIssues
+                  issues={catalog.data?.issues ?? {}}
+                  filter={filter}
+                  searching={searching}
+                />
                 {error ? (
                   <p role="alert" className="text-xs text-destructive">
                     {String(error)}
