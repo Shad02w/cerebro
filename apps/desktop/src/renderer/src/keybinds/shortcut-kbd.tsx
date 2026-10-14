@@ -19,21 +19,17 @@ export function ShortcutKbd({
   const keys = shortcutKeys(hotkey)
   return (
     <span
-      className={cn('inline-flex items-center gap-0.5', className)}
+      className={cn(
+        'inline-flex items-center gap-1 font-sans text-[11px] font-medium leading-none tracking-normal',
+        inverted ? 'text-background/75' : 'text-muted-foreground',
+        className
+      )}
       data-testid="shortcut-kbd"
       data-hotkey={hotkey}
       aria-hidden={decorative || undefined}
     >
       {keys.map((key, index) => (
-        <kbd
-          key={`${key}-${index}`}
-          className={cn(
-            'inline-flex h-5 min-w-5 items-center justify-center rounded border px-1 font-sans text-[10px] font-medium',
-            inverted
-              ? 'border-background/30 bg-background/15 text-background'
-              : 'border-border bg-muted text-muted-foreground'
-          )}
-        >
+        <kbd key={`${key}-${index}`} className="font-sans font-medium">
           {key}
         </kbd>
       ))}
