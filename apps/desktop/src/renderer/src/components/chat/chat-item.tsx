@@ -1,5 +1,5 @@
 import { memo, useState } from 'react'
-import type { AgentAnswer, ChatItem as Item } from '@cerebro/core'
+import type { AgentAnswer, AgentSkill, ChatItem as Item } from '@cerebro/core'
 import { ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { AgentMarkdown } from '@/components/markdown/agent-markdown'
@@ -182,17 +182,21 @@ function WorkingEntry({ item }: { item: Item }): React.JSX.Element {
   return <TranscriptDetails item={item} />
 }
 
+const noSkills: readonly AgentSkill[] = []
+
 export const ChatItem = memo(function ChatItem({
   item,
   onReply,
   workspaceId,
   sessionId,
+  skills = noSkills,
   streaming = false
 }: {
   item: Item
   onReply: (id: string, answer: AgentAnswer) => void
   workspaceId: number
   sessionId: string
+  skills?: readonly AgentSkill[]
   streaming?: boolean
 }): React.JSX.Element {
   if (item.kind === 'request') return <RequestCard item={item} onReply={onReply} />
@@ -203,6 +207,7 @@ export const ChatItem = memo(function ChatItem({
         attachments={item.attachments}
         workspaceId={workspaceId}
         sessionId={sessionId}
+        skills={skills}
       />
     )
   if (item.kind === 'text') return <AgentMarkdown text={item.text} streaming={streaming} />

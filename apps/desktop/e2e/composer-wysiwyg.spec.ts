@@ -1,10 +1,30 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtempSync } from 'node:fs'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import type { Locator } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
 import { test, expect } from './fixtures'
 
 const executable = resolve(__dirname, '../../../packages/mux/src/agents/fixtures/fake-harness.cjs')
+const skillHome = mkdtempSync(join(tmpdir(), 'cerebro-wysiwyg-skills-'))
+
+async function writeClaudeSkill(directory: string, name: string): Promise<void> {
+  const folder = join(directory, '.claude', 'skills', name)
+  await mkdir(folder, { recursive: true })
+  await writeFile(join(folder, 'SKILL.md'), `---\nname: ${name}\n---\n\n${name}\n`)
+}
+
+async function chooseModel(page: Page, harness: 'Claude Code' | 'Codex' | 'Pi'): Promise<void> {
+  const picker = page.locator('[data-testid="chat-model-picker"]:visible')
+  await expect(picker).toBeVisible()
+  const label = (await picker.innerText()).replace(/\s+/g, ' ')
+  if (label.startsWith('Test Model') && label.includes(harness)) return
+  await picker.click()
+  await page.getByTestId('model-picker').getByRole('button', { name: harness, exact: true }).click()
+  const option = harness === 'Pi' ? 'Test Model · test-provider' : 'Test Model'
+  await page.getByTestId('model-picker').getByRole('option', { name: option, exact: true }).click()
+  await expect(picker).toContainText(harness)
+}
 
 /** Ink boxes for @, its label, and the previous letter. A lifted @ sits above the label. */
 async function tagInk(tag: Locator): Promise<{
@@ -49,16 +69,18 @@ test.use({
   agentEnvironment: {
     CEREBRO_CODEX_PATH: executable,
     CEREBRO_CLAUDE_PATH: executable,
-    CEREBRO_PI_PATH: executable
+    CEREBRO_PI_PATH: executable,
+    CEREBRO_SKILL_HOME: skillHome
   }
 })
 
-test('agent composer renders bullets, inline code, a code block, and Add tags', async ({
+test('agent composer renders bullets, inline code, a code block, and skill mentions', async ({
   page,
   electronApp
 }, testInfo) => {
   const directory = await mkdtemp(join(tmpdir(), 'cerebro-composer-wysiwyg-'))
   try {
+    await Promise.all(['A', 'B', 'C'].map((name) => writeClaudeSkill(directory, name)))
     await electronApp.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0].setSize(1250, 900)
     )
@@ -94,6 +116,7 @@ test('agent composer renders bullets, inline code, a code block, and Add tags', 
     await shell.screenshot({ path: testInfo.outputPath('composer-glow-shell.png') })
     const composer = page.getByRole('textbox', { name: 'Message agent' })
     await expect(composer).toBeVisible()
+    await chooseModel(page, 'Claude Code')
     await composer.click()
     await page.keyboard.type('- Ship the `notes`')
     await expect(composer.locator('li')).toHaveText('Ship the notes')
@@ -119,11 +142,11 @@ test('agent composer renders bullets, inline code, a code block, and Add tags', 
 
     await page.keyboard.press('ArrowDown')
     await page.keyboard.type('@')
-    const addMenu = page.getByTestId('composer-add-menu')
+    const addMenu = page.getByTestId('composer-skill-menu')
     await expect(addMenu).toBeVisible()
     await expect(addMenu.getByRole('option')).toHaveText(['A', 'B', 'C'])
-    await page.screenshot({ path: testInfo.outputPath('composer-add-menu.png') })
-    await addMenu.getByTestId('composer-add-option-B').click()
+    await page.screenshot({ path: testInfo.outputPath('composer-skill-menu.png') })
+    await addMenu.getByTestId('composer-skill-option-B').click()
     await expect(composer.getByTestId('composer-tag')).toHaveText('@B')
     const markdown = await composer.getAttribute('data-composer-text')
     expect(markdown).toContain('Ship the `notes`')
@@ -145,7 +168,7 @@ test('agent composer renders bullets, inline code, a code block, and Add tags', 
     expect(await composer.getAttribute('data-composer-text')).not.toContain('@')
     await page.keyboard.type('@')
     await expect(addMenu).toBeVisible()
-    await addMenu.getByTestId('composer-add-option-B').click()
+    await addMenu.getByTestId('composer-skill-option-B').click()
     await expect(composer.getByTestId('composer-tag')).toHaveText('@B')
     await page.keyboard.type(' pin @A')
     await expect(composer.getByTestId('composer-tag')).toHaveText(['@B', '@A'])
@@ -166,15 +189,6 @@ test('agent composer renders bullets, inline code, a code block, and Add tags', 
 
     await page.keyboard.press('Escape')
     await expect(addMenu).toBeHidden()
-    await page.getByTestId('chat-model-picker').click()
-    await page
-      .getByTestId('model-picker')
-      .getByRole('button', { name: 'Codex', exact: true })
-      .click()
-    await page
-      .getByTestId('model-picker')
-      .getByRole('option', { name: 'Test Model', exact: true })
-      .click()
     await page.getByRole('button', { name: 'Send message', exact: true }).click()
     await expect(dock).toHaveAttribute('data-dock', 'bottom')
     await expect(page.getByTestId('chat-composer-glow')).toHaveCount(0)
@@ -198,6 +212,34 @@ test('agent composer renders bullets, inline code, a code block, and Add tags', 
     await expect(sentDocument).toContainText('@ZZ')
     await page.screenshot({ path: testInfo.outputPath('composer-sent.png') })
     await sentDocument.screenshot({ path: testInfo.outputPath('composer-sent-document.png') })
+
+    await page.getByTestId('new-content-tab').click()
+    await page.getByTestId('open-chat-tab').click()
+    await expect(page.getByRole('heading', { name: 'What would you like to build?' })).toBeVisible()
+    await chooseModel(page, 'Codex')
+    const codexComposer = page.getByRole('textbox', { name: 'Message agent' })
+    await codexComposer.click()
+    await page.keyboard.type('$')
+    const codexMenu = page.getByTestId('composer-skill-menu')
+    await expect(codexMenu.getByTestId('composer-skill-option-review')).toBeVisible()
+    await expect(codexMenu.getByTestId('composer-skill-option-hidden')).toHaveCount(0)
+    await page.screenshot({ path: testInfo.outputPath('composer-codex-skills.png') })
+    await codexMenu.getByTestId('composer-skill-option-review').click()
+    await expect(codexComposer.getByTestId('composer-tag')).toHaveText('$review')
+
+    await page.getByTestId('new-content-tab').click()
+    await page.getByTestId('open-chat-tab').click()
+    await expect(page.getByRole('heading', { name: 'What would you like to build?' })).toBeVisible()
+    await chooseModel(page, 'Pi')
+    const piComposer = page.getByRole('textbox', { name: 'Message agent' })
+    await piComposer.click()
+    await page.keyboard.type('@')
+    const piMenu = page.getByTestId('composer-skill-menu')
+    await expect(piMenu.getByTestId('composer-skill-option-review')).toBeVisible()
+    await expect(piMenu.getByText('fix-tests')).toHaveCount(0)
+    await page.screenshot({ path: testInfo.outputPath('composer-pi-skills.png') })
+    await piMenu.getByTestId('composer-skill-option-review').click()
+    await expect(piComposer.getByTestId('composer-tag')).toHaveText('@review')
   } finally {
     await rm(directory, { recursive: true, force: true })
   }

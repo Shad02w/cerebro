@@ -4,12 +4,21 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { crc32, deflateSync } from 'node:zlib'
-import type { ElectronApplication, JSHandle, Page } from '@playwright/test'
+import type { ElectronApplication, JSHandle, Locator, Page } from '@playwright/test'
 import { test, expect, stopMux } from './fixtures'
 
 const execFileAsync = promisify(execFile)
 const executable = resolve(__dirname, '../../../packages/mux/src/agents/fixtures/fake-harness.cjs')
 const chatEvidenceDir = '/tmp/cerebro-chat-evidence'
+
+async function expectPickerHarness(
+  picker: Locator,
+  harness: 'claude' | 'codex' | 'pi',
+  label?: string
+): Promise<void> {
+  if (label) await expect(picker.getByTestId('chat-model-picker-label')).toHaveText(label)
+  await expect(picker.locator(`[data-harness-icon="${harness}"]`)).toBeVisible()
+}
 
 async function screenshotChatEvidence(
   page: { screenshot: (options: { path: string }) => Promise<Buffer> },
@@ -528,7 +537,7 @@ test('Claude and Pi keep separate chat sessions, with a mixed Terminal pane', as
     await page.reload()
     await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
     await expect(chat.getByTestId('chat-model-picker')).toBeVisible()
-    await expect(chat.getByTestId('chat-model-picker')).toContainText('Claude Code')
+    await expectPickerHarness(chat.getByTestId('chat-model-picker'), 'claude')
     await chat.getByRole('textbox', { name: 'Message agent' }).fill('hello Claude')
     await chat.getByRole('button', { name: 'Send message', exact: true }).click()
     await expect(chat.getByTestId('chat-transcript')).toContainText('Adapter connected.')
@@ -540,7 +549,7 @@ test('Claude and Pi keep separate chat sessions, with a mixed Terminal pane', as
       .getByRole('option', { name: 'Test Model · test-provider', exact: true })
       .click()
     await expect(page.getByRole('alert')).toContainText('Open a new Agent tab or pane to use Pi.')
-    await expect(chat.getByTestId('chat-model-picker')).toContainText('Claude Code')
+    await expectPickerHarness(chat.getByTestId('chat-model-picker'), 'claude')
     await expect
       .poll(
         async () => (await page.evaluate(() => window.cerebro.getSettings())).lastAgent?.harness
@@ -552,14 +561,14 @@ test('Claude and Pi keep separate chat sessions, with a mixed Terminal pane', as
     // Tab switches keep prior agent panes mounted under display:none; re-query the active pane.
     const nextChat = page.locator('[data-pane-kind="chat"]:visible')
     await expect(nextChat.getByText('What would you like to build?')).toBeVisible()
-    await expect(nextChat.getByTestId('chat-model-picker')).toContainText('Pi')
+    await expectPickerHarness(nextChat.getByTestId('chat-model-picker'), 'pi')
     await nextChat.getByTestId('chat-model-picker').click()
     await page.getByTestId('model-picker').getByRole('button', { name: 'Pi', exact: true }).click()
     await page
       .getByTestId('model-picker')
       .getByRole('option', { name: 'Test Model · test-provider', exact: true })
       .click()
-    await expect(nextChat.getByTestId('chat-model-picker')).toContainText('Pi')
+    await expectPickerHarness(nextChat.getByTestId('chat-model-picker'), 'pi')
     await nextChat.getByRole('textbox', { name: 'Message agent' }).fill('hello Pi')
     await nextChat.getByRole('button', { name: 'Send message', exact: true }).click()
     await expect(nextChat.getByTestId('chat-transcript')).toContainText('Adapter connected.')
@@ -591,7 +600,7 @@ test('queued messages during a running turn can be steered in immediately or sen
     if ((await projectRow.getAttribute('aria-expanded')) === 'false') await projectRow.click()
     await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
     await page.getByRole('button', { name: /^New Agent tab/ }).click()
-    await expect(page.getByTestId('chat-model-picker')).toContainText('Claude Code')
+    await expectPickerHarness(page.getByTestId('chat-model-picker'), 'claude')
     const message = page.getByRole('textbox', { name: 'Message agent' })
     const send = page.getByRole('button', { name: 'Send message', exact: true })
     await message.fill('slow')
@@ -1363,8 +1372,7 @@ test('new agent panes reuse the last model and settings choose each harness defa
     await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
     await page.getByRole('button', { name: /^New Agent tab/ }).click()
     const first = page.locator('[data-pane-kind="chat"]:visible')
-    await expect(first.getByTestId('chat-model-picker')).toContainText('Test Model')
-    await expect(first.getByTestId('chat-model-picker')).toContainText('Claude Code')
+    await expectPickerHarness(first.getByTestId('chat-model-picker'), 'claude', 'Test Model')
     await first.getByTestId('chat-model-picker').click()
     await page
       .getByTestId('model-picker')
@@ -1385,8 +1393,11 @@ test('new agent panes reuse the last model and settings choose each harness defa
     await page.getByTestId('new-content-tab').click()
     await page.getByTestId('open-chat-tab').click()
     const remembered = page.locator('[data-pane-kind="chat"]:visible')
-    await expect(remembered.getByTestId('chat-model-picker')).toContainText('Test Sonnet')
-    await expect(remembered.getByTestId('chat-model-picker')).toContainText('Claude Code')
+    await expectPickerHarness(
+      remembered.getByTestId('chat-model-picker'),
+      'claude',
+      'Test Sonnet 5'
+    )
     await page.screenshot({ path: testInfo.outputPath('agent-model-remembered.png') })
 
     await page.getByRole('button', { name: 'Settings', exact: true }).click()
@@ -1410,9 +1421,11 @@ test('new agent panes reuse the last model and settings choose each harness defa
     await page.getByRole('button', { name: 'Back' }).click()
     await page.getByTestId('new-content-tab').click()
     await page.getByTestId('open-chat-tab').click()
-    await expect(
-      page.locator('[data-pane-kind="chat"]:visible').getByTestId('chat-model-picker')
-    ).toContainText('Test Model · Claude Code')
+    await expectPickerHarness(
+      page.locator('[data-pane-kind="chat"]:visible').getByTestId('chat-model-picker'),
+      'claude',
+      'Test Model'
+    )
 
     await page.evaluate(
       ({ sonnetKey }) =>
@@ -1427,9 +1440,11 @@ test('new agent panes reuse the last model and settings choose each harness defa
     )
     await page.reload()
     await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
-    await expect(
-      page.locator('[data-pane-kind="chat"]:visible').getByTestId('chat-model-picker')
-    ).toContainText('Second Model · Codex')
+    await expectPickerHarness(
+      page.locator('[data-pane-kind="chat"]:visible').getByTestId('chat-model-picker'),
+      'codex',
+      'Second Model'
+    )
     await expect
       .poll(async () => {
         const settings = await page.evaluate(() => window.cerebro.getSettings())

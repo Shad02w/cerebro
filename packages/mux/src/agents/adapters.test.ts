@@ -1,7 +1,7 @@
 import { after, describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { join, resolve } from 'node:path'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import {
   adapters,
@@ -83,6 +83,35 @@ describe('agent adapters', { concurrency: 1 }, () => {
         resolvedModel: 'claude-opus-5-5'
       }),
       'Default (recommended) · claude-opus-5-5'
+    )
+    // The account default and the sonnet alias both resolve to Sonnet 5.5. The description
+    // tip is that name for both rows, so the default alias must stay labeled as Default.
+    assert.equal(
+      claudeModelLabel({
+        value: 'default',
+        displayName: 'Default',
+        description: 'Sonnet 5.5 · Efficient for routine tasks · $2/$10 per Mtok',
+        resolvedModel: 'claude-sonnet-5-5'
+      }),
+      'Default · Sonnet 5.5'
+    )
+    assert.equal(
+      claudeModelLabel({
+        value: 'default',
+        displayName: 'Sonnet',
+        description: 'Efficient for routine tasks · $2/$10 per Mtok',
+        resolvedModel: 'claude-sonnet-5-5'
+      }),
+      'Default · Sonnet 5.5'
+    )
+    assert.equal(
+      claudeModelLabel({
+        value: 'sonnet',
+        displayName: 'Sonnet',
+        description: 'Sonnet 5.5 · Efficient for routine tasks · $2/$10 per Mtok',
+        resolvedModel: 'claude-sonnet-5-5'
+      }),
+      'Sonnet 5.5'
     )
     assert.equal(claudeModelLabel({ displayName: 'Fable' }), 'Fable')
   })
@@ -1045,6 +1074,87 @@ describe('agent adapters', { concurrency: 1 }, () => {
         ask: async () => ({ allow: false, answers: {} })
       })
       assert(replies(resumed).some((text) => text.startsWith('Resumed native session.')))
+    }
+  )
+
+  test(
+    'each harness lists skills and receives that harness’s prompt form',
+    { timeout: 20_000 },
+    async () => {
+      const directory = mkdtempSync(join(tmpdir(), 'cerebro-skill-wire-'))
+      const home = mkdtempSync(join(tmpdir(), 'cerebro-skill-home-'))
+      const previousHome = process.env.CEREBRO_SKILL_HOME
+      process.env.CEREBRO_SKILL_HOME = home
+      try {
+        mkdirSync(join(directory, '.claude', 'skills', 'review'), { recursive: true })
+        writeFileSync(
+          join(directory, '.claude', 'skills', 'review', 'SKILL.md'),
+          '---\nname: review\ndescription: Review the diff\n---\n'
+        )
+        mkdirSync(join(directory, '.claude', 'plugins', 'formatter', 'skills', 'lint'), {
+          recursive: true
+        })
+        writeFileSync(
+          join(directory, '.claude', 'plugins', 'formatter', 'skills', 'lint', 'SKILL.md'),
+          '---\nname: lint\ndescription: Lint with the plugin\n---\n'
+        )
+        for (const harness of ['claude', 'codex', 'pi'] as AgentHarness[]) {
+          process.env[`CEREBRO_${harness.toUpperCase()}_PATH`] = fixture
+          const listed = await adapters[harness].skills?.(directory)
+          const review = listed?.find((skill) => skill.name === 'review')
+          const token = harness === 'codex' ? '$review' : '@review'
+          const prompt =
+            harness === 'pi' ? '/skill:review' : harness === 'claude' ? '/review' : '$review'
+          assert.equal(review?.token, token)
+          assert.equal(review?.prompt, prompt)
+          if (harness === 'claude') {
+            const plugin = listed?.find((skill) => skill.name === 'formatter:lint')
+            assert.equal(plugin?.description, 'Lint with the plugin')
+            assert.equal(plugin?.token, '@formatter:lint')
+            assert.equal(plugin?.prompt, '/formatter:lint')
+          }
+          const models = await adapters[harness].models(directory)
+          const events: AgentDelta[] = []
+          await runTurn(adapters[harness], {
+            session: { ...liveSession(models[0], `skill-${harness}`), cwd: directory },
+            text: `skill-wire ${token} please`,
+            skills: [
+              {
+                name: 'review',
+                path: review?.path || '/tmp/skills/review/SKILL.md',
+                token,
+                prompt
+              }
+            ],
+            signal: new AbortController().signal,
+            emit: (event) => events.push(event),
+            ask: async () => ({ allow: false, answers: {} })
+          })
+          const reply = events
+            .flatMap((event) => (event.type === 'item' && event.item.text ? [event.item.text] : []))
+            .join('')
+          if (harness === 'codex') {
+            const input = JSON.parse(reply) as Array<{
+              type?: string
+              text?: string
+              name?: string
+            }>
+            assert.equal(input[0]?.text, 'skill-wire $review please')
+            assert.equal(
+              input.some((item) => item.type === 'skill' && item.name === 'review'),
+              true
+            )
+          } else {
+            assert.match(reply, new RegExp(prompt.replaceAll('/', '\\/')))
+            assert.doesNotMatch(reply, /@review/)
+          }
+        }
+      } finally {
+        if (previousHome === undefined) delete process.env.CEREBRO_SKILL_HOME
+        else process.env.CEREBRO_SKILL_HOME = previousHome
+        rmSync(directory, { recursive: true, force: true })
+        rmSync(home, { recursive: true, force: true })
+      }
     }
   )
 

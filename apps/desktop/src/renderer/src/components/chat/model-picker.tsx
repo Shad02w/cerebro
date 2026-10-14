@@ -34,6 +34,12 @@ const harnessIconSizes: Record<AgentHarness, string> = {
   pi: '20px'
 }
 
+const inlineIconSizes: Record<AgentHarness, string> = {
+  claude: '14px',
+  codex: '11px',
+  pi: '10px'
+}
+
 function matchesSearch(model: AgentModel, search: string): boolean {
   return `${model.label} ${model.id} ${model.provider} ${harnessLabels[model.harness]}`
     .toLowerCase()
@@ -50,7 +56,12 @@ interface ModelCatalogState {
   error: Error | null
 }
 
-function useModelCatalog(filter: PickerFilter, search: string): ModelCatalogState {
+function useModelCatalog(
+  manualFilter: PickerFilter | null,
+  search: string,
+  sessionStarted: boolean,
+  harness: AgentHarness | undefined
+): ModelCatalogState & { filter: PickerFilter; searching: boolean } {
   const client = useQueryClient()
   const catalog = useQuery(catalogOptions)
   const favorite = useMutation({
@@ -64,27 +75,49 @@ function useModelCatalog(filter: PickerFilter, search: string): ModelCatalogStat
   })
   const favorites = catalog.data?.favorites ?? []
   const models = catalog.data?.models ?? []
-  const candidates =
-    filter === 'favorites'
+  const query = search.trim()
+  // Before a chat exists, open on favorites when the user has any. A chosen rail wins after that.
+  const filter: PickerFilter =
+    manualFilter ?? (!sessionStarted && favorites.length > 0 ? 'favorites' : (harness ?? 'claude'))
+  const candidates = query
+    ? models
+    : filter === 'favorites'
       ? favorites.map((f) => models.find((m) => m.key === f.key) ?? { ...f, available: false })
       : models.filter((m) => m.harness === filter)
-  const rows = candidates.filter((m) => matchesSearch(m, search))
+  const rows = query ? candidates.filter((m) => matchesSearch(m, query)) : candidates
   const error = catalog.error ?? favorite.error ?? refresh.error
-  return { catalog, favorite, refresh, favorites, rows, peers: candidates, error }
+  return {
+    catalog,
+    favorite,
+    refresh,
+    favorites,
+    rows,
+    peers: candidates,
+    error,
+    filter,
+    searching: query.length > 0
+  }
 }
 
-function HarnessIcon({ harness }: { harness: AgentHarness }): React.JSX.Element {
+function HarnessIcon({
+  harness,
+  compact = false
+}: {
+  harness: AgentHarness
+  compact?: boolean
+}): React.JSX.Element {
   return (
     <span
       aria-hidden="true"
       data-harness-icon={harness}
       className={cn(
-        'size-8 bg-current [mask-repeat:no-repeat] [mask-position:center]',
+        'shrink-0 bg-current [mask-repeat:no-repeat] [mask-position:center]',
+        compact ? 'size-4' : 'size-8',
         harness === 'claude' && 'text-[#D97757]'
       )}
       style={{
         maskImage: `url("${harnessIcons[harness]}")`,
-        maskSize: harnessIconSizes[harness]
+        maskSize: (compact ? inlineIconSizes : harnessIconSizes)[harness]
       }}
     />
   )
@@ -92,9 +125,11 @@ function HarnessIcon({ harness }: { harness: AgentHarness }): React.JSX.Element 
 
 function HarnessRail({
   filter,
+  searching,
   onFilter
 }: {
   filter: PickerFilter
+  searching: boolean
   onFilter: (value: PickerFilter) => void
 }): React.JSX.Element {
   return (
@@ -104,10 +139,10 @@ function HarnessRail({
           type="button"
           key={value}
           aria-label={value === 'favorites' ? 'Favorites' : harnessLabels[value]}
-          aria-pressed={filter === value}
+          aria-pressed={!searching && filter === value}
           className={cn(
             'flex h-12 items-center justify-center rounded-lg px-1 text-xs',
-            filter === value
+            !searching && filter === value
               ? 'bg-muted text-foreground'
               : 'text-muted-foreground hover:bg-muted/60'
           )}
@@ -175,9 +210,10 @@ function ModelRow({
   )
 }
 
-function emptyMessage(pending: boolean, filter: PickerFilter): string {
+function emptyMessage(pending: boolean, filter: PickerFilter, searching: boolean): string {
   if (pending) return 'Discovering native models…'
-  return filter === 'favorites' ? 'Star a model to keep it here.' : 'No matching models.'
+  if (searching || filter !== 'favorites') return 'No matching models.'
+  return 'Star a model to keep it here.'
 }
 
 function CatalogIssues({ issues }: { issues: Record<string, string> }): React.JSX.Element[] {
@@ -191,19 +227,20 @@ function CatalogIssues({ issues }: { issues: Record<string, string> }): React.JS
 
 export function ModelPicker({
   selected,
-  onSelect
+  onSelect,
+  sessionStarted = false
 }: {
   selected?: AgentModel
   onSelect: (model: AgentModel) => void
+  /** False until the chat has a session. Favorites are the first pane in that case. */
+  sessionStarted?: boolean
 }): React.JSX.Element {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
-  const [filter, setFilter] = useState<PickerFilter>(selected?.harness ?? 'claude')
-  const { catalog, favorite, refresh, favorites, rows, peers, error } = useModelCatalog(
-    filter,
-    search
-  )
+  const [manualFilter, setManualFilter] = useState<PickerFilter | null>(null)
+  const { catalog, favorite, refresh, favorites, rows, peers, error, filter, searching } =
+    useModelCatalog(manualFilter, search, sessionStarted, selected?.harness)
   return (
     <Combobox.Root
       items={rows}
@@ -219,7 +256,7 @@ export function ModelPicker({
       autoHighlight
       open={open}
       onOpenChange={(nextOpen) => {
-        if (nextOpen) setFilter(selected?.harness ?? 'claude')
+        if (nextOpen) setManualFilter(null)
         setSearch('')
         setOpen(nextOpen)
       }}
@@ -231,14 +268,25 @@ export function ModelPicker({
             variant="ghost"
             size="sm"
             data-testid="chat-model-picker"
-            className="max-w-full gap-1 text-xs"
+            title={
+              selected ? `${selected.label} · ${harnessLabels[selected.harness]}` : 'Choose model'
+            }
+            className="max-w-full min-w-0 gap-1 px-2 text-xs"
           />
         }
       >
-        <span className="truncate">
-          {selected ? `${selected.label} · ${harnessLabels[selected.harness]}` : 'Choose model'}
-        </span>
-        <ChevronDown className="size-3" />
+        {selected ? (
+          <>
+            <HarnessIcon harness={selected.harness} compact />
+            <span data-testid="chat-model-picker-label" className="truncate">
+              {selected.label}
+            </span>
+            <span className="sr-only">{harnessLabels[selected.harness]}</span>
+          </>
+        ) : (
+          <span className="truncate">Choose model</span>
+        )}
+        <ChevronDown className="size-3 shrink-0" />
       </Combobox.Trigger>
       <Combobox.Portal>
         <Combobox.Positioner align="start" side="top" sideOffset={4} className="isolate z-50">
@@ -249,7 +297,14 @@ export function ModelPicker({
             className="chat-scrollbars z-50 w-[min(520px,calc(100vw-32px))] origin-(--transform-origin) overflow-hidden rounded-2xl border bg-popover p-0 text-popover-foreground shadow-md outline-hidden transition-[opacity,transform] duration-150 data-ending-style:scale-95 data-ending-style:opacity-0 data-starting-style:scale-95 data-starting-style:opacity-0"
           >
             <div className="flex max-h-[min(520px,70vh)] min-h-72">
-              <HarnessRail filter={filter} onFilter={setFilter} />
+              <HarnessRail
+                filter={filter}
+                searching={searching}
+                onFilter={(value) => {
+                  setManualFilter(value)
+                  setSearch('')
+                }}
+              />
               <div className="flex min-w-0 flex-1 flex-col p-3">
                 <div className="mb-2 flex items-center gap-2">
                   <label className="flex min-w-0 flex-1 items-center gap-2 rounded-xl bg-muted/60 px-3 py-2">
@@ -292,7 +347,7 @@ export function ModelPicker({
                     }}
                   </Combobox.List>
                   <Combobox.Empty className="p-4 text-sm text-muted-foreground empty:p-0">
-                    {emptyMessage(catalog.isPending, filter)}
+                    {emptyMessage(catalog.isPending, filter, searching)}
                   </Combobox.Empty>
                 </div>
                 <CatalogIssues issues={catalog.data?.issues ?? {}} />

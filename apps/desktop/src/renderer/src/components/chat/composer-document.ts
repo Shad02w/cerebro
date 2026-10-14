@@ -8,17 +8,13 @@ type JSONContent = {
   marks?: Array<{ type: string }>
   text?: string
 }
-import { chatImageMarker, type ChatAttachmentUpload } from '@cerebro/core'
+import {
+  chatImageMarker,
+  type AgentSkill,
+  type ChatAttachmentUpload,
+  type ChatSkillRef
+} from '@cerebro/core'
 import type { Chip } from './chat-attachments'
-
-export type TagOption = { id: string; label: string }
-
-/** Demo catalog for the Add tag menu. */
-export const addTags: TagOption[] = [
-  { id: 'a', label: 'A' },
-  { id: 'b', label: 'B' },
-  { id: 'c', label: 'C' }
-]
 
 export const codeLanguages: Array<[string, string]> = [
   ['plaintext', 'Plain text'],
@@ -37,55 +33,59 @@ export const codeLanguages: Array<[string, string]> = [
 
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
-const tagPatternSource = (tags: readonly TagOption[]): string =>
-  tags
-    .toSorted((left, right) => right.label.length - left.label.length)
-    .map((tag) =>
-      [...tag.label]
-        .map((char) => {
-          const upper = char.toUpperCase()
-          const lower = char.toLowerCase()
-          return upper === lower
-            ? escapeRegExp(char)
-            : `[${escapeRegExp(upper)}${escapeRegExp(lower)}]`
-        })
-        .join('')
+const caseFold = (char: string): string => {
+  const upper = char.toUpperCase()
+  const lower = char.toLowerCase()
+  return upper === lower ? escapeRegExp(char) : `[${escapeRegExp(upper)}${escapeRegExp(lower)}]`
+}
+
+/** Trigger plus name, with the name matched case-insensitively. Longer tokens are tried first. */
+const skillPatternSource = (skills: readonly AgentSkill[]): string =>
+  skills
+    .toSorted((left, right) => right.token.length - left.token.length)
+    .map(
+      (skill) =>
+        escapeRegExp(skill.token.slice(0, 1)) + [...skill.token.slice(1)].map(caseFold).join('')
     )
     .join('|')
 
-export type AddTagMatch = {
+export type SkillMatch = {
   start: number
   end: number
-  tag: TagOption
+  skill: AgentSkill
   /** A boundary follows the token, or the caret has left it. Still-open typing stays editable. */
   closed: boolean
 }
 
-/** `@` tokens whose label equals an Add tag. Matching is case-insensitive and keeps the catalog label. */
-export function findAddTagMatches(
+/**
+ * Skill tokens in plain text. Codex tokens start with `$`; Claude and Pi tokens start with `@`.
+ * Matching is case-insensitive and keeps the catalog name.
+ */
+export function findSkillMatches(
   text: string,
   caret: number | null = null,
-  tags: readonly TagOption[] = addTags
-): AddTagMatch[] {
-  if (!tags.length || !text) return []
-  const byFold = new Map(tags.map((tag) => [tag.label.toLowerCase(), tag]))
-  const expression = new RegExp(`@(${tagPatternSource(tags)})(?![A-Za-z0-9_-])`, 'g')
-  const matches: AddTagMatch[] = []
+  skills: readonly AgentSkill[] = []
+): SkillMatch[] {
+  if (!skills.length || !text) return []
+  const byFold = new Map(skills.map((skill) => [skill.token.toLowerCase(), skill]))
+  const expression = new RegExp(`(${skillPatternSource(skills)})(?![A-Za-z0-9_/:-])`, 'g')
+  const matches: SkillMatch[] = []
   for (const match of text.matchAll(expression)) {
     const raw = match[1]
-    const tag = raw ? byFold.get(raw.toLowerCase()) : undefined
-    if (!tag || match.index === undefined) continue
+    const skill = raw ? byFold.get(raw.toLowerCase()) : undefined
+    if (!skill || match.index === undefined) continue
     const start = match.index
     const end = start + match[0].length
     const stillTyping = end === text.length && caret === end
-    matches.push({ start, end, tag, closed: !stillTyping })
+    matches.push({ start, end, skill, closed: !stillTyping })
   }
   return matches
 }
 
-export const visitAddTagText = (
+export const visitSkillText = (
   state: EditorState,
-  visit: (match: AddTagMatch, from: number, to: number) => void
+  skills: readonly AgentSkill[],
+  visit: (match: SkillMatch, from: number, to: number) => void
 ): void => {
   state.doc.descendants((node, pos) => {
     if (!node.isText || !node.text) return
@@ -97,18 +97,21 @@ export const visitAddTagText = (
       state.selection.from <= pos + node.text.length
         ? state.selection.from - pos
         : null
-    for (const match of findAddTagMatches(node.text, caret))
+    for (const match of findSkillMatches(node.text, caret, skills))
       visit(match, pos + match.start, pos + match.end)
   })
 }
 
-/** Turns a finished `@Tag` into a mention. A token the caret is still typing stays text so it can grow. */
-export function promoteAddTagTransaction(state: EditorState): Transaction | null {
+/** Turns a finished skill token into a mention. A token the caret is still typing stays text so it can grow. */
+export function promoteSkillTransaction(
+  state: EditorState,
+  skills: readonly AgentSkill[]
+): Transaction | null {
   const mention = state.schema.nodes.mention
-  if (!mention) return null
-  const found: Array<{ from: number; to: number; tag: TagOption }> = []
-  visitAddTagText(state, (match, from, to) => {
-    if (match.closed) found.push({ from, to, tag: match.tag })
+  if (!mention || !skills.length) return null
+  const found: Array<{ from: number; to: number; skill: AgentSkill }> = []
+  visitSkillText(state, skills, (match, from, to) => {
+    if (match.closed) found.push({ from, to, skill: match.skill })
   })
   if (!found.length) return null
   let tr = state.tr
@@ -117,16 +120,23 @@ export function promoteAddTagTransaction(state: EditorState): Transaction | null
       match.from,
       match.to,
       mention.create({
-        id: match.tag.id,
-        label: match.tag.label,
-        mentionSuggestionChar: '@'
+        id: match.skill.name,
+        label: match.skill.name,
+        mentionSuggestionChar: match.skill.token.slice(0, 1) || '@',
+        path: match.skill.path,
+        prompt: match.skill.prompt
       })
     )
   }
   return tr
 }
 
-type Writer = { text: string; chips: Chip[] }
+type Writer = { text: string; chips: Chip[]; skills: ChatSkillRef[] }
+
+const rememberSkill = (writer: Writer, name: string, path: string): void => {
+  if (!name || writer.skills.some((skill) => skill.name === name)) return
+  writer.skills.push({ name, path })
+}
 
 const push = (writer: Writer, value: string): void => {
   writer.text += value
@@ -135,13 +145,19 @@ const push = (writer: Writer, value: string): void => {
 const writeInline = (
   node: ProseNode,
   attachments: ChatAttachmentUpload[],
+  skills: readonly AgentSkill[],
   writer: Writer
 ): void => {
   node.forEach((child) => {
     if (child.isText) {
       let value = child.text ?? ''
       const marks = new Set(child.marks.map((mark) => mark.type.name))
-      if (marks.has('code')) value = `\`${value}\``
+      const coded = marks.has('code')
+      if (!coded) {
+        for (const match of findSkillMatches(value, null, skills))
+          rememberSkill(writer, match.skill.name, match.skill.path)
+      }
+      if (coded) value = `\`${value}\``
       if (marks.has('bold')) value = `**${value}**`
       if (marks.has('italic')) value = `*${value}*`
       if (marks.has('strike')) value = `~~${value}~~`
@@ -166,15 +182,23 @@ const writeInline = (
       return
     }
     if (child.type.name === 'mention') {
-      push(writer, `@${child.attrs.label ?? child.attrs.id ?? ''}`)
+      const label = String(child.attrs.label ?? child.attrs.id ?? '')
+      const trigger = String(child.attrs.mentionSuggestionChar ?? '@')
+      push(writer, `${trigger}${label}`)
+      rememberSkill(writer, label, typeof child.attrs.path === 'string' ? child.attrs.path : '')
     }
   })
 }
 
-const writeBlock = (node: ProseNode, attachments: ChatAttachmentUpload[], writer: Writer): void => {
+const writeBlock = (
+  node: ProseNode,
+  attachments: ChatAttachmentUpload[],
+  skills: readonly AgentSkill[],
+  writer: Writer
+): void => {
   if (node.type.name === 'heading') {
     push(writer, `${'#'.repeat(Number(node.attrs.level) || 1)} `)
-    writeInline(node, attachments, writer)
+    writeInline(node, attachments, skills, writer)
     return
   }
   if (node.type.name === 'codeBlock') {
@@ -189,12 +213,12 @@ const writeBlock = (node: ProseNode, attachments: ChatAttachmentUpload[], writer
       if (index > 0) push(writer, '\n')
       const marker = ordered ? `${index + 1}. ` : '- '
       index += 1
-      const nested: Writer = { text: '', chips: [] }
+      const nested: Writer = { text: '', chips: [], skills: [] }
       let blockIndex = 0
       item.forEach((block) => {
         if (blockIndex > 0) push(nested, '\n')
         blockIndex += 1
-        writeBlock(block, attachments, nested)
+        writeBlock(block, attachments, skills, nested)
       })
       const body = nested.text.replaceAll('\n', '\n  ')
       const start = writer.text.length + marker.length
@@ -206,41 +230,44 @@ const writeBlock = (node: ProseNode, attachments: ChatAttachmentUpload[], writer
           end: start + chip.end
         })
       }
+      for (const skill of nested.skills) rememberSkill(writer, skill.name, skill.path)
     })
     return
   }
   if (node.type.name === 'blockquote') {
-    const nested: Writer = { text: '', chips: [] }
+    const nested: Writer = { text: '', chips: [], skills: [] }
     let index = 0
     node.forEach((block) => {
       if (index > 0) push(nested, '\n')
       index += 1
-      writeBlock(block, attachments, nested)
+      writeBlock(block, attachments, skills, nested)
     })
     push(writer, nested.text.replaceAll(/^/gm, '> '))
     for (const chip of nested.chips) {
       writer.chips.push({ ...chip, start: chip.start + 2, end: chip.end + 2 })
     }
+    for (const skill of nested.skills) rememberSkill(writer, skill.name, skill.path)
     return
   }
   if (node.type.name === 'horizontalRule') {
     push(writer, '---')
     return
   }
-  writeInline(node, attachments, writer)
+  writeInline(node, attachments, skills, writer)
 }
 
 /** Markdown the agent receives. Image chips stay `[Image #N]` spans tracked for drafts. */
 export function serializeDocument(
   doc: ProseNode,
-  attachments: ChatAttachmentUpload[]
-): { text: string; chips: Chip[] } {
-  const writer: Writer = { text: '', chips: [] }
+  attachments: ChatAttachmentUpload[],
+  skills: readonly AgentSkill[] = []
+): { text: string; chips: Chip[]; skills: ChatSkillRef[] } {
+  const writer: Writer = { text: '', chips: [], skills: [] }
   let index = 0
   doc.forEach((block) => {
     if (index > 0) push(writer, '\n')
     index += 1
-    writeBlock(block, attachments, writer)
+    writeBlock(block, attachments, skills, writer)
   })
   return writer
 }
@@ -261,7 +288,11 @@ export function serializedOffset(
 
 type InlineSpan = { start: number; end: number; part: JSONContent }
 
-const inlineFromText = (line: string, attachments?: Array<{ id: string }>): JSONContent[] => {
+const inlineFromText = (
+  line: string,
+  attachments?: Array<{ id: string }>,
+  skills: readonly AgentSkill[] = []
+): JSONContent[] => {
   if (!line) return []
   const spans: InlineSpan[] = []
   for (const match of line.matchAll(/`([^`]+)`|\[Image #(\d+)\]/g)) {
@@ -284,7 +315,7 @@ const inlineFromText = (line: string, attachments?: Array<{ id: string }>): JSON
       })
     } else spans.push({ start, end, part: { type: 'text', text: match[0] } })
   }
-  for (const match of findAddTagMatches(line)) {
+  for (const match of findSkillMatches(line, null, skills)) {
     const overlaps = spans.some((span) => match.start < span.end && match.end > span.start)
     if (overlaps) continue
     spans.push({
@@ -292,7 +323,13 @@ const inlineFromText = (line: string, attachments?: Array<{ id: string }>): JSON
       end: match.end,
       part: {
         type: 'mention',
-        attrs: { id: match.tag.id, label: match.tag.label, mentionSuggestionChar: '@' }
+        attrs: {
+          id: match.skill.name,
+          label: match.skill.name,
+          mentionSuggestionChar: match.skill.token.slice(0, 1) || '@',
+          path: match.skill.path,
+          prompt: match.skill.prompt
+        }
       }
     })
   }
@@ -309,8 +346,12 @@ const inlineFromText = (line: string, attachments?: Array<{ id: string }>): JSON
   return parts
 }
 
-const paragraph = (line: string, attachments?: Array<{ id: string }>): JSONContent => {
-  const content = inlineFromText(line, attachments)
+const paragraph = (
+  line: string,
+  attachments?: Array<{ id: string }>,
+  skills: readonly AgentSkill[] = []
+): JSONContent => {
+  const content = inlineFromText(line, attachments, skills)
   return content.length ? { type: 'paragraph', content } : { type: 'paragraph' }
 }
 
@@ -338,7 +379,8 @@ const readFence = (lines: string[], start: number): { node: JSONContent; next: n
 const parseBlocks = (
   lines: string[],
   start: number,
-  attachments?: Array<{ id: string }>
+  attachments?: Array<{ id: string }>,
+  skills: readonly AgentSkill[] = []
 ): { nodes: JSONContent[]; next: number } => {
   const nodes: JSONContent[] = []
   let index = start
@@ -360,16 +402,16 @@ const parseBlocks = (
           nested.push((lines[index] ?? '').replace(/^ {2}/, ''))
           index += 1
         }
-        const nestedBlocks = parseBlocks(nested, 0, attachments).nodes
+        const nestedBlocks = parseBlocks(nested, 0, attachments, skills).nodes
         items.push({
           type: 'listItem',
-          content: [paragraph(first, attachments), ...nestedBlocks]
+          content: [paragraph(first, attachments, skills), ...nestedBlocks]
         })
       }
       nodes.push({ type: 'bulletList', content: items })
       continue
     }
-    nodes.push(paragraph(line, attachments))
+    nodes.push(paragraph(line, attachments, skills))
     index += 1
   }
   return { nodes, next: index }
@@ -381,9 +423,9 @@ const parseBlocks = (
  */
 export function textToContent(
   text: string,
-  options?: { attachments?: Array<{ id: string }> }
+  options?: { attachments?: Array<{ id: string }>; skills?: readonly AgentSkill[] }
 ): JSONContent {
   if (!text) return { type: 'doc', content: [{ type: 'paragraph' }] }
-  const content = parseBlocks(text.split('\n'), 0, options?.attachments).nodes
+  const content = parseBlocks(text.split('\n'), 0, options?.attachments, options?.skills).nodes
   return { type: 'doc', content: content.length ? content : [{ type: 'paragraph' }] }
 }

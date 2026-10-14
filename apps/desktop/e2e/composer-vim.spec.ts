@@ -1,3 +1,4 @@
+import { mkdtempSync } from 'node:fs'
 import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -6,12 +7,14 @@ import { test, expect } from './fixtures'
 
 const artifactsDir = process.env.CEREBRO_E2E_ARTIFACTS ?? join(tmpdir(), 'cerebro-e2e-artifacts')
 const executable = resolve(__dirname, '../../../packages/mux/src/agents/fixtures/fake-harness.cjs')
+const skillHome = mkdtempSync(join(tmpdir(), 'cerebro-vim-skills-'))
 
 test.use({
   agentEnvironment: {
     CEREBRO_CODEX_PATH: executable,
     CEREBRO_CLAUDE_PATH: executable,
-    CEREBRO_PI_PATH: executable
+    CEREBRO_PI_PATH: executable,
+    CEREBRO_SKILL_HOME: skillHome
   }
 })
 
@@ -85,6 +88,16 @@ test('composer vim mode edits modally and keeps Enter and @ tags to insert mode'
       BrowserWindow.getAllWindows()[0].setSize(1250, 900)
     )
     await openAgent(page, directory)
+    await page.getByTestId('chat-model-picker').click()
+    await page
+      .getByTestId('model-picker')
+      .getByRole('button', { name: 'Claude Code', exact: true })
+      .click()
+    await page
+      .getByTestId('model-picker')
+      .getByRole('option', { name: 'Test Model', exact: true })
+      .click()
+    await expect(page.getByTestId('chat-model-picker')).toContainText('Claude Code')
     const composer = page.getByRole('textbox', { name: 'Message agent' })
     const mode = page.getByTestId('composer-vim-mode')
 
@@ -114,7 +127,7 @@ test('composer vim mode edits modally and keeps Enter and @ tags to insert mode'
     await page.keyboard.type('0x')
     await expect(composer).toHaveAttribute('data-composer-text', 'lain text')
     await page.keyboard.type('@')
-    await expect(page.getByTestId('composer-add-menu')).toHaveCount(0)
+    await expect(page.getByTestId('composer-skill-menu')).toHaveCount(0)
     await expect(composer).toHaveAttribute('data-composer-text', 'lain text')
 
     // Enter does not send from normal mode.
@@ -135,10 +148,10 @@ test('composer vim mode edits modally and keeps Enter and @ tags to insert mode'
     await page.keyboard.type('A')
     await expect(mode).toHaveText('I')
     await page.keyboard.type(' @')
-    await expect(page.getByTestId('composer-add-menu')).toBeVisible()
+    await expect(page.getByTestId('composer-skill-menu')).toBeVisible()
     await page.screenshot({ path: join(artifactsDir, 'vim-insert-autocomplete.png') })
     await page.keyboard.press('Escape')
-    await expect(page.getByTestId('composer-add-menu')).toHaveCount(0)
+    await expect(page.getByTestId('composer-skill-menu')).toHaveCount(0)
     await expect(mode).toHaveText('I')
 
     // Turning it off removes the indicator and the modal behaviour.
