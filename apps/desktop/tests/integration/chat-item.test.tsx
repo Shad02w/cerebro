@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -69,9 +71,35 @@ describe('ChatItem command runs', () => {
     )
     const preview = screen.getByTestId('command-preview')
     expect(preview).toHaveTextContent('Bash · Run tests')
-    expect(preview).toHaveClass('chat-working')
+    expect(preview).toHaveClass('block', 'w-full', 'truncate')
+    expect(preview.className).not.toContain('chat-working')
+    expect(preview.querySelector('.chat-working')).toHaveTextContent('Bash · Run tests')
     expect(screen.queryByText(/working for/i)).toBeNull()
     expect(screen.getByTestId('command-run').querySelector('[data-tool-icon="shell"]')).toBeTruthy()
+  })
+
+  it('keeps a long running bash line in the same truncated box', () => {
+    const command = `echo ${'segment '.repeat(30)}tail`
+    render(
+      <ChatItem
+        item={item({
+          title: 'Bash',
+          status: 'running',
+          input: JSON.stringify({ command, description: 'Print segments' })
+        })}
+        onReply={() => {}}
+        workspaceId={1}
+        sessionId="session"
+      />
+    )
+    const preview = screen.getByTestId('command-preview')
+    expect(preview).toHaveClass('block', 'w-full', 'truncate')
+    expect(preview.className).not.toContain('inline-block')
+    expect(preview.className).not.toContain('chat-working')
+    expect(preview.querySelector('.chat-working')).toHaveTextContent('Bash · Print segments')
+    expect(preview.textContent).not.toContain('tail')
+    const css = readFileSync(resolve('src/renderer/src/components/chat/chat-status.css'), 'utf8')
+    expect(css).not.toMatch(/display\s*:/)
   })
 
   it('uses a different icon and a description for each tool', () => {
@@ -102,7 +130,8 @@ describe('ChatItem command runs', () => {
     )
     expect(document.querySelector('[data-tool-icon="web"]')).toBeTruthy()
     expect(screen.getByTestId('tool-summary')).toHaveTextContent('WebSearch · cerebro')
-    expect(screen.getByTestId('tool-summary')).toHaveClass('chat-working')
+    expect(screen.getByTestId('tool-summary')).toHaveClass('block', 'truncate')
+    expect(screen.getByTestId('tool-summary').querySelector('.chat-working')).toBeTruthy()
   })
 
   it('collapses a finished turn into one working section', async () => {
@@ -142,12 +171,25 @@ describe('ChatItem command runs', () => {
     expect(screen.getByTestId('command-preview')).toHaveTextContent('Bash · Where am I')
   })
 
-  it('keeps tool lines visible while the turn is still streaming', () => {
-    render(
+  it('shows only the latest running item while the turn is still streaming', () => {
+    const { rerender } = render(
       <WorkingGroup
         live
         items={[
           item({
+            id: 'read',
+            title: 'Read',
+            status: 'completed',
+            input: '{"file_path":"a.ts"}'
+          }),
+          item({
+            id: 'bash-done',
+            title: 'Bash',
+            status: 'completed',
+            input: JSON.stringify({ command: 'pwd', description: 'Where am I' })
+          }),
+          item({
+            id: 'bash',
             title: 'Bash',
             status: 'running',
             input: JSON.stringify({ command: 'npm test', description: 'Run tests' })
@@ -155,9 +197,48 @@ describe('ChatItem command runs', () => {
         ]}
       />
     )
+    const live = screen.getByTestId('working-live')
     expect(screen.queryByTestId('working-group')).toBeNull()
-    expect(screen.getByTestId('working-live')).toHaveTextContent('Bash · Run tests')
+    expect(live).toHaveTextContent('Bash · Run tests')
+    expect(live).not.toHaveTextContent('Where am I')
+    expect(live).not.toHaveTextContent('a.ts')
+    expect(live.querySelectorAll('summary')).toHaveLength(1)
     expect(screen.queryByText(/working for/i)).toBeNull()
+
+    rerender(
+      <WorkingGroup
+        live
+        items={[
+          item({
+            id: 'bash',
+            title: 'Bash',
+            status: 'running',
+            input: JSON.stringify({ command: 'npm test', description: 'Run tests' })
+          }),
+          item({ id: 'r', kind: 'reasoning', status: 'running', text: 'still thinking' })
+        ]}
+      />
+    )
+    expect(screen.getByTestId('working-live')).toHaveTextContent('Reasoning')
+    expect(screen.getByTestId('working-live')).toHaveTextContent('still thinking')
+    expect(screen.queryByTestId('command-run')).toBeNull()
+
+    rerender(
+      <WorkingGroup
+        live
+        items={[
+          item({
+            id: 'bash',
+            title: 'Bash',
+            status: 'running',
+            input: JSON.stringify({ command: 'npm test', description: 'Run tests' })
+          }),
+          item({ id: 'r', kind: 'reasoning', status: 'completed', text: 'settled thought' })
+        ]}
+      />
+    )
+    expect(screen.getByTestId('command-preview')).toHaveTextContent('Bash · Run tests')
+    expect(screen.queryByText('settled thought')).toBeNull()
   })
 
   it('keeps reasoning inside the finished working section', () => {
@@ -204,7 +285,8 @@ describe('ChatItem command runs', () => {
     )
     expect(screen.queryByTestId('working-group')).toBeNull()
     expect(screen.getByTestId('reasoning-summary')).toHaveTextContent('Reasoning')
-    expect(screen.getByTestId('reasoning-summary')).toHaveClass('chat-working')
+    expect(screen.getByTestId('reasoning-summary')).toHaveClass('block', 'truncate')
+    expect(screen.getByTestId('reasoning-summary').querySelector('.chat-working')).toBeTruthy()
     rerender(
       <>
         <TurnClock active={false} activeIds={[]} knownIds={['turn']} />

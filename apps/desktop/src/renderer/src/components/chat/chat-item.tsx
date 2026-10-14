@@ -104,6 +104,27 @@ const workingRowSummaryClass =
 const workingRowOutputClass =
   'mt-1 max-h-96 overflow-auto pl-6 text-xs leading-5 whitespace-pre-wrap break-words'
 
+/**
+ * The truncating line stays `display: block`. The shimmer paints an inner inline span.
+ * `.chat-working` used to set `inline-block` on this line, and a long Bash command then
+ * changed the flex baseline and row height for the whole time it was running.
+ */
+function WorkingLabel({
+  testId,
+  line,
+  running
+}: {
+  testId: string
+  line: string
+  running: boolean
+}): React.JSX.Element {
+  return (
+    <span data-testid={testId} className="block w-full truncate">
+      <span className={cn(running && 'chat-working')}>{line}</span>
+    </span>
+  )
+}
+
 function ToolCallLine({ item }: { item: Item }): React.JSX.Element {
   const run = commandRun(item)
   const summary = toolCallSummary(item)
@@ -118,12 +139,11 @@ function ToolCallLine({ item }: { item: Item }): React.JSX.Element {
           className="relative top-px"
         />
         <span className="min-w-0 flex-1">
-          <span
-            data-testid={run ? 'command-preview' : 'tool-summary'}
-            className={cn('block w-full truncate', running && 'chat-working')}
-          >
-            {summary.line}
-          </span>
+          <WorkingLabel
+            testId={run ? 'command-preview' : 'tool-summary'}
+            line={summary.line}
+            running={running}
+          />
         </span>
       </summary>
       {run?.command ? (
@@ -150,19 +170,26 @@ function ReasoningLine({ item }: { item: Item }): React.JSX.Element {
   return (
     <details className="min-w-0" data-testid="reasoning">
       <summary className={workingRowSummaryClass}>
-        <Brain aria-hidden="true" className="size-3.5 shrink-0 relative top-px" />
+        <Brain aria-hidden="true" className="relative top-px size-3.5 shrink-0" />
         <span className="min-w-0 flex-1">
-          <span
-            data-testid="reasoning-summary"
-            className={cn('block w-full truncate', running && 'chat-working')}
-          >
-            {label}
-          </span>
+          <WorkingLabel testId="reasoning-summary" line={label} running={running} />
         </span>
       </summary>
       {item.text ? <pre className={workingRowOutputClass}>{item.text}</pre> : null}
     </details>
   )
+}
+
+/** The latest item that has not settled. Completed calls stay in the finished group. */
+function liveWorkingItem(items: readonly Item[]): Item | undefined {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index]
+    if (!item) continue
+    if (item.status === 'completed' || item.status === 'failed' || item.status === 'interrupted')
+      continue
+    return item
+  }
+  return undefined
 }
 
 /** Every tool call from one turn, as a single expandable once the reply has ended. */
@@ -175,11 +202,10 @@ export function WorkingGroup({
 }): React.JSX.Element {
   const seconds = useTurnDuration(items[0]?.turnId)
   if (live) {
+    const current = liveWorkingItem(items)
     return (
       <div data-testid="working-live">
-        {items.map((item) => (
-          <WorkingEntry key={item.id} item={item} />
-        ))}
+        {current ? <WorkingEntry key={current.id} item={current} /> : null}
       </div>
     )
   }
