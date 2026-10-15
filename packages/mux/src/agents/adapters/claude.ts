@@ -285,6 +285,14 @@ export const claudeAdapter: AgentAdapter = {
     // tool-use id and task id both point at the one sub-agent id already reported.
     const alias = new Map<string, string>()
     const agentIds = new Set<string>()
+    // Agents already handed back while they keep running. Their tool_result is a launch ack.
+    const backgrounded = new Set<string>()
+    const toolBackground = new Set<string>()
+    const markBackground = (id: string): void => {
+      backgrounded.add(id)
+      const linked = alias.get(id)
+      if (linked) backgrounded.add(linked)
+    }
     const isAgentTask = (taskType: unknown): boolean =>
       taskType === 'local_agent' || taskType === 'remote_agent'
     const linkChild = (taskId: string, toolUseId?: unknown): string => {
@@ -361,10 +369,12 @@ export const claudeAdapter: AgentAdapter = {
             parsed = undefined
           }
         }
-        const identity = childIdentity(
-          parsed && typeof parsed === 'object' ? (parsed as Frame) : undefined
-        )
+        const record = parsed && typeof parsed === 'object' ? (parsed as Frame) : undefined
+        const identity = childIdentity(record)
         if (identity.model || identity.effort) toolIdentity.set(key, identity)
+        // An explicit background or remote launch returns before the agent ends.
+        if (record?.run_in_background === true || record?.isolation === 'remote')
+          toolBackground.add(key)
       }
       if (!title || toolTitles.get(key) === title) return
       toolTitles.set(key, title)
@@ -408,16 +418,50 @@ export const claudeAdapter: AgentAdapter = {
         ...(total !== undefined ? { total } : {})
       }
     }
-    const finishChild = (block: Frame): void => {
+    // A Task tool_result is the agent's end only when the call actually waited for it.
+    // async_launched, remote_launched, and a "running in the background" ack are not ends.
+    // A start, a progress update, or a 0ms duration is not an end either.
+    const finishChild = (block: Frame, toolUseResult: unknown): void => {
       if (block.tool_use_id == null) return
-      const id = alias.get(String(block.tool_use_id)) ?? String(block.tool_use_id)
+      const raw = String(block.tool_use_id)
+      const id = alias.get(raw) ?? raw
       if (!children.has(id)) return
+      const result =
+        toolUseResult && typeof toolUseResult === 'object' ? (toolUseResult as Frame) : undefined
+      const resultStatus = typeof result?.status === 'string' ? result.status : undefined
+      const durationMs =
+        typeof result?.totalDurationMs === 'number' ? result.totalDurationMs : undefined
+      const launched =
+        result?.detachedToolCall === true ||
+        resultStatus === 'async_launched' ||
+        resultStatus === 'remote_launched' ||
+        /running in the background/i.test(describe(block.content))
+      const stillRunning =
+        resultStatus !== 'completed' &&
+        (launched ||
+          backgrounded.has(id) ||
+          backgrounded.has(raw) ||
+          toolBackground.has(raw) ||
+          toolBackground.has(id))
+      if (stillRunning || durationMs === 0) {
+        const launchedId = textField(result?.agentId) ?? textField(result?.taskId)
+        if (launchedId) markBackground(linkChild(launchedId, raw))
+        else markBackground(id)
+        return
+      }
       settled.add(id)
-      const tokens = childTokens(block.usage)
+      const tokens =
+        childTokens(block.usage) ??
+        (typeof result?.totalTokens === 'number' ? { total: result.totalTokens } : undefined)
+      const finishedAt = Date.now()
       host.subagent({
         id,
         status: block.is_error ? 'failed' : 'completed',
         ...(tokens ? { tokens } : {}),
+        ...(durationMs !== undefined
+          ? { durationMs, startedAt: finishedAt - durationMs, finishedAt }
+          : {}),
+        ...childIdentity(result),
         announce: true
       })
     }
@@ -436,6 +480,8 @@ export const claudeAdapter: AgentAdapter = {
         announce?: boolean
       }
     ): void => {
+      // A live-set or progress frame must not reopen an agent that already ended.
+      if (update.status === 'running' && settled.has(id)) return
       if (!children.has(id) || (update.title && children.get(id) !== update.title))
         children.set(id, update.title ?? children.get(id))
       if (update.status !== 'running') settled.add(id)
@@ -470,7 +516,7 @@ export const claudeAdapter: AgentAdapter = {
         if (frame.type === 'user') {
           const blocks = Array.isArray(frame.message?.content) ? frame.message.content : []
           for (const block of blocks as Frame[])
-            if (block.type === 'tool_result') finishChild(block)
+            if (block.type === 'tool_result') finishChild(block, frame.tool_use_result)
         }
         return
       }
@@ -559,7 +605,7 @@ export const claudeAdapter: AgentAdapter = {
           item(turn.context, block.tool_use_id, 'tool', describe(block.content), {
             status: block.is_error ? 'failed' : 'completed'
           })
-          finishChild(block)
+          finishChild(block, results.length === 1 ? frame.tool_use_result : undefined)
         }
         // The assigned task id lives on tool_use_result, not in the tool input.
         const known = results.filter((block: Frame) => todos.known(String(block.tool_use_id)))
@@ -605,6 +651,7 @@ export const claudeAdapter: AgentAdapter = {
           const title = String(task.description ?? '')
           if (isAgentTask(task.task_type)) {
             const id = linkChild(taskId, task.tool_use_id)
+            markBackground(id)
             liveAgents.add(id)
             reportAgent(id, {
               status: 'running',
@@ -653,6 +700,7 @@ export const claudeAdapter: AgentAdapter = {
         if (frame.ambient) return
         if (isAgentTask(frame.task_type)) {
           const id = linkChild(String(frame.task_id), frame.tool_use_id)
+          if (frame.is_backgrounded) markBackground(id)
           const title = String(frame.description ?? '')
           reportAgent(id, {
             status: 'running',
@@ -680,7 +728,7 @@ export const claudeAdapter: AgentAdapter = {
           ...(usage?.total !== undefined ? { tokens: { total: usage.total } } : {}),
           // duration_ms is the elapsed time to show. The corrected start is kept so a later
           // finish without a duration still measures from the harness clock, not the local guess.
-          ...(usage?.durationMs !== undefined
+          ...(usage?.durationMs
             ? { durationMs: usage.durationMs, startedAt: Date.now() - usage.durationMs }
             : {}),
           ...childIdentity(frame)
@@ -693,13 +741,24 @@ export const claudeAdapter: AgentAdapter = {
           // This frame is the agent's end on the parent stream. One finish line is recorded.
           // The summary and the child's response stay off the transcript.
           const id = linkChild(taskId, frame.tool_use_id)
+          const usage = taskUsage(frame.usage)
+          const title = String(frame.description ?? '')
+          const terminal =
+            frame.status === 'completed' || frame.status === 'failed' || frame.status === 'stopped'
+          // A start, a progress update, or a 0ms duration is not this agent's end.
+          if (!terminal || usage?.durationMs === 0) {
+            reportAgent(id, {
+              status: 'running',
+              ...(title ? { title } : {}),
+              ...childIdentity(frame)
+            })
+            return
+          }
           const timer = agentTimers.get(id)
           if (timer) clearTimeout(timer)
           agentTimers.delete(id)
           listedAgents.delete(id)
-          const usage = taskUsage(frame.usage)
           const finishedAt = Date.now()
-          const title = String(frame.description ?? '')
           reportAgent(id, {
             status:
               frame.status === 'failed'

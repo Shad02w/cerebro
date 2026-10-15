@@ -125,6 +125,62 @@ function codexPrompt(threadId, prompt, input) {
     codexDone()
     return
   }
+  if (prompt === 'agents-still-running') {
+    const childStartedAtMs = 1_700_000_000_000
+    notify('item/started', {
+      threadId: 'thread-test',
+      item: {
+        type: 'collabAgentToolCall',
+        id: 'collab-live',
+        tool: 'spawnAgent',
+        status: 'inProgress',
+        senderThreadId: 'thread-test',
+        receiverThreadIds: ['child-zero', 'child-open', 'child-missing'],
+        prompt: 'Search community workflows',
+        agentsStates: {
+          'child-zero': { status: 'running', startedAtMs: childStartedAtMs },
+          'child-open': { status: 'running', startedAtMs: childStartedAtMs }
+        }
+      }
+    })
+    // item/completed of the spawn is not each child's end. A 0ms duration is not an end.
+    notify('item/completed', {
+      threadId: 'thread-test',
+      item: {
+        type: 'collabAgentToolCall',
+        id: 'collab-live',
+        tool: 'spawnAgent',
+        status: 'completed',
+        senderThreadId: 'thread-test',
+        receiverThreadIds: ['child-zero', 'child-open', 'child-missing'],
+        prompt: 'Search community workflows',
+        agentsStates: {
+          'child-zero': { status: 'completed', durationMs: 0, startedAtMs: childStartedAtMs },
+          'child-open': { status: 'running', startedAtMs: childStartedAtMs, durationMs: 16000 }
+        }
+      }
+    })
+    notify('item/completed', {
+      threadId: 'thread-test',
+      item: {
+        type: 'subAgentActivity',
+        id: 'activity-open',
+        kind: 'interacted',
+        agentThreadId: 'child-open',
+        agentPath: '/root/search-blogs',
+        durationMs: 0
+      }
+    })
+    notify('item/completed', {
+      item: {
+        type: 'agentMessage',
+        id: 'still-running',
+        text: 'The research agents are running in parallel.'
+      }
+    })
+    codexDone()
+    return
+  }
   if (prompt === 'subagent') {
     const parentStartedAtMs = Date.now() - 153000
     const childStartedAtMs = 1_700_000_000_000
@@ -540,6 +596,151 @@ function claudePrompt(prompt, content) {
         )
       },
       Number(background[2] ?? 50)
+    )
+    return
+  }
+  if (prompt === 'agents-still-running' || prompt === 'agents-then-finish') {
+    const finish = prompt === 'agents-then-finish'
+    const agents = [
+      {
+        task_id: 'agent-community',
+        tool_use_id: 'tool-community',
+        description: 'Search community workflows',
+        model: 'sonnet',
+        effort: 'high',
+        duration_ms: 29000
+      },
+      {
+        task_id: 'agent-blogs',
+        tool_use_id: 'tool-blogs',
+        description: 'Search blogs and talks',
+        model: 'sonnet',
+        effort: 'medium',
+        duration_ms: 16000
+      },
+      {
+        task_id: 'agent-github',
+        tool_use_id: 'tool-github',
+        description: 'Search GitHub repos and tooling',
+        duration_ms: 13000
+      }
+    ]
+    send({ type: 'system', subtype: 'init', session_id: 'claude-test', tools: [], model: 'test' })
+    send({
+      type: 'assistant',
+      session_id: 'claude-test',
+      uuid: 'spawn-agents',
+      message: {
+        id: 'msg-spawn-agents',
+        role: 'assistant',
+        content: agents.map((agent) => ({
+          type: 'tool_use',
+          id: agent.tool_use_id,
+          name: 'Task',
+          input: {
+            description: agent.description,
+            prompt: agent.description,
+            run_in_background: true,
+            ...(agent.model ? { model: agent.model } : {}),
+            ...(agent.effort ? { effort: agent.effort } : {})
+          }
+        }))
+      }
+    })
+    // The live set and task_started land before the Task tool returns, so the child is already known.
+    send({
+      type: 'system',
+      subtype: 'background_tasks_changed',
+      tasks: agents.map((agent) => ({
+        task_id: agent.task_id,
+        task_type: 'local_agent',
+        description: agent.description,
+        tool_use_id: agent.tool_use_id,
+        ...(agent.model ? { model: agent.model } : {}),
+        ...(agent.effort ? { effort: agent.effort } : {})
+      })),
+      session_id: 'claude-test'
+    })
+    for (const agent of agents)
+      send({
+        type: 'system',
+        subtype: 'task_started',
+        task_id: agent.task_id,
+        tool_use_id: agent.tool_use_id,
+        description: agent.description,
+        task_type: 'local_agent',
+        is_backgrounded: true,
+        ...(agent.model ? { model: agent.model } : {}),
+        ...(agent.effort ? { effort: agent.effort } : {}),
+        session_id: 'claude-test'
+      })
+    // The tool_result is the launch acknowledgement, not the agent's end.
+    for (const agent of agents)
+      send({
+        type: 'user',
+        session_id: 'claude-test',
+        parent_tool_use_id: null,
+        message: {
+          role: 'user',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: agent.tool_use_id,
+              content: `Agent "${agent.description}" is running in the background.`
+            }
+          ]
+        },
+        tool_use_result: {
+          status: 'async_launched',
+          agentId: agent.task_id,
+          description: agent.description,
+          prompt: agent.description,
+          outputFile: `/tmp/${agent.task_id}.txt`
+        }
+      })
+    for (const agent of agents)
+      send({
+        type: 'system',
+        subtype: 'task_progress',
+        task_id: agent.task_id,
+        tool_use_id: agent.tool_use_id,
+        description: agent.description,
+        task_type: 'local_agent',
+        usage: { total_tokens: 100, tool_uses: 1, duration_ms: agent.duration_ms },
+        ...(agent.model ? { model: agent.model } : {}),
+        ...(agent.effort ? { effort: agent.effort } : {}),
+        session_id: 'claude-test'
+      })
+    // A zero-duration notification is a clock, not an end.
+    send({
+      type: 'system',
+      subtype: 'task_notification',
+      task_id: 'agent-github',
+      tool_use_id: 'tool-github',
+      task_type: 'local_agent',
+      status: 'completed',
+      summary: 'Still searching.',
+      description: 'Search GitHub repos and tooling',
+      usage: { total_tokens: 1, tool_uses: 0, duration_ms: 0 },
+      session_id: 'claude-test'
+    })
+    if (finish)
+      send({
+        type: 'system',
+        subtype: 'task_notification',
+        task_id: 'agent-community',
+        tool_use_id: 'tool-community',
+        task_type: 'local_agent',
+        status: 'completed',
+        summary: 'Found the workflows.',
+        description: 'Search community workflows',
+        usage: { total_tokens: 18420, tool_uses: 4, duration_ms: 31000 },
+        model: 'sonnet',
+        effort: 'high',
+        session_id: 'claude-test'
+      })
+    claudeFinish(
+      'The research agents are running in parallel. I will consolidate when they report back.'
     )
     return
   }
