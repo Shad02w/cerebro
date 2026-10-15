@@ -12,7 +12,12 @@ import {
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { AgentSessions } from './service'
-import type { AgentModel, AgentSession, AgentStatusEvent } from '@cerebro/core'
+import {
+  agentFinishedLine,
+  type AgentModel,
+  type AgentSession,
+  type AgentStatusEvent
+} from '@cerebro/core'
 import type { AgentAdapter, ConnectionHost, RunContext } from './adapters'
 const model: AgentModel = {
   key: 'test',
@@ -1168,6 +1173,80 @@ test('a running agent starts a local clock, and a later duration or start replac
     assert.equal(other?.durationMs, undefined)
     assert.equal(other?.startedAt, 10)
     assert.equal(other?.finishedAt, 40_000)
+    await service.shutdown()
+  } finally {
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
+
+test('a stream finish writes one chat line, and a later token count corrects it', async () => {
+  const f = liveFixture(async (context) => {
+    const { host } = f.opened[0]
+    host.subagent({
+      id: 'child',
+      status: 'running',
+      title: 'Review the diff',
+      model: 'sonnet',
+      effort: 'high',
+      startedAt: 1_000
+    })
+    host.subagent({
+      id: 'child',
+      status: 'completed',
+      durationMs: 153_000,
+      startedAt: 1_000,
+      finishedAt: 154_000,
+      tokens: { total: 18_420 },
+      summary: 'Looking at the diff.',
+      announce: true
+    })
+    host.subagent({ id: 'quiet', status: 'running', title: 'Remote review' })
+    host.subagent({ id: 'quiet', status: 'completed' })
+    context.emit({ type: 'item', item: { id: 'answer', kind: 'text', text: 'Review finished.' } })
+  })
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    await service.command(scope, { ...send, commandId: 'finish-line' })
+    await waitFor(() => !service['running'].size)
+    let session = (await service.command(scope, get)).session!
+    const lines = session.items.filter((item) => item.agent)
+    assert.equal(lines.length, 1)
+    const line = lines[0]
+    assert.equal(line.kind, 'notice')
+    assert.equal(line.text, 'Agent "Review the diff" finished · sonnet · high · 2m 33s · 18.4k')
+    assert.equal(line.text?.includes('Looking at the diff'), false)
+    assert.equal(line.agent?.summary, 'Looking at the diff.')
+    const answer = session.items.find((item) => item.kind === 'text')
+    assert.equal(answer?.text, 'Review finished.')
+    assert.equal(line.turnId, answer?.turnId)
+    assert.equal(
+      session.items.some((item) => item.agent?.id === 'quiet'),
+      false
+    )
+
+    f.opened[0].host.subagent({
+      id: 'child',
+      status: 'completed',
+      tokens: { input: 12_104, output: 6_316 }
+    })
+    session = (await service.command(scope, get)).session!
+    const revised = session.items.filter((item) => item.agent)
+    assert.equal(revised.length, 1)
+    assert.equal(
+      revised[0].text,
+      'Agent "Review the diff" finished · sonnet · high · 2m 33s · 18.4k (12.1k in, 6.3k out)'
+    )
+    assert.equal(
+      agentFinishedLine({
+        id: 'bare',
+        title: 'Remote review',
+        status: 'completed',
+        createdAt: 0,
+        startedAt: 0,
+        finishedAt: 31_000
+      }),
+      'Agent "Remote review" finished · 31s'
+    )
     await service.shutdown()
   } finally {
     rmSync(f.dir, { recursive: true, force: true })

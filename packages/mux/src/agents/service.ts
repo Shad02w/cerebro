@@ -13,6 +13,7 @@ import { join } from 'node:path'
 import { homedir } from 'node:os'
 import {
   agentActivityStatus,
+  agentFinishedLine,
   backgroundTaskOutcome,
   todoListId,
   chatAttachmentLimits,
@@ -610,13 +611,14 @@ export class AgentSessions {
    * A later patch leaves out fields it does not know, and those keep their previous value.
    * A harness duration replaces a locally guessed elapsed time. A later start or finish
    * without a duration drops that duration so the row follows the new clock.
+   * `announce` records one chat line. A later patch on that child refreshes the line.
    */
   private updateSubagent(session: AgentSession, update: SubagentUpdate): void {
     const now = Date.now()
     const terminal = update.status !== 'created' && update.status !== 'running'
     const list = session.subagents ?? []
     const index = list.findIndex((child) => child.id === update.id)
-    const { tokens, ...rest } = update
+    const { tokens, announce, ...rest } = update
     const fields = Object.fromEntries(
       Object.entries(rest).filter(([, value]) => value !== undefined)
     ) as Partial<SubagentUpdate>
@@ -656,6 +658,7 @@ export class AgentSessions {
       if (dropDuration) delete child.durationMs
       list.push(child)
       session.subagents = list
+      this.noteAgentFinish(session, child, announce === true)
       return
     }
     const existing = list[index]
@@ -668,6 +671,36 @@ export class AgentSessions {
     if (dropDuration) delete next.durationMs
     list[index] = next
     session.subagents = list
+    this.noteAgentFinish(session, next, announce === true)
+  }
+  /**
+   * Writes the one finish line when the harness reported this child's end on the stream.
+   * A later token or clock patch refreshes that line. A stop Cerebro invented does not.
+   */
+  private noteAgentFinish(session: AgentSession, child: AgentSubagent, announce: boolean): void {
+    const terminal =
+      child.status === 'completed' || child.status === 'failed' || child.status === 'stopped'
+    if (!terminal) return
+    const index = session.items.findIndex((item) => item.agent?.id === child.id)
+    const snapshot: AgentSubagent = {
+      ...child,
+      ...(child.tokens ? { tokens: { ...child.tokens } } : {})
+    }
+    if (index === -1) {
+      if (!announce) return
+      const turnId = busy(session) && session.turnId ? session.turnId : this.eventTurn(session)
+      session.items.push({
+        id: `${turnId}:agent:${child.id}`,
+        turnId,
+        kind: 'notice',
+        text: agentFinishedLine(snapshot),
+        agent: snapshot
+      })
+      return
+    }
+    const item = session.items[index]
+    item.text = agentFinishedLine(snapshot)
+    item.agent = snapshot
   }
   /** Settles every child that has not finished. The row stays on the list. */
   private stopSubagents(session: AgentSession, summary: string): boolean {

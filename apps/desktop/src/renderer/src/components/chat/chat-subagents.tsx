@@ -1,39 +1,16 @@
 import { useEffect, useState } from 'react'
-import type { AgentSubagent, AgentSubagentTokens } from '@cerebro/core'
+import {
+  compactTokenCount,
+  formatAgentElapsed,
+  type AgentSubagent,
+  type AgentSubagentTokens
+} from '@cerebro/core'
 import { AgentStatusIcon } from '@/components/agent-status-icon'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { ChatSessionChip } from './chat-session-chip'
 
 const finished = (status: AgentSubagent['status']): boolean =>
   status === 'completed' || status === 'failed' || status === 'stopped'
-
-/** Compact token count. Under 1000 stays whole. Thousands and millions use one decimal, dropped when the unit is round. */
-function compactCount(value: number): string {
-  const negative = value < 0
-  const abs = Math.abs(value)
-  if (!Number.isFinite(abs)) return '0'
-  if (abs < 1000) return `${negative ? '-' : ''}${Math.round(abs)}`
-  const scaled = (scale: number, suffix: 'k' | 'm'): string => {
-    const tenths = Math.round((abs / scale) * 10)
-    const whole = Math.trunc(tenths / 10)
-    const frac = Math.abs(tenths % 10)
-    const body = frac === 0 ? `${whole}` : `${whole}.${frac}`
-    return `${negative ? '-' : ''}${body}${suffix}`
-  }
-  if (abs >= 999_950) return scaled(1_000_000, 'm')
-  return scaled(1_000, 'k')
-}
-
-/** Elapsed time. Hours drop the seconds. */
-function formatSubagentElapsed(ms: number): string {
-  const seconds = Math.max(0, Math.round(ms / 1000))
-  const hours = Math.floor(seconds / 3600)
-  const minutes = Math.floor((seconds % 3600) / 60)
-  const rest = seconds % 60
-  if (hours) return `${hours}h ${minutes}m`
-  if (minutes) return `${minutes}m ${rest}s`
-  return `${rest}s`
-}
 
 /** Token cell. Absent counts say so. Zero is a real count. */
 function formatSubagentTokens(tokens: AgentSubagentTokens | undefined): string {
@@ -44,9 +21,9 @@ function formatSubagentTokens(tokens: AgentSubagentTokens | undefined): string {
     total ?? (input !== undefined && output !== undefined ? input + output : (input ?? output ?? 0))
   const split =
     input !== undefined && output !== undefined
-      ? ` (${compactCount(input)} in, ${compactCount(output)} out)`
+      ? ` (${compactTokenCount(input)} in, ${compactTokenCount(output)} out)`
       : ''
-  return `${compactCount(shown)}${split}`
+  return `${compactTokenCount(shown)}${split}`
 }
 
 /**
@@ -55,13 +32,13 @@ function formatSubagentTokens(tokens: AgentSubagentTokens | undefined): string {
  */
 function elapsed(agent: AgentSubagent, now: number): string {
   if (agent.status === 'created') return ''
-  if (agent.durationMs !== undefined) return formatSubagentElapsed(agent.durationMs)
+  if (agent.durationMs !== undefined) return formatAgentElapsed(agent.durationMs)
   if (finished(agent.status)) {
     if (agent.startedAt === undefined || agent.finishedAt === undefined) return ''
-    return formatSubagentElapsed(agent.finishedAt - agent.startedAt)
+    return formatAgentElapsed(agent.finishedAt - agent.startedAt)
   }
   if (agent.startedAt === undefined) return ''
-  return formatSubagentElapsed(now - agent.startedAt)
+  return formatAgentElapsed(now - agent.startedAt)
 }
 
 /** Model and effort the harness sent for this child. Either one is left out when it was not sent. */

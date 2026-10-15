@@ -110,6 +110,7 @@ export const codexAdapter: AgentAdapter = {
         startedAt?: number
         finishedAt?: number
         durationMs?: number
+        announce?: boolean
       } = {}
     ): void => {
       const previous = children.get(id)
@@ -123,7 +124,8 @@ export const codexAdapter: AgentAdapter = {
         ...(extra.effort ? { effort: extra.effort } : {}),
         ...(extra.startedAt !== undefined ? { startedAt: extra.startedAt } : {}),
         ...(extra.finishedAt !== undefined ? { finishedAt: extra.finishedAt } : {}),
-        ...(extra.durationMs !== undefined ? { durationMs: extra.durationMs } : {})
+        ...(extra.durationMs !== undefined ? { durationMs: extra.durationMs } : {}),
+        ...(extra.announce ? { announce: true } : {})
       })
     }
     // Clock, model, and effort are read only from the child they name. A collab item's own
@@ -163,7 +165,8 @@ export const codexAdapter: AgentAdapter = {
         ...clock,
         ...(status === 'stopped' && clock.finishedAt === undefined
           ? { finishedAt: Date.now() }
-          : {})
+          : {}),
+        ...(status === 'stopped' ? { announce: true } : {})
       })
     }
     const noteCollab = (native: Frame, phase: 'item/started' | 'item/completed'): void => {
@@ -181,13 +184,13 @@ export const codexAdapter: AgentAdapter = {
         const state: Frame = states[id] ?? {}
         const status = childStatus(state.status, fallback)
         const clock = childFields(state)
-        const finishedAt =
-          clock.finishedAt ??
-          (status !== 'created' && status !== 'running' ? Date.now() : undefined)
+        const terminal = status !== 'created' && status !== 'running'
+        const finishedAt = clock.finishedAt ?? (terminal ? Date.now() : undefined)
         reportChild(id, status, {
           title,
           ...clock,
-          ...(finishedAt !== undefined ? { finishedAt } : {})
+          ...(finishedAt !== undefined ? { finishedAt } : {}),
+          ...(terminal ? { announce: true } : {})
         })
       }
     }

@@ -358,7 +358,8 @@ export const claudeAdapter: AgentAdapter = {
       host.subagent({
         id,
         status: block.is_error ? 'failed' : 'completed',
-        ...(tokens ? { tokens } : {})
+        ...(tokens ? { tokens } : {}),
+        announce: true
       })
     }
     const reportAgent = (
@@ -373,6 +374,7 @@ export const claudeAdapter: AgentAdapter = {
         durationMs?: number
         model?: string
         effort?: string
+        announce?: boolean
       }
     ): void => {
       if (!children.has(id) || (update.title && children.get(id) !== update.title))
@@ -388,7 +390,8 @@ export const claudeAdapter: AgentAdapter = {
         ...(update.finishedAt !== undefined ? { finishedAt: update.finishedAt } : {}),
         ...(update.durationMs !== undefined ? { durationMs: update.durationMs } : {}),
         ...(update.model ? { model: update.model } : {}),
-        ...(update.effort ? { effort: update.effort } : {})
+        ...(update.effort ? { effort: update.effort } : {}),
+        ...(update.announce ? { announce: true } : {})
       })
     }
     const handle = async (frame: Frame): Promise<void> => {
@@ -635,7 +638,8 @@ export const claudeAdapter: AgentAdapter = {
         const agent =
           agentIds.has(taskId) || Boolean(frame.subagent_type) || isAgentTask(frame.task_type)
         if (agent) {
-          // Agent outcomes stay on the sub-agent list. They are not transcript notices.
+          // This frame is the agent's end on the parent stream. One finish line is recorded.
+          // The summary and the child's response stay off the transcript.
           const id = linkChild(taskId, frame.tool_use_id)
           const timer = agentTimers.get(id)
           if (timer) clearTimeout(timer)
@@ -661,7 +665,8 @@ export const claudeAdapter: AgentAdapter = {
                   finishedAt
                 }
               : { finishedAt }),
-            ...childIdentity(frame)
+            ...childIdentity(frame),
+            announce: true
           })
           return
         }

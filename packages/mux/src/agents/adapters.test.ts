@@ -887,7 +887,8 @@ test(
       {
         id: 'tool-sub',
         status: 'completed',
-        tokens: { input: 12104, output: 6316, total: 18420 }
+        tokens: { input: 12104, output: 6316, total: 18420 },
+        announce: true
       }
     ])
     assert.equal(tasks.length, 0)
@@ -970,6 +971,18 @@ test(
           update.id === 'agent-1' && update.status === 'running' && update.durationMs === 120000
       ),
       true
+    )
+    assert.equal(
+      updates.find((update) => update.id === 'agent-1' && update.status === 'completed')?.announce,
+      true
+    )
+    assert.equal(
+      updates.some((update) => update.status === 'running' && update.announce),
+      false
+    )
+    assert.equal(
+      updates.some((update) => update.id === 'agent-2' && update.announce),
+      false
     )
     assert.equal(remote?.status, 'running')
     assert.equal(remote?.title, 'Remote review')
@@ -1059,6 +1072,17 @@ test(
           update.model === undefined &&
           update.effort === undefined
       )
+    )
+    assert.equal(childUpdates.find((update) => update.status === 'completed')?.announce, true)
+    assert.equal(
+      childUpdates
+        .filter((update) => update.status !== 'completed')
+        .every((update) => !update.announce),
+      true
+    )
+    assert.equal(
+      otherUpdates.every((update) => !update.announce),
+      true
     )
     const other = folded.get('other-child')
     assert.equal(other?.status, 'running')

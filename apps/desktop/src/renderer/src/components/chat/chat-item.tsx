@@ -2,6 +2,7 @@ import { memo, useState } from 'react'
 import type { AgentAnswer, ChatItem as Item } from '@cerebro/core'
 import { Button } from '@/components/ui/button'
 import { AgentMarkdown } from '@/components/markdown/agent-markdown'
+import { ChatAgentFinished } from './chat-agent-finished'
 import { ChatDiff } from './chat-diff'
 import { ChatTaskOutcome } from './chat-task-outcome'
 import { ChatUserMessage } from './chat-user-message'
@@ -120,6 +121,8 @@ export const ChatItem = memo(function ChatItem({
         <pre className="whitespace-pre-wrap text-sm">{item.text}</pre>
       </section>
     )
+  if (item.kind === 'notice' && item.agent)
+    return <ChatAgentFinished agent={item.agent} text={item.text} />
   if (item.kind === 'notice' && item.task)
     return <ChatTaskOutcome task={item.task} text={item.text} />
   if (item.kind === 'notice')
