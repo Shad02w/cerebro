@@ -1,12 +1,12 @@
 # Agent pane rewind
 
-Status: design only. No code in this change. Research is from the current checkout: `packages/core/src/chat.ts`, `packages/mux/src/agents/service.ts`, the three adapters, `apps/desktop/src/renderer/src/components/chat/`, and the installed Claude Agent SDK 0.3.287 types. Codex and Pi have no rewind method in this repo, and those CLIs are not installed here, so their native rewind support is called out as unverified.
+Status: design only. No code in this change. Research is from the current checkout: `packages/core/src/chat.ts`, `packages/mux/src/agents/service.ts`, the three adapters, `apps/desktop/src/renderer/src/components/chat/`, and the installed Claude Agent SDK 0.3.287 types. Pi's tree behavior is from the current `earendil-works/pi` main RPC types and `rpc-mode.ts` handler, plus the sessions doc. Codex still has no rewind method in this repo, and that CLI is not installed here.
 
 This is the first slice of the rewind work that [the chat plan](agent-chat-plan.md) deferred. It is not a branch tree. Fork already copies a prefix into a new session. Rewind stays on the same session, puts the chosen prompt back in the composer, and can be undone until the next send.
 
 ## 1. What ships
 
-On each user prompt, next to Copy:
+On each user prompt, Rewind is the icon to the left of Copy:
 
 - **Rewind** hides that prompt and everything after it, and loads that prompt into the composer at the bottom of the pane.
 - Clicking the prompt itself makes it editable first, with the same composer document the bottom field uses. Rewind then uses that edited text.
@@ -158,8 +158,9 @@ type SessionRewind = {
   nativeId?: string
   checkpoints?: Record<string, string>
   /**
-   * Claude chain uuid of the last kept turn, when that turn ended before the cut.
-   * Absent when the kept prefix has no completed turn.
+   * Native cut point. Claude: chain uuid of the last kept turn.
+   * Pi: entry id of the user message being rewound; `fork` branches before it.
+   * Absent when the kept prefix has no native point (the first prompt).
    */
   resumeAt?: string
   /** Docked composer draft displaced by the prefill. Text only; attachment bytes stay in the pane draft store. */
@@ -176,20 +177,21 @@ type SessionRewind = {
 - Reject while any background task is `running`. Those tasks belong to the live process and to the tail.
 - Reject when `itemId` is not a `kind: 'user'` item still in `items` (or already the current cut).
 - Slice `items` at that item. The kept prefix is `items.slice(0, index)`. The tail is the rest.
-- Set `resumeAt` to `checkpoints[lastTurnId]` where `lastTurnId` is the turn id of the last kept item, and only if every kept item of that turn is still kept. If the cut falls in the middle of a turn, refuse (section 6.1).
-- Leave `nativeId` unchanged until a send commits. The live process is closed (`release`) so the next turn cannot resume the uncut chain by accident.
+- Set `resumeAt` from the checkpoint for that cut (section 6.1).
+- Claude and Codex leave `nativeId` unchanged until a send commits, and the live process is closed (`release`) so the next turn cannot resume the uncut chain by accident. Pi moves the native binding on rewind itself (section 6.3), because that is when `fork` creates the branched session file.
 - Publish. The snapshot the renderer refetches already omits the tail from `items`.
 
 `undo` command:
 
 - No-op success when `rewind` is absent.
 - Reject while busy, same as rewind.
-- Concatenate `tail` back onto `items`, restore `nativeId` and `checkpoints`, delete `rewind`, publish.
+- Concatenate `tail` back onto `items`, restore `nativeId` and `checkpoints`, delete `rewind`, publish. Pi also `switch_session`s to the restored path before that publish.
 
 Commit, inside the existing `send` path, before `beginTurn`:
 
 - Drop `rewind.tail`.
 - For Claude, pass `resumeAt` into the next `query` (section 6.2). On the binding event for the new process, store the new `nativeId`.
+- For Pi, the rewind command already branched the session file. Send is an ordinary prompt on that binding. Do not fork again.
 - For an emulated harness, clear `nativeId` and append a notice item on the kept prefix: `This agent cannot rewind its own memory. The next message starts a fresh session.`
 - Delete `rewind` only after the native resume options are fixed on that run. A throw before `beginTurn` keeps `rewind` so Undo still restores the tip.
 
@@ -199,9 +201,9 @@ The tail stays inside the same snapshot. Moving rows from `items` to `rewind.tai
 
 A turn can contain more than one user item. Steering pushes another `kind: 'user'` row onto the running `turnId`. Checkpoints exist only at the end of a successful turn, and `resumeSessionAt` keeps messages up to and including that uuid. A cut in the middle of a turn would leave earlier items of that turn on screen while the native resume point is the previous turn. The model would not see the kept half.
 
-Rule: Rewind is offered on every user bubble, and the service accepts it only when that user item is the first item of its turn, or when every earlier item of that turn is also being dropped. In practice that means the button rewinds to **before this turn** when the click is the turn's opening prompt. A steered prompt in the same turn shows the button, and the command fails with `Rewind from the prompt that started this response.` The opening prompt of that turn is the one that matches the checkpoint.
+Claude checkpoints exist only at the end of a successful turn, so a steered user item is refused: `Rewind from the prompt that started this response.` Pi stores an entry id on every user message it can fork, including a steered one, so that cut is accepted (section 6.3).
 
-The first prompt of a session has no previous checkpoint. `resumeAt` is absent. Commit starts a new native session and clears `nativeId`. The transcript is empty until the new send.
+The first prompt of a session has no previous checkpoint. `resumeAt` is absent. Claude and Codex start a new native session and clear `nativeId`. Pi's `fork` of the root user message creates an empty session whose parent is the old file. The transcript is empty until the new send.
 
 ### 6.2 Claude native resume
 
@@ -218,19 +220,45 @@ The SDK already used for fork supports this on `query` options (`sdk.d.ts` in 0.
 
 Fork's `upToMessageId` path is a different operation. It creates another Cerebro session. Rewind does not call `forkSession()`.
 
-### 6.3 Codex and Pi
+### 6.3 Pi native tree
+
+Capability: `rewind: 'native'`.
+
+Pi persists the session as an append-only tree in one JSONL file. The active leaf is what the next prompt sees. The TUI `/tree` command moves that leaf inside the same file and, when the selected entry is a user message, puts that text back in the editor. The branch you leave stays in the file, which is the native form of undo. `/fork` is the other operation: a new session file whose leaf is the parent of the selected user message.
+
+The RPC process Cerebro already runs (`pi --mode rpc`) exposes the read side and the new-file side. It does not expose in-place leaf movement.
+
+| RPC command | What it does | Rewind use |
+| --- | --- | --- |
+| `get_entries`, `get_tree` | Append-only entries, or the tree, plus `leafId`. Abandoned branches are included. | Read. |
+| `get_fork_messages` | User messages on the active branch as `{ entryId, text }`. | The entry id to cut at. |
+| `fork` | `runtimeHost.fork(entryId)` with the runtime default `position: "before"`. New session file. Leaf is the parent of that user message. Response `text` is the message. The original file is not modified. | Native rewind. |
+| `switch_session` | Open another session file in the same process. | Undo, back to the original path. |
+| `navigate_tree` | Not in the command union on current main (`rpc-types.ts`). `session.navigateTree` exists for the TUI and extension command context only. Issue earendil-works/pi#8645 asked for the RPC command and was closed `no-action`. | Do not invent a private leaf write. The live agent state would not follow. |
+
+Cerebro's own fork (a new pane session) is a different command. Pi RPC `fork` stays inside the same Cerebro session and only replaces `nativeId`.
+
+Adapter work:
+
+- After each settled Pi turn, call `get_fork_messages` and store each `entryId` in `session.checkpoints` keyed by the matching user item id. Match in order against `kind: 'user'` items. A missing id means that prompt cannot rewind yet.
+- On rewind, reconnect with `--session` if the process is down, then `fork` that entry id. On `cancelled: true`, leave the transcript untouched. Otherwise `get_state` and set `nativeId` to the new `sessionFile`. `rewind.nativeId` keeps the previous path.
+- The composer still receives the bubble's document, including an inline edit. The `text` Pi returns is the original message, not the edited one.
+- Undo calls `switch_session` with `rewind.nativeId` and restores that path. The branched file is left on disk.
+- Send prompts the already-branched session. The original file still holds the old tip. Cerebro's Undo no longer points at it after a successful send.
+
+Do not paste the kept transcript into the prompt. The branched session file is the memory.
+
+### 6.4 Codex
 
 Capability: `rewind: 'emulated'`.
 
-Neither adapter records checkpoints. Codex resumes with `thread/resume` and the full `threadId`. Pi resumes with `--session` and the session file path. No rollback method is referenced anywhere in `packages/mux`. This environment does not have the Codex or Pi binaries, so a native rollback RPC is unverified and is not part of this design.
+Codex resumes with `thread/resume` and the full `threadId`. No rollback method is referenced in `packages/mux`, and the Codex CLI is not installed here, so a native truncate is unverified and is not part of this design.
 
-Emulated commit clears `nativeId` and does not paste the kept transcript into the next prompt. The chat plan's rule stands: do not pretend rendered items are native memory. The notice in section 6 is the capability signal, same idea as the emulated-fork copy in the fork menu.
-
-A later change can flip a harness to `native` when it grows a real truncate or resume-at API and the adapter records a checkpoint per turn. The UI does not branch on harness name.
+Emulated commit clears `nativeId` and does not paste the kept transcript into the next prompt. The notice in section 6 is the capability signal, same idea as the emulated-fork copy in the fork menu. The UI does not branch on harness name; it reads `rewind`.
 
 ## 7. What this does not do
 
-- **Files.** Edits the agent wrote stay in the workspace. The rewind bar says so. Claude can restore tracked files only if checkpointing was on for the whole session; turning that on is a separate decision because it changes how Claude writes files. Codex and Pi have no matching API in this codebase.
+- **Files.** Edits the agent wrote stay in the workspace. The rewind bar says so. Claude can restore tracked files only if checkpointing was on for the whole session; turning that on is a separate decision because it changes how Claude writes files. Pi's tree rewinds conversation entries, not workspace files. Codex has no matching API in this codebase.
 - **Branch history.** After a committed send, the tail is gone. Getting it back is not Undo. Fork, before rewinding, is how to keep a copy.
 - **A new session.** The pane stays on the same `AgentSession`. History, title, and model stay.
 - **Queue, steering, or a running turn.** Those are refused. Stop first, then rewind.
@@ -256,7 +284,7 @@ Errors use the existing thrown `Error` messages the pane already shows. No new e
 
 ```text
 transcript
-  user bubble                         Copy  Rewind
+  user bubble                    Rewind  Copy
   assistant items
   ──────── End of response  Fork ────
   ...
@@ -265,7 +293,7 @@ rewind bar (only while session.rewind is set)
 docked composer, prefilled with that prompt
 ```
 
-- Rewind sits in `ChatUserMessage`, in the same row as Copy, `aria-label="Rewind to before this prompt"`.
+- Rewind sits in `ChatUserMessage`, in the same row as Copy and to its left, `aria-label="Rewind to before this prompt"`.
 - The icon is `Undo2` from the existing `lucide-react` set. Undo on the bar uses the word Undo, not a second icon-only control.
 - The rewind bar is a sibling of `ChatSessionChips`, above the queue and the composer shell. `data-testid="chat-rewind-bar"` and `data-testid="chat-rewind-undo"`.
 - The prompt button is `data-testid="chat-rewind"`. The bubble root gains `data-testid="chat-user-message"` (already present) and, while editing, `data-editing="true"`.
@@ -277,9 +305,9 @@ Copy on the prompt and copy/fork on the response are unchanged.
 
 No tests in this design change.
 
-- Unit, `packages/mux/src/agents/service.test.ts`: rewind slices at a user item, undo restores items and `nativeId`, a second rewind still undoes to the original tip, rewind rejects while running or queued, a steered item that is not the turn opener is rejected, send-while-rewound drops the tail and clears `rewind`.
-- Adapter fixture: a Claude connect after commit passes `resume`, `resumeSessionAt`, and `forkSession: true`. An emulated harness clears `nativeId` and emits the notice.
-- Integration, renderer: the user bubble shows Rewind beside Copy; click-to-edit mounts the message-variant editor; Escape restores the read-only document; the rewind bar renders when `session.rewind` is set.
+- Unit, `packages/mux/src/agents/service.test.ts`: rewind slices at a user item, undo restores items and `nativeId`, a second rewind still undoes to the original tip, rewind rejects while running or queued, a steered item with no per-message checkpoint is rejected, send-while-rewound drops the tail and clears `rewind`.
+- Adapter fixture: a Claude connect after commit passes `resume`, `resumeSessionAt`, and `forkSession: true`. A Pi rewind calls `fork` with the user entry id and undo calls `switch_session` with the previous path. An emulated harness clears `nativeId` and emits the notice.
+- Integration, renderer: the user bubble shows Rewind to the left of Copy; click-to-edit mounts the message-variant editor; Escape restores the read-only document; the rewind bar renders when `session.rewind` is set.
 - One Electron spec on the chat flow: two finished turns, Rewind on the second prompt, the first turn remains, the composer contains the second prompt, Undo brings the second turn back. Do not assert pixels.
 
 ## 11. Decisions
@@ -291,6 +319,6 @@ No tests in this design change.
 | How many undo steps? | One. Undo always restores the latest tip. |
 | Inline edit or only the docked composer? | Both. The bubble edits with `ComposerEditor`. Rewind moves that document into the docked instance. |
 | Enter in the bubble? | Newline. Send happens only from the docked composer. |
-| Native memory | Claude resumes at the previous turn's checkpoint and forks the session id on commit. Codex and Pi drop native memory and say so. |
+| Native memory | Claude resumes at the previous turn's checkpoint and forks the session id on commit. Pi RPC `fork` branches a new session file before the selected user entry; Undo `switch_session`s back. Codex drops native memory and says so. |
 | Files | Not restored. |
-| Mid-turn steer | Rewind that user item is rejected. Rewind the prompt that opened the turn. |
+| Mid-turn steer | Claude rejects it. Pi accepts it when that user message has an entry id. |
