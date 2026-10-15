@@ -10,6 +10,7 @@ import type { Query, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import { shellEnv } from '../../shell-env'
 import { executable, describe, type Frame } from '../transport'
 import type { AgentAdapter, AutonomousTurn, RunAttachment } from './adapter'
+import { claudeContextUsage } from '../context-usage'
 import { activeTurn, inline, item, model } from './shared'
 import { ClaudeTodoList } from '../todo'
 import { claudeExposedSkills } from '../skills'
@@ -586,15 +587,8 @@ export const claudeAdapter: AgentAdapter = {
             chainId: chainUuid
           })
         try {
-          const usage = await q!.getContextUsage({ detail: 'summary' })
-          turn.context.emit({
-            type: 'usage',
-            usage: {
-              usedTokens: usage.totalTokens,
-              contextWindow: usage.rawMaxTokens,
-              percentage: usage.percentage
-            }
-          })
+          const usage = claudeContextUsage(await q!.getContextUsage({ detail: 'summary' }))
+          if (usage) turn.context.emit({ type: 'usage', usage })
         } catch {
           // Best-effort control-plane call; a turn's success does not depend on it.
         }

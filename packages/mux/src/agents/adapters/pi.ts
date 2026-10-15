@@ -2,6 +2,7 @@ import { skillPromptText, type AgentDelta, type ChatSkillMention } from '@cerebr
 import { randomUUID } from 'node:crypto'
 import { JsonProcess, executable, describe, type Frame } from '../transport'
 import type { AgentAdapter, AutonomousTurn } from './adapter'
+import { piContextUsage } from '../context-usage'
 import { activeTurn, inline, item, model, modalities } from './shared'
 import { piSkills } from '../skills'
 
@@ -249,16 +250,8 @@ export const piAdapter: AgentAdapter = {
           context.emit({ type: 'binding', nativeId: finalState.sessionFile })
         try {
           const stats = await rpc.request('get_session_stats')
-          const usage: Frame = stats.contextUsage ?? {}
-          if (usage.tokens != null && usage.contextWindow != null)
-            context.emit({
-              type: 'usage',
-              usage: {
-                usedTokens: usage.tokens,
-                contextWindow: usage.contextWindow,
-                percentage: usage.percent ?? Math.round((usage.tokens / usage.contextWindow) * 100)
-              }
-            })
+          const usage = piContextUsage(stats.contextUsage ?? {})
+          if (usage) context.emit({ type: 'usage', usage })
         } catch {
           // Best-effort stats call; a turn's success does not depend on it.
         }
