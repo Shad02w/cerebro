@@ -138,9 +138,9 @@ export function KeyboardSettings({
                 ) : null}
                 <Button
                   type="button"
-                  variant="outline"
+                  variant="ghost"
                   size="xs"
-                  className="min-w-28 justify-center"
+                  className="h-7 px-1.5 font-normal text-muted-foreground hover:text-foreground"
                   disabled={saving}
                   data-testid={`keybind-edit-${action.id}`}
                   onClick={(): void => {

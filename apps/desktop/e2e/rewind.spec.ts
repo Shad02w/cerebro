@@ -42,10 +42,13 @@ test('rewind puts the prompt in the composer and undo restores the turn', async 
     await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
     const chat = page.locator('[data-pane-kind="chat"]:visible')
     await chat.getByTestId('chat-model-picker').click()
-    await page.getByRole('button', { name: 'Codex', exact: true }).click()
     await page
       .getByTestId('model-picker')
-      .getByRole('option', { name: /^Test Model.*Codex/ })
+      .getByRole('button', { name: 'Codex', exact: true })
+      .click()
+    await page
+      .getByTestId('model-picker')
+      .getByRole('option', { name: 'Test Model', exact: true })
       .click()
 
     const composer = chat.getByRole('textbox', { name: 'Message agent' })

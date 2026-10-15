@@ -1,4 +1,10 @@
-import type { AgentDelta, AgentSession, ChatItem } from '@cerebro/core'
+import {
+  skillPromptText,
+  type AgentDelta,
+  type AgentSession,
+  type ChatItem,
+  type ChatSkillMention
+} from '@cerebro/core'
 import { randomUUID } from 'node:crypto'
 import type { Query, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import { shellEnv } from '../../shell-env'
@@ -6,6 +12,10 @@ import { executable, describe, type Frame } from '../transport'
 import type { AgentAdapter, AutonomousTurn, RunAttachment } from './adapter'
 import { activeTurn, inline, item, model } from './shared'
 import { ClaudeTodoList } from '../todo'
+import { claudeExposedSkills } from '../skills'
+
+const promptText = (text: string, skills?: ChatSkillMention[]): string =>
+  skillPromptText(text, skills ?? [])
 
 /** Resume options for one Claude connect. A rewound send forks so Undo can keep the original chain. */
 export function claudeResumeOptions(session: Pick<AgentSession, 'nativeId' | 'nativeResume'>): {
@@ -32,9 +42,20 @@ const shortClaudeVersion = (id?: string): string | undefined => {
   const match = id.match(/^claude-(?:opus|sonnet|haiku|fable)-(\d+(?:-\d+)?)(?:-|$|\[)/i)
   return match?.[1]?.replace(/-/g, '.')
 }
+/** Versioned name at the start of a description, such as "Sonnet 5.5". Blurbs are not titles. */
+const versionedTip = (description?: string): string | undefined => {
+  const tip = description?.split(' · ')[0]?.trim()
+  if (tip && tip.length <= 48 && claudeVersionedName.test(tip) && !claudeCapabilityBlurb.test(tip))
+    return tip
+}
 /**
  * Build a picker title that keeps the model name visible across Claude Code catalog shapes.
  * Newer builds put capability blurbs first in `description`; older ones put "Opus 5.5" first.
+ *
+ * `default` is not a model. It clears any override and follows the account default, which
+ * currently resolves to the same Sonnet 5.5 as the `sonnet` alias. Name that model in the
+ * label (`Default · Sonnet 5.5`) so the picker can drop this row when the named model is
+ * already listed. A default that points at nothing else stays, still labeled as Default.
  */
 export const claudeModelLabel = (entry: {
   value?: string
@@ -42,11 +63,22 @@ export const claudeModelLabel = (entry: {
   description?: string
   resolvedModel?: string
 }): string => {
-  const tip = entry.description?.split(' · ')[0]?.trim()
-  if (tip && tip.length <= 48 && claudeVersionedName.test(tip) && !claudeCapabilityBlurb.test(tip))
-    return tip
+  const tip = versionedTip(entry.description)
   const wire = entry.resolvedModel || entry.value
-  if (/^Default\b/i.test(entry.displayName) && wire) return `${entry.displayName} · ${wire}`
+  if (entry.value === 'default' || /^default\b/i.test(entry.displayName)) {
+    const name = /^default\b/i.test(entry.displayName) ? entry.displayName : 'Default'
+    const version = shortClaudeVersion(wire)
+    const current =
+      tip ??
+      (claudeVersionedName.test(entry.displayName) ? entry.displayName : undefined) ??
+      (version && entry.displayName && !/^default\b/i.test(entry.displayName)
+        ? `${entry.displayName} ${version}`
+        : undefined)
+    if (current && current !== name) return `${name} · ${current}`
+    if (wire && wire !== 'default') return `${name} · ${wire}`
+    return name
+  }
+  if (tip) return tip
   const version = shortClaudeVersion(wire)
   if (
     version &&
@@ -106,50 +138,62 @@ class PushableQueue<T> implements AsyncIterable<T> {
   }
 }
 
-export const claudeAdapter: AgentAdapter = {
-  async models(cwd) {
-    const binary = executable('claude')
-    const { query } = await import('@anthropic-ai/claude-agent-sdk')
-    let release: () => void = () => {}
-    const wait = new Promise<void>((resolve) => {
-      release = resolve
-    })
-    const prompt: AsyncIterable<SDKUserMessage> = {
-      [Symbol.asyncIterator]: () => ({
-        next: async () => {
-          await wait
-          return { done: true, value: undefined }
-        }
-      })
-    }
-    const abortController = new AbortController()
-    const timeout = setTimeout(() => abortController.abort(), 15_000)
-    const q = query({
-      prompt,
-      options: {
-        abortController,
-        cwd,
-        pathToClaudeCodeExecutable: binary,
-        env: { ...shellEnv() },
-        settingSources: ['user', 'project', 'local']
+/**
+ * Opens a Claude Code process with the same settings sources as a chat, reads one answer, and closes it.
+ * Skill listing uses this so the menu is the set Claude itself exposes, including enabled plugin skills.
+ */
+const askClaude = async <T>(cwd: string, read: (query: Query) => Promise<T>): Promise<T> => {
+  const binary = executable('claude')
+  const { query } = await import('@anthropic-ai/claude-agent-sdk')
+  let release: () => void = () => {}
+  const wait = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const prompt: AsyncIterable<SDKUserMessage> = {
+    [Symbol.asyncIterator]: () => ({
+      next: async () => {
+        await wait
+        return { done: true, value: undefined }
       }
     })
-    try {
-      const entries = await q.supportedModels()
-      return entries.map((entry) =>
-        model(
-          'claude',
-          'configured',
-          entry.value,
-          claudeModelLabel(entry),
-          entry.supportedEffortLevels ?? []
-        )
-      )
-    } finally {
-      clearTimeout(timeout)
-      release()
-      q.close()
+  }
+  const abortController = new AbortController()
+  const timeout = setTimeout(() => abortController.abort(), 15_000)
+  const q = query({
+    prompt,
+    options: {
+      abortController,
+      cwd,
+      pathToClaudeCodeExecutable: binary,
+      env: { ...shellEnv() },
+      settingSources: ['user', 'project', 'local']
     }
+  })
+  try {
+    return await read(q)
+  } finally {
+    clearTimeout(timeout)
+    release()
+    q.close()
+  }
+}
+
+export const claudeAdapter: AgentAdapter = {
+  async skills(cwd) {
+    const listed = await askClaude(cwd, (q) => q.reloadSkills())
+    return claudeExposedSkills(listed.skills ?? [])
+  },
+  async models(cwd) {
+    const entries = await askClaude(cwd, (q) => q.supportedModels())
+    return entries.map((entry) =>
+      model(
+        'claude',
+        'configured',
+        entry.value,
+        claudeModelLabel(entry),
+        entry.supportedEffortLevels ?? []
+      )
+    )
   },
   connect(session, host) {
     const prompt = new PushableQueue<SDKUserMessage>()
@@ -503,10 +547,12 @@ export const claudeAdapter: AgentAdapter = {
             applied.effort = context.session.reasoning
           }
           if (current !== turn) return await done
-          context.registerSteer?.(async (text, attachments) => {
-            prompt.push(userMessage(text, attachments))
+          context.registerSteer?.(async (text, attachments, skills) => {
+            prompt.push(userMessage(promptText(text, skills), attachments))
           })
-          prompt.push(userMessage(context.text, context.attachments ?? []))
+          prompt.push(
+            userMessage(promptText(context.text, context.skills), context.attachments ?? [])
+          )
         } catch (error) {
           if (current === turn) finish(error instanceof Error ? error : new Error(String(error)))
         }

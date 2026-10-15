@@ -3,6 +3,7 @@ export const KEYBIND_ACTION_IDS = [
   'newTerminal',
   'newChat',
   'openChanges',
+  'openSettings',
   'toggleSidebar',
   'toggleDevTools'
 ] as const
@@ -54,6 +55,13 @@ export const KEYBIND_CATALOG: readonly KeybindAction[] = [
     description:
       'Open Changes for the focused workspace row. Focuses the existing Changes tab when one is already open.',
     defaultHotkey: 'Mod+Shift+G',
+    target: 'app'
+  },
+  {
+    id: 'openSettings',
+    label: 'Open Settings',
+    description: 'Open the settings page.',
+    defaultHotkey: 'Mod+,',
     target: 'app'
   },
   {

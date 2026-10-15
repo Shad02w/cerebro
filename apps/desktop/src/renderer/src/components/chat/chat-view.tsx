@@ -6,10 +6,12 @@ import {
   type AgentAccessMode,
   type AgentAnswer,
   type AgentModel,
+  type AgentSkill,
   type ChatAttachment,
   type ChatAttachmentUpload,
   type ChatCommand,
-  type ChatItem
+  type ChatItem,
+  type ChatView as ChatSnapshot
 } from '@cerebro/core'
 import {
   DEFAULT_AGENT_BACKGROUND,
@@ -19,9 +21,16 @@ import {
   type LastAgent
 } from '@shared/types'
 import { Button } from '@/components/ui/button'
+import { SuccessToast } from '@/components/success-toast'
+import { acceptLayout } from '@/lib/query-client'
 import { StarsBackground } from '@/lib/stars-background'
+import { defaultChatTabLabel, generatedTabLabel, promptTabLabel } from '@/lib/thread-tab-title'
 import { cn } from '@/lib/utils'
-import { ChatItem } from './chat-item'
+import { ChatItem, WorkingGroup } from './chat-item'
+import { transcriptEntries, transcriptTurnIds, watchedTurns, workingAnchorId } from './tool-groups'
+import { TurnClock } from './turn-clock'
+import { syncTurnClock } from './turn-durations'
+import { WorkingFor } from './working-for'
 import { ChatScrollEndButton } from './chat-scroll-end'
 import { ChatTurnActions } from './chat-turn-actions'
 import { ChatTurnRail } from './chat-turn-rail'
@@ -40,10 +49,13 @@ import type { Mode as VimMode } from 'vim-prosemirror'
 import { chatImageAccept, useComposerDraft } from './use-composer-draft'
 import { ModelPicker } from './model-picker'
 import { ContextUsageRing } from './context-usage-ring'
-import { catalogOptions, harnessLabels } from './queries'
+import { messageToResend } from './model-switch'
+import { agentSkillOptions, catalogOptions, harnessLabels } from './queries'
 import { observeChatLayout } from './chat-layout'
 import './chat-scrollbars.css'
 import './chat-status.css'
+
+const noSkills: readonly AgentSkill[] = []
 
 function chatScrollBehavior(): ScrollBehavior {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
@@ -78,7 +90,8 @@ export function ChatView({
   composerVimMode = 'insert',
   agentModelDefaults,
   lastAgent = null,
-  onRememberAgent
+  onRememberAgent,
+  tabLabel = ''
 }: {
   workspaceId: number
   paneId: number
@@ -90,6 +103,8 @@ export function ChatView({
   agentModelDefaults: AgentModelDefaults
   lastAgent?: LastAgent | null
   onRememberAgent?: (model: AgentModel) => void
+  /** Current content-tab label. A generated session title replaces the prompt label. */
+  tabLabel?: string
 }): React.JSX.Element {
   const client = useQueryClient()
   const [vimMode, setVimMode] = useState<VimMode | null>(null)
@@ -108,6 +123,38 @@ export function ChatView({
   const loading = !view.data && view.isPending
   const session = view.data?.session
   const items = session?.items
+  const firstPrompt = useMemo(
+    () => items?.find((item) => item.kind === 'user' && item.text.trim())?.text ?? '',
+    [items]
+  )
+  const seenTitle = useRef<string | null>(null)
+  const renameTab = useCallback(
+    (label: string) => {
+      void window.cerebro
+        .layoutCommand({
+          target: 'tab',
+          action: 'rename',
+          workspaceId,
+          paneId,
+          label
+        })
+        .then((reply) => acceptLayout(reply.state))
+        .catch(() => {})
+    },
+    [workspaceId, paneId]
+  )
+  useEffect(() => {
+    const title = session?.title ?? ''
+    const previous = seenTitle.current
+    seenTitle.current = title || previous
+    const next = generatedTabLabel({
+      tabLabel,
+      sessionTitle: title,
+      prompt: firstPrompt,
+      previousSessionTitle: previous
+    })
+    if (next) renameTab(next)
+  }, [session?.title, tabLabel, firstPrompt, renameTab])
   const turnTexts = useMemo(() => {
     const texts = new Map<string, string[]>()
     for (const item of items ?? [])
@@ -119,7 +166,12 @@ export function ChatView({
   const [selection, setSelection] = useState<AgentModel>()
   const [reasoning, setReasoning] = useState('')
   const [accessSelection, setAccessSelection] = useState<AgentAccessMode>()
-  const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<{ id: number; message: string } | null>(null)
+  const noticeId = useRef(0)
+  const notify = useCallback((message: string) => {
+    noticeId.current += 1
+    setNotice({ id: noticeId.current, message })
+  }, [])
   const catalogModels = catalog.data?.models
   if (
     selection &&
@@ -133,6 +185,8 @@ export function ChatView({
     [catalogModels, agentModelDefaults, lastAgent]
   )
   const selected = selection ?? session?.model ?? resolved
+  const skillQuery = useQuery(agentSkillOptions(workspaceId, paneId, selected?.harness))
+  const skillList = skillQuery.data?.skills ?? noSkills
   const inFlight = useRef(false)
   const pendingSend = useRef<{ id: string; text: string; key?: string } | null>(null)
   const viewRef = useRef<HTMLDivElement>(null)
@@ -154,7 +208,6 @@ export function ChatView({
   )
   const {
     draft,
-    initialText,
     dragging,
     attachFiles,
     remove,
@@ -167,7 +220,7 @@ export function ChatView({
     storageKey: draftKey,
     editorRef,
     canAttach: imageRejection,
-    onError: setError
+    onError: notify
   })
   const stick = useRef(true)
   const scrollingToEnd = useRef(false)
@@ -231,14 +284,31 @@ export function ChatView({
       return window.cerebro.chatCommand(command)
     },
     onSuccess: (data) => {
-      client.setQueryData<typeof data>(queryKey, (previous) =>
-        previous?.session?.id === data.session?.id &&
-        previous?.session &&
-        data.session &&
-        previous.session.sequence > data.session.sequence
-          ? previous
-          : data
-      )
+      const incoming = data.session
+      if (incoming && (incoming.status === 'running' || incoming.status === 'waiting'))
+        syncTurnClock(
+          true,
+          watchedTurns(incoming.items, true, incoming.turnId),
+          transcriptTurnIds(incoming.items, incoming.turnId)
+        )
+      let shown = incoming
+      client.setQueryData<typeof data>(queryKey, (previous) => {
+        if (
+          previous?.session?.id === incoming?.id &&
+          previous.session &&
+          incoming &&
+          previous.session.sequence > incoming.sequence
+        ) {
+          shown = previous.session
+          return previous
+        }
+        shown = incoming
+        return data
+      })
+      // The send result can be the running snapshot while a newer refetch is already idle.
+      // Starting the clock here still records a duration for that turn.
+      if (!shown || (shown.status !== 'running' && shown.status !== 'waiting'))
+        syncTurnClock(false, [], transcriptTurnIds(shown?.items, shown?.turnId))
       void client.invalidateQueries({ queryKey: ['chat', workspaceId] })
     }
   })
@@ -246,18 +316,17 @@ export function ChatView({
     async (command: Omit<ChatCommand, 'workspaceId' | 'paneId'>): Promise<boolean> => {
       if (inFlight.current) return false
       inFlight.current = true
-      setError(null)
       try {
         await mutateAsync({ ...command, workspaceId, paneId })
         return true
       } catch (error) {
-        setError(error instanceof Error ? error.message : String(error))
+        notify(error instanceof Error ? error.message : String(error))
         return false
       } finally {
         inFlight.current = false
       }
     },
-    [mutateAsync, workspaceId, paneId]
+    [mutateAsync, notify, workspaceId, paneId]
   )
   const reply = useCallback(
     (requestId: string, answer: AgentAnswer): void => {
@@ -338,7 +407,7 @@ export function ChatView({
     if (stick.current && scrolling.current)
       scrolling.current.scrollTop = scrolling.current.scrollHeight
     readScroll()
-  }, [session?.sequence, session?.error, error, view.error, readScroll])
+  }, [session?.sequence, session?.error, view.error, readScroll])
   useLayoutEffect(() => {
     // Wait until the query confirms empty vs conversation — never center or animate on load.
     if (loading) return
@@ -401,19 +470,23 @@ export function ChatView({
     if (inFlight.current) return
     const message = readDraft()
     if (!message.text.trim()) {
-      setError('Write a message first.')
+      notify('Write a message first.')
       return
     }
     const rejection = message.attachments.length ? imageRejection() : null
     if (rejection) {
-      setError(rejection)
+      notify(rejection)
       return
     }
     if (!selected) {
-      setError('Choose an available model first.')
+      notify('Choose an available model first.')
       return
     }
-    const fingerprint = [message.text, ...message.attachments.map((a) => a.id)].join('\u0000')
+    const fingerprint = [
+      message.text,
+      ...message.attachments.map((a) => a.id),
+      ...message.skills.map((skill) => `${skill.name}\u0001${skill.path}`)
+    ].join('\u0000')
     if (
       !pendingSend.current ||
       pendingSend.current.text !== fingerprint ||
@@ -430,19 +503,23 @@ export function ChatView({
         sessionId: session?.id,
         text: message.text,
         ...(message.attachments.length ? { attachments: message.attachments } : {}),
+        ...(message.skills.length ? { skills: message.skills } : {}),
         model: selected,
         reasoning: reasoning || undefined,
         accessMode
       })
     ) {
-      if (isFirstMessage)
-        void window.cerebro.layoutCommand({
-          target: 'tab',
-          action: 'rename',
-          workspaceId,
-          paneId,
-          label: promptLabel
-        })
+      if (isFirstMessage) {
+        const cached = client.getQueryData<ChatSnapshot>(queryKey)
+        const title = cached?.session?.title ?? ''
+        renameTab(
+          generatedTabLabel({
+            tabLabel: defaultChatTabLabel,
+            sessionTitle: title,
+            prompt: promptLabel
+          }) ?? promptTabLabel(promptLabel)
+        )
+      }
       if (!lastAgent || lastAgent.harness === selected.harness) onRememberAgent?.(selected)
       clear()
       pendingSend.current = null
@@ -455,7 +532,7 @@ export function ChatView({
     if (document.activeElement?.matches('[role="tablist"] :focus-visible')) return
     editorRef.current?.focus()
   }, [active, loading])
-  const alertText = error ?? session?.error ?? (view.error ? String(view.error) : null)
+  const alertText = session?.error ?? (view.error ? String(view.error) : null)
   const starsWanted = agentBackground === 'stars' && empty
   const [starPhase, setStarPhase] = useState<'on' | 'out' | 'off'>('off')
   if (starsWanted && starPhase !== 'on') setStarPhase('on')
@@ -466,6 +543,13 @@ export function ChatView({
     const timeout = window.setTimeout(() => setStarPhase('off'), reduce ? 0 : 480)
     return () => window.clearTimeout(timeout)
   }, [starPhase])
+  const transcript = session?.items.length ? session : null
+  const knownTurnIds = transcriptTurnIds(transcript?.items, transcript?.turnId)
+  const watchedTurnIds = watchedTurns(transcript?.items, busy, transcript?.turnId)
+  const liveTurnId = busy ? (transcript?.turnId ?? watchedTurnIds[0]) : undefined
+  const entries = transcript ? transcriptEntries(transcript.items, liveTurnId) : []
+  const workingAnchor =
+    transcript?.status === 'running' ? workingAnchorId(entries, liveTurnId) : null
   return (
     <div
       ref={viewRef}
@@ -474,6 +558,12 @@ export function ChatView({
       data-agent-background={agentBackground}
       data-loading={loading || undefined}
     >
+      <SuccessToast
+        toast={notice}
+        onDismiss={() => setNotice(null)}
+        testId="chat-notice-toast"
+        tone="error"
+      />
       {starPhase !== 'off' ? (
         <StarsBackground
           aria-hidden="true"
@@ -501,25 +591,45 @@ export function ChatView({
             aria-label="Conversation"
           >
             <div className="mx-auto flex max-w-3xl flex-col gap-4">
-              {session?.items.length
-                ? session.items.map((item, index) => {
-                    const message = (
-                      <ChatItem
-                        item={item}
-                        onReply={reply}
-                        onRewind={(text) => {
-                          void rewindTo(item, text)
-                        }}
-                        workspaceId={workspaceId}
-                        sessionId={session.id}
-                        streaming={busy && index === session.items.length - 1}
-                      />
-                    )
+              <TurnClock active={busy} activeIds={watchedTurnIds} knownIds={knownTurnIds} />
+              {transcript
+                ? entries.map((entry, index, listed) => {
+                    const first = entry.type === 'item' ? entry.item : entry.items[0]
+                    const last =
+                      entry.type === 'item' ? entry.item : entry.items[entry.items.length - 1]
+                    const next = listed[index + 1]
+                    const nextTurn = next
+                      ? next.type === 'item'
+                        ? next.item.turnId
+                        : next.items[0]?.turnId
+                      : undefined
+                    const showWorking = first?.id === workingAnchor
+                    const message =
+                      entry.type === 'item' ? (
+                        <ChatItem
+                          item={entry.item}
+                          onReply={reply}
+                          onRewind={
+                            entry.item.kind === 'user'
+                              ? (text) => {
+                                  void rewindTo(entry.item, text)
+                                }
+                              : undefined
+                          }
+                          workspaceId={workspaceId}
+                          sessionId={transcript.id}
+                          skills={skillList}
+                          streaming={busy && entry.item.id === transcript.items.at(-1)?.id}
+                        />
+                      ) : (
+                        <WorkingGroup items={entry.items} live={entry.live} />
+                      )
                     return (
-                      <Fragment key={item.id}>
-                        {turnAnchors.has(item.id) ? (
+                      <Fragment key={first.id}>
+                        {showWorking ? <WorkingFor /> : null}
+                        {turnAnchors.has(first.id) ? (
                           <div
-                            data-turn-anchor={item.turnId}
+                            data-turn-anchor={first.turnId}
                             data-testid="chat-turn"
                             className="scroll-mt-3"
                           >
@@ -528,9 +638,9 @@ export function ChatView({
                         ) : (
                           message
                         )}
-                        {item.kind !== 'user' &&
-                        session.items[index + 1]?.turnId !== item.turnId &&
-                        (item.turnId !== session.turnId || !busy) ? (
+                        {last.kind !== 'user' &&
+                        nextTurn !== last.turnId &&
+                        (last.turnId !== transcript.turnId || !busy) ? (
                           <div
                             role="separator"
                             aria-label="End of response"
@@ -540,12 +650,12 @@ export function ChatView({
                             <ChatTurnActions
                               workspaceId={workspaceId}
                               paneId={paneId}
-                              repositoryId={session.repositoryId}
-                              sessionId={session.id}
-                              turnId={item.turnId}
-                              text={turnTexts.get(item.turnId) ?? ''}
+                              repositoryId={transcript.repositoryId}
+                              sessionId={transcript.id}
+                              turnId={last.turnId}
+                              text={turnTexts.get(last.turnId) ?? ''}
                               forkCapability={
-                                catalog.data?.capabilities[session.model.harness]?.fork
+                                catalog.data?.capabilities[transcript.model.harness]?.fork
                               }
                             />
                             <span>End of response</span>
@@ -580,11 +690,7 @@ export function ChatView({
                   </p>
                 </div>
               ) : null}
-              {session?.status === 'running' ? (
-                <div role="status" className="text-sm text-muted-foreground">
-                  <span className="chat-working">Working…</span>
-                </div>
-              ) : null}
+              {session?.status === 'running' && !workingAnchor ? <WorkingFor /> : null}
               {!empty && alertText ? (
                 <p
                   role="alert"
@@ -654,9 +760,13 @@ export function ChatView({
                   <DropOverlay visible={dragging} />
                   <AttachmentStrip attachments={draft.attachments} onRemove={remove} />
                   <ComposerEditor
+                    key={selected?.harness ?? 'claude'}
                     ref={editorRef}
-                    defaultText={initialText}
+                    defaultText={draft.text}
                     attachments={draft.attachments}
+                    skills={skillList}
+                    workspaceId={workspaceId}
+                    skillIssue={skillList.length ? '' : (skillQuery.data?.issue ?? '')}
                     getAttachments={() => readDraft().attachments}
                     onDocument={onDocument}
                     vim={vimOptions}
@@ -685,17 +795,26 @@ export function ChatView({
                     <div className="min-w-0 flex-1">
                       <ModelPicker
                         selected={selected}
+                        sessionStarted={session != null}
                         onSelect={(model) => {
                           onRememberAgent?.(model)
                           if (session && session.model.harness !== model.harness) {
-                            setError(
+                            notify(
                               `Open a new Agent tab or pane to use ${harnessLabels[model.harness]}.`
                             )
                             return
                           }
-                          setError(null)
+                          const draft = readDraft()
+                          const restored = messageToResend({
+                            composerText: draft.text,
+                            attachmentCount: draft.attachments.length,
+                            current: selected,
+                            next: model,
+                            items: session?.items ?? []
+                          })
                           setSelection(model)
                           setReasoning('')
+                          if (restored) editorRef.current?.replaceText(restored)
                         }}
                       />
                     </div>

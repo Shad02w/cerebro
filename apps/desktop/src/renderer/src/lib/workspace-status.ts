@@ -19,10 +19,10 @@ export const WORKSPACE_STATUS_PRESENTATION: Record<
 > = {
   todo: {
     label: 'Todo',
-    iconClassName: 'text-sidebar-foreground/70',
-    badgeClassName: 'bg-sidebar-foreground/10',
+    iconClassName: 'text-sky-500',
+    badgeClassName: 'bg-sky-500/15',
     headerClassName:
-      'text-sidebar-foreground/80 hover:text-sidebar-foreground/80 active:text-sidebar-foreground/80',
+      'text-sky-700 hover:text-sky-700 active:text-sky-700 dark:text-sky-400 dark:hover:text-sky-400 dark:active:text-sky-400',
     Icon: Circle
   },
   in_progress: {
@@ -43,10 +43,10 @@ export const WORKSPACE_STATUS_PRESENTATION: Record<
   },
   done: {
     label: 'Done',
-    iconClassName: 'text-sky-500',
-    badgeClassName: 'bg-sky-500/15',
+    iconClassName: 'text-sidebar-foreground/70',
+    badgeClassName: 'bg-sidebar-foreground/10',
     headerClassName:
-      'text-sky-700 hover:text-sky-700 active:text-sky-700 dark:text-sky-400 dark:hover:text-sky-400 dark:active:text-sky-400',
+      'text-sidebar-foreground/80 hover:text-sidebar-foreground/80 active:text-sidebar-foreground/80',
     Icon: CircleCheck
   }
 }

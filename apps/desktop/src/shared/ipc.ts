@@ -3,6 +3,7 @@ export const IPC = {
     command: 'cerebro:chat:command',
     overview: 'cerebro:chat:overview',
     catalog: 'cerebro:chat:catalog',
+    skills: 'cerebro:chat:skills',
     favorite: 'cerebro:chat:favorite',
     attachment: 'cerebro:chat:attachment',
     image: 'cerebro:chat:image',
@@ -42,7 +43,8 @@ export const IPC = {
     remove: 'cerebro:workspaces:remove',
     setStatus: 'cerebro:workspaces:set-status',
     listChanges: 'cerebro:workspaces:list-changes',
-    getFileDiff: 'cerebro:workspaces:get-file-diff'
+    getFileDiff: 'cerebro:workspaces:get-file-diff',
+    listFiles: 'cerebro:workspaces:list-files'
   },
   settings: {
     get: 'cerebro:settings:get',

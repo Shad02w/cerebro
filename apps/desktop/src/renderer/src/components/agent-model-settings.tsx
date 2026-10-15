@@ -10,6 +10,7 @@ import {
   type AgentModel
 } from '@cerebro/core'
 import type { AppSettings, AppSettingsPatch } from '@shared/types'
+import { catalogOptions, harnessLabels } from '@/components/chat/queries'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import {
@@ -19,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select'
-import { catalogOptions, harnessLabels } from '@/components/chat/queries'
+import { claudeAliasSelection, collapseClaudeDefaultAliases } from '@/lib/claude-default-alias'
 
 type AgentModelSettingsProps = {
   settings: AppSettings
@@ -31,6 +32,163 @@ type ModelGroup = {
   provider: string
   label: string
   models: AgentModel[]
+}
+
+function PiSetupNotice({ issue }: { issue: string }): React.JSX.Element {
+  return (
+    <p
+      role="status"
+      data-testid="settings-pi-setup"
+      className="text-xs leading-relaxed text-destructive"
+    >
+      {issue}
+    </p>
+  )
+}
+
+async function persistModel(
+  model: AgentModel,
+  makeCurrent: boolean,
+  onUpdate: (patch: AppSettingsPatch) => Promise<AppSettings>
+): Promise<void> {
+  const latest = await window.cerebro.getSettings()
+  if (makeCurrent) {
+    const patch = rememberAgentModel(latest, model)
+    if (patch) await onUpdate(patch)
+    return
+  }
+  if (latest.agentModelDefaults[model.harness]?.[model.provider] === model.key) return
+  await onUpdate({
+    agentModelDefaults: {
+      ...latest.agentModelDefaults,
+      [model.harness]: {
+        ...latest.agentModelDefaults[model.harness],
+        [model.provider]: model.key
+      }
+    }
+  })
+}
+
+function settingsError(
+  localError: string | null,
+  catalogError: unknown,
+  refreshError: unknown
+): string | null {
+  if (localError) return localError
+  if (catalogError instanceof Error) return catalogError.message
+  if (refreshError instanceof Error) return refreshError.message
+  if (catalogError || refreshError) return 'Could not refresh models.'
+  return null
+}
+
+function ProviderModelGroup({
+  group,
+  defaults,
+  makeCurrent,
+  piIssue,
+  onPersist
+}: {
+  group: ModelGroup
+  defaults: AppSettings['agentModelDefaults']
+  makeCurrent: boolean
+  piIssue?: string
+  onPersist: (model: AgentModel, makeCurrent: boolean) => void
+}): React.JSX.Element | null {
+  const stored = defaultModelForScope(group.models, defaults, group.harness, group.provider)
+  const choices = collapseClaudeDefaultAliases(group.models, group.models)
+  const selected = claudeAliasSelection(stored, group.models) ?? choices[0]
+  const value = selected?.key
+  if (!value) return null
+  return (
+    <div
+      className="space-y-1.5"
+      data-testid="settings-agent-model-group"
+      data-harness={group.harness}
+      data-provider={group.provider}
+    >
+      <div className="flex items-center justify-between gap-6">
+        <Label className="text-[13px] font-medium">{group.label}</Label>
+        <Select
+          items={choices.map((model) => ({
+            value: model.key,
+            label: `${model.label}${model.available ? '' : ' (unavailable)'}`
+          }))}
+          value={value}
+          onValueChange={(key): void => {
+            const model = choices.find((entry) => entry.key === key)
+            if (model) onPersist(model, makeCurrent)
+          }}
+        >
+          <SelectTrigger
+            className="h-7 w-64"
+            data-testid="settings-agent-model"
+            data-harness={group.harness}
+            data-provider={group.provider}
+            aria-label={`${group.label} default model`}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {choices.map((model) => (
+              <SelectItem
+                key={model.key}
+                value={model.key}
+                disabled={!model.available && model.key !== value}
+              >
+                {model.label}
+                {!model.available ? ' (unavailable)' : ''}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      {piIssue ? <PiSetupNotice issue={piIssue} /> : null}
+    </div>
+  )
+}
+
+function AgentModelGroupList({
+  pending,
+  groups,
+  piIssue,
+  defaults,
+  current,
+  onPersist
+}: {
+  pending: boolean
+  groups: ModelGroup[]
+  piIssue?: string
+  defaults: AppSettings['agentModelDefaults']
+  current: AgentModel | undefined
+  onPersist: (model: AgentModel, makeCurrent: boolean) => void
+}): React.JSX.Element {
+  if (pending) return <p className="text-xs text-muted-foreground">Discovering models…</p>
+  const firstPi = groups.find((group) => group.harness === 'pi')
+  if (!groups.length) {
+    return (
+      <div className="space-y-1.5">
+        <p className="text-xs text-muted-foreground">
+          No models discovered. Install a harness, then refresh.
+        </p>
+        {piIssue ? <PiSetupNotice issue={piIssue} /> : null}
+      </div>
+    )
+  }
+  return (
+    <>
+      {groups.map((group) => (
+        <ProviderModelGroup
+          key={`${group.harness}:${group.provider}`}
+          group={group}
+          defaults={defaults}
+          makeCurrent={current?.harness === group.harness && current.provider === group.provider}
+          piIssue={piIssue && group === firstPi ? piIssue : undefined}
+          onPersist={onPersist}
+        />
+      ))}
+      {piIssue && !firstPi ? <PiSetupNotice issue={piIssue} /> : null}
+    </>
+  )
 }
 
 function modelGroups(models: AgentModel[]): ModelGroup[] {
@@ -69,36 +227,22 @@ export function AgentModelSettings({
   const saving = useRef<Promise<void> | undefined>(undefined)
   const [localError, setLocalError] = useState<string | null>(null)
   const groups = modelGroups(catalog.data?.models ?? [])
+  const piIssue = catalog.data?.issues.pi
   const current = resolveNewAgentModel(
     catalog.data?.models ?? [],
     settings.agentModelDefaults,
     settings.lastAgent
   )
+  const error = settingsError(localError, catalog.error, refresh.error)
 
   const persist = (model: AgentModel, makeCurrent: boolean): void => {
     const pending = saving.current ?? Promise.resolve()
-    saving.current = pending.then(async () => {
-      const latest = await window.cerebro.getSettings()
-      try {
-        if (makeCurrent) {
-          const patch = rememberAgentModel(latest, model)
-          if (patch) await onUpdate(patch)
-        } else if (latest.agentModelDefaults[model.harness]?.[model.provider] !== model.key) {
-          await onUpdate({
-            agentModelDefaults: {
-              ...latest.agentModelDefaults,
-              [model.harness]: {
-                ...latest.agentModelDefaults[model.harness],
-                [model.provider]: model.key
-              }
-            }
-          })
-        }
-        setLocalError(null)
-      } catch (err) {
+    saving.current = pending
+      .then(() => persistModel(model, makeCurrent, onUpdate))
+      .then(() => setLocalError(null))
+      .catch((err: unknown) => {
         setLocalError(err instanceof Error ? err.message : 'Failed to save the default model.')
-      }
-    })
+      })
   }
 
   return (
@@ -125,75 +269,17 @@ export function AgentModelSettings({
           Refresh
         </Button>
       </div>
-      {catalog.isPending ? (
-        <p className="text-xs text-muted-foreground">Discovering models…</p>
-      ) : groups.length ? (
-        groups.map((group) => {
-          const selected = defaultModelForScope(
-            group.models,
-            settings.agentModelDefaults,
-            group.harness,
-            group.provider
-          )
-          const value = selected?.key ?? group.models[0]?.key
-          if (!value) return null
-          const makeCurrent =
-            current?.harness === group.harness && current.provider === group.provider
-          return (
-            <div
-              key={`${group.harness}:${group.provider}`}
-              className="flex items-center justify-between gap-6"
-            >
-              <Label className="text-[13px] font-medium">{group.label}</Label>
-              <Select
-                items={group.models.map((model) => ({
-                  value: model.key,
-                  label: `${model.label}${model.available ? '' : ' (unavailable)'}`
-                }))}
-                value={value}
-                onValueChange={(key): void => {
-                  const model = group.models.find((entry) => entry.key === key)
-                  if (model) persist(model, makeCurrent)
-                }}
-              >
-                <SelectTrigger
-                  className="h-7 w-64"
-                  data-testid="settings-agent-model"
-                  data-harness={group.harness}
-                  data-provider={group.provider}
-                  aria-label={`${group.label} default model`}
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {group.models.map((model) => (
-                    <SelectItem
-                      key={model.key}
-                      value={model.key}
-                      disabled={!model.available && model.key !== value}
-                    >
-                      {model.label}
-                      {!model.available ? ' (unavailable)' : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )
-        })
-      ) : (
-        <p className="text-xs text-muted-foreground">
-          No models discovered. Install a harness, then refresh.
-        </p>
-      )}
-      {localError || catalog.error || refresh.error ? (
+      <AgentModelGroupList
+        pending={catalog.isPending}
+        groups={groups}
+        piIssue={piIssue}
+        defaults={settings.agentModelDefaults}
+        current={current}
+        onPersist={persist}
+      />
+      {error ? (
         <p role="alert" className="text-xs text-destructive">
-          {localError ??
-            (catalog.error instanceof Error
-              ? catalog.error.message
-              : refresh.error instanceof Error
-                ? refresh.error.message
-                : 'Could not refresh models.')}
+          {error}
         </p>
       ) : null}
     </div>

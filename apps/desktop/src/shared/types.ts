@@ -1,6 +1,8 @@
 import type {
   AgentCatalog,
+  AgentHarness,
   AgentModelDefaults,
+  AgentSkillList,
   ChatActivityOverview,
   ChatAttachmentContent,
   ChatCommand,
@@ -299,6 +301,11 @@ export type CerebroApi = {
   chatCommand: (command: ChatCommand) => Promise<ChatView>
   chatOverview: () => Promise<ChatActivityOverview>
   agentCatalog: (refresh?: boolean) => Promise<AgentCatalog>
+  agentSkills: (
+    workspaceId: number,
+    paneId: number,
+    harness: AgentHarness
+  ) => Promise<AgentSkillList>
   agentFavorite: (key: string, favorite: boolean) => Promise<AgentCatalog>
   chatAttachment: (
     workspaceId: number,
@@ -354,6 +361,8 @@ export type CerebroApi = {
     repositoryId: number,
     file: ChangedFile
   ) => Promise<FileDiffContents>
+  /** Paths relative to the workspace working directory, for composer `@` mentions. */
+  listWorkspaceFiles: (workspaceId: number) => Promise<string[]>
   openExternal: (url: string) => Promise<void>
   getSettings: () => Promise<AppSettings>
   setSettings: (patch: AppSettingsPatch) => Promise<AppSettings>

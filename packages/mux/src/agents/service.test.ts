@@ -77,6 +77,36 @@ test('accepted command is durable before dispatch; duplicate sends do not replay
     rmSync(f.dir, { recursive: true, force: true })
   }
 })
+test('a later turn can use another model from the same harness', async () => {
+  const other: AgentModel = { ...model, key: 'other', id: 'other-id', label: 'Other' }
+  const seen: string[] = []
+  const dir = mkdtempSync(join(tmpdir(), 'cerebro-agents-model-'))
+  const adapter: AgentAdapter = {
+    models: async () => [model, other],
+    connect: () => ({
+      async run(context) {
+        seen.push(context.session.model.id)
+      },
+      close() {}
+    })
+  }
+  const service = new AgentSessions(dir, () => {}, { claude: adapter, codex: adapter, pi: adapter })
+  try {
+    await service.command(scope, send)
+    const second = await service.command(scope, {
+      ...send,
+      commandId: 'second',
+      text: 'again',
+      model: other
+    })
+    assert.deepEqual(seen, ['test', 'other-id'])
+    assert.equal(second.session?.model.id, 'other-id')
+    assert.equal(second.session?.items.filter((item) => item.kind === 'user').length, 2)
+  } finally {
+    await service.shutdown()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
 test('a usage delta from the adapter is reflected on the session', async () => {
   const f = fixture(async (context) => {
     context.emit({
@@ -1655,5 +1685,97 @@ test('Claude connect after a rewound send resumes at the kept checkpoint and for
   } finally {
     await service.shutdown()
     rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('a mentioned skill is passed through and a mention missing from the text is rejected', async () => {
+  const seen: RunContext['skills'][] = []
+  const f = fixture(async (context) => {
+    seen.push(context.skills)
+    context.emit({ type: 'item', item: { id: 'answer', kind: 'text', text: 'ok' } })
+  })
+  try {
+    const service = new AgentSessions(f.dir, () => {}, f.drivers)
+    const sent = await service.command(scope, {
+      ...send,
+      commandId: 'skill-ok',
+      text: 'use /review please',
+      skills: [{ name: 'review', path: '/tmp/skills/review/SKILL.md' }]
+    })
+    assert.equal(
+      sent.session?.items.find((item) => item.kind === 'user')?.text,
+      'use /review please'
+    )
+    assert.equal(seen[0]?.[0]?.token, '/review')
+    assert.equal(seen[0]?.[0]?.prompt, '$review')
+    assert.equal(seen[0]?.[0]?.path, '/tmp/skills/review/SKILL.md')
+    await assert.rejects(
+      service.command(scope, {
+        ...send,
+        commandId: 'skill-missing',
+        text: 'hello',
+        skills: [{ name: 'review', path: '/tmp/skills/review/SKILL.md' }]
+      }),
+      /missing from the message/
+    )
+    await service.shutdown()
+  } finally {
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
+
+test('a retryable error is shown while the turn continues and cleared when it finishes', async () => {
+  let release: () => void = () => {}
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const f = fixture(async (context) => {
+    context.emit({ type: 'alert', message: 'Model overloaded.' })
+    await gate
+    context.emit({ type: 'item', item: { id: 'answer', kind: 'text', text: 'recovered' } })
+  })
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    await service.command(scope, send)
+    await waitFor(() => {
+      const session = [...service['sessions'].values()][0]
+      return session?.error === 'Model overloaded.' && session.status === 'running'
+    })
+    release()
+    await waitFor(() => !service['running'].size)
+    const state = await service.command(scope, { ...send, action: 'get' })
+    assert.equal(state.session?.status, 'idle')
+    assert.equal(state.session?.error, undefined)
+    assert.equal(
+      state.session?.items.some((item) => item.text === 'recovered'),
+      true
+    )
+  } finally {
+    await service.shutdown()
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
+
+test('an idle harness exit is shown until the next turn finishes', async () => {
+  const f = liveFixture()
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    await service.command(scope, send)
+    await waitFor(() => !service['running'].size)
+    f.opened[0].host.exited(new Error('Agent exited (1).'))
+    assert.equal(
+      (await service.command(scope, { ...send, action: 'get' })).session?.error,
+      'Agent exited (1).'
+    )
+    await service.command(scope, { ...send, commandId: 'next', text: 'again' })
+    await waitFor(() => !service['running'].size)
+    assert.equal(f.opened.length, 2)
+    assert.equal(
+      (await service.command(scope, { ...send, action: 'get' })).session?.error,
+      undefined
+    )
+  } finally {
+    await service.shutdown()
+    rmSync(f.dir, { recursive: true, force: true })
   }
 })

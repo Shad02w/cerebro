@@ -3,7 +3,8 @@ import {
   chatImageMarker,
   chatImageTypes,
   type ChatAttachmentUpload,
-  type ChatImageType
+  type ChatImageType,
+  type ChatSkillRef
 } from '@cerebro/core'
 
 /** A tracked `[Image #N]` span. Only spans in this list are chips; look-alike text is plain text. */
@@ -12,8 +13,14 @@ export type ComposerDraft = {
   text: string
   attachments: ChatAttachmentUpload[]
   chips: Chip[]
+  skills: ChatSkillRef[]
 }
-export const emptyDraft = (text = ''): ComposerDraft => ({ text, attachments: [], chips: [] })
+export const emptyDraft = (text = ''): ComposerDraft => ({
+  text,
+  attachments: [],
+  chips: [],
+  skills: []
+})
 const byStart = (a: Chip, b: Chip): number => a.start - b.start
 
 /** Rewrites every chip's marker so numbering follows attachment order. */
@@ -36,7 +43,7 @@ function renumber(draft: ComposerDraft): ComposerDraft {
     cursor = chip.end
   }
   text += draft.text.slice(cursor)
-  return { text, attachments: draft.attachments, chips: next }
+  return { text, attachments: draft.attachments, chips: next, skills: draft.skills }
 }
 
 /** Inserts a new attachment's marker at the caret. Returns the caret position after the marker. */
@@ -64,7 +71,8 @@ export function insertAttachment(
             : chip
         ),
         { attachmentId: attachment.id, start, end: start + marker.length }
-      ]
+      ],
+      skills: draft.skills
     },
     caret: start + marker.length + trail.length
   }
@@ -90,7 +98,8 @@ export function removeAttachment(draft: ComposerDraft, attachmentId: string): Co
   return renumber({
     text,
     attachments: draft.attachments.filter((entry) => entry.id !== attachmentId),
-    chips
+    chips,
+    skills: draft.skills
   })
 }
 
@@ -154,7 +163,8 @@ export function reconcile(
   const next = renumber({
     text,
     attachments: draft.attachments.filter((entry) => !destroyed.has(entry.id)),
-    chips
+    chips,
+    skills: draft.skills
   })
   return caret === undefined ? next : { ...next, caret }
 }

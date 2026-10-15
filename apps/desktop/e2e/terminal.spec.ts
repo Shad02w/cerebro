@@ -409,15 +409,16 @@ test('does not spawn a terminal until New terminal is clicked; project row only 
       const xtermBox = xterm.getBoundingClientRect()
       const overlayBox = overlay.getBoundingClientRect()
       const sidebarBox = sidebarEl.getBoundingClientRect()
-      const sample = '\uE0A0\uE0B0'
       const canvas = document.createElement('canvas')
       const ctx = canvas.getContext('2d')
       if (!ctx) throw new Error('Canvas 2D context is unavailable.')
       const family = host.dataset.terminalFont ?? ''
+      // MesloLGS uses Menlo's advance, so a Powerline sample is the same width
+      // as Menlo's .notdef on macOS. A missing family measures the proportional
+      // UI font instead, and then "W" and "i" no longer share one advance.
       ctx.font = `16px "${family}"`
-      const nerdWidth = ctx.measureText(sample).width
-      ctx.font = '16px Menlo, Monaco, monospace'
-      const menloWidth = ctx.measureText(sample).width
+      const charWidth = ctx.measureText('W').width
+      const narrowWidth = ctx.measureText('i').width
 
       const probe = document.createElement('canvas')
       const webglAvailable = Boolean(probe.getContext('webgl2') ?? probe.getContext('webgl'))
@@ -442,8 +443,8 @@ test('does not spawn a terminal until New terminal is clicked; project row only 
         webglAvailable,
         overflowY: getComputedStyle(viewport).overflowY,
         scrollbarGutter: viewport.offsetWidth - viewport.clientWidth,
-        nerdWidth,
-        menloWidth
+        charWidth,
+        narrowWidth
       }
     })
 
@@ -468,8 +469,8 @@ test('does not spawn a terminal until New terminal is clicked; project row only 
     // v6 uses its custom scrollable element instead of native overflow.
     expect(chrome.overflowY).toBe('visible')
     expect(chrome.scrollbarGutter).toBe(0)
-    expect(chrome.nerdWidth).toBeGreaterThan(0)
-    expect(chrome.nerdWidth).not.toBe(chrome.menloWidth)
+    expect(chrome.charWidth).toBeGreaterThan(0)
+    expect(chrome.charWidth).toBe(chrome.narrowWidth)
   } finally {
     await rm(sourcesRoot, { recursive: true, force: true })
   }

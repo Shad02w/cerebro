@@ -1,4 +1,4 @@
-import { test } from 'node:test'
+import { after, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { resolve } from 'node:path'
 import type { AgentHarness, AgentModel } from '@cerebro/core'
@@ -11,6 +11,7 @@ import {
   titleModel,
   titlePrompt
 } from './title'
+import { codexAppServerPid, stopCodexAppServer } from './codex-server'
 
 const model = (
   harness: AgentHarness,
@@ -129,3 +130,19 @@ for (const harness of ['claude', 'codex', 'pi'] as const) {
     }
   )
 }
+
+after(async () => {
+  const pid = codexAppServerPid()
+  stopCodexAppServer()
+  if (!pid) return
+  const start = Date.now()
+  while (Date.now() - start < 5000) {
+    try {
+      process.kill(pid, 0)
+    } catch {
+      return
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  }
+  throw new Error('Codex app-server did not exit.')
+})

@@ -30,7 +30,12 @@ import {
   type AgentModelDefaults,
   type LastAgent
 } from '@shared/types'
-import { resolveTerminalFontFamily } from '@/lib/terminal-font'
+import {
+  measureTerminalCharWidth,
+  resolveTerminalFont,
+  terminalLetterSpacing,
+  type ResolvedTerminalFont
+} from '@/lib/terminal-font'
 import { encodeExtendedKey } from '@/lib/terminal-keys'
 import { useKeybindHandler } from '@/keybinds'
 import { ChangesView } from '@/components/changes-view'
@@ -67,6 +72,38 @@ function waitForUsableSize(host: HTMLElement, isCancelled: () => boolean): Promi
     observer.observe(host)
     const timeout = window.setTimeout(finish, 1000)
   })
+}
+
+function useDevicePixelRatio(): number {
+  const [dpr, setDpr] = useState(() => window.devicePixelRatio)
+  useEffect(() => {
+    const media = window.matchMedia(`(resolution: ${dpr}dppx)`)
+    const onChange = (): void => {
+      setDpr(window.devicePixelRatio)
+    }
+    media.addEventListener('change', onChange)
+    return () => media.removeEventListener('change', onChange)
+  }, [dpr])
+  return dpr
+}
+
+function applyTerminalFont(
+  terminal: Terminal,
+  host: HTMLElement,
+  resolved: ResolvedTerminalFont,
+  fontSize: number,
+  devicePixelRatio: number
+): void {
+  const spacing = terminalLetterSpacing(
+    measureTerminalCharWidth(resolved.css, fontSize),
+    devicePixelRatio
+  )
+  terminal.options.fontSize = fontSize
+  terminal.options.fontFamily = resolved.css
+  terminal.options.letterSpacing = spacing
+  host.dataset.terminalFont = resolved.family
+  host.dataset.terminalFontSize = String(fontSize)
+  host.dataset.terminalLetterSpacing = String(spacing)
 }
 
 function attachRenderer(terminal: Terminal, host: HTMLElement): void {
@@ -190,6 +227,7 @@ function useTerminalAppearance(
   themeId: TerminalThemeId,
   ready: boolean
 ): void {
+  const devicePixelRatio = useDevicePixelRatio()
   useEffect(() => {
     const terminal = terminalRef.current
     if (!terminal) return
@@ -212,15 +250,10 @@ function useTerminalAppearance(
     let cancelled = false
 
     void (async () => {
-      const resolvedFamily = await resolveTerminalFontFamily(fontFamilyPreference)
-      if (cancelled || !terminalRef.current) return
+      const resolved = await resolveTerminalFont(fontFamilyPreference)
+      if (cancelled || !terminalRef.current || !host) return
 
-      terminalRef.current.options.fontSize = fontSize
-      terminalRef.current.options.fontFamily = resolvedFamily
-      if (host) {
-        host.dataset.terminalFont = resolvedFamily.replaceAll('"', '')
-        host.dataset.terminalFontSize = String(fontSize)
-      }
+      applyTerminalFont(terminalRef.current, host, resolved, fontSize, devicePixelRatio)
       fitSession(terminalRef.current, fitAddon, sessionIdRef.current, exitedRef.current)
     })()
 
@@ -235,6 +268,7 @@ function useTerminalAppearance(
     exitedRef,
     fontSize,
     fontFamilyPreference,
+    devicePixelRatio,
     ready
   ])
 }
@@ -308,13 +342,17 @@ function TerminalSession({
 
     void (async () => {
       try {
-        const fontFamily = await resolveTerminalFontFamily(fontFamilyPreference)
+        const resolvedFont = await resolveTerminalFont(fontFamilyPreference)
         if (cancelled || !hostRef.current) return
 
         await waitForUsableSize(hostRef.current, () => cancelled)
         if (cancelled || !hostRef.current) return
 
         const fitAddon = new FitAddon()
+        const letterSpacing = terminalLetterSpacing(
+          measureTerminalCharWidth(resolvedFont.css, fontSize),
+          window.devicePixelRatio
+        )
         terminal = new Terminal({
           convertEol: true,
           scrollback: 10000,
@@ -326,8 +364,9 @@ function TerminalSession({
           customGlyphs: true,
           reflowCursorLine: false,
           rescaleOverlappingGlyphs: true,
+          letterSpacing,
           theme: { ...TERMINAL_PALETTES[themeRef.current] },
-          fontFamily
+          fontFamily: resolvedFont.css
         })
         forwardUserInputOnly(terminal)
         terminal.loadAddon(fitAddon)
@@ -338,8 +377,9 @@ function TerminalSession({
             ? proposedGrid(fitAddon)
             : undefined
         if (initialGrid) terminal.resize(initialGrid.cols, initialGrid.rows)
-        hostRef.current.dataset.terminalFont = fontFamily.replaceAll('"', '')
+        hostRef.current.dataset.terminalFont = resolvedFont.family
         hostRef.current.dataset.terminalFontSize = String(fontSize)
+        hostRef.current.dataset.terminalLetterSpacing = String(letterSpacing)
 
         const xterm = terminal
         xterm.onData((data) => {
@@ -774,6 +814,7 @@ export function TerminalStack({
                         <ChatView
                           workspaceId={workspaceId}
                           paneId={pane.id}
+                          tabLabel={tab.label}
                           visible={shown}
                           active={active}
                           agentBackground={agentBackground}
