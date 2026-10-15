@@ -93,9 +93,9 @@ const projectGroupSpacingClass = 'not-first:mt-2.5'
 /** Workspace rows inside Todo sit a step below the contrast of the other status groups. */
 const todoWorkspaceMuteClass = 'text-sidebar-foreground/55'
 
-/** In-flow root actions. `static` wins over the shadcn absolute action; `top` from sidebar.css is then ignored. */
+/** Root actions sit in the name line. Hover color stays on the buttons; placement is the shared action row. */
 const rootMenuActionClass =
-  'static top-auto right-auto group-hover/root:text-sidebar-accent-foreground group-focus-within/root:text-sidebar-accent-foreground'
+  'group-hover/root:text-sidebar-accent-foreground group-focus-within/root:text-sidebar-accent-foreground'
 
 type AppSidebarProps = {
   mode: 'projects' | 'settings'
@@ -375,12 +375,10 @@ function CopyMenuItems({
 
 function ProjectOverflowMenu({
   project,
-  offsetForAdd,
   onRemoveProject,
   menuTestId
 }: {
   project: Project
-  offsetForAdd: boolean
   onRemoveProject: (projectId: number, deleteFiles: boolean) => void
   menuTestId?: string
 }): React.JSX.Element {
@@ -389,7 +387,7 @@ function ProjectOverflowMenu({
       <DropdownMenuTrigger
         render={
           <SidebarMenuAction
-            className={cn('app-no-drag', offsetForAdd && 'right-6')}
+            className="app-no-drag"
             showOnHover
             data-testid={menuTestId ?? `project-menu-${project.id}`}
             onClick={(event): void => event.stopPropagation()}
@@ -621,17 +619,14 @@ function MultiRootRepoRow({
   return (
     <li className="relative">
       <WorkspaceHoverCard workspace={workspace} showStatus={false}>
-        <SidebarMenuRow
-          data-workspace-id={workspace.id}
-          data-workspace-lines={workspaceLineCount(singleLine)}
-        >
+        <SidebarMenuRow data-workspace-id={workspace.id}>
           <button
             type="button"
             className={cn(
-              'app-no-drag peer/menu-button flex w-full min-w-0 rounded-md px-2 pr-8 text-left',
+              'app-no-drag peer/menu-button flex w-full min-w-0 flex-col items-stretch rounded-md px-2 pr-8 text-left',
               'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
               muted ? todoWorkspaceMuteClass : 'text-sidebar-foreground/80',
-              singleLine ? 'h-8 flex-row items-center py-0' : 'flex-col items-stretch py-1.5'
+              singleLine ? 'h-8 py-0' : 'h-auto py-0'
             )}
             data-testid={`workspace-row-${workspace.id}`}
             data-workspace-id={workspace.id}
@@ -642,49 +637,67 @@ function MultiRootRepoRow({
             aria-current={active ? 'location' : undefined}
             onClick={(): void => onSelect(workspace.id)}
           >
-            <span
-              className="block min-w-0 truncate text-[13px] leading-normal font-medium"
-              data-workspace-label=""
-              data-testid={`workspace-repo-${workspace.id}`}
-            >
-              {name}
+            <span data-row-line="" data-workspace-label="">
+              <span
+                className="text-[13px] font-medium"
+                data-row-label=""
+                data-testid={`workspace-repo-${workspace.id}`}
+              >
+                {name}
+              </span>
             </span>
             {branch ? (
               <span
                 className={cn(
-                  'mt-0.5 block min-w-0 truncate text-[11px] leading-4',
+                  'text-[11px] leading-4',
                   muted ? 'text-sidebar-foreground/40' : 'text-sidebar-foreground/65'
                 )}
+                data-branch-line=""
                 data-testid={`workspace-branch-${workspace.id}`}
               >
                 <span
                   aria-hidden
-                  className="mr-1 inline-block h-2.5 w-2 rounded-bl-[3px] border-b border-l border-current align-baseline opacity-40"
+                  className="h-2.5 w-2 shrink-0 rounded-bl-[3px] border-b border-l border-current opacity-40"
                 />
                 <WorkspacePrPopover
                   workspace={workspace}
                   muted={muted}
-                  className="mr-1 inline-block size-3 overflow-hidden align-baseline"
+                  className="size-3 shrink-0"
                 />
-                {branch}
+                <span className="min-w-0 truncate">{branch}</span>
               </span>
             ) : null}
-            <WorkspaceAgents agents={agents} onOpenAgent={onOpenAgent} />
+            <WorkspaceAgents
+              agents={agents}
+              className={branch ? undefined : '-mt-1'}
+              onOpenAgent={onOpenAgent}
+            />
           </button>
-          <WorkspaceOverflowMenu workspace={workspace} allowRemove={false} onRename={onRename} />
+          <RowActions overlay>
+            <WorkspaceOverflowMenu workspace={workspace} allowRemove={false} onRename={onRename} />
+          </RowActions>
         </SidebarMenuRow>
       </WorkspaceHoverCard>
     </li>
   )
 }
 
-/** Full glyph box. `leading-none` plus `truncate` crops ascenders and descenders. */
-const workspaceNameClass = 'block w-full min-w-0 truncate text-left leading-normal'
-
-/** `overflow: hidden` makes a flex item align on its margin edge. An inline box
-    with hidden overflow uses its bottom edge, which `vertical-align: baseline` puts
-    on the text baseline. */
-const baselineIconClass = 'mr-1.5 inline-block size-4 overflow-hidden align-baseline'
+/** More / add buttons for a row. Overlay pins them to the name line; root keeps them in flow. */
+function RowActions({
+  overlay = false,
+  className,
+  children
+}: {
+  overlay?: boolean
+  className?: string
+  children: React.ReactNode
+}): React.JSX.Element {
+  return (
+    <div className={cn('sidebar-row-actions', className)} data-overlay={overlay ? '' : undefined}>
+      {children}
+    </div>
+  )
+}
 
 function WorkspaceLine({
   icon,
@@ -693,22 +706,14 @@ function WorkspaceLine({
   ...props
 }: ComponentProps<'span'> & { icon: React.ReactNode }): React.JSX.Element {
   return (
-    <span className={cn(workspaceNameClass, className)} data-workspace-label="" {...props}>
-      {icon}
-      {children}
+    <span className={className} data-row-line="" data-workspace-label="" {...props}>
+      <span data-row-icon="">{icon}</span>
+      <span data-row-label="">{children}</span>
     </span>
   )
 }
 
-function branchAnchor(workspaceId: number): string {
-  return `--branch-icon-${workspaceId}`
-}
-
-function branchAnchorStyle(workspaceId: number): React.CSSProperties {
-  return { '--branch-anchor': branchAnchor(workspaceId) } as React.CSSProperties
-}
-
-/** Git branch mark on the name's baseline. A pull request uses a spacer; the control is anchored outside the row button. */
+/** Git branch mark in the name line. A pull request keeps a spacer; the control sits on that box, outside the row button. */
 function BranchIconSlot({
   workspace,
   muted = false
@@ -716,56 +721,30 @@ function BranchIconSlot({
   workspace: Workspace
   muted?: boolean
 }): React.JSX.Element {
-  if (workspace.pullRequest)
-    return (
-      <span
-        aria-hidden
-        data-branch-icon-anchor=""
-        className={baselineIconClass}
-        style={branchAnchorStyle(workspace.id)}
-      />
-    )
-  return <WorkspacePrPopover workspace={workspace} muted={muted} className={baselineIconClass} />
+  if (workspace.pullRequest) return <span aria-hidden data-branch-icon-spacer="" />
+  return <WorkspacePrPopover workspace={workspace} muted={muted} className="size-full" />
 }
 
 function BranchIconOverlay({ workspace }: { workspace: Workspace }): React.JSX.Element | null {
   if (!workspace.pullRequest) return null
   return (
-    <span className="workspace-branch-icon-anchor" style={branchAnchorStyle(workspace.id)}>
-      <WorkspacePrPopover workspace={workspace} className="size-full" />
+    <span className="workspace-pr-icon-overlay">
+      <WorkspacePrPopover workspace={workspace} className="pointer-events-auto size-4" />
     </span>
   )
 }
 
 function workspaceBranchButtonClass(singleLine: boolean): string {
   return cn(
-    'app-no-drag flex w-full min-w-0 gap-0 px-2 pr-8',
-    singleLine ? 'h-8! flex-row items-center py-0' : 'h-auto! flex-col items-stretch py-1.5'
+    'app-no-drag flex w-full min-w-0 translate-x-0 gap-0 px-2 pr-8 py-0',
+    singleLine ? 'h-8! items-center' : 'h-auto! flex-col items-stretch'
   )
 }
 
-function rootWorkspaceButtonClass(compact: boolean): string {
-  return cn(
-    'app-no-drag peer/menu-button flex min-w-0 flex-1 rounded-md px-2 text-left text-xs hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
-    compact ? 'h-8 flex-row items-center py-0' : 'h-auto min-h-7 flex-col items-stretch py-1'
-  )
-}
+const rootWorkspaceButtonClass =
+  'app-no-drag peer/menu-button flex min-w-0 flex-1 flex-col items-stretch rounded-md px-2 py-0 text-left text-xs hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
 
-function isCompactRootRow(agents: ChatAgentActivity[]): boolean {
-  return agents.length === 0
-}
-
-function workspaceLineCount(singleLine: boolean): '1' | undefined {
-  return singleLine ? '1' : undefined
-}
-
-function rootWorkspaceRowClass(compact: boolean): string {
-  return cn('group/root flex pr-1', compact ? 'items-center' : 'items-start')
-}
-
-function rootWorkspaceActionsClass(compact: boolean): string {
-  return cn('flex shrink-0 items-center', compact ? 'self-center' : 'mt-1 h-4')
-}
+const rootWorkspaceRowClass = 'group/root flex items-start pr-1'
 
 function MultiRootWorkspaceTree({
   project,
@@ -793,9 +772,7 @@ function MultiRootWorkspaceTree({
   const rootActive = rootWorkspace != null && rootWorkspace.id === activeWorkspaceId
   const rootAgents = rootWorkspace ? (activity.get(rootWorkspace.id) ?? []) : []
   const rootStatus = workspaceStatus(rootWorkspace?.status)
-  // Agent status stacks under the name, so the disclosure stays on that first line.
-  // A single-line row centers the label and actions in the collapsed block.
-  const rootCompact = isCompactRootRow(rootAgents)
+  // Agent status stacks under the name. The disclosure and menu stay on the name line.
   const rootMuted = rowsMuted && !rootActive
 
   return (
@@ -813,19 +790,15 @@ function MultiRootWorkspaceTree({
         >
           <WorkspaceHoverCard workspace={rootWorkspace ?? undefined}>
             <SidebarMenuRow
-              className={rootWorkspaceRowClass(rootCompact)}
+              className={rootWorkspaceRowClass}
               data-root-row=""
               data-workspace-id={rootWorkspace?.id}
-              data-workspace-lines={workspaceLineCount(rootCompact)}
               onPointerEnter={(): void => setRootHovered(true)}
               onPointerLeave={(): void => setRootHovered(false)}
             >
               <button
                 type="button"
-                className={cn(
-                  rootWorkspaceButtonClass(rootCompact),
-                  rootMuted && todoWorkspaceMuteClass
-                )}
+                className={cn(rootWorkspaceButtonClass, rootMuted && todoWorkspaceMuteClass)}
                 data-testid={`project-root-${project.id}`}
                 data-todo-muted={rootMuted ? 'true' : undefined}
                 data-workspace-role="root"
@@ -840,35 +813,29 @@ function MultiRootWorkspaceTree({
                   if (rootWorkspace) onSelectWorkspace(rootWorkspace.id)
                 }}
               >
-                <span className="flex w-full min-w-0 items-center gap-2">
-                  <WorkspaceLine
-                    className="w-auto flex-1 font-medium"
-                    icon={
-                      <span
-                        className={cn(
-                          baselineIconClass,
-                          rootMuted
-                            ? 'text-sidebar-foreground/45'
-                            : 'text-sidebar-accent-foreground'
-                        )}
-                      >
-                        <FolderTree className="size-full" />
-                      </span>
+                <span data-row-line="" data-workspace-label="">
+                  <span
+                    data-row-icon=""
+                    className={
+                      rootMuted ? 'text-sidebar-foreground/45' : 'text-sidebar-accent-foreground'
                     }
                   >
+                    <FolderTree />
+                  </span>
+                  <span className="font-medium" data-row-label="">
                     {rootWorkspace ? workspaceRowLabel(project, rootWorkspace) : 'root'}
-                  </WorkspaceLine>
+                  </span>
                   <span
-                    className="shrink-0 text-[10px] leading-normal text-sidebar-foreground/55 tabular-nums"
+                    className="shrink-0 text-[10px] leading-4 text-sidebar-foreground/55 tabular-nums"
                     aria-label={`${repos.length} repositories in root`}
                     data-testid={`root-repo-count-${project.id}`}
                   >
                     {repos.length} {repos.length === 1 ? 'repo' : 'repos'}
                   </span>
                 </span>
-                <WorkspaceAgents agents={rootAgents} onOpenAgent={onOpenAgent} />
+                <WorkspaceAgents agents={rootAgents} className="-mt-1" onOpenAgent={onOpenAgent} />
               </button>
-              <div className={rootWorkspaceActionsClass(rootCompact)}>
+              <RowActions>
                 <SidebarMenuAction
                   className={cn('app-no-drag', rootMenuActionClass)}
                   data-testid={`root-toggle-${project.id}`}
@@ -894,7 +861,7 @@ function MultiRootWorkspaceTree({
                   }}
                   onSetStatus={onSetStatus}
                 />
-              </div>
+              </RowActions>
             </SidebarMenuRow>
           </WorkspaceHoverCard>
           <CollapsibleContent>
@@ -930,7 +897,7 @@ function ProjectIcon({ project }: { project: Project }): React.JSX.Element {
   if (isMultiRootProject(project)) return <Folders />
   if (!project.github) return <Folder />
   return (
-    <Avatar className="size-4" aria-hidden="true">
+    <Avatar className="size-full" aria-hidden="true">
       <AvatarImage
         src={`https://avatars.githubusercontent.com/${encodeURIComponent(project.github.owner)}?s=40`}
         alt=""
@@ -1016,7 +983,11 @@ function ProjectItem({
           <CollapsibleTrigger
             render={
               <SidebarMenuButton
-                className={cn('app-no-drag', projectSectionLabelClass, githubLinked && 'pr-14')}
+                className={cn(
+                  'app-no-drag flex-col items-stretch gap-0 py-0',
+                  projectSectionLabelClass,
+                  githubLinked && 'pr-14'
+                )}
                 data-testid={rowTestId ?? `project-row-${project.id}`}
                 data-project-kind={project.kind}
                 data-project-icon={multiRoot ? 'folders' : githubLinked ? 'avatar' : 'folder'}
@@ -1024,40 +995,45 @@ function ProjectItem({
               />
             }
           >
-            <ProjectIcon project={project} />
-            <div className="flex min-w-0 flex-1 flex-col">
-              <span className="truncate">{project.name}</span>
-              <WorkspaceAgents
-                agents={summary}
-                testId={`project-agent-status-${project.id}`}
-                className="opacity-60"
-                onOpenAgent={onOpenAgent}
-              />
-            </div>
-            <MultiRootBadge project={project} />
+            <span data-row-line="">
+              <span data-row-icon="">
+                <ProjectIcon project={project} />
+              </span>
+              <span className="font-medium" data-row-label="">
+                {project.name}
+              </span>
+              <MultiRootBadge project={project} />
+            </span>
+            <WorkspaceAgents
+              agents={summary}
+              testId={`project-agent-status-${project.id}`}
+              className="-mt-1 mb-1 opacity-60"
+              onOpenAgent={onOpenAgent}
+            />
           </CollapsibleTrigger>
-          <ProjectOverflowMenu
-            project={project}
-            offsetForAdd={githubLinked}
-            onRemoveProject={onRemoveProject}
-            menuTestId={menuTestId}
-          />
-          {githubLinked ? (
-            <PlusActionTooltip label="Add workspace">
-              <SidebarMenuAction
-                className="app-no-drag"
-                showOnHover
-                data-testid={addTestId ?? `project-add-workspace-${project.id}`}
-                onClick={(event): void => {
-                  event.stopPropagation()
-                  onAddWorkspace(project)
-                }}
-              >
-                <Plus />
-                <span className="sr-only">Add workspace</span>
-              </SidebarMenuAction>
-            </PlusActionTooltip>
-          ) : null}
+          <RowActions overlay>
+            <ProjectOverflowMenu
+              project={project}
+              onRemoveProject={onRemoveProject}
+              menuTestId={menuTestId}
+            />
+            {githubLinked ? (
+              <PlusActionTooltip label="Add workspace">
+                <SidebarMenuAction
+                  className="app-no-drag"
+                  showOnHover
+                  data-testid={addTestId ?? `project-add-workspace-${project.id}`}
+                  onClick={(event): void => {
+                    event.stopPropagation()
+                    onAddWorkspace(project)
+                  }}
+                >
+                  <Plus />
+                  <span className="sr-only">Add workspace</span>
+                </SidebarMenuAction>
+              </PlusActionTooltip>
+            ) : null}
+          </RowActions>
         </SidebarMenuRow>
         <CollapsibleContent>
           {multiRoot ? (
@@ -1080,10 +1056,7 @@ function ProjectItem({
                 return (
                   <SidebarMenuSubItem key={workspace.id}>
                     <WorkspaceHoverCard workspace={workspace}>
-                      <SidebarMenuRow
-                        data-workspace-id={workspace.id}
-                        data-workspace-lines={workspaceLineCount(singleLine)}
-                      >
+                      <SidebarMenuRow data-workspace-id={workspace.id}>
                         <SidebarMenuSubButton
                           size="sm"
                           isActive={workspace.id === activeWorkspaceId}
@@ -1112,15 +1085,21 @@ function ProjectItem({
                           >
                             {workspaceRowLabel(project, workspace)}
                           </WorkspaceLine>
-                          <WorkspaceAgents agents={agents} onOpenAgent={onOpenAgent} />
+                          <WorkspaceAgents
+                            agents={agents}
+                            className="-mt-1"
+                            onOpenAgent={onOpenAgent}
+                          />
                         </SidebarMenuSubButton>
                         <BranchIconOverlay workspace={workspace} />
-                        <WorkspaceOverflowMenu
-                          workspace={workspace}
-                          onRename={(): void => onRenameWorkspace(workspace)}
-                          onRemoveWorkspace={onRemoveWorkspace}
-                          onSetStatus={onSetStatus}
-                        />
+                        <RowActions overlay>
+                          <WorkspaceOverflowMenu
+                            workspace={workspace}
+                            onRename={(): void => onRenameWorkspace(workspace)}
+                            onRemoveWorkspace={onRemoveWorkspace}
+                            onSetStatus={onSetStatus}
+                          />
+                        </RowActions>
                       </SidebarMenuRow>
                     </WorkspaceHoverCard>
                   </SidebarMenuSubItem>

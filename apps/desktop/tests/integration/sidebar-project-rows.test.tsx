@@ -149,6 +149,14 @@ function expectItemRow(row: HTMLElement, role: string): void {
   expect(row.className).not.toContain('text-sidebar-foreground/60')
 }
 
+/** Icon, name, and row buttons share one name line instead of a font baseline. */
+function expectSharedNameLine(row: HTMLElement): void {
+  const line = row.querySelector('[data-row-line]')
+  expect(line).not.toBeNull()
+  expect(line?.querySelector('[data-row-label]')?.textContent).toMatch(/\S/)
+  expect(line?.querySelector('.align-baseline')).toBeNull()
+}
+
 function sidebarElement(
   sidebarGroupBy: SidebarGroupBy = 'project',
   activeWorkspaceId = 11
@@ -221,32 +229,43 @@ describe('sidebar project rows', () => {
     expect(appsGroup?.className).toContain('not-first:mt-2.5')
     expect(notesRow.closest('[data-sidebar="menu"]')?.className).toContain('gap-0')
 
+    const notesActions = notesRow
+      .closest('[data-sidebar="menu-row"]')
+      ?.querySelector('.sidebar-row-actions')
+    expect(notesActions).toHaveAttribute('data-overlay')
+    expect(notesActions?.querySelector('[data-testid="project-menu-1"]')).not.toBeNull()
+    expect(notesActions?.querySelector('[data-testid="project-add-workspace-1"]')).not.toBeNull()
+    expectSharedNameLine(notesRow)
+
     const mainRow = screen.getByTestId('workspace-row-11')
     const worktreeRow = screen.getByTestId('workspace-row-12')
     expectItemRow(mainRow, 'branch')
     expectItemRow(worktreeRow, 'branch')
     for (const row of [mainRow, worktreeRow]) {
-      const label = row.querySelector('[data-workspace-label]')
-      expect(label?.className).toContain('leading-normal')
-      expect(label?.className).not.toContain('leading-none')
-      expect(label?.querySelector('.align-baseline')).not.toBeNull()
-      expect(label?.textContent).toMatch(/\S/)
+      expectSharedNameLine(row)
+      expect(row.querySelector('[data-row-icon]')).not.toBeNull()
+      expect(row.querySelector('.align-baseline')).toBeNull()
+      expect(
+        row.closest('[data-sidebar="menu-row"]')?.querySelector('.sidebar-row-actions')
+      ).toHaveAttribute('data-overlay')
     }
-    expect(mainRow.closest('[data-workspace-lines]')).toHaveAttribute('data-workspace-lines', '1')
-    expect(worktreeRow.closest('[data-workspace-lines]')).toHaveAttribute(
-      'data-workspace-lines',
-      '1'
-    )
 
     await user.click(appsRow)
     const rootRow = screen.getByTestId('project-root-2')
     expectItemRow(rootRow, 'root')
-    const rootLabel = rootRow.querySelector('[data-workspace-label]')
-    expect(rootLabel?.className).toContain('leading-normal')
-    expect(rootLabel?.querySelector('.align-baseline')).not.toBeNull()
-    expect(rootRow.closest('[data-workspace-lines]')).toHaveAttribute('data-workspace-lines', '1')
-    expectItemRow(screen.getByTestId('workspace-row-22'), 'repository')
+    expectSharedNameLine(rootRow)
+    expect(rootRow.querySelector('[data-row-icon]')).not.toBeNull()
+    expect(rootRow.querySelector('.align-baseline')).toBeNull()
+    expect(
+      rootRow.closest('[data-sidebar="menu-row"]')?.querySelector('.sidebar-row-actions')
+    ).not.toHaveAttribute('data-overlay')
+    const repoRow = screen.getByTestId('workspace-row-22')
+    expectItemRow(repoRow, 'repository')
     expectItemRow(screen.getByTestId('workspace-row-23'), 'repository')
+    expectSharedNameLine(repoRow)
+    const branchLine = screen.getByTestId('workspace-branch-22')
+    expect(branchLine).toHaveAttribute('data-branch-line')
+    expect(branchLine.querySelector('.align-baseline')).toBeNull()
 
     cleanup()
     renderSidebar('status')
