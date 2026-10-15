@@ -1329,6 +1329,68 @@ describe('agent adapters', { concurrency: 1 }, () => {
   )
 
   test(
+    'Claude: a background launch, a progress update, and a 0s duration are not a finish',
+    { timeout: 15_000 },
+    async () => {
+      process.env.CEREBRO_CLAUDE_PATH = fixture
+      const model = (await adapters.claude.models('/tmp'))[0]
+      const running: SubagentUpdate[] = []
+      await runTurn(
+        adapters.claude,
+        {
+          session: liveSession(model, 'agents-still-running'),
+          text: 'agents-still-running',
+          signal: new AbortController().signal,
+          emit: () => {},
+          ask: async () => ({ allow: false, answers: {} })
+        },
+        { subagent: (update) => running.push(update) }
+      )
+      assert.equal(
+        running.some((update) => update.announce || update.status !== 'running'),
+        false
+      )
+      assert.deepEqual([...new Set(running.map((update) => update.id))].sort(), [
+        'agent-blogs',
+        'agent-community',
+        'agent-github'
+      ])
+      const blogs = [...running].reverse().find((update) => update.id === 'agent-blogs')
+      assert.equal(blogs?.durationMs, 16000)
+      assert.equal(blogs?.model, 'sonnet')
+      assert.equal(blogs?.effort, 'medium')
+      const finished: SubagentUpdate[] = []
+      await runTurn(
+        adapters.claude,
+        {
+          session: liveSession(model, 'agents-then-finish'),
+          text: 'agents-then-finish',
+          signal: new AbortController().signal,
+          emit: () => {},
+          ask: async () => ({ allow: false, answers: {} })
+        },
+        { subagent: (update) => finished.push(update) }
+      )
+      const done = finished.filter((update) => update.status === 'completed')
+      assert.equal(done.length, 1)
+      assert.equal(done[0]?.id, 'agent-community')
+      assert.equal(done[0]?.announce, true)
+      assert.equal(done[0]?.durationMs, 31000)
+      assert.equal(done[0]?.model, 'sonnet')
+      assert.equal(done[0]?.effort, 'high')
+      assert.deepEqual(done[0]?.tokens, { total: 18420 })
+      assert.equal(
+        finished.some((update) => update.id !== 'agent-community' && update.announce),
+        false
+      )
+      assert.equal(
+        finished.some((update) => update.id === 'agent-blogs' && update.status !== 'running'),
+        false
+      )
+    }
+  )
+
+  test(
     'Codex: a collab child is a sub-agent, and another thread is ignored',
     { timeout: 15_000 },
     async () => {
@@ -1420,6 +1482,44 @@ describe('agent adapters', { concurrency: 1 }, () => {
         false
       )
       assert.ok(replies(events).includes('Review finished.'))
+    }
+  )
+
+  test(
+    'Codex: item/completed and a 0s duration do not finish a child that is still running',
+    { timeout: 15_000 },
+    async () => {
+      process.env.CEREBRO_CODEX_PATH = fixture
+      const model = (await adapters.codex.models('/tmp'))[0]
+      const updates: SubagentUpdate[] = []
+      await runTurn(
+        adapters.codex,
+        {
+          session: liveSession(model, 'codex-still-running'),
+          text: 'agents-still-running',
+          signal: new AbortController().signal,
+          emit: () => {},
+          ask: async () => ({ allow: false, answers: {} })
+        },
+        { subagent: (update) => updates.push(update) }
+      )
+      assert.equal(
+        updates.some((update) => update.announce || update.status !== 'running'),
+        false
+      )
+      const zero = [...updates].reverse().find((update) => update.id === 'child-zero')
+      assert.equal(zero?.status, 'running')
+      assert.equal(zero?.durationMs, undefined)
+      const open = [...updates].reverse().find((update) => update.id === 'child-open')
+      assert.equal(open?.status, 'running')
+      assert.equal(
+        updates.some((update) => update.id === 'child-open' && update.durationMs === 16000),
+        true
+      )
+      assert.equal(
+        updates.some((update) => update.id === 'child-missing' && update.status !== 'running'),
+        false
+      )
     }
   )
 
