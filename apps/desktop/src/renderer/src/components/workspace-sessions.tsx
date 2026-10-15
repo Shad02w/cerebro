@@ -96,26 +96,16 @@ export function WorkspaceSessionList({
                 <span data-session-title="" className="min-w-0 flex-1 truncate text-[13px]">
                   {title}
                 </span>
-                <span
-                  data-session-model=""
-                  className={cn(
-                    'max-w-24 shrink-0 truncate text-[11px]',
-                    muted ? 'text-sidebar-foreground/40' : 'text-sidebar-foreground/55'
-                  )}
-                >
-                  {model}
-                </span>
               </span>
-              {agent.preview ? (
-                <span
-                  className={cn(
-                    'truncate pl-[2.375rem] text-[11px] leading-4',
-                    muted ? 'text-sidebar-foreground/35' : 'text-sidebar-foreground/55'
-                  )}
-                >
-                  {agent.preview}
-                </span>
-              ) : null}
+              <span
+                data-session-model=""
+                className={cn(
+                  'truncate text-[11px] leading-4',
+                  muted ? 'text-sidebar-foreground/40' : 'text-sidebar-foreground/55'
+                )}
+              >
+                {model}
+              </span>
             </button>
             {agent.paneId != null ? (
               <button

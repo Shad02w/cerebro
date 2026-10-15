@@ -224,7 +224,8 @@ test('chat works through native adapters, survives reload, handles requests, and
     expect(waitingIconBox!.y + waitingIconBox!.height).toBeLessThanOrEqual(
       sessionRowBox!.y + sessionRowBox!.height + 1
     )
-    expect(modelBox!.x).toBeGreaterThan(titleBox!.x)
+    expect(modelBox!.y).toBeGreaterThan(titleBox!.y)
+    expect(modelBox!.x).toBeLessThanOrEqual(titleBox!.x)
     const agentButton = page.locator(
       `[data-sidebar="menu-row"][data-workspace-id="${workspaceId}"] [data-testid="workspace-agent-open"]`
     )
