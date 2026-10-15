@@ -10,7 +10,7 @@ import {
   type ChatAttachment,
   type ChatAttachmentUpload,
   type ChatCommand,
-  type ChatItem,
+  type ChatItem as ChatTranscriptItem,
   type ChatView as ChatSnapshot
 } from '@cerebro/core'
 import {
@@ -350,10 +350,12 @@ export function ChatView({
   const filledRewind = useRef<string | null>(null)
   const readDraftRef = useRef(readDraft)
   const replaceRef = useRef(replace)
-  readDraftRef.current = readDraft
-  replaceRef.current = replace
+  useLayoutEffect(() => {
+    readDraftRef.current = readDraft
+    replaceRef.current = replace
+  })
   const rewindTo = useCallback(
-    async (item: ChatItem, text: string): Promise<void> => {
+    async (item: ChatTranscriptItem, text: string): Promise<void> => {
       if (!session || item.kind !== 'user' || applyingRewind.current) return
       applyingRewind.current = true
       const displacedDraft = readDraft().text
