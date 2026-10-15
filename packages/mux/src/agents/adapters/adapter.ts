@@ -5,8 +5,10 @@ import type {
   AgentModel,
   AgentRequest,
   AgentSession,
+  AgentSkill,
   AgentSubagent,
-  ChatAttachment
+  ChatAttachment,
+  ChatSkillMention
 } from '@cerebro/core'
 
 /** A host-owned image file sent with the prompt. Bytes are read only when a harness needs them inline. */
@@ -15,11 +17,19 @@ export type RunContext = {
   session: AgentSession
   text: string
   attachments?: RunAttachment[]
+  /** Skills mentioned in `text`. Adapters rewrite those tokens into the harness prompt. Codex resolves `$name` from that text. */
+  skills?: ChatSkillMention[]
   signal: AbortSignal
   emit: (event: AgentDelta) => void
   ask: (request: AgentRequest) => Promise<AgentAnswer>
   /** Called by an adapter once it has a live handle to fold another message into this turn. Absent/unset means steering isn't available yet (or ever) for this run. */
-  registerSteer?: (steer: (text: string, attachments: RunAttachment[]) => Promise<void>) => void
+  registerSteer?: (
+    steer: (
+      text: string,
+      attachments: RunAttachment[],
+      skills?: ChatSkillMention[]
+    ) => Promise<void>
+  ) => void
 }
 /** One change in a background task's life. Fields left out keep their previous value. */
 export type BackgroundTaskUpdate = Pick<AgentBackgroundTask, 'id' | 'status'> &
@@ -42,15 +52,20 @@ export type ConnectionHost = {
   subagent: (update: SubagentUpdate) => void
   /** Output that arrived between turns. Items update in whichever turn owns them. */
   idle: (event: AgentDelta) => void
-  /** The native process ended on its own; its background work is gone. */
+  /** The native runtime ended on its own; its background work is gone. */
   exited: (error: Error) => void
 }
-/** One live native process owned by a session. Background work it starts lives until `close`. */
+/**
+ * One live harness connection. `close` stops this session's native work.
+ * Claude and Pi own a process. Codex is a thread on the shared app-server.
+ */
 export interface AgentConnection {
   run(context: RunContext): Promise<void>
   close(): void
 }
 export interface AgentAdapter {
   models(cwd: string): Promise<AgentModel[]>
+  /** Skills available in `cwd` for this harness. Optional so test doubles can omit it. */
+  skills?(cwd: string): Promise<AgentSkill[]>
   connect(session: AgentSession, host: ConnectionHost): AgentConnection
 }

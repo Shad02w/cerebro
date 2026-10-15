@@ -4,12 +4,21 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { crc32, deflateSync } from 'node:zlib'
-import type { ElectronApplication, JSHandle, Page } from '@playwright/test'
+import type { ElectronApplication, JSHandle, Locator, Page } from '@playwright/test'
 import { test, expect, stopMux } from './fixtures'
 
 const execFileAsync = promisify(execFile)
 const executable = resolve(__dirname, '../../../packages/mux/src/agents/fixtures/fake-harness.cjs')
 const chatEvidenceDir = '/tmp/cerebro-chat-evidence'
+
+async function expectPickerHarness(
+  picker: Locator,
+  harness: 'claude' | 'codex' | 'pi',
+  label?: string
+): Promise<void> {
+  if (label) await expect(picker.getByTestId('chat-model-picker-label')).toHaveText(label)
+  await expect(picker.locator(`[data-harness-icon="${harness}"]`)).toBeVisible()
+}
 
 async function screenshotChatEvidence(
   page: { screenshot: (options: { path: string }) => Promise<Buffer> },
@@ -51,10 +60,8 @@ test('chat works through native adapters, survives reload, handles requests, and
     await expect(page.getByRole('combobox', { name: 'Chat history' })).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'New chat', exact: true })).toHaveCount(0)
     await page.getByRole('button', { name: 'Send message', exact: true }).click()
-    await expect(page.getByRole('alert')).toContainText('Write a message first')
-    await expect(page.getByTestId('chat-composer').getByRole('alert')).toContainText(
-      'Write a message first'
-    )
+    await expect(page.getByTestId('chat-notice-toast')).toContainText('Write a message first')
+    await expect(page.getByTestId('chat-composer').getByRole('alert')).toHaveCount(0)
     await expect(page.getByTestId('chat-transcript').getByRole('alert')).toHaveCount(0)
     await expect(page.getByTestId('chat-composer')).toHaveAttribute('data-dock', 'center')
     await expect(page.getByTestId('chat-empty-hero')).toBeVisible()
@@ -77,10 +84,7 @@ test('chat works through native adapters, survives reload, handles requests, and
     await expect(page.getByTestId('model-picker')).toHaveCSS('opacity', '1')
     await page.screenshot({ path: '/tmp/cerebro-chat-evidence/model-picker-combobox.png' })
     await expect(
-      page.getByTestId('model-picker').getByRole('option', { name: /^Test Sonnet 5.*Claude Code/ })
-    ).toBeVisible()
-    await expect(
-      page.getByTestId('model-picker').getByRole('option', { name: /^Test Sonnet 5.*sonnet/ })
+      page.getByTestId('model-picker').getByRole('option', { name: 'Test Sonnet 5', exact: true })
     ).toBeVisible()
     for (const [name, harness] of [
       ['Claude Code', 'claude'],
@@ -97,7 +101,7 @@ test('chat works through native adapters, survives reload, handles requests, and
     }
     await page.getByRole('button', { name: 'Codex', exact: true }).click()
     await expect(
-      page.getByTestId('model-picker').getByRole('option', { name: /^Test Model.*Claude Code/ })
+      page.getByTestId('model-picker').getByRole('option', { name: 'Test Sonnet 5', exact: true })
     ).toHaveCount(0)
     await page.getByRole('button', { name: 'Favorite Test Model via Codex', exact: true }).click()
     await expect(page.getByTestId('model-picker')).toBeVisible()
@@ -107,7 +111,7 @@ test('chat works through native adapters, survives reload, handles requests, and
     ).toBeVisible()
     await page
       .getByTestId('model-picker')
-      .getByRole('option', { name: /^Test Model.*Codex/ })
+      .getByRole('option', { name: 'Test Model', exact: true })
       .click()
     const userText = 'Build a normalized agent chat\nPreserve spacing:  café 🚀'
     await page.getByRole('textbox', { name: 'Message agent' }).fill(userText)
@@ -152,7 +156,10 @@ test('chat works through native adapters, survives reload, handles requests, and
       const copyBox = await copyButton.boundingBox()
       expect(copyBox!.y).toBeGreaterThanOrEqual(bubbleBox!.y + bubbleBox!.height)
       await page.screenshot({ path: '/tmp/cerebro-chat-evidence/user-copy-success.png' })
-      await page.getByRole('button', { name: 'Dismiss notification' }).click()
+      await page
+        .getByTestId('chat-copy-toast')
+        .getByRole('button', { name: 'Dismiss notification' })
+        .click()
       await expect(page.getByTestId('chat-copy-toast')).toHaveCount(0)
       await copyButton.click()
       await expect(page.getByTestId('chat-copy-toast')).toBeVisible()
@@ -280,7 +287,7 @@ test('chat works through native adapters, survives reload, handles requests, and
     await page.reload()
     await expect(page.getByRole('button', { name: 'Stop agent' })).toBeVisible()
     const working = page.getByTestId('chat-transcript').getByRole('status')
-    await expect(working).toHaveText('Working…')
+    await expect(working).toHaveText('Working...')
     await expect(page.getByRole('separator', { name: 'End of response' })).toHaveCount(3)
     await expect(page.getByTestId('chat-view').getByRole('status')).toHaveCount(1)
     const workingText = working.locator('span')
@@ -447,9 +454,9 @@ test('chat works through native adapters, survives reload, handles requests, and
     await page.getByRole('button', { name: 'Codex', exact: true }).click()
     await page.screenshot({ path: '/tmp/cerebro-chat-evidence/model-picker-icons.png' })
     const models = page.locator('.model-picker-list')
-    // Constrain the list to exercise overflow with the two native fixture models.
+    // One-line rows in the compact picker still have to overflow this cap.
     await models.evaluate((element) => {
-      element.style.maxHeight = '96px'
+      element.style.maxHeight = '40px'
     })
     expect(
       await models.evaluate((element) => getComputedStyle(element, '::-webkit-scrollbar').width)
@@ -531,7 +538,7 @@ test('Claude and Pi keep separate chat sessions, with a mixed Terminal pane', as
     await page.reload()
     await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
     await expect(chat.getByTestId('chat-model-picker')).toBeVisible()
-    await expect(chat.getByTestId('chat-model-picker')).toContainText('Claude Code')
+    await expectPickerHarness(chat.getByTestId('chat-model-picker'), 'claude')
     await chat.getByRole('textbox', { name: 'Message agent' }).fill('hello Claude')
     await chat.getByRole('button', { name: 'Send message', exact: true }).click()
     await expect(chat.getByTestId('chat-transcript')).toContainText('Adapter connected.')
@@ -540,10 +547,12 @@ test('Claude and Pi keep separate chat sessions, with a mixed Terminal pane', as
     await page.getByTestId('model-picker').getByRole('button', { name: 'Pi', exact: true }).click()
     await page
       .getByTestId('model-picker')
-      .getByRole('option', { name: /^Test Model.*Pi/ })
+      .getByRole('option', { name: 'Test Model · test-provider', exact: true })
       .click()
-    await expect(page.getByRole('alert')).toContainText('Open a new Agent tab or pane to use Pi.')
-    await expect(chat.getByTestId('chat-model-picker')).toContainText('Claude Code')
+    await expect(page.getByTestId('chat-notice-toast')).toContainText(
+      'Open a new Agent tab or pane to use Pi.'
+    )
+    await expectPickerHarness(chat.getByTestId('chat-model-picker'), 'claude')
     await expect
       .poll(
         async () => (await page.evaluate(() => window.cerebro.getSettings())).lastAgent?.harness
@@ -555,14 +564,14 @@ test('Claude and Pi keep separate chat sessions, with a mixed Terminal pane', as
     // Tab switches keep prior agent panes mounted under display:none; re-query the active pane.
     const nextChat = page.locator('[data-pane-kind="chat"]:visible')
     await expect(nextChat.getByText('What would you like to build?')).toBeVisible()
-    await expect(nextChat.getByTestId('chat-model-picker')).toContainText('Pi')
+    await expectPickerHarness(nextChat.getByTestId('chat-model-picker'), 'pi')
     await nextChat.getByTestId('chat-model-picker').click()
     await page.getByTestId('model-picker').getByRole('button', { name: 'Pi', exact: true }).click()
     await page
       .getByTestId('model-picker')
-      .getByRole('option', { name: /^Test Model.*Pi/ })
+      .getByRole('option', { name: 'Test Model · test-provider', exact: true })
       .click()
-    await expect(nextChat.getByTestId('chat-model-picker')).toContainText('Pi')
+    await expectPickerHarness(nextChat.getByTestId('chat-model-picker'), 'pi')
     await nextChat.getByRole('textbox', { name: 'Message agent' }).fill('hello Pi')
     await nextChat.getByRole('button', { name: 'Send message', exact: true }).click()
     await expect(nextChat.getByTestId('chat-transcript')).toContainText('Adapter connected.')
@@ -594,7 +603,7 @@ test('queued messages during a running turn can be steered in immediately or sen
     if ((await projectRow.getAttribute('aria-expanded')) === 'false') await projectRow.click()
     await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
     await page.getByRole('button', { name: /^New Agent tab/ }).click()
-    await expect(page.getByTestId('chat-model-picker')).toContainText('Claude Code')
+    await expectPickerHarness(page.getByTestId('chat-model-picker'), 'claude')
     const message = page.getByRole('textbox', { name: 'Message agent' })
     const send = page.getByRole('button', { name: 'Send message', exact: true })
     await message.fill('slow')
@@ -667,15 +676,16 @@ test.describe('unavailable native installations', () => {
       )
       await page.reload()
       await page.locator(`button[data-workspace-id="${project.workspaces[0].id}"]`).click()
+      await mkdir('/tmp/cerebro-chat-evidence', { recursive: true })
       await page.getByRole('textbox', { name: 'Message agent' }).fill('hello')
       await page.getByRole('button', { name: 'Send message', exact: true }).click()
-      await expect(page.getByRole('alert')).toContainText('Choose an available model')
+      await expect(page.getByTestId('chat-notice-toast')).toContainText('Choose an available model')
+      await page.screenshot({ path: '/tmp/cerebro-chat-evidence/model-required-toast.png' })
       await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled()
       await page.getByTestId('chat-model-picker').click()
       await expect(page.getByTestId('model-picker')).toContainText('Unavailable')
       await page.getByText('Claude Code setup details', { exact: true }).click()
       await expect(page.getByTestId('model-picker')).toContainText('not installed or not on PATH')
-      await mkdir('/tmp/cerebro-chat-evidence', { recursive: true })
       await page.screenshot({ path: '/tmp/cerebro-chat-evidence/setup.png' })
     } finally {
       await rm(directory, { recursive: true, force: true })
@@ -823,7 +833,7 @@ test('image attachments use atomic chips, reach the harness, render in the trans
       .click()
     await page
       .getByTestId('model-picker')
-      .getByRole('option', { name: /^Test Model.*Codex/ })
+      .getByRole('option', { name: 'Test Model', exact: true })
       .click()
     await textbox.fill('attachments here')
     await placeCaret(11)
@@ -894,7 +904,7 @@ test('image attachments use atomic chips, reach the harness, render in the trans
       .click()
     await page
       .getByTestId('model-picker')
-      .getByRole('option', { name: /^Test Model.*Codex/ })
+      .getByRole('option', { name: 'Test Model', exact: true })
       .click()
     await chat.getByRole('button', { name: 'Send message', exact: true }).click()
     const transcript = chat.getByTestId('chat-transcript')
@@ -925,10 +935,12 @@ test('image attachments use atomic chips, reach the harness, render in the trans
     await chat.getByTestId('chat-model-picker').click()
     await page
       .getByTestId('model-picker')
-      .getByRole('option', { name: /^Second Model.*Codex/ })
+      .getByRole('option', { name: 'Second Model', exact: true })
       .click()
     await paste('refused.png')
-    await expect(chat.getByRole('alert')).toContainText('Second Model does not accept images')
+    await expect(page.getByTestId('chat-notice-toast')).toContainText(
+      'Second Model does not accept images'
+    )
     await expect(attachments).toHaveCount(0)
     await page.screenshot({ path: '/tmp/cerebro-chat-evidence/attachments-text-only.png' })
   } finally {
@@ -1044,7 +1056,7 @@ test('multi-root root row keeps agent status inside the row chrome', async ({ pa
       .click()
     await page
       .getByTestId('model-picker')
-      .getByRole('option', { name: /^Test Model.*Codex/ })
+      .getByRole('option', { name: 'Test Model', exact: true })
       .click()
     await page.getByRole('combobox', { name: 'Access mode' }).selectOption('edit')
     await page.getByRole('textbox', { name: 'Message agent' }).fill('approval')
@@ -1192,7 +1204,7 @@ test('agent pane loading does not flash empty placeholder before session is conf
     await page.getByRole('button', { name: 'Codex', exact: true }).click()
     await page
       .getByTestId('model-picker')
-      .getByRole('option', { name: /^Test Model.*Codex/ })
+      .getByRole('option', { name: 'Test Model', exact: true })
       .click()
     await page.getByRole('textbox', { name: 'Message agent' }).fill('Persist through reload')
     await page.getByRole('button', { name: 'Send message', exact: true }).click()
@@ -1366,12 +1378,11 @@ test('new agent panes reuse the last model and settings choose each harness defa
     await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
     await page.getByRole('button', { name: /^New Agent tab/ }).click()
     const first = page.locator('[data-pane-kind="chat"]:visible')
-    await expect(first.getByTestId('chat-model-picker')).toContainText('Test Model')
-    await expect(first.getByTestId('chat-model-picker')).toContainText('Claude Code')
+    await expectPickerHarness(first.getByTestId('chat-model-picker'), 'claude', 'Test Model')
     await first.getByTestId('chat-model-picker').click()
     await page
       .getByTestId('model-picker')
-      .getByRole('option', { name: /^Test Sonnet.*Claude Code/ })
+      .getByRole('option', { name: /^Test Sonnet 5/ })
       .click()
     await expect(first.getByTestId('chat-model-picker')).toContainText('Test Sonnet')
     await expect
@@ -1388,8 +1399,11 @@ test('new agent panes reuse the last model and settings choose each harness defa
     await page.getByTestId('new-content-tab').click()
     await page.getByTestId('open-chat-tab').click()
     const remembered = page.locator('[data-pane-kind="chat"]:visible')
-    await expect(remembered.getByTestId('chat-model-picker')).toContainText('Test Sonnet')
-    await expect(remembered.getByTestId('chat-model-picker')).toContainText('Claude Code')
+    await expectPickerHarness(
+      remembered.getByTestId('chat-model-picker'),
+      'claude',
+      'Test Sonnet 5'
+    )
     await page.screenshot({ path: testInfo.outputPath('agent-model-remembered.png') })
 
     await page.getByRole('button', { name: 'Settings', exact: true }).click()
@@ -1413,9 +1427,11 @@ test('new agent panes reuse the last model and settings choose each harness defa
     await page.getByRole('button', { name: 'Back' }).click()
     await page.getByTestId('new-content-tab').click()
     await page.getByTestId('open-chat-tab').click()
-    await expect(
-      page.locator('[data-pane-kind="chat"]:visible').getByTestId('chat-model-picker')
-    ).toContainText('Test Model · Claude Code')
+    await expectPickerHarness(
+      page.locator('[data-pane-kind="chat"]:visible').getByTestId('chat-model-picker'),
+      'claude',
+      'Test Model'
+    )
 
     await page.evaluate(
       ({ sonnetKey }) =>
@@ -1430,9 +1446,11 @@ test('new agent panes reuse the last model and settings choose each harness defa
     )
     await page.reload()
     await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
-    await expect(
-      page.locator('[data-pane-kind="chat"]:visible').getByTestId('chat-model-picker')
-    ).toContainText('Second Model · Codex')
+    await expectPickerHarness(
+      page.locator('[data-pane-kind="chat"]:visible').getByTestId('chat-model-picker'),
+      'codex',
+      'Second Model'
+    )
     await expect
       .poll(async () => {
         const settings = await page.evaluate(() => window.cerebro.getSettings())
@@ -1515,7 +1533,7 @@ test('agent replies render rich markdown, local images, and never load remote im
       .click()
     await page
       .getByTestId('model-picker')
-      .getByRole('option', { name: /^Test Model.*Codex/ })
+      .getByRole('option', { name: 'Test Model', exact: true })
       .click()
     await chat.getByRole('textbox', { name: 'Message agent' }).fill(`markdown-rich ${imagePath}`)
     await chat.getByRole('button', { name: 'Send message', exact: true }).click()

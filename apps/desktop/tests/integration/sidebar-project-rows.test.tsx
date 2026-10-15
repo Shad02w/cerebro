@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, type RenderResult } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { SidebarGroupBy } from '@shared/types'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -55,6 +55,24 @@ const notes: Project = {
       branch: 'feature/labels',
       localPath: '/tmp/notes-labels',
       status: 'in_progress'
+    }),
+    workspace({
+      id: 13,
+      projectId: 1,
+      repositoryId: 1,
+      kind: 'worktree',
+      branch: 'feature/quiet',
+      localPath: '/tmp/notes-quiet',
+      status: 'todo'
+    }),
+    workspace({
+      id: 14,
+      projectId: 1,
+      repositoryId: 1,
+      kind: 'worktree',
+      branch: 'feature/done',
+      localPath: '/tmp/notes-done',
+      status: 'done'
     })
   ]
 }
@@ -131,17 +149,28 @@ function expectItemRow(row: HTMLElement, role: string): void {
   expect(row.className).not.toContain('text-sidebar-foreground/60')
 }
 
-function renderSidebar(sidebarGroupBy: SidebarGroupBy = 'project'): void {
+/** Icon, name, and row buttons share one name line instead of a font baseline. */
+function expectSharedNameLine(row: HTMLElement): void {
+  const line = row.querySelector('[data-row-line]')
+  expect(line).not.toBeNull()
+  expect(line?.querySelector('[data-row-label]')?.textContent).toMatch(/\S/)
+  expect(line?.querySelector('.align-baseline')).toBeNull()
+}
+
+function sidebarElement(
+  sidebarGroupBy: SidebarGroupBy = 'project',
+  activeWorkspaceId = 11
+): React.JSX.Element {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } }
   })
-  render(
+  return (
     <QueryClientProvider client={client}>
       <SidebarProvider>
         <AppSidebar
           mode="projects"
           projects={[notes, apps]}
-          activeWorkspaceId={11}
+          activeWorkspaceId={activeWorkspaceId}
           settingsSection="general"
           onSelectWorkspace={vi.fn()}
           onAddProject={vi.fn()}
@@ -159,6 +188,13 @@ function renderSidebar(sidebarGroupBy: SidebarGroupBy = 'project'): void {
       </SidebarProvider>
     </QueryClientProvider>
   )
+}
+
+function renderSidebar(
+  sidebarGroupBy: SidebarGroupBy = 'project',
+  activeWorkspaceId = 11
+): RenderResult {
+  return render(sidebarElement(sidebarGroupBy, activeWorkspaceId))
 }
 
 describe('sidebar project rows', () => {
@@ -193,32 +229,43 @@ describe('sidebar project rows', () => {
     expect(appsGroup?.className).toContain('not-first:mt-2.5')
     expect(notesRow.closest('[data-sidebar="menu"]')?.className).toContain('gap-0')
 
+    const notesActions = notesRow
+      .closest('[data-sidebar="menu-row"]')
+      ?.querySelector('.sidebar-row-actions')
+    expect(notesActions).toHaveAttribute('data-overlay')
+    expect(notesActions?.querySelector('[data-testid="project-menu-1"]')).not.toBeNull()
+    expect(notesActions?.querySelector('[data-testid="project-add-workspace-1"]')).not.toBeNull()
+    expectSharedNameLine(notesRow)
+
     const mainRow = screen.getByTestId('workspace-row-11')
     const worktreeRow = screen.getByTestId('workspace-row-12')
     expectItemRow(mainRow, 'branch')
     expectItemRow(worktreeRow, 'branch')
     for (const row of [mainRow, worktreeRow]) {
-      const label = row.querySelector('[data-workspace-label]')
-      expect(label?.className).toContain('leading-normal')
-      expect(label?.className).not.toContain('leading-none')
-      expect(label?.querySelector('.align-baseline')).not.toBeNull()
-      expect(label?.textContent).toMatch(/\S/)
+      expectSharedNameLine(row)
+      expect(row.querySelector('[data-row-icon]')).not.toBeNull()
+      expect(row.querySelector('.align-baseline')).toBeNull()
+      expect(
+        row.closest('[data-sidebar="menu-row"]')?.querySelector('.sidebar-row-actions')
+      ).toHaveAttribute('data-overlay')
     }
-    expect(mainRow.closest('[data-workspace-lines]')).toHaveAttribute('data-workspace-lines', '1')
-    expect(worktreeRow.closest('[data-workspace-lines]')).toHaveAttribute(
-      'data-workspace-lines',
-      '1'
-    )
 
     await user.click(appsRow)
     const rootRow = screen.getByTestId('project-root-2')
     expectItemRow(rootRow, 'root')
-    const rootLabel = rootRow.querySelector('[data-workspace-label]')
-    expect(rootLabel?.className).toContain('leading-normal')
-    expect(rootLabel?.querySelector('.align-baseline')).not.toBeNull()
-    expect(rootRow.closest('[data-workspace-lines]')).toHaveAttribute('data-workspace-lines', '1')
-    expectItemRow(screen.getByTestId('workspace-row-22'), 'repository')
+    expectSharedNameLine(rootRow)
+    expect(rootRow.querySelector('[data-row-icon]')).not.toBeNull()
+    expect(rootRow.querySelector('.align-baseline')).toBeNull()
+    expect(
+      rootRow.closest('[data-sidebar="menu-row"]')?.querySelector('.sidebar-row-actions')
+    ).not.toHaveAttribute('data-overlay')
+    const repoRow = screen.getByTestId('workspace-row-22')
+    expectItemRow(repoRow, 'repository')
     expectItemRow(screen.getByTestId('workspace-row-23'), 'repository')
+    expectSharedNameLine(repoRow)
+    const branchLine = screen.getByTestId('workspace-branch-22')
+    expect(branchLine).toHaveAttribute('data-branch-line')
+    expect(branchLine.querySelector('.align-baseline')).toBeNull()
 
     cleanup()
     renderSidebar('status')
@@ -229,7 +276,7 @@ describe('sidebar project rows', () => {
     expectSectionLabel(statusApps)
     expect(statusNotes).toHaveAttribute('data-project-icon', 'avatar')
     expect(statusApps).toHaveAttribute('data-project-icon', 'folders')
-    expect(statusApps.closest('li')?.className).toContain('not-first:mt-2.5')
+    expect(statusApps.closest('[data-slot="collapsible"]')?.className).toContain('not-first:mt-2.5')
     expect(statusNotes.closest('[data-sidebar="status-projects"]')?.className).toContain('gap-0')
 
     const header = screen.getByTestId('status-group-in_progress')
@@ -239,5 +286,120 @@ describe('sidebar project rows', () => {
 
     expectItemRow(screen.getByTestId('workspace-row-12'), 'branch')
     expectItemRow(screen.getByTestId('project-root-2'), 'root')
+
+    const todoHeader = screen.getByTestId('status-group-todo')
+    const doneHeader = screen.getByTestId('status-group-done')
+    expect(todoHeader.className).toContain('text-sky-700')
+    expect(todoHeader.className).not.toContain('text-sidebar-foreground/80')
+    expect(doneHeader.className).toContain('text-sidebar-foreground/80')
+    expect(doneHeader.className).not.toContain('text-sky-700')
+    expect(screen.getByTestId('status-group-in_progress').className).toContain('text-amber-700')
+    expect(screen.getByTestId('status-group-ready_to_review').className).toContain(
+      'text-emerald-700'
+    )
+    expect(screen.getByTestId('status-count-todo').className).toContain('bg-sky-500/15')
+    expect(screen.getByTestId('status-count-done').className).toContain('bg-sidebar-foreground/10')
+    const todoIcon = todoHeader.querySelector('[data-workspace-status-icon="todo"] svg')
+    const doneIcon = doneHeader.querySelector('[data-workspace-status-icon="done"] svg')
+    expect(todoIcon?.getAttribute('class')).toContain('text-sky-500')
+    expect(todoIcon?.getAttribute('class')).toContain('lucide-circle')
+    expect(todoIcon?.getAttribute('class')).not.toContain('lucide-circle-check')
+    expect(doneIcon?.getAttribute('class')).toContain('lucide-circle-check')
+
+    const quietRow = screen.getByTestId('workspace-row-13')
+    const selectedTodo = screen.getByTestId('workspace-row-11')
+    const progressRow = screen.getByTestId('workspace-row-12')
+    expect(quietRow).toHaveAttribute('data-todo-muted', 'true')
+    expect(quietRow.className).toContain('text-sidebar-foreground/55')
+    expect(screen.getByTestId('workspace-default-icon-13').className).toContain(
+      'text-sidebar-foreground/45'
+    )
+    expect(selectedTodo).not.toHaveAttribute('data-todo-muted')
+    expect(selectedTodo.className).not.toContain('text-sidebar-foreground/55')
+    expect(selectedTodo).toHaveAttribute('aria-current', 'location')
+    expect(progressRow).not.toHaveAttribute('data-todo-muted')
+    expect(screen.getByTestId('status-project-todo-1').className).toContain(
+      'text-sidebar-foreground/60'
+    )
+    expect(screen.getByTestId('status-project-todo-1').className).not.toContain(
+      'text-sidebar-foreground/55'
+    )
+
+    expect(screen.getByTestId('status-project-in_progress-1')).toHaveAttribute(
+      'aria-expanded',
+      'true'
+    )
+    expect(screen.getByTestId('status-project-menu-in_progress-1')).toBeInTheDocument()
+    expect(screen.getByTestId('status-project-add-in_progress-1')).toBeInTheDocument()
+    expect(screen.getByTestId('status-project-menu-in_progress-2')).toBeInTheDocument()
+    expect(screen.queryByTestId('status-project-add-in_progress-2')).not.toBeInTheDocument()
+
+    await user.click(screen.getByTestId('status-project-in_progress-1'))
+    expect(screen.getByTestId('status-project-in_progress-1')).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    )
+    expect(screen.queryByTestId('workspace-row-12')).not.toBeInTheDocument()
+    await user.click(screen.getByTestId('status-project-in_progress-1'))
+    expect(screen.getByTestId('workspace-row-12')).toBeInTheDocument()
+
+    const scroll = screen.getByTestId('sidebar-status-scroll')
+    expect(scroll).toContainElement(screen.getByTestId('status-group-in_progress'))
+    expect(scroll).toContainElement(screen.getByTestId('status-group-ready_to_review'))
+    // The selected workspace is Todo, and Done still starts open with its rows.
+    expect(scroll).toContainElement(doneHeader)
+    expect(doneHeader).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.queryByTestId('status-done-pinned')).not.toBeInTheDocument()
+    expect(screen.getByTestId('workspace-row-14')).toBeInTheDocument()
+
+    await user.click(screen.getByTestId('status-group-in_progress'))
+    expect(screen.getByTestId('sidebar-status-scroll')).toContainElement(
+      screen.getByTestId('status-group-in_progress')
+    )
+    expect(screen.getByTestId('sidebar-status-scroll')).toContainElement(
+      screen.getByTestId('status-group-done')
+    )
+
+    await user.click(screen.getByTestId('status-group-done'))
+    expect(screen.getByTestId('status-done-pinned')).toContainElement(
+      screen.getByTestId('status-group-done')
+    )
+    expect(screen.getByTestId('sidebar-status-scroll')).not.toContainElement(
+      screen.getByTestId('status-group-done')
+    )
+    expect(screen.getByTestId('status-group-done')).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByTestId('workspace-row-14')).not.toBeInTheDocument()
+
+    await user.click(screen.getByTestId('status-group-done'))
+    expect(screen.queryByTestId('status-done-pinned')).not.toBeInTheDocument()
+    expect(screen.getByTestId('sidebar-status-scroll')).toContainElement(
+      screen.getByTestId('status-group-done')
+    )
+    expect(screen.getByTestId('status-group-done')).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByTestId('workspace-row-14')).toBeInTheDocument()
+  })
+
+  it('keeps an expanded Done group in the scrolling list', () => {
+    renderSidebar('status', 14)
+    expect(screen.queryByTestId('status-done-pinned')).not.toBeInTheDocument()
+    expect(screen.getByTestId('sidebar-status-scroll')).toContainElement(
+      screen.getByTestId('status-group-done')
+    )
+    expect(screen.getByTestId('status-group-done')).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('reopens Done when the selected workspace moves into it', async () => {
+    const user = userEvent.setup()
+    const view = renderSidebar('status', 11)
+    await user.click(screen.getByTestId('status-group-done'))
+    expect(screen.getByTestId('status-group-done')).toHaveAttribute('aria-expanded', 'false')
+
+    view.rerender(sidebarElement('status', 14))
+    expect(screen.getByTestId('status-group-done')).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.queryByTestId('status-done-pinned')).not.toBeInTheDocument()
+    expect(screen.getByTestId('sidebar-status-scroll')).toContainElement(
+      screen.getByTestId('status-group-done')
+    )
+    expect(screen.getByTestId('workspace-row-14')).toHaveAttribute('aria-current', 'location')
   })
 })

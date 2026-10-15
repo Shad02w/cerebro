@@ -1,10 +1,27 @@
-import type { AgentDelta } from '@cerebro/core'
+import { skillPromptText, type AgentDelta, type ChatSkillMention } from '@cerebro/core'
 import { randomUUID } from 'node:crypto'
 import { JsonProcess, executable, describe, type Frame } from '../transport'
 import type { AgentAdapter, AutonomousTurn } from './adapter'
 import { activeTurn, inline, item, model, modalities } from './shared'
+import { piSkills } from '../skills'
+
+const promptText = (text: string, skills?: ChatSkillMention[]): string =>
+  skillPromptText(text, skills ?? [])
 
 export const piAdapter: AgentAdapter = {
+  async skills(cwd) {
+    const rpc = new JsonProcess(
+      executable('pi'),
+      ['--mode', 'rpc', '--no-session', '--no-extensions'],
+      cwd,
+      true
+    )
+    try {
+      return piSkills(await rpc.request('get_commands'))
+    } finally {
+      rpc.close()
+    }
+  },
   async models(cwd) {
     const rpc = new JsonProcess(
       executable('pi'),
@@ -197,7 +214,7 @@ export const piAdapter: AgentAdapter = {
           if (state.sessionFile) context.emit({ type: 'binding', nativeId: state.sessionFile })
           if (current !== turn) return await ended
           await rpc.request('prompt', {
-            message: context.text,
+            message: promptText(context.text, context.skills),
             ...(context.attachments?.length
               ? {
                   images: context.attachments.map((attachment) => ({
@@ -208,9 +225,9 @@ export const piAdapter: AgentAdapter = {
                 }
               : {})
           })
-          context.registerSteer?.(async (text, steerAttachments) => {
+          context.registerSteer?.(async (text, steerAttachments, skills) => {
             await rpc.request('prompt', {
-              message: text,
+              message: promptText(text, skills),
               streamingBehavior: 'steer',
               ...(steerAttachments.length
                 ? {

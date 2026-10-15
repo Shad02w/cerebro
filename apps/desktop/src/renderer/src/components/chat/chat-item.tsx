@@ -1,9 +1,16 @@
 import { memo, useState } from 'react'
-import type { AgentAnswer, ChatItem as Item } from '@cerebro/core'
+import type { AgentAnswer, AgentSkill, ChatItem as Item } from '@cerebro/core'
+import { Brain, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { AgentMarkdown } from '@/components/markdown/agent-markdown'
+import { cn } from '@/lib/utils'
+import './chat-status.css'
 import { ChatAgentFinished } from './chat-agent-finished'
+import { commandInputDetail, commandRun, toolCallSummary } from './command-preview'
+import { workingHeading } from './working-label'
+import { useTurnDuration } from './turn-durations'
 import { ChatDiff } from './chat-diff'
+import { ToolTypeIcon } from './tool-type-icon'
 import { ChatTaskOutcome } from './chat-task-outcome'
 import { ChatUserMessage } from './chat-user-message'
 
@@ -90,17 +97,159 @@ function RequestCard({
   )
 }
 
+/** Shared with reasoning rows so the working-section chrome cannot drift. */
+const workingRowSummaryClass =
+  'flex min-w-0 cursor-pointer list-none items-baseline gap-2 py-1 text-xs text-muted-foreground [&::-webkit-details-marker]:hidden [&::marker]:content-none'
+
+/** Tool output and expanded reasoning use the same body. */
+const workingRowOutputClass =
+  'mt-1 max-h-96 overflow-auto pl-6 text-xs leading-5 whitespace-pre-wrap break-words'
+
+/**
+ * The truncating line stays `display: block`. The shimmer paints an inner inline span.
+ * `.chat-working` used to set `inline-block` on this line, and a long Bash command then
+ * changed the flex baseline and row height for the whole time it was running.
+ */
+function WorkingLabel({
+  testId,
+  line,
+  running
+}: {
+  testId: string
+  line: string
+  running: boolean
+}): React.JSX.Element {
+  return (
+    <span data-testid={testId} className="block w-full truncate">
+      <span className={cn(running && 'chat-working')}>{line}</span>
+    </span>
+  )
+}
+
+function ToolCallLine({ item }: { item: Item }): React.JSX.Element {
+  const run = commandRun(item)
+  const summary = toolCallSummary(item)
+  const running = item.status === 'running'
+  const detail = run ? commandInputDetail(item.input, run.command) : item.input
+  return (
+    <details className="min-w-0" data-testid={run ? 'command-run' : 'tool-call'}>
+      <summary className={workingRowSummaryClass}>
+        <ToolTypeIcon
+          name={run ? 'shell' : undefined}
+          title={run ? undefined : item.title}
+          className="relative top-px"
+        />
+        <span className="min-w-0 flex-1">
+          <WorkingLabel
+            testId={run ? 'command-preview' : 'tool-summary'}
+            line={summary.line}
+            running={running}
+          />
+        </span>
+      </summary>
+      {run?.command ? (
+        <pre
+          data-testid="command-full"
+          className="mt-1 max-h-60 overflow-auto pl-6 font-mono text-xs leading-5 whitespace-pre-wrap break-words"
+        >
+          {run.command}
+        </pre>
+      ) : null}
+      {detail ? (
+        <pre className="my-1 max-h-60 overflow-auto pl-6 text-xs whitespace-pre-wrap break-words text-muted-foreground">
+          {detail}
+        </pre>
+      ) : null}
+      {item.text ? <pre className={workingRowOutputClass}>{item.text}</pre> : null}
+    </details>
+  )
+}
+
+function ReasoningLine({ item }: { item: Item }): React.JSX.Element {
+  const running = item.status === 'running'
+  const label = item.title?.trim() || 'Reasoning'
+  return (
+    <details className="min-w-0" data-testid="reasoning">
+      <summary className={workingRowSummaryClass}>
+        <Brain aria-hidden="true" className="relative top-px size-3.5 shrink-0" />
+        <span className="min-w-0 flex-1">
+          <WorkingLabel testId="reasoning-summary" line={label} running={running} />
+        </span>
+      </summary>
+      {item.text ? <pre className={workingRowOutputClass}>{item.text}</pre> : null}
+    </details>
+  )
+}
+
+/** The latest item that has not settled. Completed calls stay in the finished group. */
+function liveWorkingItem(items: readonly Item[]): Item | undefined {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index]
+    if (!item) continue
+    if (item.status === 'completed' || item.status === 'failed' || item.status === 'interrupted')
+      continue
+    return item
+  }
+  return undefined
+}
+
+/** Every tool call from one turn, as a single expandable once the reply has ended. */
+export function WorkingGroup({
+  items,
+  live = false
+}: {
+  items: Item[]
+  live?: boolean
+}): React.JSX.Element {
+  const seconds = useTurnDuration(items[0]?.turnId)
+  if (live) {
+    const current = liveWorkingItem(items)
+    return (
+      <div data-testid="working-live">
+        {current ? <WorkingEntry key={current.id} item={current} /> : null}
+      </div>
+    )
+  }
+  return (
+    <details className="group min-w-0" data-testid="working-group">
+      <summary className="flex min-w-0 cursor-pointer list-none items-center gap-1 py-1 text-sm text-muted-foreground [&::-webkit-details-marker]:hidden [&::marker]:content-none">
+        <span className="min-w-0 truncate">{workingHeading(seconds)}</span>
+        <ChevronRight
+          aria-hidden
+          data-testid="working-disclosure"
+          className="size-3.5 shrink-0 transition-transform group-open:rotate-90 motion-reduce:transition-none"
+        />
+      </summary>
+      <div className="pl-4">
+        {items.map((item) => (
+          <WorkingEntry key={item.id} item={item} />
+        ))}
+      </div>
+    </details>
+  )
+}
+
+function WorkingEntry({ item }: { item: Item }): React.JSX.Element {
+  if (item.kind === 'tool') return <ToolCallLine item={item} />
+  if (item.kind === 'reasoning') return <ReasoningLine item={item} />
+  return <TranscriptDetails item={item} />
+}
+
+const noSkills: readonly AgentSkill[] = []
+
 export const ChatItem = memo(function ChatItem({
   item,
   onReply,
   workspaceId,
   sessionId,
+  skills = noSkills,
   streaming = false
 }: {
   item: Item
   onReply: (id: string, answer: AgentAnswer) => void
   workspaceId: number
   sessionId: string
+  skills?: readonly AgentSkill[]
   streaming?: boolean
 }): React.JSX.Element {
   if (item.kind === 'request') return <RequestCard item={item} onReply={onReply} />
@@ -111,6 +260,7 @@ export const ChatItem = memo(function ChatItem({
         attachments={item.attachments}
         workspaceId={workspaceId}
         sessionId={sessionId}
+        skills={skills}
       />
     )
   if (item.kind === 'text') return <AgentMarkdown text={item.text} streaming={streaming} />
@@ -132,6 +282,12 @@ export const ChatItem = memo(function ChatItem({
         {item.text}
       </p>
     )
+  if (item.kind === 'tool') return <ToolCallLine item={item} />
+  if (item.kind === 'reasoning') return <ReasoningLine item={item} />
+  return <TranscriptDetails item={item} />
+})
+
+function TranscriptDetails({ item }: { item: Item }): React.JSX.Element {
   return (
     <details
       className="min-w-0 rounded-xl border border-border/70 bg-muted/15 px-3 py-2"
@@ -156,4 +312,4 @@ export const ChatItem = memo(function ChatItem({
       )}
     </details>
   )
-})
+}

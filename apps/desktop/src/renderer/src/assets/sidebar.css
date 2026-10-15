@@ -1,4 +1,8 @@
 /* App-specific tree styling; shared pane selection keeps its existing treatment. */
+.cerebro-sidebar {
+  --sidebar-row-line: 2rem;
+}
+
 .cerebro-sidebar [data-sidebar='group'] {
   padding-inline: 12px;
 }
@@ -6,9 +10,9 @@
 /* Project rows are section labels: 12px, medium, about 60% of the sidebar foreground.
    No fill at rest or on hover. Workspace rows keep their size, contrast, and selection. */
 .cerebro-sidebar .sidebar-project-button {
-  min-height: 34px;
+  min-height: var(--sidebar-row-line);
   height: auto;
-  gap: 7px;
+  gap: 0;
   font-size: 12px;
   font-weight: 500;
   color: color-mix(in oklch, var(--sidebar-foreground) 60%, transparent);
@@ -26,9 +30,7 @@
   box-shadow: none;
 }
 
-.cerebro-sidebar .sidebar-project-button > svg {
-  width: 15px;
-  height: 15px;
+.cerebro-sidebar .sidebar-project-button [data-row-icon] {
   color: color-mix(in oklch, var(--sidebar-foreground) 60%, transparent);
 }
 
@@ -51,56 +53,101 @@
 
 .cerebro-sidebar [data-workspace-role='branch'],
 .cerebro-sidebar [data-workspace-role='root'] {
-  min-height: 32px;
+  min-height: var(--sidebar-row-line);
   height: auto;
   font-size: 12px;
 }
 
-/* A pull-request icon sits on the same anchor as the in-row spacer, so it
-   shares the name's baseline. The fallback centers it if anchor positioning
-   is unavailable. */
-[data-branch-icon-anchor] {
-  anchor-name: var(--branch-anchor);
+/* One line box for the icon, the name, and the row buttons. Centering in this
+   box does not follow the font baseline, which sits low and moves with the font. */
+.cerebro-sidebar [data-row-line] {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  height: var(--sidebar-row-line);
+  gap: 0.375rem;
 }
 
-.workspace-branch-icon-anchor {
-  position: absolute;
-  z-index: 10;
-  top: 50%;
-  left: 0.5rem;
+.cerebro-sidebar [data-row-icon] {
+  display: inline-flex;
   width: 1rem;
   height: 1rem;
-  translate: 0 -50%;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
 }
 
-@supports (anchor-name: --a) {
-  .workspace-branch-icon-anchor {
-    position-anchor: var(--branch-anchor);
-    top: anchor(top);
-    left: anchor(left);
-    width: anchor-size(width);
-    height: anchor-size(height);
-    translate: none;
-  }
+.cerebro-sidebar [data-row-icon] > svg,
+.cerebro-sidebar [data-row-icon] > span {
+  width: 100%;
+  height: 100%;
 }
 
-.cerebro-sidebar [data-workspace-lines='1'] [data-sidebar='menu-action'].workspace-row-menu {
-  top: 50%;
-  translate: 0 -50%;
+.cerebro-sidebar [data-row-label] {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1rem;
+  text-align: left;
 }
 
-.cerebro-sidebar [data-workspace-role='repository'] {
-  padding-block: 8px;
+/* Pull a second line up into the name line's lower half so the name stays
+   centered with the buttons without a gap under the text. */
+.cerebro-sidebar [data-branch-line] {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 0.25rem;
+  margin-top: -0.375rem;
+}
+
+.cerebro-sidebar .workspace-pr-icon-overlay {
+  position: absolute;
+  top: 0;
+  left: 0.5rem;
+  display: flex;
+  width: 1rem;
+  height: var(--sidebar-row-line);
+  align-items: center;
+  pointer-events: none;
+}
+
+.cerebro-sidebar .sidebar-row-actions {
+  display: flex;
+  height: var(--sidebar-row-line);
+  flex-shrink: 0;
+  align-items: center;
+  gap: 2px;
+}
+
+.cerebro-sidebar .sidebar-row-actions[data-overlay] {
+  position: absolute;
+  top: 0;
+  right: 0.25rem;
+  pointer-events: none;
+}
+
+.cerebro-sidebar .sidebar-row-actions [data-sidebar='menu-action'] {
+  position: static;
+  top: auto;
+  right: auto;
+  translate: none;
+  pointer-events: auto;
+}
+
+.cerebro-sidebar
+  [data-sidebar='menu-row']:is(:hover, :focus-within)
+  .sidebar-row-actions[data-overlay]
+  [data-sidebar='menu-action'] {
+  color: var(--sidebar-accent-foreground);
 }
 
 .cerebro-sidebar [data-sidebar='menu-action'] {
-  top: 5px;
   width: 22px;
   height: 22px;
-}
-
-.cerebro-sidebar [data-sidebar='menu-action'].right-6 {
-  right: 28px;
 }
 
 .cerebro-sidebar [data-sidebar='menu-action'],
@@ -221,6 +268,6 @@
   color: color-mix(in oklch, var(--sidebar-foreground) 60%, transparent);
 }
 
-.cerebro-sidebar .sidebar-project-button > svg {
+.cerebro-sidebar .sidebar-project-button [data-row-icon] {
   color: color-mix(in oklch, var(--sidebar-foreground) 60%, transparent);
 }

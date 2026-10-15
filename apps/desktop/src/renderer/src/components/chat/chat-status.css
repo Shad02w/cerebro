@@ -1,5 +1,5 @@
 .chat-working {
-  display: inline-block;
+  /* No display change. On a truncated Bash line, inline-block shifts the row baseline. */
   color: transparent;
   background: linear-gradient(
     110deg,

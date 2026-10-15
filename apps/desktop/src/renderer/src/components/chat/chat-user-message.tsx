@@ -1,15 +1,17 @@
 import { useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Copy } from 'lucide-react'
-import type { ChatAttachment } from '@cerebro/core'
+import type { AgentSkill, ChatAttachment } from '@cerebro/core'
 import { Button } from '@/components/ui/button'
 import { ImagePreviewDialog } from '@/components/image-preview-dialog'
 import { SuccessToast } from '@/components/success-toast'
 import { useClipboard } from '@/hooks/use-clipboard'
 import { dataUrl } from './chat-attachments'
 import { ComposerMessage } from './composer-editor'
+import { loadWorkspaceFiles } from './workspace-files'
 
 const noAttachments: ChatAttachment[] = []
+const noSkills: readonly AgentSkill[] = []
 
 function AttachmentImage({
   workspaceId,
@@ -41,14 +43,21 @@ function AttachmentImage({
 export function ChatUserMessage({
   text,
   attachments = noAttachments,
+  skills = noSkills,
   workspaceId,
   sessionId
 }: {
   text: string
   attachments?: ChatAttachment[]
+  skills?: readonly AgentSkill[]
   workspaceId: number
   sessionId: string
 }): React.JSX.Element {
+  const files = useQuery({
+    queryKey: ['workspace-files', workspaceId],
+    queryFn: () => loadWorkspaceFiles(workspaceId),
+    staleTime: 15_000
+  })
   const copy = useClipboard()
   const [toast, setToast] = useState<{ id: number; message: string } | null>(null)
   const [error, setError] = useState(false)
@@ -95,6 +104,8 @@ export function ChatUserMessage({
           <ComposerMessage
             text={text}
             attachments={attachments}
+            files={files.data}
+            skills={skills}
             onImageChip={(attachmentId) => {
               const attachment = attachments.find((item) => item.id === attachmentId)
               if (attachment) setPreview(attachment)

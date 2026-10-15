@@ -1,3 +1,5 @@
+import type { ChatSkillMention } from './skills'
+
 /** Transport-independent local agent contract. Native wire frames never cross this boundary. */
 export type AgentAccessMode = 'full' | 'edit' | 'read'
 export type AgentHarness = 'claude' | 'codex' | 'pi'
@@ -109,6 +111,8 @@ export type QueuedMessage = {
   id: string
   text: string
   attachments?: ChatAttachment[]
+  /** Resolved mentions. Absent on messages queued before skills existed. */
+  skills?: ChatSkillMention[]
   model: AgentModel
   reasoning?: string
   accessMode?: AgentAccessMode
@@ -337,6 +341,8 @@ export type ChatCommand = {
   commandId?: string
   text?: string
   attachments?: ChatAttachmentUpload[]
+  /** Skills mentioned in `text`. The host turns each name into that harness's prompt form. */
+  skills?: Array<{ name: string; path?: string }>
   model?: AgentModel
   reasoning?: string
   accessMode?: AgentAccessMode
@@ -355,5 +361,7 @@ export type AgentDelta =
   | { type: 'usage'; usage: AgentContextUsage }
   /** Replaces the session checklist. Not a patch and not a provider event. */
   | { type: 'todo'; todo: TodoSnapshot }
+  /** Shown on the session while a turn continues, or while idle after the runtime reports a problem. */
+  | { type: 'alert'; message: string }
 export type AgentAnswer = { allow: boolean; answers: Record<string, string[]> }
 export type AgentRequest = NonNullable<ChatItem['request']> & { title: string; text: string }
