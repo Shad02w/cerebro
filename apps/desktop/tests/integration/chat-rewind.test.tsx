@@ -179,6 +179,12 @@ describe('chat rewind', () => {
       within(screen.getByTestId('chat-composer')).queryByTestId('chat-rewind-notice')
     ).toBeNull()
     expect(notice).toHaveTextContent('Rewound to this response. Files were not restored.')
+    const undo = within(notice).getByTestId('chat-rewind-undo')
+    expect(undo).toHaveAttribute('data-variant', 'outline')
+    expect(
+      undo.compareDocumentPosition(within(notice).getByText(/Rewound to this response/)) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
     const separator = screen.getByRole('separator', { name: 'End of response' })
     expect(
       separator.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_FOLLOWING

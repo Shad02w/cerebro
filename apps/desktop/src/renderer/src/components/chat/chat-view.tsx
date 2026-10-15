@@ -559,17 +559,13 @@ export function ChatView({
               {session?.rewind ? (
                 <div
                   data-testid="chat-rewind-notice"
-                  className="flex items-center justify-between gap-3 py-1 text-xs text-muted-foreground"
+                  className="flex items-center gap-3 py-1 text-xs"
                 >
-                  <p>
-                    {session.items.length
-                      ? 'Rewound to this response. Files were not restored.'
-                      : 'Rewound to the start. Files were not restored.'}
-                  </p>
                   <Button
                     type="button"
-                    variant="ghost"
+                    variant="outline"
                     size="xs"
+                    className="shrink-0 font-medium text-foreground"
                     data-testid="chat-rewind-undo"
                     onClick={() => {
                       void undoRewind()
@@ -577,6 +573,11 @@ export function ChatView({
                   >
                     Undo
                   </Button>
+                  <p className="text-muted-foreground">
+                    {session.items.length
+                      ? 'Rewound to this response. Files were not restored.'
+                      : 'Rewound to the start. Files were not restored.'}
+                  </p>
                 </div>
               ) : null}
               {session?.status === 'running' ? (

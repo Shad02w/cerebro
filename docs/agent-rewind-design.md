@@ -288,11 +288,11 @@ transcript
   user bubble                    Rewind  Copy
   assistant response
   ──────── End of response  Fork ────
-  Rewound to this response. Files were not restored.        [Undo]
+  [Undo]  Rewound to this response. Files were not restored.
 bottom composer, containing the prompt that was rewound
 ```
 
-The Undo line is the next transcript row after the kept prefix. That prefix ends at the response before the prompt whose Rewind was clicked, so the line sits directly under that response (under its "End of response" row). It is one line: the description on the left, the Undo button on the right. It is not a second composer and it does not sit in the composer dock.
+The Undo line is the next transcript row after the kept prefix. That prefix ends at the response before the prompt whose Rewind was clicked, so the line sits directly under that response (under its "End of response" row). It is one line: an outlined Undo button on the left, then the description. It is not a second composer and it does not sit in the composer dock.
 
 When the rewound prompt is the first one, there is no earlier response. The same one line is the only transcript row, and the bottom composer holds that first prompt.
 
