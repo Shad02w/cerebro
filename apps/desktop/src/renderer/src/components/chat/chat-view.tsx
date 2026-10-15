@@ -575,8 +575,8 @@ export function ChatView({
                   </Button>
                   <p className="text-muted-foreground">
                     {session.items.length
-                      ? 'Rewound to this response. Files were not restored.'
-                      : 'Rewound to the start. Files were not restored.'}
+                      ? 'Rewound to this response. Changes were not restored.'
+                      : 'Rewound to the start. Changes were not restored.'}
                   </p>
                 </div>
               ) : null}

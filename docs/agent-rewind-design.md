@@ -288,7 +288,7 @@ transcript
   user bubble                    Rewind  Copy
   assistant response
   ──────── End of response  Fork ────
-  [Undo]  Rewound to this response. Files were not restored.
+  [Undo]  Rewound to this response. Changes were not restored.
 bottom composer, containing the prompt that was rewound
 ```
 
@@ -298,8 +298,8 @@ When the rewound prompt is the first one, there is no earlier response. The same
 
 Description, one line:
 
-- `Rewound to this response. Files were not restored.`
-- First prompt, when nothing remains above the line: `Rewound to the start. Files were not restored.`
+- `Rewound to this response. Changes were not restored.`
+- First prompt, when nothing remains above the line: `Rewound to the start. Changes were not restored.`
 
 Placement details:
 

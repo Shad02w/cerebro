@@ -178,7 +178,7 @@ describe('chat rewind', () => {
     expect(
       within(screen.getByTestId('chat-composer')).queryByTestId('chat-rewind-notice')
     ).toBeNull()
-    expect(notice).toHaveTextContent('Rewound to this response. Files were not restored.')
+    expect(notice).toHaveTextContent('Rewound to this response. Changes were not restored.')
     const undo = within(notice).getByTestId('chat-rewind-undo')
     expect(undo).toHaveAttribute('data-variant', 'outline')
     expect(
@@ -205,7 +205,7 @@ describe('chat rewind', () => {
   it('uses the start copy when the first prompt is the cut', async () => {
     renderChat(atStart)
     expect(await screen.findByTestId('chat-rewind-notice')).toHaveTextContent(
-      'Rewound to the start. Files were not restored.'
+      'Rewound to the start. Changes were not restored.'
     )
     expect(screen.queryByRole('separator', { name: 'End of response' })).toBeNull()
     expect(screen.getByTestId('chat-composer')).toHaveAttribute('data-dock', 'bottom')

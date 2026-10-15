@@ -63,7 +63,7 @@ test('rewind puts the prompt in the composer and undo restores the turn', async 
     await expect(chat.getByTestId('chat-transcript')).toContainText('Adapter connected.')
     await expect(chat.getByTestId('chat-transcript')).not.toContainText('second prompt')
     const notice = chat.getByTestId('chat-rewind-notice')
-    await expect(notice).toHaveText(/Rewound to this response\. Files were not restored\./)
+    await expect(notice).toHaveText(/Rewound to this response\. Changes were not restored\./)
     await expect(notice.getByTestId('chat-rewind-undo')).toHaveText('Undo')
     await expect(chat.getByTestId('chat-composer').getByTestId('chat-rewind-notice')).toHaveCount(0)
     const underResponse = await chat.getByTestId('chat-transcript').evaluate((node) => {
