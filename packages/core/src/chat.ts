@@ -130,9 +130,17 @@ export type AgentSubagent = {
   title: string
   status: AgentSubagentStatus
   createdAt: number
-  /** Set when the child starts running. Absent until then, and the panel hides elapsed. */
+  /**
+   * Wall clock when the child starts running. The first running update stamps this when the
+   * harness omits it, and the panel ticks from it. A created row leaves it unset and shows no elapsed.
+   */
   startedAt?: number
   finishedAt?: number
+  /**
+   * Harness-reported duration, in milliseconds. When set, the panel shows this instead of a local
+   * tick. A later start or finish time that does not include a duration clears it.
+   */
+  durationMs?: number
   tokens?: AgentSubagentTokens
   summary?: string
   model?: string

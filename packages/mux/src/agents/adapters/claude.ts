@@ -330,6 +330,7 @@ export const claudeAdapter: AgentAdapter = {
         tokens?: { total: number }
         startedAt?: number
         finishedAt?: number
+        durationMs?: number
       }
     ): void => {
       if (!children.has(id) || (update.title && children.get(id) !== update.title))
@@ -341,7 +342,8 @@ export const claudeAdapter: AgentAdapter = {
         ...(update.summary ? { summary: update.summary } : {}),
         ...(update.tokens ? { tokens: update.tokens } : {}),
         ...(update.startedAt !== undefined ? { startedAt: update.startedAt } : {}),
-        ...(update.finishedAt !== undefined ? { finishedAt: update.finishedAt } : {})
+        ...(update.finishedAt !== undefined ? { finishedAt: update.finishedAt } : {}),
+        ...(update.durationMs !== undefined ? { durationMs: update.durationMs } : {})
       })
     }
     const handle = async (frame: Frame): Promise<void> => {
@@ -558,7 +560,11 @@ export const claudeAdapter: AgentAdapter = {
           ...(title ? { title } : {}),
           ...(frame.summary ? { summary: String(frame.summary) } : {}),
           ...(usage?.total !== undefined ? { tokens: { total: usage.total } } : {}),
-          ...(usage?.durationMs !== undefined ? { startedAt: Date.now() - usage.durationMs } : {})
+          // duration_ms is the elapsed time to show. The corrected start is kept so a later
+          // finish without a duration still measures from the harness clock, not the local guess.
+          ...(usage?.durationMs !== undefined
+            ? { durationMs: usage.durationMs, startedAt: Date.now() - usage.durationMs }
+            : {})
         })
       } else if (frame.type === 'system' && frame.subtype === 'task_notification') {
         const taskId = String(frame.task_id)
@@ -585,8 +591,12 @@ export const claudeAdapter: AgentAdapter = {
             ...(frame.summary ? { summary: String(frame.summary) } : {}),
             ...(usage?.total !== undefined ? { tokens: { total: usage.total } } : {}),
             ...(usage?.durationMs !== undefined
-              ? { startedAt: finishedAt - usage.durationMs, finishedAt }
-              : {})
+              ? {
+                  durationMs: usage.durationMs,
+                  startedAt: finishedAt - usage.durationMs,
+                  finishedAt
+                }
+              : { finishedAt })
           })
           return
         }

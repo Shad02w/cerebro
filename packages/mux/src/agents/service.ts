@@ -608,6 +608,8 @@ export class AgentSessions {
   /**
    * Folds one child-agent patch onto `session.subagents`. Finished rows stay on the list.
    * A later patch leaves out fields it does not know, and those keep their previous value.
+   * A harness duration replaces a locally guessed elapsed time. A later start or finish
+   * without a duration drops that duration so the row follows the new clock.
    */
   private updateSubagent(session: AgentSession, update: SubagentUpdate): void {
     const now = Date.now()
@@ -618,6 +620,9 @@ export class AgentSessions {
     const fields = Object.fromEntries(
       Object.entries(rest).filter(([, value]) => value !== undefined)
     ) as Partial<SubagentUpdate>
+    const dropDuration =
+      update.durationMs === undefined &&
+      (update.startedAt !== undefined || update.finishedAt !== undefined)
     const merge = (previous: AgentSubagent['tokens']): AgentSubagent['tokens'] | undefined => {
       if (!tokens) return previous
       const next = { ...previous }
@@ -648,6 +653,7 @@ export class AgentSessions {
       if (merged) child.tokens = merged
       if (update.status === 'running' && child.startedAt === undefined) child.startedAt = now
       if (terminal && child.finishedAt === undefined) child.finishedAt = now
+      if (dropDuration) delete child.durationMs
       list.push(child)
       session.subagents = list
       return
@@ -659,6 +665,7 @@ export class AgentSessions {
     else delete next.tokens
     if (update.status === 'running' && next.startedAt === undefined) next.startedAt = now
     if (terminal && next.finishedAt === undefined) next.finishedAt = now
+    if (dropDuration) delete next.durationMs
     list[index] = next
     session.subagents = list
   }

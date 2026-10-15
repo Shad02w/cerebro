@@ -103,7 +103,13 @@ export const codexAdapter: AgentAdapter = {
     const reportChild = (
       id: string,
       status: string,
-      extra: { title?: string; model?: string; startedAt?: number; finishedAt?: number } = {}
+      extra: {
+        title?: string
+        model?: string
+        startedAt?: number
+        finishedAt?: number
+        durationMs?: number
+      } = {}
     ): void => {
       const previous = children.get(id)
       const title = previous?.title || extra.title
@@ -114,18 +120,30 @@ export const codexAdapter: AgentAdapter = {
         ...(title ? { title } : {}),
         ...(extra.model ? { model: extra.model } : {}),
         ...(extra.startedAt !== undefined ? { startedAt: extra.startedAt } : {}),
-        ...(extra.finishedAt !== undefined ? { finishedAt: extra.finishedAt } : {})
+        ...(extra.finishedAt !== undefined ? { finishedAt: extra.finishedAt } : {}),
+        ...(extra.durationMs !== undefined ? { durationMs: extra.durationMs } : {})
       })
     }
+    // Clock fields are read only from the child they name. A collab item's own startedAtMs
+    // belongs to the tool call, not to every receiver.
+    const childClock = (
+      source: Frame
+    ): { startedAt?: number; finishedAt?: number; durationMs?: number } => ({
+      ...(typeof source.startedAtMs === 'number' ? { startedAt: source.startedAtMs } : {}),
+      ...(typeof source.completedAtMs === 'number' ? { finishedAt: source.completedAtMs } : {}),
+      ...(typeof source.durationMs === 'number' ? { durationMs: source.durationMs } : {})
+    })
     const noteActivity = (native: Frame): void => {
       const id = String(native.agentThreadId ?? '')
       if (!id) return
       const status = native.kind === 'interrupted' ? 'stopped' : 'running'
-      const startedAt = typeof native.startedAtMs === 'number' ? native.startedAtMs : undefined
+      const clock = childClock(native)
       reportChild(id, status, {
         title: pathTitle(native.agentPath),
-        startedAt,
-        ...(status === 'stopped' ? { finishedAt: Date.now() } : {})
+        ...clock,
+        ...(status === 'stopped' && clock.finishedAt === undefined
+          ? { finishedAt: Date.now() }
+          : {})
       })
     }
     const noteCollab = (native: Frame, phase: 'item/started' | 'item/completed'): void => {
@@ -138,14 +156,21 @@ export const codexAdapter: AgentAdapter = {
       ])
       const title = promptTitle(native.prompt)
       const model = typeof native.model === 'string' ? native.model : undefined
-      const startedAt = typeof native.startedAtMs === 'number' ? native.startedAtMs : undefined
       const fallback =
         phase === 'item/started' ? 'running' : childStatus(native.status, 'completed')
       for (const id of ids) {
         const state: Frame = states[id] ?? {}
         const status = childStatus(state.status, fallback)
-        const finishedAt = status !== 'created' && status !== 'running' ? Date.now() : undefined
-        reportChild(id, status, { title, model, startedAt, finishedAt })
+        const clock = childClock(state)
+        const finishedAt =
+          clock.finishedAt ??
+          (status !== 'created' && status !== 'running' ? Date.now() : undefined)
+        reportChild(id, status, {
+          title,
+          model,
+          ...clock,
+          ...(finishedAt !== undefined ? { finishedAt } : {})
+        })
       }
     }
     const childTokens = (thread: string, usage: Frame): void => {

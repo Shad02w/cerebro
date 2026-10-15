@@ -953,7 +953,15 @@ test(
     assert.equal(review?.status, 'completed')
     assert.equal(review?.title, 'Review the diff')
     assert.deepEqual(review?.tokens, { total: 18420 })
+    assert.equal(review?.durationMs, 153000)
     assert.equal(review?.finishedAt! - review?.startedAt!, 153000)
+    assert.equal(
+      updates.some(
+        (update) =>
+          update.id === 'agent-1' && update.status === 'running' && update.durationMs === 120000
+      ),
+      true
+    )
     const remote = folded.get('agent-2')
     assert.equal(remote?.status, 'running')
     assert.equal(remote?.title, 'Remote review')
@@ -1016,6 +1024,27 @@ test(
     assert.equal(child?.title, 'Review the diff')
     assert.equal(child?.model, 'gpt-test')
     assert.deepEqual(child?.tokens, { input: 12104, output: 6316, total: 18420 })
+    assert.equal(child?.startedAt, 1_700_000_000_000)
+    assert.equal(child?.finishedAt, 1_700_000_000_000 + 153000)
+    const childUpdates = updates.filter((update) => update.id === 'child-thread')
+    assert.equal(childUpdates[0]?.startedAt, 1_700_000_000_000)
+    assert.ok(
+      childUpdates.every(
+        (update) => update.startedAt === undefined || update.startedAt === 1_700_000_000_000
+      )
+    )
+    const otherUpdates = updates.filter((update) => update.id === 'other-child')
+    assert.ok(otherUpdates.length > 0)
+    assert.ok(
+      otherUpdates.every(
+        (update) =>
+          update.startedAt === undefined &&
+          update.finishedAt === undefined &&
+          update.durationMs === undefined
+      )
+    )
+    const other = folded.get('other-child')
+    assert.equal(other?.status, 'running')
     assert.equal(folded.has('foreign-thread'), false)
     assert.equal(folded.has('thread-other'), false)
     assert.equal(tasks.length, 0)

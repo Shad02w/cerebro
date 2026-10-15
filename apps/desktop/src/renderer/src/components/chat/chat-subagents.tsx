@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { LoaderCircle } from 'lucide-react'
 import type { AgentSubagent, AgentSubagentTokens } from '@cerebro/core'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -23,7 +24,7 @@ function compactCount(value: number): string {
   return scaled(1_000, 'k')
 }
 
-/** Elapsed time for a finished row. Hours drop the seconds. */
+/** Elapsed time. Hours drop the seconds. */
 function formatSubagentElapsed(ms: number): string {
   const seconds = Math.max(0, Math.round(ms / 1000))
   const hours = Math.floor(seconds / 3600)
@@ -48,10 +49,26 @@ function formatSubagentTokens(tokens: AgentSubagentTokens | undefined): string {
   return `${compactCount(shown)}${split}`
 }
 
-function elapsed(agent: AgentSubagent): string {
-  if (!finished(agent.status) || agent.startedAt === undefined || agent.finishedAt === undefined)
-    return ''
-  return formatSubagentElapsed(agent.finishedAt - agent.startedAt)
+/**
+ * Created rows have no elapsed. A harness duration replaces a local tick. Otherwise a running
+ * row ticks from startedAt, and a finished row uses finishedAt - startedAt.
+ */
+function elapsed(agent: AgentSubagent, now: number): string {
+  if (agent.status === 'created') return ''
+  if (agent.durationMs !== undefined) return formatSubagentElapsed(agent.durationMs)
+  if (finished(agent.status)) {
+    if (agent.startedAt === undefined || agent.finishedAt === undefined) return ''
+    return formatSubagentElapsed(agent.finishedAt - agent.startedAt)
+  }
+  if (agent.startedAt === undefined) return ''
+  return formatSubagentElapsed(now - agent.startedAt)
+}
+
+function needsClock(agents: AgentSubagent[]): boolean {
+  return agents.some(
+    (agent) =>
+      agent.status === 'running' && agent.durationMs === undefined && agent.startedAt !== undefined
+  )
 }
 
 export function ChatSubagents({
@@ -59,14 +76,24 @@ export function ChatSubagents({
 }: {
   agents: AgentSubagent[] | undefined
 }): React.JSX.Element | null {
-  if (!agents?.length) return null
+  const listed = agents ?? []
+  const ticking = needsClock(listed)
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!ticking) return
+    const refresh = (): void => setNow(Date.now())
+    refresh()
+    const timer = window.setInterval(refresh, 1000)
+    return () => window.clearInterval(timer)
+  }, [ticking])
+  if (!listed.length) return null
   return (
     <Popover>
       <PopoverTrigger
         render={
           <ChatSessionChip
             label="Agents"
-            aria-label={`${agents.length} ${agents.length === 1 ? 'agent' : 'agents'}`}
+            aria-label={`${listed.length} ${listed.length === 1 ? 'agent' : 'agents'}`}
             data-testid="chat-subagent-chip"
           />
         }
@@ -83,7 +110,7 @@ export function ChatSubagents({
           aria-label="Agents"
           className="grid grid-cols-[0.875rem_minmax(0,14rem)_auto_auto] items-center gap-x-3 gap-y-1 px-2 py-1"
         >
-          {agents.map((agent) => {
+          {listed.map((agent) => {
             const live = !finished(agent.status)
             return (
               <div
@@ -113,7 +140,7 @@ export function ChatSubagents({
                   {agent.title || agent.id}
                 </span>
                 <span data-cell="" className="text-xs text-muted-foreground tabular-nums">
-                  {elapsed(agent)}
+                  {elapsed(agent, now)}
                 </span>
                 <span
                   data-cell=""

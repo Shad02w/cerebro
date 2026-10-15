@@ -72,7 +72,8 @@ function codexPrompt(prompt, input) {
     return
   }
   if (prompt === 'subagent') {
-    const startedAtMs = Date.now() - 153000
+    const parentStartedAtMs = Date.now() - 153000
+    const childStartedAtMs = 1_700_000_000_000
     notify('item/started', {
       threadId: 'thread-test',
       item: {
@@ -81,11 +82,14 @@ function codexPrompt(prompt, input) {
         tool: 'spawnAgent',
         status: 'inProgress',
         senderThreadId: 'thread-test',
-        receiverThreadIds: ['child-thread'],
+        receiverThreadIds: ['child-thread', 'other-child'],
         prompt: 'Review the diff',
         model: 'gpt-test',
-        startedAtMs,
-        agentsStates: { 'child-thread': { status: 'running' } }
+        startedAtMs: parentStartedAtMs,
+        agentsStates: {
+          'child-thread': { status: 'running', startedAtMs: childStartedAtMs },
+          'other-child': { status: 'running' }
+        }
       }
     })
     notify('item/completed', {
@@ -121,9 +125,17 @@ function codexPrompt(prompt, input) {
         tool: 'wait',
         status: 'completed',
         senderThreadId: 'thread-test',
-        receiverThreadIds: ['child-thread'],
-        startedAtMs,
-        agentsStates: { 'child-thread': { status: 'completed', message: 'reviewed' } }
+        receiverThreadIds: ['child-thread', 'other-child'],
+        startedAtMs: parentStartedAtMs,
+        agentsStates: {
+          'child-thread': {
+            status: 'completed',
+            message: 'reviewed',
+            startedAtMs: childStartedAtMs,
+            completedAtMs: childStartedAtMs + 153000
+          },
+          'other-child': { status: 'running' }
+        }
       }
     })
     notify('thread/tokenUsage/updated', {

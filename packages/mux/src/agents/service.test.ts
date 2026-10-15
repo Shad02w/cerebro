@@ -1103,6 +1103,63 @@ test('tasks still running when Cerebro closes their process are recorded as stop
   }
 })
 
+test('a running agent starts a local clock, and a later duration or start replaces it', async () => {
+  const f = liveFixture()
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    await service.command(scope, { ...send, commandId: 'open' })
+    await waitFor(() => !service['running'].size)
+    const { host } = f.opened[0]
+    host.subagent({ id: 'child', status: 'created' })
+    let session = (await service.command(scope, get)).session!
+    assert.equal(session.subagents?.[0]?.startedAt, undefined)
+    assert.equal(session.subagents?.[0]?.durationMs, undefined)
+
+    host.subagent({ id: 'child', status: 'running' })
+    session = (await service.command(scope, get)).session!
+    const running = session.subagents?.find((child) => child.id === 'child')
+    assert(running?.startedAt)
+    const localStart = running.startedAt
+    assert.equal(running.durationMs, undefined)
+
+    host.subagent({ id: 'child', status: 'running', durationMs: 120_000 })
+    session = (await service.command(scope, get)).session!
+    const duration = session.subagents?.find((child) => child.id === 'child')
+    assert.equal(duration?.durationMs, 120_000)
+    assert.equal(duration?.startedAt, localStart)
+
+    host.subagent({ id: 'child', status: 'running', startedAt: 50 })
+    session = (await service.command(scope, get)).session!
+    const retimed = session.subagents?.find((child) => child.id === 'child')
+    assert.equal(retimed?.startedAt, 50)
+    assert.equal(retimed?.durationMs, undefined)
+
+    host.subagent({
+      id: 'child',
+      status: 'completed',
+      durationMs: 153_000,
+      startedAt: 50_000,
+      finishedAt: 203_000
+    })
+    session = (await service.command(scope, get)).session!
+    const finished = session.subagents?.find((child) => child.id === 'child')
+    assert.equal(finished?.durationMs, 153_000)
+    assert.equal(finished?.startedAt, 50_000)
+    assert.equal(finished?.finishedAt, 203_000)
+
+    host.subagent({ id: 'other', status: 'running', startedAt: 10, durationMs: 5_000 })
+    host.subagent({ id: 'other', status: 'completed', finishedAt: 40_000 })
+    session = (await service.command(scope, get)).session!
+    const other = session.subagents?.find((child) => child.id === 'other')
+    assert.equal(other?.durationMs, undefined)
+    assert.equal(other?.startedAt, 10)
+    assert.equal(other?.finishedAt, 40_000)
+    await service.shutdown()
+  } finally {
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
+
 test('a sub-agent stays listed after it finishes, and an open one stops with the process', async () => {
   const f = liveFixture()
   const service = new AgentSessions(f.dir, () => {}, f.drivers)

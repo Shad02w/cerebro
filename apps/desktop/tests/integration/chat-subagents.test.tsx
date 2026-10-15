@@ -1,6 +1,6 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AgentSession, AgentSubagent } from '@cerebro/core'
 import { ChatSessionChips } from '@/components/chat/chat-session-chips'
 
@@ -15,13 +15,33 @@ const child = (
 const session = (subagents: AgentSession['subagents']): AgentSession =>
   ({ id: 'session', subagents }) as AgentSession
 
+const NOW = 1_000_000_000_000
+
 describe('ChatSubagents', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('opens a grid above the Agents button', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(NOW)
     render(
       <ChatSessionChips
         session={session([
           child({ id: 'explore', status: 'created', title: 'explore-auth' }),
-          child({ id: 'review', status: 'running', title: 'review-diff', startedAt: 1_000 }),
+          child({
+            id: 'review',
+            status: 'running',
+            title: 'review-diff',
+            startedAt: NOW - 5_000
+          }),
+          child({
+            id: 'duration',
+            status: 'running',
+            title: 'duration-clock',
+            startedAt: 0,
+            durationMs: 120_000
+          }),
           child({
             id: 'write',
             status: 'completed',
@@ -70,7 +90,7 @@ describe('ChatSubagents', () => {
         ])}
       />
     )
-    const chip = screen.getByRole('button', { name: '8 agents' })
+    const chip = screen.getByRole('button', { name: '9 agents' })
     expect(chip).toHaveTextContent('Agents')
     expect(chip).not.toHaveTextContent(/sub-?agent/i)
     expect(screen.queryByTestId('chat-subagents')).toBeNull()
@@ -87,6 +107,7 @@ describe('ChatSubagents', () => {
     expect(rows.map((row) => row.getAttribute('data-status'))).toEqual([
       'created',
       'running',
+      'running',
       'completed',
       'completed',
       'stopped',
@@ -95,13 +116,14 @@ describe('ChatSubagents', () => {
       'completed'
     ])
     expect(cells(rows[0])).toEqual(['', 'explore-auth', '', ''])
-    expect(cells(rows[1])).toEqual(['', 'review-diff', '', ''])
-    expect(cells(rows[2])).toEqual(['', 'write-tests', '2m 33s', '18.4k (12.1k in, 6.3k out)'])
-    expect(cells(rows[3])).toEqual(['', 'lint-pass', '18s', 'no tokens'])
-    expect(cells(rows[4])).toEqual(['', 'nameless', '1h 1m', 'no tokens'])
-    expect(cells(rows[5])).toEqual(['', 'small-count', '1s', '420'])
-    expect(cells(rows[6])).toEqual(['', 'round-thousand', '1s', '1k'])
-    expect(cells(rows[7])).toEqual(['', 'million-tokens', '1s', '1.2m'])
+    expect(cells(rows[1])).toEqual(['', 'review-diff', '5s', ''])
+    expect(cells(rows[2])).toEqual(['', 'duration-clock', '2m 0s', ''])
+    expect(cells(rows[3])).toEqual(['', 'write-tests', '2m 33s', '18.4k (12.1k in, 6.3k out)'])
+    expect(cells(rows[4])).toEqual(['', 'lint-pass', '18s', 'no tokens'])
+    expect(cells(rows[5])).toEqual(['', 'nameless', '1h 1m', 'no tokens'])
+    expect(cells(rows[6])).toEqual(['', 'small-count', '1s', '420'])
+    expect(cells(rows[7])).toEqual(['', 'round-thousand', '1s', '1k'])
+    expect(cells(rows[8])).toEqual(['', 'million-tokens', '1s', '1.2m'])
   })
 
   it('sits to the right of Todo and Background', () => {
