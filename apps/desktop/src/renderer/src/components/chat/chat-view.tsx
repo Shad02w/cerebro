@@ -821,7 +821,11 @@ export function ChatView({
                       />
                     </div>
                     {composerVim && vimMode ? <VimModeBadge mode={vimMode} /> : null}
-                    <ContextUsageRing usage={session?.contextUsage} effort={session?.reasoning} />
+                    <ContextUsageRing
+                      usage={session?.contextUsage}
+                      harness={session?.model.harness}
+                      modelLabel={session?.model.label}
+                    />
                     <select
                       aria-label="Access mode"
                       title={

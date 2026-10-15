@@ -160,13 +160,18 @@ describe('agent adapters', { concurrency: 1 }, () => {
         const usage = events.find((e) => e.type === 'usage')
         assert(usage && usage.type === 'usage')
         assert(usage.usage.contextWindow > 0)
-        assert(usage.usage.usedTokens > 0)
-        assert(usage.usage.percentage >= 0 && usage.usage.percentage <= 100)
+        assert(usage.usage.usedTokens != null && usage.usage.usedTokens > 0)
+        assert(
+          usage.usage.percentage != null &&
+            usage.usage.percentage >= 0 &&
+            usage.usage.percentage <= 100
+        )
         if (harness === 'codex')
           assert.deepEqual(usage.usage, {
             usedTokens: 43759,
             contextWindow: 258400,
-            percentage: 17
+            percentage: 17,
+            codex: { inputTokens: 42000, outputTokens: 1759 }
           })
         const checkpoint = events.find((e) => e.type === 'checkpoint')
         if (harness === 'claude')
@@ -246,6 +251,83 @@ describe('agent adapters', { concurrency: 1 }, () => {
       }
     }
   )
+  test('context popover fields survive the adapter', { timeout: 20_000 }, async () => {
+    const sessionFor = (harness: AgentHarness, model: AgentSession['model']): AgentSession => ({
+      version: 1,
+      id: 'logical',
+      workspaceId: 1,
+      repositoryId: null,
+      cwd: '/tmp',
+      title: 'Test',
+      model,
+      status: 'running',
+      generation: 'generation',
+      sequence: 0,
+      updatedAt: 0,
+      items: [],
+      commands: []
+    })
+    process.env.CEREBRO_CLAUDE_PATH = fixture
+    const claudeEvents: AgentDelta[] = []
+    await runTurn(adapters.claude, {
+      session: sessionFor('claude', (await adapters.claude.models('/tmp'))[0]),
+      text: 'context-popover-full',
+      signal: new AbortController().signal,
+      emit: (event) => claudeEvents.push(event),
+      ask: async () => ({ allow: false, answers: {} })
+    })
+    const claude = claudeEvents.find((event) => event.type === 'usage')
+    assert(claude?.type === 'usage')
+    assert.equal(claude.usage.usedTokens, 70800)
+    assert.equal(claude.usage.percentage, 35)
+    assert.equal(
+      claude.usage.claude?.categories.find((row) => row.tokens === 0)?.name,
+      'Unused skills'
+    )
+    assert.equal(
+      claude.usage.claude?.categories.find((row) => row.kind === 'deferred')?.name,
+      'MCP tools (deferred)'
+    )
+    assert.equal(claude.usage.claude?.messageBreakdown?.userMessageTokens, 8600)
+    assert.equal(JSON.stringify(claude.usage).includes('apiUsage'), false)
+
+    process.env.CEREBRO_CODEX_PATH = fixture
+    const codexEvents: AgentDelta[] = []
+    await runTurn(adapters.codex, {
+      session: sessionFor('codex', (await adapters.codex.models('/tmp'))[0]),
+      text: 'context-popover-codex',
+      signal: new AbortController().signal,
+      emit: (event) => codexEvents.push(event),
+      ask: async () => ({ allow: false, answers: {} })
+    })
+    const codex = codexEvents.find((event) => event.type === 'usage')
+    assert(codex?.type === 'usage')
+    assert.deepEqual(codex.usage, {
+      usedTokens: 43550,
+      contextWindow: 258400,
+      percentage: 17,
+      codex: {
+        inputTokens: 42000,
+        cachedInputTokens: 28400,
+        cacheWriteInputTokens: 6200,
+        outputTokens: 1550,
+        reasoningOutputTokens: 480
+      }
+    })
+
+    process.env.CEREBRO_PI_PATH = fixture
+    const piEvents: AgentDelta[] = []
+    await runTurn(adapters.pi, {
+      session: sessionFor('pi', (await adapters.pi.models('/tmp'))[0]),
+      text: 'context-popover-empty',
+      signal: new AbortController().signal,
+      emit: (event) => piEvents.push(event),
+      ask: async () => ({ allow: false, answers: {} })
+    })
+    const pi = piEvents.find((event) => event.type === 'usage')
+    assert(pi?.type === 'usage')
+    assert.deepEqual(pi.usage, { usedTokens: null, contextWindow: 200000, percentage: null })
+  })
   test(
     'Codex: request correlation, approval decision, interrupt, and native resume',
     { timeout: 15_000 },

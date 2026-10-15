@@ -7,6 +7,7 @@ import {
 } from '@cerebro/core'
 import { randomUUID } from 'node:crypto'
 import { describe, type Frame } from '../transport'
+import { codexContextUsage } from '../context-usage'
 import { codexAppServer, interruptCodexTurn } from '../codex-server'
 import type { AgentAdapter, AutonomousTurn, RunAttachment } from './adapter'
 import { activeTurn, item, model, modalities } from './shared'
@@ -458,25 +459,10 @@ export const codexAdapter: AgentAdapter = {
           break
         }
         case 'thread/tokenUsage/updated': {
-          const usage: Frame = p.tokenUsage ?? {}
-          const usedTokens = usage.last?.totalTokens
-          const contextWindow = usage.modelContextWindow
           // `last` is the occupied context of the latest model call. `total` is Codex's
           // lifetime sum and must not be treated as the current window.
-          if (
-            typeof usedTokens === 'number' &&
-            typeof contextWindow === 'number' &&
-            contextWindow > 0
-          ) {
-            emit({
-              type: 'usage',
-              usage: {
-                usedTokens,
-                contextWindow,
-                percentage: Math.round((usedTokens / contextWindow) * 100)
-              }
-            })
-          }
+          const usage = codexContextUsage(p.tokenUsage ?? {})
+          if (usage) emit({ type: 'usage', usage })
           break
         }
         case 'turn/completed': {
