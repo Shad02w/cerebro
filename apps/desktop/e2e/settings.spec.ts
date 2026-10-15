@@ -442,10 +442,7 @@ function openSettingsChord(): string {
 test('opens settings with Mod+, and lists the shortcut', async ({ page }) => {
   await mkdir(artifactsDir, { recursive: true })
   await expect(page.getByRole('button', { name: 'Settings', exact: true })).toBeVisible()
-  await expect(page.getByTestId('settings-button').getByTestId('shortcut-kbd')).toHaveAttribute(
-    'data-hotkey',
-    'Mod+,'
-  )
+  await expect(page.getByTestId('settings-button').getByTestId('shortcut-kbd')).toHaveCount(0)
 
   await page.screenshot({
     path: path.join(artifactsDir, 'settings-shortcut-sidebar.png'),

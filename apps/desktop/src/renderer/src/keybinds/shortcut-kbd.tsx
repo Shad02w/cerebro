@@ -6,15 +6,12 @@ type ShortcutKbdProps = {
   className?: string
   /** Invert chip colors for tooltips that use `bg-foreground`. */
   inverted?: boolean
-  /** Visual hint only; keep it out of the parent control's accessible name. */
-  decorative?: boolean
 }
 
 export function ShortcutKbd({
   hotkey,
   className,
-  inverted = false,
-  decorative = false
+  inverted = false
 }: ShortcutKbdProps): React.JSX.Element {
   const keys = shortcutKeys(hotkey)
   return (
@@ -22,7 +19,6 @@ export function ShortcutKbd({
       className={cn('inline-flex items-center gap-0.5 tracking-normal', className)}
       data-testid="shortcut-kbd"
       data-hotkey={hotkey}
-      aria-hidden={decorative || undefined}
     >
       {keys.map((key, index) => (
         <kbd
