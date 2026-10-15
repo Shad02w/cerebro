@@ -169,7 +169,6 @@ export const codexAdapter: AgentAdapter = {
     const noteActivity = (native: Frame): void => {
       const id = String(native.agentThreadId ?? '')
       if (!id) return
-      // Only an interrupted child has ended. A start, a progress kind, or a 0ms duration has not.
       const stopped = native.kind === 'interrupted'
       const clock = childFields(native)
       if (clock.durationMs === 0) delete clock.durationMs
@@ -193,8 +192,7 @@ export const codexAdapter: AgentAdapter = {
       const title = promptTitle(native.prompt)
       for (const id of ids) {
         const state: Frame = states[id] ?? {}
-        // The collab item finishing is the parent's tool call. A child ends only when its own
-        // state says so. A missing status falls back to running, and a 0ms duration is not an end.
+        // The collab item finishing is the parent's tool call, not that child's end.
         const named = typeof state.status === 'string'
         const status = named
           ? childStatus(state.status, 'running')

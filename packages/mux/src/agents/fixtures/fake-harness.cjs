@@ -143,7 +143,6 @@ function codexPrompt(threadId, prompt, input) {
         }
       }
     })
-    // item/completed of the spawn is not each child's end. A 0ms duration is not an end.
     notify('item/completed', {
       threadId: 'thread-test',
       item: {
@@ -267,6 +266,50 @@ function codexPrompt(threadId, prompt, input) {
       item: { type: 'agentMessage', id: 'sub-reply', text: 'Review finished.' }
     })
     codexDone()
+    return
+  }
+  if (prompt === 'child-not-turn') {
+    notify('item/completed', {
+      item: {
+        type: 'collabAgentToolCall',
+        id: 'collab-late',
+        tool: 'spawnAgent',
+        status: 'completed',
+        senderThreadId: 'thread-test',
+        receiverThreadIds: ['child-late'],
+        prompt: 'Search tooling',
+        agentsStates: {
+          'child-late': {
+            status: 'completed',
+            model: 'gpt-test',
+            effort: 'high',
+            durationMs: 57000
+          }
+        }
+      }
+    })
+    notify('item/completed', {
+      item: {
+        type: 'agentMessage',
+        id: 'parent-mid',
+        text: 'Parent still writing after the child.'
+      }
+    })
+    setTimeout(() => {
+      notify('item/completed', {
+        item: {
+          type: 'subAgentActivity',
+          id: 'activity-late',
+          kind: 'interrupted',
+          agentThreadId: 'child-late',
+          agentPath: '/root/search-tooling'
+        }
+      })
+      notify('item/completed', {
+        item: { type: 'agentMessage', id: 'parent-end', text: 'Parent recommendation.' }
+      })
+      codexDone()
+    }, 40)
     return
   }
   if (prompt === 'background-command' || prompt === 'background-command-fail') {
@@ -674,7 +717,6 @@ function claudePrompt(prompt, content) {
         ...(agent.effort ? { effort: agent.effort } : {}),
         session_id: 'claude-test'
       })
-    // The tool_result is the launch acknowledgement, not the agent's end.
     for (const agent of agents)
       send({
         type: 'user',
@@ -711,7 +753,6 @@ function claudePrompt(prompt, content) {
         ...(agent.effort ? { effort: agent.effort } : {}),
         session_id: 'claude-test'
       })
-    // A zero-duration notification is a clock, not an end.
     send({
       type: 'system',
       subtype: 'task_notification',
@@ -922,6 +963,120 @@ function claudePrompt(prompt, content) {
       session_id: 'claude-test'
     })
     claudeFinish('Review finished.')
+    return
+  }
+  if (prompt === 'one-response') {
+    const say = (id, text) =>
+      send({
+        type: 'assistant',
+        session_id: 'claude-test',
+        uuid: id,
+        message: { id, role: 'assistant', content: [{ type: 'text', text }] }
+      })
+    const result = () =>
+      send({
+        type: 'result',
+        subtype: 'success',
+        is_error: false,
+        result: 'ok',
+        session_id: 'claude-test'
+      })
+    const agents = [
+      {
+        task_id: 'agent-tooling',
+        tool_use_id: 'tool-tooling',
+        description: 'Search GitHub repos and tooling',
+        model: 'sonnet',
+        effort: 'high',
+        duration_ms: 57000,
+        tokens: 18420
+      },
+      {
+        task_id: 'agent-blogs',
+        tool_use_id: 'tool-blogs',
+        description: 'Search blogs and talks',
+        model: 'sonnet',
+        effort: 'medium',
+        duration_ms: 42000,
+        tokens: 9000
+      }
+    ]
+    const childResult = (toolUseId) =>
+      send({
+        type: 'result',
+        subtype: 'success',
+        is_error: false,
+        parent_tool_use_id: toolUseId,
+        result: 'child report',
+        session_id: 'claude-test'
+      })
+    send({ type: 'system', subtype: 'init', session_id: 'claude-test', tools: [], model: 'test' })
+    say('parent-1', 'Three research agents are running. I will consolidate when they report back.')
+    send({
+      type: 'system',
+      subtype: 'background_tasks_changed',
+      tasks: agents.map((agent) => ({
+        task_id: agent.task_id,
+        task_type: 'local_agent',
+        description: agent.description,
+        tool_use_id: agent.tool_use_id,
+        model: agent.model,
+        effort: agent.effort
+      })),
+      session_id: 'claude-test'
+    })
+    for (const agent of agents)
+      send({
+        type: 'system',
+        subtype: 'task_started',
+        task_id: agent.task_id,
+        tool_use_id: agent.tool_use_id,
+        description: agent.description,
+        task_type: 'local_agent',
+        is_backgrounded: true,
+        model: agent.model,
+        effort: agent.effort,
+        session_id: 'claude-test'
+      })
+    childResult('tool-tooling')
+    setTimeout(() => {
+      const first = agents[0]
+      send({
+        type: 'system',
+        subtype: 'task_notification',
+        task_id: first.task_id,
+        tool_use_id: first.tool_use_id,
+        task_type: 'local_agent',
+        status: 'completed',
+        summary: 'Found the repos.',
+        description: first.description,
+        usage: { total_tokens: first.tokens, tool_uses: 3, duration_ms: first.duration_ms },
+        model: first.model,
+        effort: first.effort,
+        session_id: 'claude-test'
+      })
+      say('parent-2', 'Tooling findings. The other agent is still running.')
+      childResult('tool-blogs')
+      setTimeout(() => {
+        const second = agents[1]
+        send({
+          type: 'system',
+          subtype: 'task_notification',
+          task_id: second.task_id,
+          tool_use_id: second.tool_use_id,
+          task_type: 'local_agent',
+          status: 'completed',
+          summary: 'Found the posts.',
+          description: second.description,
+          usage: { total_tokens: second.tokens, tool_uses: 2, duration_ms: second.duration_ms },
+          model: second.model,
+          effort: second.effort,
+          session_id: 'claude-test'
+        })
+        say('parent-3', 'Final recommendation.')
+        result()
+      }, 40)
+    }, 40)
     return
   }
   send({ type: 'system', subtype: 'init', session_id: 'claude-test', tools: [], model: 'test' })
@@ -1382,6 +1537,44 @@ createInterface({ input: process.stdin }).on('line', (line) => {
               delta: `[steered: ${frame.message}]`
             }
           })
+          break
+        }
+        if (frame.message === 'pi-not-end') {
+          reply({})
+          send({ type: 'message_start', message: { role: 'assistant' } })
+          send({
+            type: 'message_update',
+            assistantMessageEvent: {
+              type: 'text_delta',
+              contentIndex: 0,
+              delta: 'Parent still writing.'
+            }
+          })
+          send({
+            type: 'tool_execution_end',
+            toolCallId: 'tool-1',
+            toolName: 'read',
+            result: 'file',
+            isError: false
+          })
+          setTimeout(() => {
+            send({
+              type: 'message_update',
+              assistantMessageEvent: { type: 'text_delta', contentIndex: 1, delta: 'Parent done.' }
+            })
+            send({
+              type: 'message_end',
+              message: {
+                role: 'assistant',
+                content: [
+                  { type: 'text', text: 'Parent still writing.' },
+                  { type: 'text', text: 'Parent done.' }
+                ],
+                stopReason: 'stop'
+              }
+            })
+            send({ type: 'agent_end' })
+          }, 40)
           break
         }
         const responseText =

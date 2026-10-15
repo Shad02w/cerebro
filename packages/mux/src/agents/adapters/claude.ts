@@ -285,7 +285,7 @@ export const claudeAdapter: AgentAdapter = {
     // tool-use id and task id both point at the one sub-agent id already reported.
     const alias = new Map<string, string>()
     const agentIds = new Set<string>()
-    // Agents already handed back while they keep running. Their tool_result is a launch ack.
+    // A tool_result for one of these is the launch acknowledgement, not the agent's end.
     const backgrounded = new Set<string>()
     const toolBackground = new Set<string>()
     const markBackground = (id: string): void => {
@@ -372,7 +372,6 @@ export const claudeAdapter: AgentAdapter = {
         const record = parsed && typeof parsed === 'object' ? (parsed as Frame) : undefined
         const identity = childIdentity(record)
         if (identity.model || identity.effort) toolIdentity.set(key, identity)
-        // An explicit background or remote launch returns before the agent ends.
         if (record?.run_in_background === true || record?.isolation === 'remote')
           toolBackground.add(key)
       }
@@ -418,9 +417,6 @@ export const claudeAdapter: AgentAdapter = {
         ...(total !== undefined ? { total } : {})
       }
     }
-    // A Task tool_result is the agent's end only when the call actually waited for it.
-    // async_launched, remote_launched, and a "running in the background" ack are not ends.
-    // A start, a progress update, or a 0ms duration is not an end either.
     const finishChild = (block: Frame, toolUseResult: unknown): void => {
       if (block.tool_use_id == null) return
       const raw = String(block.tool_use_id)
@@ -480,7 +476,7 @@ export const claudeAdapter: AgentAdapter = {
         announce?: boolean
       }
     ): void => {
-      // A live-set or progress frame must not reopen an agent that already ended.
+      // A later live-set frame must not reopen an agent that already ended.
       if (update.status === 'running' && settled.has(id)) return
       if (!children.has(id) || (update.title && children.get(id) !== update.title))
         children.set(id, update.title ?? children.get(id))
@@ -501,7 +497,7 @@ export const claudeAdapter: AgentAdapter = {
     }
     const handle = async (frame: Frame): Promise<void> => {
       // Child frames share the parent stream. They are status, not transcript rows.
-      if (frame.parent_tool_use_id) {
+      if (frame.parent_tool_use_id && frame.type !== 'result') {
         noteChild(frame.parent_tool_use_id)
         const childId =
           alias.get(String(frame.parent_tool_use_id)) ?? String(frame.parent_tool_use_id)
@@ -620,6 +616,7 @@ export const claudeAdapter: AgentAdapter = {
           if (snapshot) emit({ type: 'todo', todo: snapshot })
         }
       } else if (frame.type === 'result') {
+        if (frame.parent_tool_use_id) return
         const turn = current
         if (!turn) return
         if (frame.is_error || frame.subtype !== 'success') {
@@ -738,14 +735,11 @@ export const claudeAdapter: AgentAdapter = {
         const agent =
           agentIds.has(taskId) || Boolean(frame.subagent_type) || isAgentTask(frame.task_type)
         if (agent) {
-          // This frame is the agent's end on the parent stream. One finish line is recorded.
-          // The summary and the child's response stay off the transcript.
           const id = linkChild(taskId, frame.tool_use_id)
           const usage = taskUsage(frame.usage)
           const title = String(frame.description ?? '')
           const terminal =
             frame.status === 'completed' || frame.status === 'failed' || frame.status === 'stopped'
-          // A start, a progress update, or a 0ms duration is not this agent's end.
           if (!terminal || usage?.durationMs === 0) {
             reportAgent(id, {
               status: 'running',
@@ -759,6 +753,7 @@ export const claudeAdapter: AgentAdapter = {
           agentTimers.delete(id)
           listedAgents.delete(id)
           const finishedAt = Date.now()
+          // The summary and the child's response stay off the transcript.
           reportAgent(id, {
             status:
               frame.status === 'failed'
