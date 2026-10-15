@@ -867,13 +867,14 @@ test(
     const model = (await adapters.claude.models('/tmp'))[0]
     const updates: SubagentUpdate[] = []
     const tasks: BackgroundTaskUpdate[] = []
+    const events: AgentDelta[] = []
     await runTurn(
       adapters.claude,
       {
         session: liveSession(model, 'subagent'),
         text: 'subagent',
         signal: new AbortController().signal,
-        emit: () => {},
+        emit: (event) => events.push(event),
         ask: async () => ({ allow: false, answers: {} })
       },
       {
@@ -890,6 +891,13 @@ test(
       }
     ])
     assert.equal(tasks.length, 0)
+    assert.equal(
+      events.some(
+        (event) => event.type === 'item' && event.item.text?.includes('Looking at the diff.')
+      ),
+      false
+    )
+    assert.ok(replies(events).includes('Review finished.'))
     const ignored: SubagentUpdate[] = []
     await runTurn(
       adapters.claude,
@@ -903,6 +911,123 @@ test(
       { subagent: (update) => ignored.push(update) }
     )
     assert.equal(ignored.length, 0)
+  }
+)
+
+test(
+  'Claude: agent tasks leave the background list, and child frames stay out of the transcript',
+  { timeout: 15_000 },
+  async () => {
+    process.env.CEREBRO_CLAUDE_PATH = fixture
+    const model = (await adapters.claude.models('/tmp'))[0]
+    const updates: SubagentUpdate[] = []
+    const tasks: BackgroundTaskUpdate[] = []
+    const events: AgentDelta[] = []
+    await runTurn(
+      adapters.claude,
+      {
+        session: liveSession(model, 'agent-and-shell'),
+        text: 'agent-and-shell',
+        signal: new AbortController().signal,
+        emit: (event) => events.push(event),
+        ask: async () => ({ allow: false, answers: {} })
+      },
+      {
+        subagent: (update) => updates.push(update),
+        task: (update) => tasks.push(update)
+      }
+    )
+    assert.deepEqual([...new Set(tasks.map((task) => task.id))], ['bash-1'])
+    const folded = new Map<string, SubagentUpdate>()
+    for (const update of updates) {
+      const previous = folded.get(update.id)
+      folded.set(update.id, {
+        ...previous,
+        ...update,
+        ...(update.tokens || previous?.tokens
+          ? { tokens: { ...previous?.tokens, ...update.tokens } }
+          : {})
+      })
+    }
+    const review = folded.get('agent-1')
+    assert.equal(review?.status, 'completed')
+    assert.equal(review?.title, 'Review the diff')
+    assert.deepEqual(review?.tokens, { total: 18420 })
+    assert.equal(review?.finishedAt! - review?.startedAt!, 153000)
+    const remote = folded.get('agent-2')
+    assert.equal(remote?.status, 'running')
+    assert.equal(remote?.title, 'Remote review')
+    assert.equal(remote?.tokens, undefined)
+    assert.equal(folded.has('bash-1'), false)
+    assert.equal(
+      events.some(
+        (event) => event.type === 'item' && event.item.text?.includes('Looking at the diff.')
+      ),
+      false
+    )
+    assert.equal(
+      events.some((event) => event.type === 'item' && event.item.title === 'WebSearch'),
+      false
+    )
+    assert.equal(
+      events.some((event) => event.type === 'item' && event.item.kind === 'notice'),
+      false
+    )
+    assert.ok(replies(events).includes('Review finished.'))
+  }
+)
+
+test(
+  'Codex: a collab child is a sub-agent, and another thread is ignored',
+  { timeout: 15_000 },
+  async () => {
+    process.env.CEREBRO_CODEX_PATH = fixture
+    const model = (await adapters.codex.models('/tmp'))[0]
+    const updates: SubagentUpdate[] = []
+    const tasks: BackgroundTaskUpdate[] = []
+    const events: AgentDelta[] = []
+    await runTurn(
+      adapters.codex,
+      {
+        session: liveSession(model, 'codex-subagent'),
+        text: 'subagent',
+        signal: new AbortController().signal,
+        emit: (event) => events.push(event),
+        ask: async () => ({ allow: false, answers: {} })
+      },
+      {
+        subagent: (update) => updates.push(update),
+        task: (update) => tasks.push(update)
+      }
+    )
+    const folded = new Map<string, SubagentUpdate>()
+    for (const update of updates) {
+      const previous = folded.get(update.id)
+      folded.set(update.id, {
+        ...previous,
+        ...update,
+        ...(update.tokens || previous?.tokens
+          ? { tokens: { ...previous?.tokens, ...update.tokens } }
+          : {})
+      })
+    }
+    const child = folded.get('child-thread')
+    assert.equal(child?.status, 'completed')
+    assert.equal(child?.title, 'Review the diff')
+    assert.equal(child?.model, 'gpt-test')
+    assert.deepEqual(child?.tokens, { input: 12104, output: 6316, total: 18420 })
+    assert.equal(folded.has('foreign-thread'), false)
+    assert.equal(folded.has('thread-other'), false)
+    assert.equal(tasks.length, 0)
+    assert.equal(
+      events.some(
+        (event) =>
+          event.type === 'item' &&
+          (event.item.title === 'subAgentActivity' || event.item.title === 'collabAgentToolCall')
+      ),
+      false
+    )
+    assert.ok(replies(events).includes('Review finished.'))
   }
 )
 

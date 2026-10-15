@@ -145,8 +145,12 @@ export const claudeAdapter: AgentAdapter = {
     let chainUuid: string | undefined
     // Settings the process runs with now. Model and effort change live; access mode is fixed per process.
     const applied = { model: session.model.id, effort: session.reasoning }
-    // Running background tasks by id. Foreground tasks also get notifications and are never listed.
+    // Running shell jobs by id. Foreground tasks also get notifications and are never listed.
+    // Agent tasks (local_agent, remote_agent) are not stored here.
     const background = new Map<string, ReturnType<typeof setTimeout> | undefined>()
+    // Agent task ids currently in the live set, and the timer that settles one that disappeared.
+    const listedAgents = new Set<string>()
+    const agentTimers = new Map<string, ReturnType<typeof setTimeout> | undefined>()
     const finish = (error?: Error): void => {
       const turn = current
       current = undefined
@@ -156,6 +160,7 @@ export const claudeAdapter: AgentAdapter = {
       if (closed) return
       closed = true
       for (const timer of background.values()) clearTimeout(timer)
+      for (const timer of agentTimers.values()) clearTimeout(timer)
       prompt.end()
       q?.close()
       finish(new Error('Agent stopped.'))
@@ -216,6 +221,39 @@ export const claudeAdapter: AgentAdapter = {
     const toolTitles = new Map<string, string>()
     // Child ids already reported, and the title last sent for each.
     const children = new Map<string, string | undefined>()
+    // tool-use id and task id both point at the one sub-agent id already reported.
+    const alias = new Map<string, string>()
+    const agentIds = new Set<string>()
+    const isAgentTask = (taskType: unknown): boolean =>
+      taskType === 'local_agent' || taskType === 'remote_agent'
+    const linkChild = (taskId: string, toolUseId?: unknown): string => {
+      const tool = toolUseId == null || toolUseId === '' ? undefined : String(toolUseId)
+      const known =
+        alias.get(taskId) ||
+        (tool ? alias.get(tool) : undefined) ||
+        (tool && children.has(tool) ? tool : undefined) ||
+        (children.has(taskId) ? taskId : undefined) ||
+        taskId
+      alias.set(taskId, known)
+      agentIds.add(taskId)
+      agentIds.add(known)
+      if (tool) {
+        alias.set(tool, known)
+        agentIds.add(tool)
+      }
+      return known
+    }
+    const taskUsage = (usage: unknown): { total?: number; durationMs?: number } | undefined => {
+      if (!usage || typeof usage !== 'object') return undefined
+      const record = usage as Frame
+      const total = typeof record.total_tokens === 'number' ? record.total_tokens : undefined
+      const durationMs = typeof record.duration_ms === 'number' ? record.duration_ms : undefined
+      if (total === undefined && durationMs === undefined) return undefined
+      return {
+        ...(total !== undefined ? { total } : {}),
+        ...(durationMs !== undefined ? { durationMs } : {})
+      }
+    }
     const titleFrom = (name: unknown, input: unknown): string | undefined => {
       let parsed = input
       if (typeof input === 'string' && input.trim().startsWith('{')) {
@@ -244,8 +282,9 @@ export const claudeAdapter: AgentAdapter = {
     }
     const noteChild = (parentId: unknown): void => {
       if (parentId == null || parentId === '') return
-      const id = String(parentId)
-      const title = toolTitles.get(id)
+      const raw = String(parentId)
+      const id = alias.get(raw) ?? raw
+      const title = toolTitles.get(raw) ?? toolTitles.get(id)
       if (!children.has(id)) {
         children.set(id, title)
         host.subagent({ id, status: 'running', ...(title ? { title } : {}) })
@@ -272,16 +311,50 @@ export const claudeAdapter: AgentAdapter = {
       }
     }
     const finishChild = (block: Frame): void => {
-      if (block.tool_use_id == null || !children.has(String(block.tool_use_id))) return
+      if (block.tool_use_id == null) return
+      const id = alias.get(String(block.tool_use_id)) ?? String(block.tool_use_id)
+      if (!children.has(id)) return
       const tokens = childTokens(block.usage)
       host.subagent({
-        id: String(block.tool_use_id),
+        id,
         status: block.is_error ? 'failed' : 'completed',
         ...(tokens ? { tokens } : {})
       })
     }
+    const reportAgent = (
+      id: string,
+      update: {
+        status: 'running' | 'completed' | 'failed' | 'stopped'
+        title?: string
+        summary?: string
+        tokens?: { total: number }
+        startedAt?: number
+        finishedAt?: number
+      }
+    ): void => {
+      if (!children.has(id) || (update.title && children.get(id) !== update.title))
+        children.set(id, update.title ?? children.get(id))
+      host.subagent({
+        id,
+        status: update.status,
+        ...(update.title ? { title: update.title } : {}),
+        ...(update.summary ? { summary: update.summary } : {}),
+        ...(update.tokens ? { tokens: update.tokens } : {}),
+        ...(update.startedAt !== undefined ? { startedAt: update.startedAt } : {}),
+        ...(update.finishedAt !== undefined ? { finishedAt: update.finishedAt } : {})
+      })
+    }
     const handle = async (frame: Frame): Promise<void> => {
-      if (frame.parent_tool_use_id) noteChild(frame.parent_tool_use_id)
+      // Child frames share the parent stream. They are status, not transcript rows.
+      if (frame.parent_tool_use_id) {
+        noteChild(frame.parent_tool_use_id)
+        if (frame.type === 'user') {
+          const blocks = Array.isArray(frame.message?.content) ? frame.message.content : []
+          for (const block of blocks as Frame[])
+            if (block.type === 'tool_result') finishChild(block)
+        }
+        return
+      }
       if (frame.session_id && !frame.parent_tool_use_id)
         emit({ type: 'binding', nativeId: frame.session_id })
       if (frame.type === 'stream_event') {
@@ -410,19 +483,28 @@ export const claudeAdapter: AgentAdapter = {
         if (current === turn) finish()
       } else if (frame.type === 'system' && frame.subtype === 'background_tasks_changed') {
         // The full live set, which can precede or follow the task_notification that says how a task
-        // ended. Ambient watchers are housekeeping, not activity.
-        const live = new Set<string>()
+        // ended. Ambient watchers are housekeeping, not activity. Shell jobs stay background
+        // tasks. local_agent and remote_agent are sub-agents and never enter that list.
+        const liveShells = new Set<string>()
+        const liveAgents = new Set<string>()
         for (const task of Array.isArray(frame.tasks) ? (frame.tasks as Frame[]) : []) {
           if (task.ambient) continue
-          const id = String(task.task_id)
-          live.add(id)
-          if (background.has(id)) continue
-          background.set(id, undefined)
-          host.task({ id, title: String(task.description ?? ''), status: 'running' })
+          const taskId = String(task.task_id)
+          const title = String(task.description ?? '')
+          if (isAgentTask(task.task_type)) {
+            const id = linkChild(taskId, task.tool_use_id)
+            liveAgents.add(id)
+            reportAgent(id, { status: 'running', ...(title ? { title } : {}) })
+            continue
+          }
+          liveShells.add(taskId)
+          if (background.has(taskId)) continue
+          background.set(taskId, undefined)
+          host.task({ id: taskId, title, status: 'running' })
         }
-        // A task can leave the set without its notification (a missed edge). Do not list it forever.
+        // A shell can leave the set without its notification (a missed edge). Do not list it forever.
         for (const [id, timer] of background)
-          if (!live.has(id) && !timer)
+          if (!liveShells.has(id) && !timer)
             background.set(
               id,
               setTimeout(() => {
@@ -430,22 +512,91 @@ export const claudeAdapter: AgentAdapter = {
                 host.task({ id, status: 'stopped', summary: 'Claude stopped reporting this task.' })
               }, 5000)
             )
+        for (const id of listedAgents)
+          if (!liveAgents.has(id) && !agentTimers.has(id))
+            agentTimers.set(
+              id,
+              setTimeout(() => {
+                if (!agentTimers.delete(id)) return
+                listedAgents.delete(id)
+                reportAgent(id, {
+                  status: 'stopped',
+                  summary: 'Claude stopped reporting this agent.'
+                })
+              }, 5000)
+            )
+        for (const id of liveAgents) {
+          const timer = agentTimers.get(id)
+          if (timer) {
+            clearTimeout(timer)
+            agentTimers.delete(id)
+          }
+          listedAgents.add(id)
+        }
       } else if (frame.type === 'system' && frame.subtype === 'task_started') {
-        if (frame.is_backgrounded && !frame.ambient && background.has(String(frame.task_id)))
+        if (frame.ambient) return
+        if (isAgentTask(frame.task_type)) {
+          const id = linkChild(String(frame.task_id), frame.tool_use_id)
+          const title = String(frame.description ?? '')
+          reportAgent(id, { status: 'running', ...(title ? { title } : {}) })
+          return
+        }
+        if (frame.is_backgrounded && background.has(String(frame.task_id)))
           host.task({
             id: String(frame.task_id),
             status: 'running',
             ...(frame.tool_use_id ? { itemId: String(frame.tool_use_id) } : {})
           })
+      } else if (frame.type === 'system' && frame.subtype === 'task_progress') {
+        const taskId = String(frame.task_id)
+        if (!agentIds.has(taskId) && !frame.subagent_type && !isAgentTask(frame.task_type)) return
+        const id = linkChild(taskId, frame.tool_use_id)
+        const usage = taskUsage(frame.usage)
+        const title = String(frame.description ?? '')
+        reportAgent(id, {
+          status: 'running',
+          ...(title ? { title } : {}),
+          ...(frame.summary ? { summary: String(frame.summary) } : {}),
+          ...(usage?.total !== undefined ? { tokens: { total: usage.total } } : {}),
+          ...(usage?.durationMs !== undefined ? { startedAt: Date.now() - usage.durationMs } : {})
+        })
       } else if (frame.type === 'system' && frame.subtype === 'task_notification') {
-        const id = String(frame.task_id)
-        if (!background.has(id)) return
-        clearTimeout(background.get(id))
-        background.delete(id)
+        const taskId = String(frame.task_id)
+        const agent =
+          agentIds.has(taskId) || Boolean(frame.subagent_type) || isAgentTask(frame.task_type)
+        if (agent) {
+          // Agent outcomes stay on the sub-agent list. They are not transcript notices.
+          const id = linkChild(taskId, frame.tool_use_id)
+          const timer = agentTimers.get(id)
+          if (timer) clearTimeout(timer)
+          agentTimers.delete(id)
+          listedAgents.delete(id)
+          const usage = taskUsage(frame.usage)
+          const finishedAt = Date.now()
+          const title = String(frame.description ?? '')
+          reportAgent(id, {
+            status:
+              frame.status === 'failed'
+                ? 'failed'
+                : frame.status === 'stopped'
+                  ? 'stopped'
+                  : 'completed',
+            ...(title ? { title } : {}),
+            ...(frame.summary ? { summary: String(frame.summary) } : {}),
+            ...(usage?.total !== undefined ? { tokens: { total: usage.total } } : {}),
+            ...(usage?.durationMs !== undefined
+              ? { startedAt: finishedAt - usage.durationMs, finishedAt }
+              : {})
+          })
+          return
+        }
+        if (!background.has(taskId)) return
+        clearTimeout(background.get(taskId))
+        background.delete(taskId)
         // Claude reports the outcome as a status. The exit code exists only in the summary text.
         const exitCode = /exit code (-?\d+)/.exec(String(frame.summary ?? ''))?.[1]
         host.task({
-          id,
+          id: taskId,
           status:
             frame.status === 'failed'
               ? 'failed'
@@ -490,6 +641,8 @@ export const claudeAdapter: AgentAdapter = {
           settingSources: ['user', 'project', 'local'],
           systemPrompt: { type: 'preset', preset: 'claude_code' },
           includePartialMessages: true,
+          // forwardSubagentText stays at the SDK default (false): child text and thinking
+          // are not requested. Frames that still arrive with parent_tool_use_id are dropped.
           permissionMode:
             session.accessMode === 'read'
               ? 'plan'

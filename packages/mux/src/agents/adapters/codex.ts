@@ -58,8 +58,8 @@ export const codexAdapter: AgentAdapter = {
     }
   },
   connect(session, host) {
-    // Codex notifications name thread items and shell jobs, not child agents. host.subagent
-    // stays unused until a frame is actually a child. Thread token usage is the parent window.
+    // Shell jobs that outlive a turn are background tasks. collabAgentToolCall and
+    // subAgentActivity are child agents on this same pipe; other threads are ignored.
     let rpc: JsonProcess | undefined
     let closed = false
     let current: AutonomousTurn | undefined
@@ -69,6 +69,103 @@ export const codexAdapter: AgentAdapter = {
     const commands = new Map<string, { command: string; startedAt: number }>()
     // Commands still running when their turn completed: unified-exec background terminals.
     const background = new Set<string>()
+    // Child agents named on this parent thread, keyed by their own thread id.
+    const children = new Map<string, { title?: string; status: string }>()
+    const childStatus = (status: unknown, fallback: string): string => {
+      switch (status) {
+        case 'pendingInit':
+          return 'created'
+        case 'running':
+        case 'inProgress':
+          return 'running'
+        case 'completed':
+          return 'completed'
+        case 'failed':
+        case 'errored':
+          return 'failed'
+        case 'interrupted':
+        case 'shutdown':
+        case 'notFound':
+          return 'stopped'
+        default:
+          return fallback
+      }
+    }
+    const pathTitle = (value: unknown): string | undefined => {
+      if (typeof value !== 'string' || !value.trim()) return undefined
+      const parts = value.split('/').filter(Boolean)
+      return parts.at(-1) || value
+    }
+    const promptTitle = (value: unknown): string | undefined => {
+      if (typeof value !== 'string' || !value.trim()) return undefined
+      return value.trim().split('\n')[0]?.slice(0, 80)
+    }
+    const reportChild = (
+      id: string,
+      status: string,
+      extra: { title?: string; model?: string; startedAt?: number; finishedAt?: number } = {}
+    ): void => {
+      const previous = children.get(id)
+      const title = previous?.title || extra.title
+      children.set(id, { title, status })
+      host.subagent({
+        id,
+        status: status as 'created' | 'running' | 'completed' | 'failed' | 'stopped',
+        ...(title ? { title } : {}),
+        ...(extra.model ? { model: extra.model } : {}),
+        ...(extra.startedAt !== undefined ? { startedAt: extra.startedAt } : {}),
+        ...(extra.finishedAt !== undefined ? { finishedAt: extra.finishedAt } : {})
+      })
+    }
+    const noteActivity = (native: Frame): void => {
+      const id = String(native.agentThreadId ?? '')
+      if (!id) return
+      const status = native.kind === 'interrupted' ? 'stopped' : 'running'
+      const startedAt = typeof native.startedAtMs === 'number' ? native.startedAtMs : undefined
+      reportChild(id, status, {
+        title: pathTitle(native.agentPath),
+        startedAt,
+        ...(status === 'stopped' ? { finishedAt: Date.now() } : {})
+      })
+    }
+    const noteCollab = (native: Frame, phase: 'item/started' | 'item/completed'): void => {
+      const states: Frame = native.agentsStates ?? {}
+      const ids = new Set<string>([
+        ...Object.keys(states),
+        ...(Array.isArray(native.receiverThreadIds)
+          ? native.receiverThreadIds.map((id: unknown) => String(id))
+          : [])
+      ])
+      const title = promptTitle(native.prompt)
+      const model = typeof native.model === 'string' ? native.model : undefined
+      const startedAt = typeof native.startedAtMs === 'number' ? native.startedAtMs : undefined
+      const fallback =
+        phase === 'item/started' ? 'running' : childStatus(native.status, 'completed')
+      for (const id of ids) {
+        const state: Frame = states[id] ?? {}
+        const status = childStatus(state.status, fallback)
+        const finishedAt = status !== 'created' && status !== 'running' ? Date.now() : undefined
+        reportChild(id, status, { title, model, startedAt, finishedAt })
+      }
+    }
+    const childTokens = (thread: string, usage: Frame): void => {
+      const counts: Frame = usage.total ?? usage.last ?? {}
+      const input = typeof counts.inputTokens === 'number' ? counts.inputTokens : undefined
+      const output = typeof counts.outputTokens === 'number' ? counts.outputTokens : undefined
+      const total = typeof counts.totalTokens === 'number' ? counts.totalTokens : undefined
+      if (input === undefined && output === undefined && total === undefined) return
+      const known = children.get(thread)
+      if (!known) return
+      host.subagent({
+        id: thread,
+        status: known.status as 'created' | 'running' | 'completed' | 'failed' | 'stopped',
+        tokens: {
+          ...(input !== undefined ? { input } : {}),
+          ...(output !== undefined ? { output } : {}),
+          ...(total !== undefined ? { total } : {})
+        }
+      })
+    }
     const emit = (event: AgentDelta): void =>
       current ? current.context.emit(event) : host.idle(event)
     const out = { emit }
@@ -155,6 +252,16 @@ export const codexAdapter: AgentAdapter = {
         })
         return
       }
+      // Child usage arrives on the same pipe, addressed to that child's thread. Do not
+      // subscribe to it, and do not copy usage from any thread that is not that child.
+      if (
+        frame.method === 'thread/tokenUsage/updated' &&
+        typeof p.threadId === 'string' &&
+        children.has(p.threadId)
+      ) {
+        childTokens(p.threadId, p.tokenUsage ?? {})
+        return
+      }
       if (p.threadId && threadId && p.threadId !== threadId) return
       switch (frame.method) {
         case 'turn/started':
@@ -194,6 +301,14 @@ export const codexAdapter: AgentAdapter = {
         case 'item/started':
         case 'item/completed': {
           const native: Frame = p.item ?? {}
+          if (native.type === 'collabAgentToolCall') {
+            noteCollab(native, frame.method)
+            break
+          }
+          if (native.type === 'subAgentActivity') {
+            noteActivity(native)
+            break
+          }
           const status =
             frame.method === 'item/started'
               ? 'running'
