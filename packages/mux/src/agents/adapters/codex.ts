@@ -168,15 +168,16 @@ export const codexAdapter: AgentAdapter = {
     const noteActivity = (native: Frame): void => {
       const id = String(native.agentThreadId ?? '')
       if (!id) return
-      const status = native.kind === 'interrupted' ? 'stopped' : 'running'
+      const stopped = native.kind === 'interrupted'
       const clock = childFields(native)
-      reportChild(id, status, {
+      if (clock.durationMs === 0) delete clock.durationMs
+      if (!stopped) delete clock.finishedAt
+      const finishedAt = stopped ? (clock.finishedAt ?? Date.now()) : undefined
+      reportChild(id, stopped ? 'stopped' : 'running', {
         title: pathTitle(native.agentPath),
         ...clock,
-        ...(status === 'stopped' && clock.finishedAt === undefined
-          ? { finishedAt: Date.now() }
-          : {}),
-        ...(status === 'stopped' ? { announce: true } : {})
+        ...(finishedAt !== undefined ? { finishedAt } : {}),
+        ...(stopped ? { announce: true } : {})
       })
     }
     const noteCollab = (native: Frame, phase: 'item/started' | 'item/completed'): void => {
@@ -188,15 +189,39 @@ export const codexAdapter: AgentAdapter = {
           : [])
       ])
       const title = promptTitle(native.prompt)
-      const fallback =
-        phase === 'item/started' ? 'running' : childStatus(native.status, 'completed')
       for (const id of ids) {
         const state: Frame = states[id] ?? {}
-        const status = childStatus(state.status, fallback)
+        // The collab item finishing is the parent's tool call, not that child's end.
+        const named = typeof state.status === 'string'
+        const status = named
+          ? childStatus(state.status, 'running')
+          : (children.get(id)?.status ?? 'running')
         const clock = childFields(state)
-        const terminal = status !== 'created' && status !== 'running'
-        const finishedAt = clock.finishedAt ?? (terminal ? Date.now() : undefined)
-        reportChild(id, status, {
+        const elapsed =
+          clock.durationMs ??
+          (clock.finishedAt !== undefined && clock.startedAt !== undefined
+            ? clock.finishedAt - clock.startedAt
+            : undefined)
+        const terminal =
+          phase === 'item/completed' &&
+          named &&
+          status !== 'created' &&
+          status !== 'running' &&
+          elapsed !== 0
+        if (clock.durationMs === 0) delete clock.durationMs
+        const keep =
+          !named && (status === 'completed' || status === 'failed' || status === 'stopped')
+        const reported = terminal
+          ? status
+          : keep
+            ? status
+            : status === 'created'
+              ? 'created'
+              : 'running'
+        const ownFinish = clock.finishedAt
+        if (!terminal) delete clock.finishedAt
+        const finishedAt = terminal ? (ownFinish ?? Date.now()) : undefined
+        reportChild(id, reported, {
           title,
           ...clock,
           ...(finishedAt !== undefined ? { finishedAt } : {}),
@@ -455,8 +480,6 @@ export const codexAdapter: AgentAdapter = {
           break
         }
         case 'turn/completed': {
-          // Parent turn completion is this method. A child end is item/completed whose
-          // item.type is collabAgentToolCall or subAgentActivity, and that frame does not settle.
           // Unified exec yields long-running commands back to the model; they outlive the turn.
           for (const [id, { command, startedAt }] of commands) {
             background.add(id)
