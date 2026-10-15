@@ -209,17 +209,6 @@ export const claudeAdapter: AgentAdapter = {
     // Agent task ids currently in the live set, and the timer that settles one that disappeared.
     const listedAgents = new Set<string>()
     const agentTimers = new Map<string, ReturnType<typeof setTimeout> | undefined>()
-    // Child agents still out. A model `result` while this set is non-empty is the model
-    // pausing for them, not the parent turn ending. Their later reports stay in this turn.
-    const openAgents = new Set<string>()
-    const endedAgents = new Set<string>()
-    const noteOpen = (id: string): void => {
-      if (!endedAgents.has(id)) openAgents.add(id)
-    }
-    const noteEnded = (id: string): void => {
-      endedAgents.add(id)
-      openAgents.delete(id)
-    }
     const finish = (error?: Error): void => {
       const turn = current
       current = undefined
@@ -464,8 +453,10 @@ export const claudeAdapter: AgentAdapter = {
       })
     }
     const handle = async (frame: Frame): Promise<void> => {
-      // Child frames share the parent stream. They are status, not transcript rows.
-      if (frame.parent_tool_use_id) {
+      // Child frames share the parent stream. They are status, not transcript rows, and not
+      // the parent turn. A result is decided below: parent_tool_use_id on that frame means
+      // the result belongs to the child.
+      if (frame.parent_tool_use_id && frame.type !== 'result') {
         noteChild(frame.parent_tool_use_id)
         const childId =
           alias.get(String(frame.parent_tool_use_id)) ?? String(frame.parent_tool_use_id)
@@ -569,6 +560,8 @@ export const claudeAdapter: AgentAdapter = {
           item(turn.context, block.tool_use_id, 'tool', describe(block.content), {
             status: block.is_error ? 'failed' : 'completed'
           })
+          // A Task tool_result is that child's report. It can append the finished line.
+          // It does not settle the parent turn.
           finishChild(block)
         }
         // The assigned task id lives on tool_use_result, not in the tool input.
@@ -584,6 +577,10 @@ export const claudeAdapter: AgentAdapter = {
           if (snapshot) emit({ type: 'todo', todo: snapshot })
         }
       } else if (frame.type === 'result') {
+        // The parent turn's own completion is a success `result` with no parent_tool_use_id.
+        // A result that carries parent_tool_use_id is a child's report, so it stays inside
+        // this turn. Children still running do not hold the turn open, and they do not end it.
+        if (frame.parent_tool_use_id) return
         const turn = current
         if (!turn) return
         if (frame.is_error || frame.subtype !== 'success') {
@@ -609,9 +606,6 @@ export const claudeAdapter: AgentAdapter = {
         } catch {
           // Best-effort control-plane call; a turn's success does not depend on it.
         }
-        // A child is still out, so Claude will wake again when it reports. That continuation
-        // belongs to this same turn. Ending here is what drew an End of response per child.
-        if (openAgents.size > 0) return
         if (current === turn) finish()
       } else if (frame.type === 'system' && frame.subtype === 'background_tasks_changed') {
         // The full live set, which can precede or follow the task_notification that says how a task
@@ -669,15 +663,10 @@ export const claudeAdapter: AgentAdapter = {
           }
           listedAgents.add(id)
         }
-        // The live set is the full list. An agent that left it is no longer holding the turn
-        // open, even before the 5s stop timer. One that already ended stays ended.
-        openAgents.clear()
-        for (const id of liveAgents) noteOpen(id)
       } else if (frame.type === 'system' && frame.subtype === 'task_started') {
         if (frame.ambient) return
         if (isAgentTask(frame.task_type)) {
           const id = linkChild(String(frame.task_id), frame.tool_use_id)
-          if (frame.is_backgrounded) noteOpen(id)
           const title = String(frame.description ?? '')
           reportAgent(id, {
             status: 'running',
@@ -715,14 +704,13 @@ export const claudeAdapter: AgentAdapter = {
         const agent =
           agentIds.has(taskId) || Boolean(frame.subagent_type) || isAgentTask(frame.task_type)
         if (agent) {
-          // This frame is the agent's end on the parent stream. One finish line is recorded.
-          // The summary and the child's response stay off the transcript.
+          // task_notification is the child's end. One finish line is recorded inside the
+          // current response. It is not the parent turn's `result`, so the turn stays open.
           const id = linkChild(taskId, frame.tool_use_id)
           const timer = agentTimers.get(id)
           if (timer) clearTimeout(timer)
           agentTimers.delete(id)
           listedAgents.delete(id)
-          noteEnded(id)
           const usage = taskUsage(frame.usage)
           const finishedAt = Date.now()
           const title = String(frame.description ?? '')

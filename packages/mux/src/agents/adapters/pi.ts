@@ -47,7 +47,8 @@ export const piAdapter: AgentAdapter = {
   },
   connect(session, host) {
     // Pi's rpc events have no child channel. host.subagent stays unused until a frame names one.
-    // `agent_end` is the parent turn, not a child, so Pi never sends a child's end on this stream.
+    // The parent turn completes on type agent_end. tool_execution_end is a tool, not that frame,
+    // and Pi never sends a child end to invent one from.
     const rpc = new JsonProcess(
       executable('pi'),
       [

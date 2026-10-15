@@ -193,6 +193,50 @@ function codexPrompt(threadId, prompt, input) {
     codexDone()
     return
   }
+  if (prompt === 'child-not-turn') {
+    notify('item/completed', {
+      item: {
+        type: 'collabAgentToolCall',
+        id: 'collab-late',
+        tool: 'spawnAgent',
+        status: 'completed',
+        senderThreadId: 'thread-test',
+        receiverThreadIds: ['child-late'],
+        prompt: 'Search tooling',
+        agentsStates: {
+          'child-late': {
+            status: 'completed',
+            model: 'gpt-test',
+            effort: 'high',
+            durationMs: 57000
+          }
+        }
+      }
+    })
+    notify('item/completed', {
+      item: {
+        type: 'agentMessage',
+        id: 'parent-mid',
+        text: 'Parent still writing after the child.'
+      }
+    })
+    setTimeout(() => {
+      notify('item/completed', {
+        item: {
+          type: 'subAgentActivity',
+          id: 'activity-late',
+          kind: 'interrupted',
+          agentThreadId: 'child-late',
+          agentPath: '/root/search-tooling'
+        }
+      })
+      notify('item/completed', {
+        item: { type: 'agentMessage', id: 'parent-end', text: 'Parent recommendation.' }
+      })
+      codexDone()
+    }, 40)
+    return
+  }
   if (prompt === 'background-command' || prompt === 'background-command-fail') {
     const failed = prompt.endsWith('-fail')
     // Unified exec yields a long-running command: its item outlives the turn and completes later.
@@ -698,20 +742,7 @@ function claudePrompt(prompt, content) {
       effort: 'high',
       session_id: 'claude-test'
     })
-    // The model is done. Drop the agents from the live set so this result is the turn's end.
-    send({
-      type: 'system',
-      subtype: 'background_tasks_changed',
-      tasks: [
-        {
-          task_id: 'bash-1',
-          task_type: 'local_bash',
-          description: 'Delayed pwd',
-          tool_use_id: 'tool-bash'
-        }
-      ],
-      session_id: 'claude-test'
-    })
+    // The parent turn's own result. agent-2 is still in the live set; that does not hold this open.
     claudeFinish('Review finished.')
     return
   }
@@ -751,6 +782,15 @@ function claudePrompt(prompt, content) {
         tokens: 9000
       }
     ]
+    const childResult = (toolUseId) =>
+      send({
+        type: 'result',
+        subtype: 'success',
+        is_error: false,
+        parent_tool_use_id: toolUseId,
+        result: 'child report',
+        session_id: 'claude-test'
+      })
     send({ type: 'system', subtype: 'init', session_id: 'claude-test', tools: [], model: 'test' })
     say('parent-1', 'Three research agents are running. I will consolidate when they report back.')
     send({
@@ -779,8 +819,8 @@ function claudePrompt(prompt, content) {
         effort: agent.effort,
         session_id: 'claude-test'
       })
-    // The model paused while both agents are still out. This result must not end the turn.
-    result()
+    // A child's own success result. parent_tool_use_id says it is not the parent turn.
+    childResult('tool-tooling')
     setTimeout(() => {
       const first = agents[0]
       send({
@@ -798,7 +838,7 @@ function claudePrompt(prompt, content) {
         session_id: 'claude-test'
       })
       say('parent-2', 'Tooling findings. The other agent is still running.')
-      result()
+      childResult('tool-blogs')
       setTimeout(() => {
         const second = agents[1]
         send({
@@ -816,6 +856,7 @@ function claudePrompt(prompt, content) {
           session_id: 'claude-test'
         })
         say('parent-3', 'Final recommendation.')
+        // The parent turn's own completion. No parent_tool_use_id. This is the only end.
         result()
       }, 40)
     }, 40)
@@ -1273,6 +1314,45 @@ createInterface({ input: process.stdin }).on('line', (line) => {
               delta: `[steered: ${frame.message}]`
             }
           })
+          break
+        }
+        if (frame.message === 'pi-not-end') {
+          reply({})
+          send({ type: 'message_start', message: { role: 'assistant' } })
+          send({
+            type: 'message_update',
+            assistantMessageEvent: {
+              type: 'text_delta',
+              contentIndex: 0,
+              delta: 'Parent still writing.'
+            }
+          })
+          // A tool finishing is not agent_end. Pi has no child frame to treat as the turn.
+          send({
+            type: 'tool_execution_end',
+            toolCallId: 'tool-1',
+            toolName: 'read',
+            result: 'file',
+            isError: false
+          })
+          setTimeout(() => {
+            send({
+              type: 'message_update',
+              assistantMessageEvent: { type: 'text_delta', contentIndex: 1, delta: 'Parent done.' }
+            })
+            send({
+              type: 'message_end',
+              message: {
+                role: 'assistant',
+                content: [
+                  { type: 'text', text: 'Parent still writing.' },
+                  { type: 'text', text: 'Parent done.' }
+                ],
+                stopReason: 'stop'
+              }
+            })
+            send({ type: 'agent_end' })
+          }, 40)
           break
         }
         const responseText =

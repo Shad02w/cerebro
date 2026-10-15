@@ -1328,7 +1328,7 @@ describe('agent adapters', { concurrency: 1 }, () => {
     }
   )
 
-  test('Claude: a child report does not end the parent turn', { timeout: 15_000 }, async () => {
+  test('Claude: a child frame is not the parent result', { timeout: 15_000 }, async () => {
     process.env.CEREBRO_CLAUDE_PATH = fixture
     const model = (await adapters.claude.models('/tmp'))[0]
     const session = liveSession(model, 'one-response')
@@ -1478,6 +1478,86 @@ describe('agent adapters', { concurrency: 1 }, () => {
       assert.ok(replies(events).includes('Review finished.'))
     }
   )
+
+  test('Codex: a child item is not turn/completed', { timeout: 15_000 }, async () => {
+    process.env.CEREBRO_CODEX_PATH = fixture
+    const model = (await adapters.codex.models('/tmp'))[0]
+    const session = liveSession(model, 'child-not-turn')
+    const events: AgentDelta[] = []
+    let wakes = 0
+    let settled = false
+    const connection = adapters.codex.connect(session, {
+      ...idleHost,
+      autonomous: () => {
+        wakes += 1
+        return undefined
+      }
+    })
+    try {
+      const done = connection
+        .run({
+          session,
+          text: 'child-not-turn',
+          signal: new AbortController().signal,
+          emit: (event) => events.push(event),
+          ask: async () => ({ allow: false, answers: {} })
+        })
+        .then(() => {
+          settled = true
+        })
+      await waitFor(() => replies(events).includes('Parent still writing after the child.'))
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      assert.equal(settled, false)
+      assert.equal(wakes, 0)
+      await done
+      assert.equal(wakes, 0)
+      assert.deepEqual(replies(events), [
+        'Parent still writing after the child.',
+        'Parent recommendation.'
+      ])
+    } finally {
+      connection.close()
+    }
+  })
+
+  test('Pi: tool_execution_end is not agent_end', { timeout: 15_000 }, async () => {
+    process.env.CEREBRO_PI_PATH = fixture
+    const model = (await adapters.pi.models('/tmp'))[0]
+    const session = liveSession(model, 'pi-not-end')
+    const events: AgentDelta[] = []
+    let wakes = 0
+    let settled = false
+    const connection = adapters.pi.connect(session, {
+      ...idleHost,
+      autonomous: () => {
+        wakes += 1
+        return undefined
+      }
+    })
+    try {
+      const done = connection
+        .run({
+          session,
+          text: 'pi-not-end',
+          signal: new AbortController().signal,
+          emit: (event) => events.push(event),
+          ask: async () => ({ allow: false, answers: {} })
+        })
+        .then(() => {
+          settled = true
+        })
+      await waitFor(() => replies(events).includes('Parent still writing.'))
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      assert.equal(settled, false)
+      assert.equal(wakes, 0)
+      await done
+      assert.equal(wakes, 0)
+      assert.ok(replies(events).includes('Parent still writing.'))
+      assert.ok(replies(events).includes('Parent done.'))
+    } finally {
+      connection.close()
+    }
+  })
 
   after(async () => {
     const pid = codexAppServerPid()
