@@ -1122,11 +1122,25 @@ test('a running agent starts a local clock, and a later duration or start replac
     const localStart = running.startedAt
     assert.equal(running.durationMs, undefined)
 
-    host.subagent({ id: 'child', status: 'running', durationMs: 120_000 })
+    host.subagent({
+      id: 'child',
+      status: 'running',
+      durationMs: 120_000,
+      model: 'sonnet',
+      effort: 'high'
+    })
     session = (await service.command(scope, get)).session!
     const duration = session.subagents?.find((child) => child.id === 'child')
     assert.equal(duration?.durationMs, 120_000)
     assert.equal(duration?.startedAt, localStart)
+    assert.equal(duration?.model, 'sonnet')
+    assert.equal(duration?.effort, 'high')
+
+    host.subagent({ id: 'child', status: 'running', tokens: { total: 1 } })
+    session = (await service.command(scope, get)).session!
+    const kept = session.subagents?.find((child) => child.id === 'child')
+    assert.equal(kept?.model, 'sonnet')
+    assert.equal(kept?.effort, 'high')
 
     host.subagent({ id: 'child', status: 'running', startedAt: 50 })
     session = (await service.command(scope, get)).session!

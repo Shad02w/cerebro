@@ -219,8 +219,10 @@ export const claudeAdapter: AgentAdapter = {
     }
     // Tool titles, keyed by tool-use id, so a child frame can be named after the tool that spawned it.
     const toolTitles = new Map<string, string>()
+    const toolIdentity = new Map<string, { model?: string; effort?: string }>()
     // Child ids already reported, and the title last sent for each.
     const children = new Map<string, string | undefined>()
+    const settled = new Set<string>()
     // tool-use id and task id both point at the one sub-agent id already reported.
     const alias = new Map<string, string>()
     const agentIds = new Set<string>()
@@ -254,6 +256,23 @@ export const claudeAdapter: AgentAdapter = {
         ...(durationMs !== undefined ? { durationMs } : {})
       }
     }
+    const textField = (value: unknown): string | undefined => {
+      if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+      if (typeof value !== 'string') return undefined
+      const trimmed = value.trim()
+      return trimmed ? trimmed : undefined
+    }
+    // Model and effort are copied only from the object that names this child.
+    const childIdentity = (source: Frame | undefined): { model?: string; effort?: string } => {
+      if (!source) return {}
+      const model = textField(source.model)
+      const effort = textField(source.effort ?? source.effort_level ?? source.effortLevel)
+      return {
+        ...(model ? { model } : {}),
+        ...(effort ? { effort } : {})
+      }
+    }
+    const isAgentTool = (name: unknown): boolean => name === 'Task' || name === 'Agent'
     const titleFrom = (name: unknown, input: unknown): string | undefined => {
       let parsed = input
       if (typeof input === 'string' && input.trim().startsWith('{')) {
@@ -274,25 +293,45 @@ export const claudeAdapter: AgentAdapter = {
       if (id == null || id === '') return
       const key = String(id)
       const title = titleFrom(name, input)
+      if (isAgentTool(name)) {
+        let parsed = input
+        if (typeof input === 'string' && input.trim().startsWith('{')) {
+          try {
+            parsed = JSON.parse(input)
+          } catch {
+            parsed = undefined
+          }
+        }
+        const identity = childIdentity(
+          parsed && typeof parsed === 'object' ? (parsed as Frame) : undefined
+        )
+        if (identity.model || identity.effort) toolIdentity.set(key, identity)
+      }
       if (!title || toolTitles.get(key) === title) return
       toolTitles.set(key, title)
       if (!children.has(key) || children.get(key) === title) return
       children.set(key, title)
-      host.subagent({ id: key, status: 'running', title })
+      host.subagent({ id: key, status: 'running', title, ...toolIdentity.get(key) })
     }
     const noteChild = (parentId: unknown): void => {
       if (parentId == null || parentId === '') return
       const raw = String(parentId)
       const id = alias.get(raw) ?? raw
       const title = toolTitles.get(raw) ?? toolTitles.get(id)
+      const identity = toolIdentity.get(raw) ?? toolIdentity.get(id)
       if (!children.has(id)) {
         children.set(id, title)
-        host.subagent({ id, status: 'running', ...(title ? { title } : {}) })
+        host.subagent({
+          id,
+          status: 'running',
+          ...(title ? { title } : {}),
+          ...identity
+        })
         return
       }
       if (title && children.get(id) !== title) {
         children.set(id, title)
-        host.subagent({ id, status: 'running', title })
+        host.subagent({ id, status: 'running', title, ...identity })
       }
     }
     const childTokens = (
@@ -314,6 +353,7 @@ export const claudeAdapter: AgentAdapter = {
       if (block.tool_use_id == null) return
       const id = alias.get(String(block.tool_use_id)) ?? String(block.tool_use_id)
       if (!children.has(id)) return
+      settled.add(id)
       const tokens = childTokens(block.usage)
       host.subagent({
         id,
@@ -331,10 +371,13 @@ export const claudeAdapter: AgentAdapter = {
         startedAt?: number
         finishedAt?: number
         durationMs?: number
+        model?: string
+        effort?: string
       }
     ): void => {
       if (!children.has(id) || (update.title && children.get(id) !== update.title))
         children.set(id, update.title ?? children.get(id))
+      if (update.status !== 'running') settled.add(id)
       host.subagent({
         id,
         status: update.status,
@@ -343,13 +386,25 @@ export const claudeAdapter: AgentAdapter = {
         ...(update.tokens ? { tokens: update.tokens } : {}),
         ...(update.startedAt !== undefined ? { startedAt: update.startedAt } : {}),
         ...(update.finishedAt !== undefined ? { finishedAt: update.finishedAt } : {}),
-        ...(update.durationMs !== undefined ? { durationMs: update.durationMs } : {})
+        ...(update.durationMs !== undefined ? { durationMs: update.durationMs } : {}),
+        ...(update.model ? { model: update.model } : {}),
+        ...(update.effort ? { effort: update.effort } : {})
       })
     }
     const handle = async (frame: Frame): Promise<void> => {
       // Child frames share the parent stream. They are status, not transcript rows.
       if (frame.parent_tool_use_id) {
         noteChild(frame.parent_tool_use_id)
+        const childId =
+          alias.get(String(frame.parent_tool_use_id)) ?? String(frame.parent_tool_use_id)
+        const message =
+          frame.message && typeof frame.message === 'object' ? frame.message : undefined
+        const identity = childIdentity({
+          model: frame.model ?? message?.model,
+          effort: frame.effort ?? frame.effort_level ?? message?.effort
+        })
+        if ((identity.model || identity.effort) && !settled.has(childId))
+          host.subagent({ id: childId, status: 'running', ...identity })
         if (frame.type === 'user') {
           const blocks = Array.isArray(frame.message?.content) ? frame.message.content : []
           for (const block of blocks as Frame[])
@@ -496,7 +551,11 @@ export const claudeAdapter: AgentAdapter = {
           if (isAgentTask(task.task_type)) {
             const id = linkChild(taskId, task.tool_use_id)
             liveAgents.add(id)
-            reportAgent(id, { status: 'running', ...(title ? { title } : {}) })
+            reportAgent(id, {
+              status: 'running',
+              ...(title ? { title } : {}),
+              ...childIdentity(task)
+            })
             continue
           }
           liveShells.add(taskId)
@@ -540,7 +599,11 @@ export const claudeAdapter: AgentAdapter = {
         if (isAgentTask(frame.task_type)) {
           const id = linkChild(String(frame.task_id), frame.tool_use_id)
           const title = String(frame.description ?? '')
-          reportAgent(id, { status: 'running', ...(title ? { title } : {}) })
+          reportAgent(id, {
+            status: 'running',
+            ...(title ? { title } : {}),
+            ...childIdentity(frame)
+          })
           return
         }
         if (frame.is_backgrounded && background.has(String(frame.task_id)))
@@ -564,7 +627,8 @@ export const claudeAdapter: AgentAdapter = {
           // finish without a duration still measures from the harness clock, not the local guess.
           ...(usage?.durationMs !== undefined
             ? { durationMs: usage.durationMs, startedAt: Date.now() - usage.durationMs }
-            : {})
+            : {}),
+          ...childIdentity(frame)
         })
       } else if (frame.type === 'system' && frame.subtype === 'task_notification') {
         const taskId = String(frame.task_id)
@@ -596,7 +660,8 @@ export const claudeAdapter: AgentAdapter = {
                   startedAt: finishedAt - usage.durationMs,
                   finishedAt
                 }
-              : { finishedAt })
+              : { finishedAt }),
+            ...childIdentity(frame)
           })
           return
         }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { LoaderCircle } from 'lucide-react'
 import type { AgentSubagent, AgentSubagentTokens } from '@cerebro/core'
+import { AgentStatusIcon } from '@/components/agent-status-icon'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { ChatSessionChip } from './chat-session-chip'
 
@@ -64,6 +64,14 @@ function elapsed(agent: AgentSubagent, now: number): string {
   return formatSubagentElapsed(now - agent.startedAt)
 }
 
+/** Model and effort the harness sent for this child. Either one is left out when it was not sent. */
+function reportedIdentity(agent: AgentSubagent): string {
+  return [agent.model, agent.effort]
+    .map((part) => part?.trim())
+    .filter((part): part is string => Boolean(part))
+    .join(' · ')
+}
+
 function needsClock(agents: AgentSubagent[]): boolean {
   return agents.some(
     (agent) =>
@@ -108,7 +116,7 @@ export function ChatSubagents({
       >
         <div
           aria-label="Agents"
-          className="grid grid-cols-[0.875rem_minmax(0,14rem)_auto_auto] items-center gap-x-3 gap-y-1 px-2 py-1"
+          className="grid grid-cols-[0.875rem_minmax(0,12rem)_auto_auto_auto] items-center gap-x-3 gap-y-1 px-2 py-1"
         >
           {listed.map((agent) => {
             const live = !finished(agent.status)
@@ -120,17 +128,7 @@ export function ChatSubagents({
                 data-status={agent.status}
               >
                 <span data-cell="" className="flex size-3.5 items-center justify-center">
-                  {live ? (
-                    <LoaderCircle
-                      className="size-3.5 animate-spin text-muted-foreground"
-                      aria-hidden="true"
-                    />
-                  ) : (
-                    <span
-                      className="size-1.5 rounded-full bg-muted-foreground"
-                      aria-hidden="true"
-                    />
-                  )}
+                  <AgentStatusIcon status={live ? 'running' : 'finished'} />
                 </span>
                 <span
                   data-cell=""
@@ -138,6 +136,9 @@ export function ChatSubagents({
                   title={agent.title || agent.id}
                 >
                   {agent.title || agent.id}
+                </span>
+                <span data-cell="" className="text-xs text-muted-foreground">
+                  {reportedIdentity(agent)}
                 </span>
                 <span data-cell="" className="text-xs text-muted-foreground tabular-nums">
                   {elapsed(agent, now)}

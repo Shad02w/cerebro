@@ -106,6 +106,7 @@ export const codexAdapter: AgentAdapter = {
       extra: {
         title?: string
         model?: string
+        effort?: string
         startedAt?: number
         finishedAt?: number
         durationMs?: number
@@ -119,25 +120,44 @@ export const codexAdapter: AgentAdapter = {
         status: status as 'created' | 'running' | 'completed' | 'failed' | 'stopped',
         ...(title ? { title } : {}),
         ...(extra.model ? { model: extra.model } : {}),
+        ...(extra.effort ? { effort: extra.effort } : {}),
         ...(extra.startedAt !== undefined ? { startedAt: extra.startedAt } : {}),
         ...(extra.finishedAt !== undefined ? { finishedAt: extra.finishedAt } : {}),
         ...(extra.durationMs !== undefined ? { durationMs: extra.durationMs } : {})
       })
     }
-    // Clock fields are read only from the child they name. A collab item's own startedAtMs
-    // belongs to the tool call, not to every receiver.
-    const childClock = (
+    // Clock, model, and effort are read only from the child they name. A collab item's own
+    // startedAtMs and model belong to the tool call, not to every receiver.
+    const textField = (value: unknown): string | undefined => {
+      if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+      if (typeof value !== 'string') return undefined
+      const trimmed = value.trim()
+      return trimmed ? trimmed : undefined
+    }
+    const childFields = (
       source: Frame
-    ): { startedAt?: number; finishedAt?: number; durationMs?: number } => ({
-      ...(typeof source.startedAtMs === 'number' ? { startedAt: source.startedAtMs } : {}),
-      ...(typeof source.completedAtMs === 'number' ? { finishedAt: source.completedAtMs } : {}),
-      ...(typeof source.durationMs === 'number' ? { durationMs: source.durationMs } : {})
-    })
+    ): {
+      startedAt?: number
+      finishedAt?: number
+      durationMs?: number
+      model?: string
+      effort?: string
+    } => {
+      const model = textField(source.model)
+      const effort = textField(source.effort ?? source.reasoningEffort)
+      return {
+        ...(typeof source.startedAtMs === 'number' ? { startedAt: source.startedAtMs } : {}),
+        ...(typeof source.completedAtMs === 'number' ? { finishedAt: source.completedAtMs } : {}),
+        ...(typeof source.durationMs === 'number' ? { durationMs: source.durationMs } : {}),
+        ...(model ? { model } : {}),
+        ...(effort ? { effort } : {})
+      }
+    }
     const noteActivity = (native: Frame): void => {
       const id = String(native.agentThreadId ?? '')
       if (!id) return
       const status = native.kind === 'interrupted' ? 'stopped' : 'running'
-      const clock = childClock(native)
+      const clock = childFields(native)
       reportChild(id, status, {
         title: pathTitle(native.agentPath),
         ...clock,
@@ -155,19 +175,17 @@ export const codexAdapter: AgentAdapter = {
           : [])
       ])
       const title = promptTitle(native.prompt)
-      const model = typeof native.model === 'string' ? native.model : undefined
       const fallback =
         phase === 'item/started' ? 'running' : childStatus(native.status, 'completed')
       for (const id of ids) {
         const state: Frame = states[id] ?? {}
         const status = childStatus(state.status, fallback)
-        const clock = childClock(state)
+        const clock = childFields(state)
         const finishedAt =
           clock.finishedAt ??
           (status !== 'created' && status !== 'running' ? Date.now() : undefined)
         reportChild(id, status, {
           title,
-          model,
           ...clock,
           ...(finishedAt !== undefined ? { finishedAt } : {})
         })

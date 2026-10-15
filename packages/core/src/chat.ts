@@ -143,7 +143,10 @@ export type AgentSubagent = {
   durationMs?: number
   tokens?: AgentSubagentTokens
   summary?: string
+  /** Model the harness reported for this child. Absent when that child sent none. */
   model?: string
+  /** Effort the harness reported for this child. Absent when that child sent none. */
+  effort?: string
 }
 export type AgentBackgroundTaskStatus = 'running' | 'completed' | 'failed' | 'stopped'
 /**

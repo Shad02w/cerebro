@@ -48,14 +48,17 @@ describe('ChatSubagents', () => {
             title: 'write-tests',
             startedAt: 0,
             finishedAt: 153_000,
-            tokens: { input: 12_104, output: 6_316, total: 18_420 }
+            tokens: { input: 12_104, output: 6_316, total: 18_420 },
+            model: 'sonnet',
+            effort: 'high'
           }),
           child({
             id: 'lint',
             status: 'completed',
             title: 'lint-pass',
             startedAt: 0,
-            finishedAt: 18_000
+            finishedAt: 18_000,
+            model: 'opus'
           }),
           child({
             id: 'nameless',
@@ -69,7 +72,8 @@ describe('ChatSubagents', () => {
             title: 'small-count',
             startedAt: 0,
             finishedAt: 1_000,
-            tokens: { total: 420 }
+            tokens: { total: 420 },
+            effort: 'low'
           }),
           child({
             id: 'round',
@@ -115,15 +119,27 @@ describe('ChatSubagents', () => {
       'completed',
       'completed'
     ])
-    expect(cells(rows[0])).toEqual(['', 'explore-auth', '', ''])
-    expect(cells(rows[1])).toEqual(['', 'review-diff', '5s', ''])
-    expect(cells(rows[2])).toEqual(['', 'duration-clock', '2m 0s', ''])
-    expect(cells(rows[3])).toEqual(['', 'write-tests', '2m 33s', '18.4k (12.1k in, 6.3k out)'])
-    expect(cells(rows[4])).toEqual(['', 'lint-pass', '18s', 'no tokens'])
-    expect(cells(rows[5])).toEqual(['', 'nameless', '1h 1m', 'no tokens'])
-    expect(cells(rows[6])).toEqual(['', 'small-count', '1s', '420'])
-    expect(cells(rows[7])).toEqual(['', 'round-thousand', '1s', '1k'])
-    expect(cells(rows[8])).toEqual(['', 'million-tokens', '1s', '1.2m'])
+    expect(cells(rows[0])).toEqual(['', 'explore-auth', '', '', ''])
+    expect(cells(rows[1])).toEqual(['', 'review-diff', '', '5s', ''])
+    expect(cells(rows[2])).toEqual(['', 'duration-clock', '', '2m 0s', ''])
+    expect(cells(rows[3])).toEqual([
+      '',
+      'write-tests',
+      'sonnet · high',
+      '2m 33s',
+      '18.4k (12.1k in, 6.3k out)'
+    ])
+    expect(cells(rows[4])).toEqual(['', 'lint-pass', 'opus', '18s', 'no tokens'])
+    expect(cells(rows[5])).toEqual(['', 'nameless', '', '1h 1m', 'no tokens'])
+    expect(cells(rows[6])).toEqual(['', 'small-count', 'low', '1s', '420'])
+    expect(cells(rows[7])).toEqual(['', 'round-thousand', '', '1s', '1k'])
+    expect(cells(rows[8])).toEqual(['', 'million-tokens', '', '1s', '1.2m'])
+    expect(rows[0].querySelector('.agent-status-dots')).not.toBeNull()
+    expect(rows[1].querySelector('[aria-label="Agent running"]')).not.toBeNull()
+    expect(rows[1].querySelector('.animate-spin')).toBeNull()
+    expect(rows[3].querySelector('.agent-status-dot')).not.toBeNull()
+    expect(rows[3].querySelector('[aria-label="Agent finished"]')).toHaveClass('text-emerald-500')
+    expect(rows[5].querySelector('.agent-status-dots')).toBeNull()
   })
 
   it('sits to the right of Todo and Background', () => {

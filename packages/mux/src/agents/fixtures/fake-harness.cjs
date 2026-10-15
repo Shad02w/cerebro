@@ -84,10 +84,15 @@ function codexPrompt(prompt, input) {
         senderThreadId: 'thread-test',
         receiverThreadIds: ['child-thread', 'other-child'],
         prompt: 'Review the diff',
-        model: 'gpt-test',
+        model: 'parent-model',
         startedAtMs: parentStartedAtMs,
         agentsStates: {
-          'child-thread': { status: 'running', startedAtMs: childStartedAtMs },
+          'child-thread': {
+            status: 'running',
+            startedAtMs: childStartedAtMs,
+            model: 'gpt-test',
+            effort: 'high'
+          },
           'other-child': { status: 'running' }
         }
       }
@@ -132,7 +137,9 @@ function codexPrompt(prompt, input) {
             status: 'completed',
             message: 'reviewed',
             startedAtMs: childStartedAtMs,
-            completedAtMs: childStartedAtMs + 153000
+            completedAtMs: childStartedAtMs + 153000,
+            model: 'gpt-test',
+            effort: 'high'
           },
           'other-child': { status: 'running' }
         }
@@ -481,7 +488,12 @@ function claudePrompt(prompt, content) {
             type: 'tool_use',
             id: 'tool-sub',
             name: 'Task',
-            input: { description: 'Review the diff', prompt: 'Look at the auth change.' }
+            input: {
+              description: 'Review the diff',
+              prompt: 'Look at the auth change.',
+              model: 'opus',
+              effort: 'max'
+            }
           }
         ]
       }
@@ -547,7 +559,9 @@ function claudePrompt(prompt, content) {
         task_type: 'local_agent',
         description: 'Review the diff',
         tool_use_id: 'tool-sub',
-        subagent_type: 'general-purpose'
+        subagent_type: 'general-purpose',
+        model: 'sonnet',
+        effort: 'high'
       },
       {
         task_id: 'agent-2',
@@ -618,6 +632,8 @@ function claudePrompt(prompt, content) {
       description: 'Review the diff',
       subagent_type: 'general-purpose',
       usage: { total_tokens: 100, tool_uses: 2, duration_ms: 120000 },
+      model: 'sonnet',
+      effort: 'high',
       session_id: 'claude-test'
     })
     send({
@@ -630,6 +646,8 @@ function claudePrompt(prompt, content) {
       summary: 'Reviewed the diff.',
       description: 'Review the diff',
       usage: { total_tokens: 18420, tool_uses: 3, duration_ms: 153000 },
+      model: 'sonnet',
+      effort: 'high',
       session_id: 'claude-test'
     })
     claudeFinish('Review finished.')

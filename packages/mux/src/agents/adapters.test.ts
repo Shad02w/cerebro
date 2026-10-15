@@ -883,7 +883,7 @@ test(
       }
     )
     assert.deepEqual(updates, [
-      { id: 'tool-sub', status: 'running', title: 'Review the diff' },
+      { id: 'tool-sub', status: 'running', title: 'Review the diff', model: 'opus', effort: 'max' },
       {
         id: 'tool-sub',
         status: 'completed',
@@ -950,11 +950,20 @@ test(
       })
     }
     const review = folded.get('agent-1')
+    const remote = folded.get('agent-2')
     assert.equal(review?.status, 'completed')
     assert.equal(review?.title, 'Review the diff')
     assert.deepEqual(review?.tokens, { total: 18420 })
     assert.equal(review?.durationMs, 153000)
     assert.equal(review?.finishedAt! - review?.startedAt!, 153000)
+    assert.equal(review?.model, 'sonnet')
+    assert.equal(review?.effort, 'high')
+    assert.equal(remote?.model, undefined)
+    assert.equal(remote?.effort, undefined)
+    assert.equal(
+      updates.some((update) => update.model === 'test' || update.model === 'parent-model'),
+      false
+    )
     assert.equal(
       updates.some(
         (update) =>
@@ -962,7 +971,6 @@ test(
       ),
       true
     )
-    const remote = folded.get('agent-2')
     assert.equal(remote?.status, 'running')
     assert.equal(remote?.title, 'Remote review')
     assert.equal(remote?.tokens, undefined)
@@ -1023,11 +1031,18 @@ test(
     assert.equal(child?.status, 'completed')
     assert.equal(child?.title, 'Review the diff')
     assert.equal(child?.model, 'gpt-test')
+    assert.equal(child?.effort, 'high')
     assert.deepEqual(child?.tokens, { input: 12104, output: 6316, total: 18420 })
     assert.equal(child?.startedAt, 1_700_000_000_000)
     assert.equal(child?.finishedAt, 1_700_000_000_000 + 153000)
     const childUpdates = updates.filter((update) => update.id === 'child-thread')
     assert.equal(childUpdates[0]?.startedAt, 1_700_000_000_000)
+    assert.equal(childUpdates[0]?.model, 'gpt-test')
+    assert.equal(childUpdates[0]?.effort, 'high')
+    assert.equal(
+      updates.some((update) => update.model === 'parent-model'),
+      false
+    )
     assert.ok(
       childUpdates.every(
         (update) => update.startedAt === undefined || update.startedAt === 1_700_000_000_000
@@ -1040,7 +1055,9 @@ test(
         (update) =>
           update.startedAt === undefined &&
           update.finishedAt === undefined &&
-          update.durationMs === undefined
+          update.durationMs === undefined &&
+          update.model === undefined &&
+          update.effort === undefined
       )
     )
     const other = folded.get('other-child')
