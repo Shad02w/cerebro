@@ -11,6 +11,7 @@ import {
   type RunAttachment,
   type SubagentUpdate
 } from './adapters'
+import { claudeResumeOptions } from './adapters/claude'
 import type { AgentDelta, AgentHarness, AgentSession } from '@cerebro/core'
 import { codexAppServerPid, stopCodexAppServer } from './codex-server'
 const fixture = resolve(__dirname, 'fixtures/fake-harness.cjs')
@@ -195,6 +196,19 @@ describe('agent adapters', { concurrency: 1 }, () => {
       }
     )
   }
+  test('claudeResumeOptions forks a rewound resume at the kept checkpoint', () => {
+    assert.deepEqual(
+      claudeResumeOptions({
+        nativeId: 'native-claude',
+        nativeResume: { at: 'chain-1', fork: true }
+      }),
+      { resume: 'native-claude', resumeSessionAt: 'chain-1', forkSession: true }
+    )
+    assert.deepEqual(claudeResumeOptions({ nativeId: 'native-claude' }), {
+      resume: 'native-claude'
+    })
+    assert.deepEqual(claudeResumeOptions({}), {})
+  })
   test(
     'Codex context usage uses the latest call and skips events that omit it or the window',
     { timeout: 15_000 },

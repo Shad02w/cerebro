@@ -1444,6 +1444,467 @@ test('a thread title starts as the prompt, then the prompt pass, then the first 
   }
 })
 
+const settled = (): Promise<void> => new Promise((resolve) => setImmediate(resolve))
+const userItems = (session: AgentSession | null | undefined): AgentSession['items'] =>
+  session?.items.filter((item) => item.kind === 'user') ?? []
+function plant(dir: string, session: AgentSession): void {
+  writeFileSync(join(dir, `session-${session.id}.json`), JSON.stringify(session))
+  writeFileSync(join(dir, 'bindings.json'), JSON.stringify({ 1: session.id }))
+}
+function storedSession(id: string, extra: Partial<AgentSession> = {}): AgentSession {
+  return {
+    version: 1,
+    id,
+    workspaceId: 1,
+    repositoryId: 3,
+    cwd: '/tmp',
+    title: 'Saved',
+    model,
+    status: 'idle',
+    generation: '',
+    sequence: 1,
+    updatedAt: 0,
+    items: [
+      { id: 'u1', turnId: 't1', kind: 'user', text: 'hello' },
+      { id: 'a1', turnId: 't1', kind: 'text', text: 'reply' }
+    ],
+    commands: [],
+    ...extra
+  }
+}
+
+test('rewind slices at a user item, and undo restores the tip including nativeId', async () => {
+  const f = fixture(async (context) => {
+    context.emit({ type: 'binding', nativeId: 'native-one' })
+    context.emit({
+      type: 'item',
+      item: { id: `answer-${context.text}`, kind: 'text', text: `reply ${context.text}` }
+    })
+  })
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    await service.command(scope, send)
+    await service.command(scope, { ...send, commandId: 'second', text: 'again' })
+    await settled()
+    const full = await service.command(scope, { ...send, action: 'get' })
+    const second = userItems(full.session)[1]
+    assert.equal(full.session?.nativeId, 'native-one')
+    const cut = await service.command(scope, {
+      ...send,
+      action: 'rewind',
+      sessionId: full.session!.id,
+      itemId: second.id,
+      displacedDraft: 'draft in progress'
+    })
+    assert.deepEqual(
+      cut.session?.items.map((item) => item.text),
+      ['hello', 'reply hello']
+    )
+    assert.equal(cut.session?.rewind?.itemId, second.id)
+    assert.equal(cut.session?.rewind?.displacedDraft, 'draft in progress')
+    assert.equal(cut.session?.rewind?.nativeId, 'native-one')
+    assert.equal(cut.session?.nativeId, 'native-one')
+    const restored = await service.command(scope, {
+      ...send,
+      action: 'undo',
+      sessionId: full.session!.id
+    })
+    assert.equal(restored.session?.rewind, undefined)
+    assert.equal(restored.session?.nativeId, 'native-one')
+    assert.deepEqual(
+      userItems(restored.session).map((item) => item.text),
+      ['hello', 'again']
+    )
+  } finally {
+    await service.shutdown()
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
+
+test('a second rewind still undoes to the original tip and keeps the first displaced draft', async () => {
+  const f = fixture(async (context) => {
+    context.emit({ type: 'binding', nativeId: 'native-one' })
+    context.emit({
+      type: 'item',
+      item: { id: `answer-${context.text}`, kind: 'text', text: `reply ${context.text}` }
+    })
+  })
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    await service.command(scope, send)
+    await service.command(scope, { ...send, commandId: 'second', text: 'again' })
+    await settled()
+    const full = await service.command(scope, { ...send, action: 'get' })
+    const [first, second] = userItems(full.session)
+    await service.command(scope, {
+      ...send,
+      action: 'rewind',
+      sessionId: full.session!.id,
+      itemId: second.id,
+      displacedDraft: 'original draft'
+    })
+    const earlier = await service.command(scope, {
+      ...send,
+      action: 'rewind',
+      sessionId: full.session!.id,
+      itemId: first.id,
+      displacedDraft: 'draft typed after the first rewind'
+    })
+    assert.equal(earlier.session?.items.length, 0)
+    assert.equal(earlier.session?.rewind?.displacedDraft, 'original draft')
+    assert.equal(earlier.session?.rewind?.tail.length, 4)
+    const restored = await service.command(scope, {
+      ...send,
+      action: 'undo',
+      sessionId: full.session!.id
+    })
+    assert.equal(restored.session?.rewind, undefined)
+    assert.deepEqual(
+      userItems(restored.session).map((item) => item.text),
+      ['hello', 'again']
+    )
+    assert.equal(restored.session?.nativeId, 'native-one')
+  } finally {
+    await service.shutdown()
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
+
+test('rewind rejects while a turn is running, a message is queued, or background work is running', async () => {
+  let release: () => void = () => {}
+  const f = fixture(
+    (context) =>
+      new Promise((resolve) => {
+        const finish = (): void => resolve()
+        release = finish
+        context.signal.addEventListener('abort', finish, { once: true })
+      })
+  )
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    const started = await service.command(scope, send)
+    await assert.rejects(
+      service.command(scope, {
+        ...send,
+        action: 'rewind',
+        sessionId: started.session!.id,
+        itemId: started.session!.items[0].id
+      }),
+      /Stop the running turn before rewinding/
+    )
+    release()
+    await settled()
+  } finally {
+    await service.shutdown()
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+
+  const queued = fixture(async () => {})
+  plant(
+    queued.dir,
+    storedSession('queued', {
+      queue: [{ id: 'q1', text: 'later', model, accessMode: 'full' }]
+    })
+  )
+  const queuedHost = new AgentSessions(queued.dir, () => {}, queued.drivers)
+  try {
+    await assert.rejects(
+      queuedHost.command(scope, { ...send, action: 'rewind', sessionId: 'queued', itemId: 'u1' }),
+      /Remove queued messages before rewinding/
+    )
+  } finally {
+    await queuedHost.shutdown()
+    rmSync(queued.dir, { recursive: true, force: true })
+  }
+
+  const backgroundDir = mkdtempSync(join(tmpdir(), 'cerebro-agents-'))
+  const backgroundAdapter: AgentAdapter = {
+    models: async () => [model],
+    connect: (_session, host) => ({
+      run: async () => {
+        host.task({ id: 'job', status: 'running', title: 'dev server', startedAt: 1 })
+      },
+      close: () => {}
+    })
+  }
+  const backgroundHost = new AgentSessions(backgroundDir, () => {}, {
+    claude: backgroundAdapter,
+    codex: backgroundAdapter,
+    pi: backgroundAdapter
+  })
+  try {
+    const started = await backgroundHost.command(scope, send)
+    await settled()
+    await assert.rejects(
+      backgroundHost.command(scope, {
+        ...send,
+        action: 'rewind',
+        sessionId: started.session!.id,
+        itemId: started.session!.items[0].id
+      }),
+      /Stop background work before rewinding/
+    )
+  } finally {
+    await backgroundHost.shutdown()
+    rmSync(backgroundDir, { recursive: true, force: true })
+  }
+})
+
+test('a steered item with no per-message checkpoint is rejected', async () => {
+  const f = fixture(async () => {})
+  plant(
+    f.dir,
+    storedSession('steered', {
+      nativeId: 'native-one',
+      checkpoints: { t1: 'chain-1' },
+      items: [
+        { id: 'u1', turnId: 't1', kind: 'user', text: 'hello' },
+        { id: 'a1', turnId: 't1', kind: 'text', text: 'working' },
+        { id: 'u2', turnId: 't1', kind: 'user', text: 'steer this' }
+      ]
+    })
+  )
+  const host = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    await assert.rejects(
+      host.command(scope, { ...send, action: 'rewind', sessionId: 'steered', itemId: 'u2' }),
+      /Rewind from the prompt that started this response/
+    )
+    const opened = await host.command(scope, { ...send, action: 'get' })
+    assert.equal(opened.session?.items.length, 3)
+    assert.equal(opened.session?.rewind, undefined)
+  } finally {
+    await host.shutdown()
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
+
+test('send while rewound drops the tail, clears rewind, and an emulated harness forgets native memory', async () => {
+  const connected: AgentSession[] = []
+  const dir = mkdtempSync(join(tmpdir(), 'cerebro-agents-'))
+  const adapter: AgentAdapter = {
+    models: async () => [model],
+    connect: (session) => {
+      connected.push(structuredClone(session))
+      return {
+        run: async (context) => {
+          context.emit({ type: 'binding', nativeId: 'native-one' })
+          context.emit({
+            type: 'item',
+            item: { id: `answer-${context.text}`, kind: 'text', text: `reply ${context.text}` }
+          })
+        },
+        close: () => {}
+      }
+    }
+  }
+  const service = new AgentSessions(dir, () => {}, { claude: adapter, codex: adapter, pi: adapter })
+  try {
+    const first = await service.command(scope, send)
+    await service.command(scope, { ...send, commandId: 'second', text: 'again' })
+    await settled()
+    const full = await service.command(scope, { ...send, action: 'get' })
+    const second = userItems(full.session)[1]
+    await service.command(scope, {
+      ...send,
+      action: 'rewind',
+      sessionId: full.session!.id,
+      itemId: second.id
+    })
+    const committed = await service.command(scope, {
+      ...send,
+      commandId: 'third',
+      text: 'fresh'
+    })
+    await settled()
+    const state = await service.command(scope, { ...send, action: 'get' })
+    assert.equal(connected.at(-1)?.nativeId, undefined)
+    assert.equal(connected.at(-1)?.nativeResume, undefined)
+    assert.equal(state.session?.rewind, undefined)
+    assert.equal(
+      state.session?.items.some((item) => item.kind === 'user' && item.text === 'again'),
+      false
+    )
+    assert.equal(
+      state.session?.items.some(
+        (item) =>
+          item.kind === 'notice' &&
+          item.text ===
+            'This agent cannot rewind its own memory. The next message starts a fresh session.'
+      ),
+      true
+    )
+    assert.equal(userItems(state.session).at(-1)?.text, 'fresh')
+    const stored = JSON.parse(
+      readFileSync(join(dir, `session-${first.session!.id}.json`), 'utf8')
+    ) as AgentSession
+    assert.equal(stored.rewind, undefined)
+    assert.equal('nativeResume' in stored, false)
+    assert.equal(committed.session?.id, first.session?.id)
+  } finally {
+    await service.shutdown()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('Pi rewind forks before the user entry and undo switches back to the original session file', async () => {
+  const piModel: AgentModel = { ...model, key: 'pi', harness: 'pi', id: 'pi', label: 'Pi' }
+  const calls: string[] = []
+  const dir = mkdtempSync(join(tmpdir(), 'cerebro-agents-'))
+  const idle: AgentAdapter = {
+    models: async () => [],
+    connect: () => ({ run: async () => {}, close: () => {} })
+  }
+  const pi: AgentAdapter = {
+    models: async () => [piModel],
+    connect: (session) => ({
+      run: async (context) => {
+        context.emit({
+          type: 'binding',
+          nativeId: session.nativeId ?? '/sessions/original.jsonl'
+        })
+        context.emit({
+          type: 'item',
+          item: { id: `answer-${context.text}`, kind: 'text', text: `reply ${context.text}` }
+        })
+      },
+      forkPoints: async () => [
+        { entryId: 'entry-1', text: 'hello' },
+        { entryId: 'entry-2', text: 'again' }
+      ],
+      forkBefore: async (entryId) => {
+        calls.push(`fork:${entryId}`)
+        return { cancelled: false, nativeId: `/sessions/branch-${entryId}.jsonl` }
+      },
+      switchSession: async (sessionPath) => {
+        calls.push(`switch:${sessionPath}`)
+        return { cancelled: false }
+      },
+      close: () => {}
+    })
+  }
+  const service = new AgentSessions(dir, () => {}, { claude: idle, codex: idle, pi })
+  try {
+    const piSend = { ...send, model: piModel }
+    await service.command(scope, piSend)
+    await service.command(scope, { ...piSend, commandId: 'second', text: 'again' })
+    await settled()
+    const full = await service.command(scope, { ...piSend, action: 'get' })
+    const [first, second] = userItems(full.session)
+    assert.equal(full.session?.checkpoints?.[first.id], 'entry-1')
+    assert.equal(full.session?.checkpoints?.[second.id], 'entry-2')
+    const cut = await service.command(scope, {
+      ...piSend,
+      action: 'rewind',
+      sessionId: full.session!.id,
+      itemId: second.id,
+      displacedDraft: 'keep'
+    })
+    assert.deepEqual(calls, ['fork:entry-2'])
+    assert.equal(cut.session?.nativeId, '/sessions/branch-entry-2.jsonl')
+    assert.equal(cut.session?.rewind?.nativeId, '/sessions/original.jsonl')
+    const earlier = await service.command(scope, {
+      ...piSend,
+      action: 'rewind',
+      sessionId: full.session!.id,
+      itemId: first.id,
+      displacedDraft: 'later'
+    })
+    assert.deepEqual(calls, ['fork:entry-2', 'switch:/sessions/original.jsonl', 'fork:entry-1'])
+    assert.equal(earlier.session?.rewind?.displacedDraft, 'keep')
+    assert.equal(earlier.session?.items.length, 0)
+    const restored = await service.command(scope, {
+      ...piSend,
+      action: 'undo',
+      sessionId: full.session!.id
+    })
+    assert.deepEqual(calls, [
+      'fork:entry-2',
+      'switch:/sessions/original.jsonl',
+      'fork:entry-1',
+      'switch:/sessions/original.jsonl'
+    ])
+    assert.equal(restored.session?.nativeId, '/sessions/original.jsonl')
+    assert.equal(restored.session?.rewind, undefined)
+    assert.deepEqual(
+      userItems(restored.session).map((item) => item.text),
+      ['hello', 'again']
+    )
+  } finally {
+    await service.shutdown()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('Claude connect after a rewound send resumes at the kept checkpoint and forks the chain', async () => {
+  const claudeModel: AgentModel = {
+    ...model,
+    key: 'claude',
+    harness: 'claude',
+    id: 'claude',
+    label: 'Claude'
+  }
+  const connected: AgentSession[] = []
+  const dir = mkdtempSync(join(tmpdir(), 'cerebro-agents-'))
+  const idle: AgentAdapter = {
+    models: async () => [],
+    connect: () => ({ run: async () => {}, close: () => {} })
+  }
+  const claude: AgentAdapter = {
+    models: async () => [claudeModel],
+    connect: (session) => {
+      connected.push(structuredClone(session))
+      return {
+        run: async (context) => {
+          context.emit({ type: 'binding', nativeId: 'native-claude' })
+          context.emit({
+            type: 'checkpoint',
+            turnId: context.session.turnId!,
+            chainId: `chain-${context.text}`
+          })
+          context.emit({
+            type: 'item',
+            item: { id: `answer-${context.text}`, kind: 'text', text: 'ok' }
+          })
+        },
+        close: () => {}
+      }
+    }
+  }
+  const service = new AgentSessions(dir, () => {}, { claude, codex: idle, pi: idle })
+  try {
+    const claudeSend = { ...send, model: claudeModel }
+    const first = await service.command(scope, claudeSend)
+    await service.command(scope, { ...claudeSend, commandId: 'second', text: 'again' })
+    await settled()
+    const full = await service.command(scope, { ...claudeSend, action: 'get' })
+    const second = userItems(full.session)[1]
+    await service.command(scope, {
+      ...claudeSend,
+      action: 'rewind',
+      sessionId: full.session!.id,
+      itemId: second.id
+    })
+    await service.command(scope, { ...claudeSend, commandId: 'third', text: 'fresh' })
+    const resume = connected.at(-1)
+    assert.equal(resume?.nativeId, 'native-claude')
+    assert.deepEqual(resume?.nativeResume, { at: 'chain-hello', fork: true })
+    const { claudeResumeOptions } = await import('./adapters/claude')
+    assert.deepEqual(claudeResumeOptions(resume!), {
+      resume: 'native-claude',
+      resumeSessionAt: 'chain-hello',
+      forkSession: true
+    })
+    const stored = JSON.parse(
+      readFileSync(join(dir, `session-${first.session!.id}.json`), 'utf8')
+    ) as AgentSession
+    assert.equal('nativeResume' in stored, false)
+  } finally {
+    await service.shutdown()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('a mentioned skill is passed through and a mention missing from the text is rejected', async () => {
   const seen: RunContext['skills'][] = []
   const f = fixture(async (context) => {

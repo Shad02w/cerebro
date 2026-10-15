@@ -54,6 +54,11 @@ export type AgentCapabilities = {
   steering: boolean
   /** 'native' forks preserve the harness's own conversational memory; 'emulated' forks only replay visible items. */
   fork: 'native' | 'emulated'
+  /**
+   * 'native' can resume the harness before a chosen prompt.
+   * 'emulated' can hide the transcript, but the next send starts a fresh native session.
+   */
+  rewind: 'native' | 'emulated'
 }
 export type AgentCatalog = {
   capabilities: Record<AgentHarness, AgentCapabilities>
@@ -280,8 +285,15 @@ export type AgentSession = {
   /** Persisted before dispatch. Never replay an uncertain accepted command. */
   commands: string[]
   forkedFrom?: { sessionId: string; turnId: string }
-  /** Native chain-entry id at the end of each turn, keyed by turnId. Populated by adapters that support native forking. */
+  /** Native chain-entry id at the end of each turn, keyed by turnId. Pi also keys the user item id to its entry id. */
   checkpoints?: Record<string, string>
+  /** Set while a rewind is pending. Undo restores `tail`. A send drops it. */
+  rewind?: SessionRewind
+  /**
+   * Consumed by the next harness connect. Never written to the session file.
+   * Claude sets this when a rewound send must resume at a checkpoint.
+   */
+  nativeResume?: { at?: string; fork: boolean }
   queue?: QueuedMessage[]
   contextUsage?: AgentContextUsage
   /**
@@ -297,6 +309,25 @@ export type AgentSession = {
    * text is not copied into the transcript.
    */
   subagents?: AgentSubagent[]
+}
+/** A cut that hides the chosen prompt and everything after it until Undo or the next send. */
+export type SessionRewind = {
+  /** User item the cut starts at. */
+  itemId: string
+  turnId: string
+  /** Items from that user item through the original tip, in order. */
+  tail: ChatItem[]
+  /** Native binding of the tip, so Undo can put it back. */
+  nativeId?: string
+  checkpoints?: Record<string, string>
+  /**
+   * Native cut point. Claude: chain uuid of the last kept turn.
+   * Pi: entry id of the user message being rewound.
+   * Absent when the kept prefix has no native point.
+   */
+  resumeAt?: string
+  /** Docked composer draft displaced by the prefill. Text only. */
+  displacedDraft?: string
 }
 export type AgentSessionSummary = Pick<
   AgentSession,
@@ -333,7 +364,18 @@ export type ChatActivityOverview = {
 }
 export type ChatAttachmentContent = { mimeType: ChatImageType; data: string }
 export type ChatCommand = {
-  action: 'get' | 'new' | 'open' | 'send' | 'stop' | 'reply' | 'fork' | 'steer' | 'dequeue'
+  action:
+    | 'get'
+    | 'new'
+    | 'open'
+    | 'send'
+    | 'stop'
+    | 'reply'
+    | 'fork'
+    | 'steer'
+    | 'dequeue'
+    | 'rewind'
+    | 'undo'
   workspaceId: number
   paneId: number
   sessionId?: string
@@ -351,6 +393,10 @@ export type ChatCommand = {
   answers?: Record<string, string[]>
   /** Required for 'fork': the turn (section) to branch at. Everything up to and including it is copied. */
   turnId?: string
+  /** Required for 'rewind': the user item the cut starts at. */
+  itemId?: string
+  /** Composer text replaced when a rewind prefills the prompt. Restored by undo. */
+  displacedDraft?: string
 }
 export type AgentDelta =
   | { type: 'item'; item: Omit<ChatItem, 'turnId'>; append?: boolean }

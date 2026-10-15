@@ -62,6 +62,12 @@ export type ConnectionHost = {
 export interface AgentConnection {
   run(context: RunContext): Promise<void>
   close(): void
+  /** Pi: user messages on the active branch, in order, with the entry id rewind forks before. */
+  forkPoints?(): Promise<Array<{ entryId: string; text: string }>>
+  /** Pi: branch a new session file before this user entry. The original file stays. */
+  forkBefore?(entryId: string): Promise<{ nativeId?: string; cancelled: boolean }>
+  /** Pi: open a previous session file in this process. */
+  switchSession?(sessionPath: string): Promise<{ cancelled: boolean }>
 }
 export interface AgentAdapter {
   models(cwd: string): Promise<AgentModel[]>

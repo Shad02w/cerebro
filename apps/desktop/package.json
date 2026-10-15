@@ -26,7 +26,7 @@
     "test:e2e:app": "node ./scripts/playwright-e2e.mjs smoke.spec.ts settings.spec.ts github.spec.ts startup-splash.spec.ts app-environment.spec.ts",
     "test:e2e:projects": "node ./scripts/playwright-e2e.mjs projects-directory.spec.ts projects-github.spec.ts sidebar-tree.spec.ts workspace-status.spec.ts",
     "test:e2e:terminal": "node ./scripts/playwright-e2e.mjs terminal.spec.ts terminal-background.spec.ts terminal-colors.spec.ts tab-width.spec.ts mux.spec.ts panes.spec.ts",
-    "test:e2e:chat": "node ./scripts/playwright-e2e.mjs chat.spec.ts notifications.spec.ts composer-vim.spec.ts composer-wysiwyg.spec.ts composer-glow-transition.spec.ts",
+    "test:e2e:chat": "node ./scripts/playwright-e2e.mjs chat.spec.ts notifications.spec.ts composer-vim.spec.ts composer-wysiwyg.spec.ts composer-glow-transition.spec.ts rewind.spec.ts",
     "test:e2e:changes": "node ./scripts/playwright-e2e.mjs changes.spec.ts changes-worker.spec.ts"
   },
   "dependencies": {

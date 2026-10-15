@@ -20,6 +20,7 @@ export default defineConfig({
     setupFiles: ['tests/setup.ts'],
     restoreMocks: true,
     // Its `main` is UMD under `"type": "module"`, so Node's loader drops the default export.
-    server: { deps: { inline: ['@panzoom/panzoom'] } }
+    // vim-prosemirror's ESM build imports extensionless paths. Vite has to transform it.
+    server: { deps: { inline: ['@panzoom/panzoom', 'vim-prosemirror'] } }
   }
 })

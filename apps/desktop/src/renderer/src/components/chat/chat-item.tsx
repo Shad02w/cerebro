@@ -240,6 +240,7 @@ const noSkills: readonly AgentSkill[] = []
 export const ChatItem = memo(function ChatItem({
   item,
   onReply,
+  onRewind,
   workspaceId,
   sessionId,
   skills = noSkills,
@@ -247,6 +248,7 @@ export const ChatItem = memo(function ChatItem({
 }: {
   item: Item
   onReply: (id: string, answer: AgentAnswer) => void
+  onRewind?: (text: string) => void
   workspaceId: number
   sessionId: string
   skills?: readonly AgentSkill[]
@@ -260,6 +262,7 @@ export const ChatItem = memo(function ChatItem({
         attachments={item.attachments}
         workspaceId={workspaceId}
         sessionId={sessionId}
+        onRewind={onRewind}
         skills={skills}
       />
     )

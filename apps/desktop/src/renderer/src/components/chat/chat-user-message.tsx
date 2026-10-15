@@ -1,13 +1,13 @@
 import { useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Copy } from 'lucide-react'
+import { Copy, Undo2 } from 'lucide-react'
 import type { AgentSkill, ChatAttachment } from '@cerebro/core'
 import { Button } from '@/components/ui/button'
 import { ImagePreviewDialog } from '@/components/image-preview-dialog'
 import { SuccessToast } from '@/components/success-toast'
 import { useClipboard } from '@/hooks/use-clipboard'
 import { dataUrl } from './chat-attachments'
-import { ComposerMessage } from './composer-editor'
+import { ComposerEditor, ComposerMessage } from './composer-editor'
 import { loadWorkspaceFiles } from './workspace-files'
 
 const noAttachments: ChatAttachment[] = []
@@ -45,13 +45,15 @@ export function ChatUserMessage({
   attachments = noAttachments,
   skills = noSkills,
   workspaceId,
-  sessionId
+  sessionId,
+  onRewind
 }: {
   text: string
   attachments?: ChatAttachment[]
   skills?: readonly AgentSkill[]
   workspaceId: number
   sessionId: string
+  onRewind?: (text: string) => void
 }): React.JSX.Element {
   const files = useQuery({
     queryKey: ['workspace-files', workspaceId],
@@ -62,7 +64,14 @@ export function ChatUserMessage({
   const [toast, setToast] = useState<{ id: number; message: string } | null>(null)
   const [error, setError] = useState(false)
   const [preview, setPreview] = useState<ChatAttachment | null>(null)
+  const [editing, setEditing] = useState(false)
+  const edited = useRef(text)
   const toastId = useRef(0)
+  const uploads = attachments.map((attachment) => ({ ...attachment, data: '' }))
+  const startEdit = (): void => {
+    edited.current = text
+    setEditing(true)
+  }
   const copyMessage = async (): Promise<void> => {
     setToast(null)
     setError(false)
@@ -74,8 +83,27 @@ export function ChatUserMessage({
     <div
       className="ml-auto flex max-w-[90%] flex-col items-end gap-1"
       data-testid="chat-user-message"
+      data-editing={editing || undefined}
     >
-      <div className="max-w-full rounded-2xl bg-muted px-4 py-3 text-sm break-words">
+      <div
+        className="max-w-full rounded-2xl bg-muted px-4 py-3 text-sm break-words"
+        data-testid="chat-user-bubble"
+        role={editing ? undefined : 'button'}
+        tabIndex={editing ? undefined : 0}
+        aria-label={editing ? undefined : 'Edit prompt'}
+        onClick={(event) => {
+          if (editing) return
+          const target = event.target
+          if (!(target instanceof HTMLElement) || target.closest('button')) return
+          startEdit()
+        }}
+        onKeyDown={(event) => {
+          if (editing || event.target !== event.currentTarget) return
+          if (event.key !== 'Enter' && event.key !== ' ') return
+          event.preventDefault()
+          startEdit()
+        }}
+      >
         {attachments.length ? (
           <ul className="mb-2 flex flex-wrap gap-2" aria-label="Attached images">
             {attachments.map((attachment, index) => (
@@ -100,7 +128,22 @@ export function ChatUserMessage({
             ))}
           </ul>
         ) : null}
-        {text ? (
+        {editing ? (
+          <ComposerEditor
+            variant="message"
+            defaultText={text}
+            attachments={uploads}
+            skills={skills}
+            workspaceId={workspaceId}
+            getAttachments={() => uploads}
+            onDocument={(next) => {
+              edited.current = next
+            }}
+            onAttachFiles={() => {}}
+            onSubmit={() => {}}
+            onCancel={() => setEditing(false)}
+          />
+        ) : text ? (
           <ComposerMessage
             text={text}
             attachments={attachments}
@@ -113,17 +156,37 @@ export function ChatUserMessage({
           />
         ) : null}
       </div>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-xs"
-        aria-label="Copy message"
-        title="Copy message"
-        className="text-muted-foreground"
-        onClick={() => void copyMessage()}
-      >
-        <Copy aria-hidden="true" />
-      </Button>
+      <div className="flex items-center gap-0.5">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          aria-label="Rewind to before this prompt"
+          title="Rewind to before this prompt"
+          className="text-muted-foreground"
+          data-testid="chat-rewind"
+          onClick={(event) => {
+            event.stopPropagation()
+            onRewind?.(editing ? edited.current : text)
+          }}
+        >
+          <Undo2 aria-hidden="true" />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          aria-label="Copy message"
+          title="Copy message"
+          className="text-muted-foreground"
+          onClick={(event) => {
+            event.stopPropagation()
+            void copyMessage()
+          }}
+        >
+          <Copy aria-hidden="true" />
+        </Button>
+      </div>
       {error ? (
         <p role="alert" className="text-xs text-destructive">
           Could not copy message.

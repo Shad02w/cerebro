@@ -1,6 +1,7 @@
 import {
   skillPromptText,
   type AgentDelta,
+  type AgentSession,
   type ChatItem,
   type ChatSkillMention
 } from '@cerebro/core'
@@ -15,6 +16,20 @@ import { claudeExposedSkills } from '../skills'
 
 const promptText = (text: string, skills?: ChatSkillMention[]): string =>
   skillPromptText(text, skills ?? [])
+
+/** Resume options for one Claude connect. A rewound send forks so Undo can keep the original chain. */
+export function claudeResumeOptions(session: Pick<AgentSession, 'nativeId' | 'nativeResume'>): {
+  resume?: string
+  resumeSessionAt?: string
+  forkSession?: true
+} {
+  const resume = session.nativeResume
+  return {
+    ...(session.nativeId ? { resume: session.nativeId } : {}),
+    ...(resume?.at ? { resumeSessionAt: resume.at } : {}),
+    ...(resume?.fork ? { forkSession: true } : {})
+  }
+}
 
 /** Capability blurbs Claude sometimes puts first in `description` — never use these as titles. */
 const claudeCapabilityBlurb =
@@ -760,7 +775,7 @@ export const claudeAdapter: AgentAdapter = {
           env: { ...shellEnv(), CLAUDE_CODE_ENABLE_TODO_TOOLS: '1' },
           model: session.model.id || undefined,
           ...(effort ? { effort } : {}),
-          resume: session.nativeId,
+          ...claudeResumeOptions(session),
           settingSources: ['user', 'project', 'local'],
           systemPrompt: { type: 'preset', preset: 'claude_code' },
           includePartialMessages: true,
