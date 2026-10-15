@@ -213,34 +213,23 @@ test('chat works through native adapters, survives reload, handles requests, and
     await expect(waitingRow).toHaveAttribute('data-workspace-agent-status', 'waiting')
     await expect(waitingRow).toHaveAttribute('aria-label', 'Agent needs your action')
     await expect(waitingRow).toHaveClass(/text-amber-500/)
-    await expect(waitingRow.locator('.agent-status-dot')).toBeVisible()
     await expect(waitingIcon).not.toContainText('Codex')
-    const waitingTitle = page.locator(`[data-testid="workspace-row-${workspaceId}"] span`).first()
-    const waitingTitleBox = await waitingTitle.boundingBox()
+    await expect(waitingIcon).toContainText('Test Model')
+    const sessionRow = page.locator(`[data-sidebar="menu-row"][data-workspace-id="${workspaceId}"]`)
+    const sessionRowBox = await sessionRow.boundingBox()
     const waitingIconBox = await waitingIcon.boundingBox()
-    const waitingBadgeBox = await waitingRow.boundingBox()
-    expect(waitingIconBox!.y).toBeGreaterThan(waitingTitleBox!.y)
-    expect(Math.abs(waitingIconBox!.x - waitingTitleBox!.x)).toBeLessThan(12)
-    expect(waitingBadgeBox!.x).toBeGreaterThan(waitingIconBox!.x + waitingIconBox!.width / 2)
-    expect(waitingBadgeBox!.y).toBeGreaterThan(waitingIconBox!.y + waitingIconBox!.height / 2)
-    expect(waitingBadgeBox!.x + waitingBadgeBox!.width).toBeGreaterThan(
-      waitingIconBox!.x + waitingIconBox!.width - 1
+    const titleBox = await waitingIcon.locator('[data-session-title]').boundingBox()
+    const modelBox = await waitingIcon.locator('[data-session-model]').boundingBox()
+    expect(waitingIconBox!.y).toBeGreaterThan(sessionRowBox!.y)
+    expect(waitingIconBox!.y + waitingIconBox!.height).toBeLessThanOrEqual(
+      sessionRowBox!.y + sessionRowBox!.height + 1
     )
-    expect(waitingBadgeBox!.y + waitingBadgeBox!.height).toBeGreaterThan(
-      waitingIconBox!.y + waitingIconBox!.height - 1
-    )
+    expect(modelBox!.x).toBeGreaterThan(titleBox!.x)
     const agentButton = page.locator(
       `[data-sidebar="menu-row"][data-workspace-id="${workspaceId}"] [data-testid="workspace-agent-open"]`
     )
     await expect(agentButton).toHaveAttribute('data-agent-title', userText)
-    await agentButton.hover()
-    const tooltip = page.getByRole('tooltip')
-    await expect(tooltip).toHaveText(/Build a normalized agent chat\s+Preserve spacing/)
-    const iconBox = await agentButton.boundingBox()
-    const tooltipBox = await tooltip.boundingBox()
-    expect(Math.abs(tooltipBox!.x - iconBox!.x)).toBeLessThan(4)
-    expect(tooltipBox!.y).toBeGreaterThan(iconBox!.y + iconBox!.height - 2)
-    expect(tooltipBox!.x + tooltipBox!.width).toBeGreaterThan(iconBox!.x + iconBox!.width)
+    await expect(agentButton).toContainText('Build a normalized agent chat')
     await screenshotChatEvidence(page, 'agent-status-tooltip.png')
     await page.getByTestId('new-content-tab').click()
     await page.getByTestId('open-terminal-tab').click()
@@ -307,13 +296,9 @@ test('chat works through native adapters, survives reload, handles requests, and
       `[data-sidebar="menu-row"][data-workspace-id="${workspaceId}"] [data-agent-harness="codex"] [data-workspace-agent-status="running"]`
     )
     await expect(runningRow).toBeVisible()
+    await expect(runningRow).toHaveAttribute('aria-label', 'Agent running')
     await expect(runningRow.locator('xpath=..')).not.toContainText('Codex')
     await expect(runningRow).toHaveClass(/text-sky-500/)
-    await expect(runningRow.locator('.agent-status-dots > span')).toHaveCount(4)
-    await expect(runningRow.locator('.agent-status-dots > span').first()).toHaveCSS(
-      'animation-name',
-      'agent-status-dot'
-    )
     const runningTab = page.locator('[data-chat-agent-status="running"]')
     await expect(runningTab).toBeVisible()
     await expect(runningTab).toHaveClass(/text-sky-500/)
@@ -332,7 +317,7 @@ test('chat works through native adapters, survives reload, handles requests, and
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await expect(workingText).toHaveCSS('animation-name', 'none')
     await expect(workingText).not.toHaveCSS('color', 'rgba(0, 0, 0, 0)')
-    await expect(runningRow.locator('.agent-status-dots > span').first()).toHaveCSS(
+    await expect(runningTab.locator('.agent-status-dots > span').first()).toHaveCSS(
       'animation-name',
       'none'
     )
@@ -340,7 +325,7 @@ test('chat works through native adapters, survives reload, handles requests, and
     await expect(runningRow).toHaveClass(/text-sky-500/)
     await page.screenshot({ path: join(chatEvidenceDir, 'working-reduced-motion.png') })
     await page.emulateMedia({ reducedMotion: 'no-preference' })
-    await expect(runningRow.locator('.agent-status-dots > span').first()).toHaveCSS(
+    await expect(runningTab.locator('.agent-status-dots > span').first()).toHaveCSS(
       'animation-name',
       'agent-status-dot'
     )
@@ -356,8 +341,6 @@ test('chat works through native adapters, survives reload, handles requests, and
     await expect(interruptedRow.locator('xpath=..')).not.toContainText('Codex')
     await expect(interruptedRow).toHaveAttribute('aria-label', 'Agent interrupted')
     await expect(interruptedRow).toHaveClass(/text-orange-500/)
-    await expect(interruptedRow.locator('.agent-status-dots')).toHaveCount(0)
-    await expect(interruptedRow.locator('.agent-status-dot')).toBeVisible()
     await expect(page.locator('[data-chat-agent-status="interrupted"]')).toHaveAttribute(
       'aria-label',
       'Agent interrupted'
@@ -1073,32 +1056,34 @@ test('multi-root root row keeps agent status inside the row chrome', async ({ pa
     await page.getByRole('textbox', { name: 'Message agent' }).fill('approval')
     await page.getByRole('button', { name: 'Send message', exact: true }).click()
     await expect(page.getByRole('button', { name: 'Allow once', exact: true })).toBeVisible()
-    const agentIcon = rootRow.locator('[data-agent-harness="codex"]')
-    await expect(agentIcon).toBeVisible()
-    await expect(agentIcon.locator('[data-workspace-agent-status="waiting"]')).toBeVisible()
-    await expect(rootRow.getByTestId('workspace-agent-open')).toHaveCount(1)
+    const rootMenu = page.locator('[data-sidebar="menu-row"][data-root-row]')
+    const agentButton = rootMenu.getByTestId('workspace-agent-open')
+    await expect(agentButton).toHaveCount(1)
+    await expect(agentButton.locator('[data-workspace-agent-status="waiting"]')).toHaveAttribute(
+      'aria-label',
+      'Agent needs your action'
+    )
     await expect(page.getByTestId('chat-tab')).toHaveCount(1)
     const rootBox = await rootRow.boundingBox()
-    const iconBox = await agentIcon.boundingBox()
+    const agentBox = await agentButton.boundingBox()
     expect(rootBox).toBeTruthy()
-    expect(iconBox).toBeTruthy()
-    expect(iconBox!.y).toBeGreaterThan(rootBox!.y)
-    expect(iconBox!.y + iconBox!.height).toBeLessThanOrEqual(rootBox!.y + rootBox!.height + 1)
-    expect(iconBox!.x).toBeGreaterThanOrEqual(rootBox!.x)
+    expect(agentBox).toBeTruthy()
+    expect(agentBox!.y).toBeGreaterThanOrEqual(rootBox!.y + rootBox!.height - 1)
     await mkdir('/tmp/cerebro-sidebar-evidence', { recursive: true })
     await page.screenshot({ path: '/tmp/cerebro-sidebar-evidence/multi-root-root-agent.png' })
     await page.getByRole('button', { name: 'Allow once', exact: true }).click()
     await expect(page.getByTestId('chat-transcript').getByRole('status')).toHaveCount(0)
-    await expect(
-      rootRow.locator('[data-agent-harness="codex"] [data-workspace-agent-status="finished"]')
-    ).toBeVisible()
-    await expect(rootRow.getByTestId('workspace-agent-open')).toHaveCount(1)
+    await expect(agentButton.locator('[data-workspace-agent-status="finished"]')).toHaveAttribute(
+      'aria-label',
+      'Agent finished'
+    )
+    await expect(agentButton).toHaveCount(1)
     await page.screenshot({ path: '/tmp/cerebro-sidebar-evidence/multi-root-root-agent-idle.png' })
     const chatTab = page.getByTestId('chat-tab')
     await chatTab.hover()
     await chatTab.getByTestId('content-tab-close').click()
     await expect(page.getByTestId('chat-tab')).toHaveCount(0)
-    await expect(rootRow.getByTestId('workspace-agent-open')).toHaveCount(0)
+    await expect(rootMenu.getByTestId('workspace-agent-open')).toHaveCount(0)
   } finally {
     await rm(root, { recursive: true, force: true })
   }

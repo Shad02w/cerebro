@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Project, Workspace } from '@shared/types'
 import { AppSidebar } from '@/components/app-sidebar'
 import { SidebarProvider } from '@/components/ui/sidebar'
+import { KeybindProvider } from '@/keybinds'
 
 function workspace(
   partial: Pick<Workspace, 'id' | 'projectId' | 'repositoryId' | 'kind' | 'branch' | 'localPath'> &
@@ -166,26 +167,28 @@ function sidebarElement(
   })
   return (
     <QueryClientProvider client={client}>
-      <SidebarProvider>
-        <AppSidebar
-          mode="projects"
-          projects={[notes, apps]}
-          activeWorkspaceId={activeWorkspaceId}
-          settingsSection="general"
-          onSelectWorkspace={vi.fn()}
-          onAddProject={vi.fn()}
-          onAddWorkspace={vi.fn()}
-          onRenameWorkspace={vi.fn(async () => {})}
-          onRemoveProject={vi.fn()}
-          onRemoveWorkspace={vi.fn()}
-          onSetWorkspaceStatus={vi.fn()}
-          sidebarGroupBy={sidebarGroupBy}
-          onSidebarGroupBy={vi.fn()}
-          onSelectSettingsSection={vi.fn()}
-          onOpenSettings={vi.fn()}
-          onBack={vi.fn()}
-        />
-      </SidebarProvider>
+      <KeybindProvider overrides={null}>
+        <SidebarProvider>
+          <AppSidebar
+            mode="projects"
+            projects={[notes, apps]}
+            activeWorkspaceId={activeWorkspaceId}
+            settingsSection="general"
+            onSelectWorkspace={vi.fn()}
+            onAddProject={vi.fn()}
+            onAddWorkspace={vi.fn()}
+            onRenameWorkspace={vi.fn(async () => {})}
+            onRemoveProject={vi.fn()}
+            onRemoveWorkspace={vi.fn()}
+            onSetWorkspaceStatus={vi.fn()}
+            sidebarGroupBy={sidebarGroupBy}
+            onSidebarGroupBy={vi.fn()}
+            onSelectSettingsSection={vi.fn()}
+            onOpenSettings={vi.fn()}
+            onBack={vi.fn()}
+          />
+        </SidebarProvider>
+      </KeybindProvider>
     </QueryClientProvider>
   )
 }
@@ -205,7 +208,8 @@ describe('sidebar project rows', () => {
       removeEventListener: vi.fn()
     })
     window.cerebro = {
-      chatOverview: async () => ({ workspaces: [] })
+      chatOverview: async () => ({ workspaces: [] }),
+      onMenuClose: () => () => {}
     } as unknown as typeof window.cerebro
   })
 

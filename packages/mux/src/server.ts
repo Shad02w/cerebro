@@ -321,6 +321,21 @@ export async function startServer(): Promise<void> {
                   if (pane.kind === 'chat') liveChatPanes.push(pane.id)
             return agents.overview(liveChatPanes)
           }
+          case 'chat.search': {
+            const body = p as { workspaceIds?: unknown; query?: unknown; pastOnly?: unknown }
+            if (
+              !Array.isArray(body.workspaceIds) ||
+              body.workspaceIds.some((id) => typeof id !== 'number') ||
+              typeof body.query !== 'string' ||
+              typeof body.pastOnly !== 'boolean'
+            )
+              throw new MuxError('usage', 'Invalid session search.')
+            return agents.search({
+              workspaceIds: body.workspaceIds as number[],
+              query: body.query,
+              pastOnly: body.pastOnly
+            })
+          }
           case 'chat.catalog':
             await environment
             return agents.models(Boolean((p as unknown as { refresh?: boolean }).refresh))

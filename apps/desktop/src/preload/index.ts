@@ -12,6 +12,7 @@ import type {
 const api: CerebroApi = {
   chatCommand: (command) => ipcRenderer.invoke(IPC.chat.command, command),
   chatOverview: () => ipcRenderer.invoke(IPC.chat.overview),
+  chatSearch: (query) => ipcRenderer.invoke(IPC.chat.search, query),
   agentCatalog: (refresh) => ipcRenderer.invoke(IPC.chat.catalog, refresh),
   agentSkills: (workspaceId, paneId, harness) =>
     ipcRenderer.invoke(IPC.chat.skills, workspaceId, paneId, harness),

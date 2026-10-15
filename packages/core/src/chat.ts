@@ -345,6 +345,11 @@ export type AgentSession = {
    * viewing the tab does not clear it.
    */
   attention?: { kind: 'finished'; at: number }
+  /**
+   * Wall clock when the current turn started. Set while status is `running` or `waiting`.
+   * Cleared once the turn settles. The sidebar formats a coarse clock from it.
+   */
+  runningSince?: number
   /** Running background tasks. Settled ones move into the transcript as `notice` items. */
   background?: AgentBackgroundTask[]
   /**
@@ -388,15 +393,45 @@ export function agentActivityStatus(session: {
   if (session.status === 'idle' && session.attention?.kind === 'finished') return 'finished'
   return session.status
 }
-/** One open agent pane in a workspace (bound tab), including idle. */
+/** One open session in a workspace: a live chat pane, or a turn still running after its pane closed. */
 export type ChatAgentActivity = {
   sessionId: string
   workspaceId: number
+  repositoryId: number | null
   harness: AgentHarness
   status: AgentActivityStatus
   title: string
-  /** Open chat pane bound to this session. */
+  /** `model.label` from the session, the same name the composer shows. */
+  modelLabel: string
+  /** One line of the latest message, shown under the title in the workspace row. */
+  preview: string
+  /** Unresolved waiting request. Absent when the session is not blocked on one. */
+  requestKind?: 'approval' | 'question'
+  /** Present while `status` is `running` and the turn recorded a start time. */
+  runningSince?: number
+  /**
+   * Pane to focus when several bindings exist: the active tab's pane when that is known
+   * to the caller, otherwise the highest pane id. Null when the turn is unbound.
+   */
   paneId: number | null
+  /** Every live pane bound to this session, highest id first. Empty when unbound. */
+  paneIds: number[]
+}
+export type ChatSearchHit = ChatAgentActivity & {
+  updatedAt: number
+  snippet: string
+  /** Bound to a live pane, or running/waiting with no pane. */
+  open: boolean
+}
+export type ChatSearchQuery = {
+  workspaceIds: number[]
+  query: string
+  pastOnly: boolean
+}
+export type ChatSearchResult = {
+  hits: ChatSearchHit[]
+  /** Matches in scope before the 40-hit cap. */
+  total: number
 }
 export type ChatWorkspaceActivity = {
   workspaceId: number
