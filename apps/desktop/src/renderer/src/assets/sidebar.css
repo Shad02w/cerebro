@@ -228,10 +228,26 @@
   outline-offset: -2px;
 }
 
+/* Session close sits in the title-line slot and fades in on that row only. */
+.cerebro-sidebar .session-row-close {
+  opacity: 0;
+  transform: translateX(4px);
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease;
+}
+
+.cerebro-sidebar .session-row:is(:hover, :focus-within) .session-row-close,
+.cerebro-sidebar .session-row-close:focus-visible {
+  opacity: 1;
+  transform: translateX(0);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .cerebro-sidebar [data-sidebar='menu-button'],
   .cerebro-sidebar [data-workspace-role],
-  .cerebro-sidebar .sidebar-root-group {
+  .cerebro-sidebar .sidebar-root-group,
+  .cerebro-sidebar .session-row-close {
     transition: none;
   }
 }

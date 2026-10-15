@@ -226,6 +226,15 @@ test('chat works through native adapters, survives reload, handles requests, and
     )
     expect(modelBox!.y).toBeGreaterThan(titleBox!.y)
     expect(modelBox!.x).toBeLessThanOrEqual(titleBox!.x)
+    const age = waitingIcon.locator('[data-session-age]')
+    await expect(age).toHaveText(/^(?:<1m|\d+m|\d+hr|\d+d)$/)
+    const ageBox = await age.boundingBox()
+    expect(Math.abs(ageBox!.y - modelBox!.y)).toBeLessThan(4)
+    expect(ageBox!.x).toBeGreaterThan(modelBox!.x + modelBox!.width - 1)
+    const close = page.locator(
+      `[data-sidebar="menu-row"][data-workspace-id="${workspaceId}"] [data-testid="workspace-agent-close"]`
+    )
+    await expect(close).toHaveCSS('opacity', '0')
     const agentButton = page.locator(
       `[data-sidebar="menu-row"][data-workspace-id="${workspaceId}"] [data-testid="workspace-agent-open"]`
     )
