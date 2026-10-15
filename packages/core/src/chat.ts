@@ -122,11 +122,55 @@ export type QueuedMessage = {
   reasoning?: string
   accessMode?: AgentAccessMode
 }
-/** A harness-reported snapshot of how much of the model's context window is in use. */
+/** Claude classifies each window row on `kind`, not the English name. */
+export type ClaudeContextCategoryKind = 'used' | 'free' | 'buffer' | 'deferred'
+/** One Claude category. Zero-token rows are kept so the popover can hide them. */
+export type ClaudeContextCategory = {
+  name: string
+  tokens: number
+  kind: ClaudeContextCategoryKind
+}
+/**
+ * Splits the Messages category. Each field is absent when Claude did not send it.
+ * These are parts of Messages, not a second copy of the window.
+ */
+export type ClaudeMessageBreakdown = {
+  userMessageTokens?: number
+  assistantMessageTokens?: number
+  toolCallTokens?: number
+  toolResultTokens?: number
+  attachmentTokens?: number
+  redirectedContextTokens?: number
+  unattributedTokens?: number
+}
+/** Claude's window split from `getContextUsage`. Present only when Claude sent categories or a message split. */
+export type ClaudeContextDetail = {
+  categories: ClaudeContextCategory[]
+  messageBreakdown?: ClaudeMessageBreakdown
+}
+/**
+ * Codex's latest model call. Cached input and cache write sit inside input.
+ * Reasoning sits inside output. Lifetime `total` is not stored here.
+ */
+export type CodexContextCall = {
+  inputTokens?: number
+  cachedInputTokens?: number
+  cacheWriteInputTokens?: number
+  outputTokens?: number
+  reasoningOutputTokens?: number
+}
+/**
+ * A harness-reported snapshot of how much of the model's context window is in use.
+ * `usedTokens` and `percentage` are null when the harness has a window but no estimate
+ * yet (Pi after compaction). Breakdown fields are set only for slices that harness sent.
+ */
 export type AgentContextUsage = {
-  usedTokens: number
+  usedTokens: number | null
   contextWindow: number
-  percentage: number
+  /** Rounded whole percent for the ring. Null when there is nothing to report. */
+  percentage: number | null
+  claude?: ClaudeContextDetail
+  codex?: CodexContextCall
 }
 export type AgentSubagentStatus = 'created' | 'running' | 'completed' | 'failed' | 'stopped'
 /** Token counts a harness reported for one child. Each field is absent when the harness did not send it. */

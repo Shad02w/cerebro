@@ -25,18 +25,36 @@ const notify = (method, params = {}) => {
 let backgroundStarted = 0
 const backgroundLive = new Map()
 let finishApproval
+let claudeContextMode = 'default'
+let codexContextMode = 'default'
+let piContextMode = 'default'
 const text =
   '**Adapter connected.**\n\n- Native tools stay with the harness.\n- Cerebro renders the conversation.'
 const codexDone = () => {
+  const full = codexContextMode === 'full'
   notify('thread/tokenUsage/updated', {
     threadId: 'thread-test',
     turnId: 'turn-test',
-    tokenUsage: {
-      // Lifetime sum is intentionally larger than the latest call so a reader of `total` fails.
-      total: { totalTokens: 295697, inputTokens: 280000, outputTokens: 15697 },
-      last: { totalTokens: 43759, inputTokens: 42000, outputTokens: 1759 },
-      modelContextWindow: 258400
-    }
+    tokenUsage: full
+      ? {
+          // Lifetime sum is intentionally larger than the latest call so a reader of `total` fails.
+          total: { totalTokens: 900000, inputTokens: 800000, outputTokens: 100000 },
+          last: {
+            totalTokens: 43550,
+            inputTokens: 42000,
+            cachedInputTokens: 28400,
+            cacheWriteInputTokens: 6200,
+            outputTokens: 1550,
+            reasoningOutputTokens: 480
+          },
+          modelContextWindow: 258400
+        }
+      : {
+          // Lifetime sum is intentionally larger than the latest call so a reader of `total` fails.
+          total: { totalTokens: 295697, inputTokens: 280000, outputTokens: 15697 },
+          last: { totalTokens: 43759, inputTokens: 42000, outputTokens: 1759 },
+          modelContextWindow: 258400
+        }
   })
   notify('turn/completed', {
     threadId: 'thread-test',
@@ -44,6 +62,8 @@ const codexDone = () => {
   })
 }
 function codexPrompt(threadId, prompt, input) {
+  if (typeof prompt === 'string' && prompt.includes('context-popover-codex'))
+    codexContextMode = 'full'
   codexActive = threadId
   const thread = codexThreads.get(threadId) ?? { resume: false, access: undefined }
   const resume = thread.resume
@@ -376,6 +396,8 @@ function codexPrompt(threadId, prompt, input) {
   codexDone()
 }
 function claudePrompt(prompt, content) {
+  if (typeof prompt === 'string' && prompt.includes('context-popover-full'))
+    claudeContextMode = 'full'
   if (prompt.includes('skill-wire')) {
     claudeFinish(prompt)
     return
@@ -1128,7 +1150,11 @@ createInterface({ input: process.stdin }).on('line', (line) => {
         reply({ sessionFile: '/tmp/pi-session-test.jsonl' })
         break
       case 'get_session_stats':
-        reply({ contextUsage: { tokens: 6000, contextWindow: 200000, percent: 3 } })
+        reply(
+          piContextMode === 'empty'
+            ? { contextUsage: { tokens: null, contextWindow: 200000, percent: null } }
+            : { contextUsage: { tokens: 6000, contextWindow: 200000, percent: 3 } }
+        )
         break
       case 'set_model':
       case 'set_thinking_level':
@@ -1143,6 +1169,8 @@ createInterface({ input: process.stdin }).on('line', (line) => {
         send({ type: 'agent_end' })
         break
       case 'prompt': {
+        if (typeof frame.message === 'string' && frame.message.includes('context-popover-empty'))
+          piContextMode = 'empty'
         if (frame.streamingBehavior === 'steer') {
           reply({})
           send({
@@ -1216,7 +1244,53 @@ createInterface({ input: process.stdin }).on('line', (line) => {
         response: {
           subtype: 'success',
           request_id: frame.request_id,
-          response: { totalTokens: 12345, maxTokens: 200000, rawMaxTokens: 200000, percentage: 6 }
+          response:
+            claudeContextMode === 'full'
+              ? {
+                  totalTokens: 70800,
+                  maxTokens: 200000,
+                  rawMaxTokens: 200000,
+                  percentage: 35,
+                  model: 'claude-sonnet-5',
+                  isAutoCompactEnabled: true,
+                  categories: [
+                    { name: 'System prompt', tokens: 4400, color: 'purple', kind: 'used' },
+                    { name: 'System tools', tokens: 12800, color: 'blue', kind: 'used' },
+                    { name: 'MCP tools', tokens: 3200, color: 'cyan', kind: 'used' },
+                    { name: 'Custom agents', tokens: 1600, color: 'pink', kind: 'used' },
+                    { name: 'Memory files', tokens: 2200, color: 'yellow', kind: 'used' },
+                    { name: 'Skills', tokens: 1200, color: 'green', kind: 'used' },
+                    { name: 'Messages', tokens: 45400, color: 'blend', kind: 'used' },
+                    { name: 'Unused skills', tokens: 0, color: 'green', kind: 'used' },
+                    { name: 'Free space', tokens: 116200, color: 'gray', kind: 'free' },
+                    { name: 'Autocompact buffer', tokens: 13000, color: 'gray', kind: 'buffer' },
+                    {
+                      name: 'MCP tools (deferred)',
+                      tokens: 6420,
+                      color: 'gray',
+                      kind: 'deferred',
+                      isDeferred: true
+                    }
+                  ],
+                  messageBreakdown: {
+                    userMessageTokens: 8600,
+                    assistantMessageTokens: 11200,
+                    toolCallTokens: 4800,
+                    toolResultTokens: 18400,
+                    attachmentTokens: 2400,
+                    redirectedContextTokens: 0,
+                    unattributedTokens: 0,
+                    toolCallsByType: [],
+                    attachmentsByType: []
+                  },
+                  apiUsage: {
+                    input_tokens: 1,
+                    output_tokens: 1,
+                    cache_creation_input_tokens: 0,
+                    cache_read_input_tokens: 0
+                  }
+                }
+              : { totalTokens: 12345, maxTokens: 200000, rawMaxTokens: 200000, percentage: 6 }
         }
       })
     else if (frame.type === 'control_request')
