@@ -244,6 +244,29 @@ export const piAdapter: AgentAdapter = {
           // Best-effort stats call; a turn's success does not depend on it.
         }
       },
+      async forkPoints() {
+        const data = await rpc.request('get_fork_messages')
+        const messages = Array.isArray(data.messages) ? data.messages : []
+        return messages
+          .filter((entry: Frame) => typeof entry.entryId === 'string')
+          .map((entry: Frame) => ({
+            entryId: String(entry.entryId),
+            text: String(entry.text ?? '')
+          }))
+      },
+      async forkBefore(entryId) {
+        const result = await rpc.request('fork', { entryId })
+        if (result.cancelled) return { cancelled: true }
+        const state = await rpc.request('get_state')
+        return {
+          cancelled: false,
+          ...(typeof state.sessionFile === 'string' ? { nativeId: state.sessionFile } : {})
+        }
+      },
+      async switchSession(sessionPath) {
+        const result = await rpc.request('switch_session', { sessionPath })
+        return { cancelled: Boolean(result.cancelled) }
+      },
       close
     }
   }

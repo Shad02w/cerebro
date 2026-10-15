@@ -87,6 +87,7 @@ const AddTagHighlight = Extension.create({
 export type ComposerEditorHandle = {
   insertAttachment: (attachmentId: string) => void
   removeAttachment: (attachmentId: string) => void
+  replace: (text: string) => void
   clear: () => void
   focus: () => void
 }
@@ -438,6 +439,8 @@ export function ComposerEditor({
   onDocument,
   onAttachFiles,
   onSubmit,
+  onCancel,
+  variant = 'composer',
   vim = { enabled: false, initialMode: 'insert' },
   onVimMode
 }: {
@@ -448,6 +451,10 @@ export function ComposerEditor({
   onDocument: (text: string, chips: Chip[]) => void
   onAttachFiles: (files: File[]) => void
   onSubmit: () => void
+  /** Message variant: Escape leaves edit mode. */
+  onCancel?: () => void
+  /** `message` edits a sent prompt. Enter inserts a newline instead of sending. */
+  variant?: 'composer' | 'message'
   vim?: ComposerVimOptions
   /** Current vim mode while vim is on, otherwise null. */
   onVimMode?: (mode: Mode | null) => void
@@ -455,6 +462,8 @@ export function ComposerEditor({
   const vimRef = useRef(vim)
   const vimPlugin = useRef<Plugin | null>(null)
   const onSubmitRef = useRef(onSubmit)
+  const onCancelRef = useRef(onCancel)
+  const messageRef = useRef(variant === 'message')
   const onDocumentRef = useRef(onDocument)
   const getAttachmentsRef = useRef(getAttachments)
   const onAttachFilesRef = useRef(onAttachFiles)
@@ -482,11 +491,10 @@ export function ComposerEditor({
     content: textToContent(defaultText),
     editorProps: {
       attributes: {
-        'aria-label': 'Message agent',
+        'aria-label': variant === 'message' ? 'Edit prompt' : 'Message agent',
         role: 'textbox',
         'aria-multiline': 'true',
-        class:
-          'composer-editor max-h-48 min-h-20 w-full overflow-y-auto bg-transparent px-2 py-2 text-sm outline-none'
+        class: `composer-editor max-h-48 w-full overflow-y-auto bg-transparent px-2 py-2 text-sm outline-none ${variant === 'message' ? 'min-h-6' : 'min-h-20'}`
       },
       handlePaste: (_view, event) => {
         const files = imageFiles(event.clipboardData)
@@ -556,12 +564,18 @@ export function ComposerEditor({
             }
           }
         }
+        if (messageRef.current && event.key === 'Escape' && !event.isComposing) {
+          event.preventDefault()
+          onCancelRef.current?.()
+          return true
+        }
         if (event.key === 'Enter' && event.shiftKey && !event.isComposing) {
           if (view.state.selection.$from.parent.type.spec.code) return false
           event.preventDefault()
           return editorBox.current?.commands.splitBlock() ?? false
         }
         if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return false
+        if (messageRef.current) return false
         if (setup.menuOpen.current) return false
         if (view.state.selection.$from.parent.type.spec.code) return false
         event.preventDefault()
@@ -579,12 +593,17 @@ export function ComposerEditor({
   })
   useEffect(() => {
     onSubmitRef.current = onSubmit
+    onCancelRef.current = onCancel
+    messageRef.current = variant === 'message'
     onDocumentRef.current = onDocument
     getAttachmentsRef.current = getAttachments
     onAttachFilesRef.current = onAttachFiles
     editorBox.current = editor
     vimRef.current = vim
-  }, [editor, getAttachments, onAttachFiles, onDocument, onSubmit, vim])
+  }, [editor, getAttachments, onAttachFiles, onCancel, onDocument, onSubmit, variant, vim])
+  useEffect(() => {
+    if (variant === 'message') editor?.commands.focus('end')
+  }, [editor, variant])
   const vimEnabled = vim.enabled
   useEffect(() => {
     if (!editor || !vimEnabled) return
@@ -669,6 +688,14 @@ export function ComposerEditor({
       },
       removeAttachment: (attachmentId) => {
         if (editor) deleteChip(editor.view, attachmentId)
+      },
+      replace: (text) => {
+        if (!editor) return
+        editor.commands.setContent(
+          textToContent(text, { attachments: getAttachmentsRef.current() }),
+          { emitUpdate: true }
+        )
+        editor.commands.focus('end')
       },
       clear: () => {
         editor?.commands.clearContent(true)

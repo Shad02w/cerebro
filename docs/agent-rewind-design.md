@@ -1,6 +1,6 @@
 # Agent pane rewind
 
-Status: design only. No code in this change. Research is from the current checkout: `packages/core/src/chat.ts`, `packages/mux/src/agents/service.ts`, the three adapters, `apps/desktop/src/renderer/src/components/chat/`, and the installed Claude Agent SDK 0.3.287 types. Pi's tree behavior is from the current `earendil-works/pi` main RPC types and `rpc-mode.ts` handler, plus the sessions doc. Codex still has no rewind method in this repo, and that CLI is not installed here.
+Status: implemented. Research is from the current checkout: `packages/core/src/chat.ts`, `packages/mux/src/agents/service.ts`, the three adapters, `apps/desktop/src/renderer/src/components/chat/`, and the installed Claude Agent SDK 0.3.287 types. Pi's tree behavior is from the current `earendil-works/pi` main RPC types and `rpc-mode.ts` handler, plus the sessions doc. Codex still has no rewind method in this repo, and that CLI is not installed here.
 
 This is the first slice of the rewind work that [the chat plan](agent-chat-plan.md) deferred. It is not a branch tree. Fork already copies a prefix into a new session. Rewind stays on the same session, puts the chosen prompt back in the composer, and can be undone until the next send.
 
@@ -312,7 +312,7 @@ Copy on the prompt and copy/fork on the response are unchanged.
 
 ## 10. Tests, when this is implemented
 
-No tests in this design change.
+Tests landed with the implementation:
 
 - Unit, `packages/mux/src/agents/service.test.ts`: rewind slices at a user item, undo restores items and `nativeId`, a second rewind still undoes to the original tip, rewind rejects while running or queued, a steered item with no per-message checkpoint is rejected, send-while-rewound drops the tail and clears `rewind`.
 - Adapter fixture: a Claude connect after commit passes `resume`, `resumeSessionAt`, and `forkSession: true`. A Pi rewind calls `fork` with the user entry id and undo calls `switch_session` with the previous path. An emulated harness clears `nativeId` and emits the notice.

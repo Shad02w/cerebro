@@ -92,12 +92,14 @@ function RequestCard({
 export const ChatItem = memo(function ChatItem({
   item,
   onReply,
+  onRewind,
   workspaceId,
   sessionId,
   streaming = false
 }: {
   item: Item
   onReply: (id: string, answer: AgentAnswer) => void
+  onRewind?: (text: string) => void
   workspaceId: number
   sessionId: string
   streaming?: boolean
@@ -110,6 +112,7 @@ export const ChatItem = memo(function ChatItem({
         attachments={item.attachments}
         workspaceId={workspaceId}
         sessionId={sessionId}
+        onRewind={onRewind}
       />
     )
   if (item.kind === 'text') return <AgentMarkdown text={item.text} streaming={streaming} />

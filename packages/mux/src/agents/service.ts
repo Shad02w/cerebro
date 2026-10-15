@@ -80,7 +80,8 @@ const capabilities: Record<AgentHarness, AgentCapabilities> = {
     modelSelection: 'between-turns',
     imageInput: true,
     steering: true,
-    fork: 'native'
+    fork: 'native',
+    rewind: 'native'
   },
   codex: {
     resume: true,
@@ -90,7 +91,8 @@ const capabilities: Record<AgentHarness, AgentCapabilities> = {
     modelSelection: 'between-turns',
     imageInput: true,
     steering: true,
-    fork: 'emulated'
+    fork: 'emulated',
+    rewind: 'emulated'
   },
   pi: {
     resume: true,
@@ -100,9 +102,12 @@ const capabilities: Record<AgentHarness, AgentCapabilities> = {
     modelSelection: 'between-turns',
     imageInput: true,
     steering: true,
-    fork: 'emulated'
+    fork: 'emulated',
+    rewind: 'native'
   }
 }
+const rewindMemoryNotice =
+  'This agent cannot rewind its own memory. The next message starts a fresh session.'
 const attachmentId = /^[A-Za-z0-9-]{1,64}$/
 const extensions: Record<ChatImageType, string> = {
   'image/png': 'png',
@@ -284,7 +289,8 @@ export class AgentSessions {
     renameSync(`${file}.tmp`, file)
   }
   private persist(session: AgentSession): void {
-    this.atomic(`session-${session.id}.json`, session)
+    const { nativeResume: _resume, ...stored } = session
+    this.atomic(`session-${session.id}.json`, stored)
   }
   /** One-time upgrade from the old per-session layout. Attachment ids are already unique, so
    *  every file can move straight into the flat root; a fork no longer needs to touch any of this. */
@@ -636,6 +642,8 @@ export class AgentSessions {
       return this.view(scope)
     }
     if (command.action === 'fork') return this.fork(scope, command)
+    if (command.action === 'rewind') return this.rewind(scope, command)
+    if (command.action === 'undo') return this.undo(scope, command)
     let session = this.sessions.get(this.bindings[String(scope.paneId)])
     if (
       session &&
@@ -800,6 +808,7 @@ export class AgentSessions {
       session.error = 'Could not persist the prompt. It was not sent.'
       throw error
     }
+    this.commitRewind(session)
     this.beginTurn(session, command.text, stored, selected, command.reasoning, accessMode)
     if (created) this.scheduleTitle(session.id, command.text)
     return this.view(scope)
@@ -900,6 +909,7 @@ export class AgentSessions {
       structuredClone(session),
       this.host(session, entry)
     )
+    if (session.nativeResume) delete session.nativeResume
     return entry.connection
   }
   /** Callbacks for one process. Once the session replaces or closes it, its late events are ignored. */
@@ -1021,6 +1031,147 @@ export class AgentSessions {
     if (existing) Object.assign(existing, next)
     else session.items.push(next)
     this.changed(session, idle)
+  }
+  /** Records Pi user-message entry ids so a later rewind can fork before one of them. */
+  private async noteForkPoints(session: AgentSession): Promise<void> {
+    if (session.model.harness !== 'pi' || this.stopping) return
+    const connection = this.live.get(session.id)?.connection
+    if (!connection?.forkPoints) return
+    try {
+      const points = await connection.forkPoints()
+      const users = session.items.filter((item) => item.kind === 'user')
+      const next = { ...session.checkpoints }
+      let changed = false
+      for (let index = 0; index < Math.min(points.length, users.length); index++) {
+        const id = users[index].id
+        if (next[id] === points[index].entryId) continue
+        next[id] = points[index].entryId
+        changed = true
+      }
+      if (!changed) return
+      session.checkpoints = next
+      this.changed(session, true)
+    } catch {
+      // A prompt without an entry id cannot rewind. The turn itself succeeded.
+    }
+  }
+  /**
+   * Drops a pending rewind as a send is accepted. Claude's next connect resumes at the cut.
+   * Pi already branched on rewind. An emulated harness forgets native memory and says so.
+   */
+  private commitRewind(session: AgentSession): void {
+    const rewind = session.rewind
+    if (!rewind) return
+    const harness = session.model.harness
+    if (capabilities[harness].rewind === 'emulated') {
+      session.nativeId = undefined
+      delete session.nativeResume
+      const turnId = session.items.at(-1)?.turnId ?? randomUUID()
+      session.items.push({
+        id: randomUUID(),
+        turnId,
+        kind: 'notice',
+        text: rewindMemoryNotice
+      })
+      this.release(session.id)
+    } else if (harness === 'claude') {
+      if (rewind.resumeAt && session.nativeId)
+        session.nativeResume = { at: rewind.resumeAt, fork: true }
+      else {
+        session.nativeId = undefined
+        delete session.nativeResume
+      }
+      this.release(session.id)
+    }
+    delete session.rewind
+  }
+  private sessionFor(scope: AgentScope, sessionId?: string): AgentSession {
+    const session = this.sessions.get(sessionId ?? this.bindings[String(scope.paneId)])
+    if (
+      !session ||
+      session.workspaceId !== scope.workspaceId ||
+      session.repositoryId !== scope.repositoryId
+    )
+      throw new Error('Conversation not found in this repository.')
+    return session
+  }
+  /** Hides the chosen prompt and everything after it. Undo restores that tail. */
+  private async rewind(scope: AgentScope, command: ChatCommand): Promise<ChatView> {
+    const session = this.sessionFor(scope, command.sessionId)
+    if (busy(session)) throw new Error('Stop the running turn before rewinding.')
+    if (session.queue?.length) throw new Error('Remove queued messages before rewinding.')
+    if (session.background?.some((task) => task.status === 'running'))
+      throw new Error('Stop background work before rewinding.')
+    if (!command.itemId) throw new Error('Choose a prompt to rewind.')
+    const pending = session.rewind
+    const full = pending ? [...session.items, ...pending.tail] : session.items
+    const tipNative = pending?.nativeId ?? session.nativeId
+    const tipCheckpoints = pending?.checkpoints ?? session.checkpoints
+    const index = full.findIndex((item) => item.id === command.itemId)
+    const cut = index === -1 ? undefined : full[index]
+    if (!cut || cut.kind !== 'user')
+      throw new Error('That prompt is no longer part of this conversation.')
+    const opener = full.find((item) => item.turnId === cut.turnId)
+    if (opener?.id !== cut.id && !tipCheckpoints?.[cut.id])
+      throw new Error('Rewind from the prompt that started this response.')
+    const kept = full.slice(0, index)
+    const tail = full.slice(index)
+    let resumeAt: string | undefined
+    if (session.model.harness === 'pi') resumeAt = tipCheckpoints?.[cut.id]
+    else if (session.model.harness === 'claude') {
+      const last = kept.at(-1)
+      if (last && tipCheckpoints?.[last.turnId]) {
+        const keptIds = new Set(kept.map((item) => item.id))
+        const wholeTurn = full
+          .filter((item) => item.turnId === last.turnId)
+          .every((item) => keptIds.has(item.id))
+        if (wholeTurn) resumeAt = tipCheckpoints[last.turnId]
+      }
+    }
+    if (session.model.harness === 'pi' && tipNative && !resumeAt)
+      throw new Error('That prompt cannot be rewound yet.')
+    if (pending && session.model.harness === 'pi' && tipNative && session.nativeId !== tipNative) {
+      const switched = await this.connectionFor(session).switchSession?.(tipNative)
+      if (switched?.cancelled) throw new Error('Rewind was cancelled.')
+      session.nativeId = tipNative
+    }
+    if (session.model.harness === 'pi' && resumeAt) {
+      const branched = await this.connectionFor(session).forkBefore?.(resumeAt)
+      if (!branched) throw new Error('This agent cannot rewind its own memory.')
+      if (branched.cancelled) throw new Error('Rewind was cancelled.')
+      if (branched.nativeId) session.nativeId = branched.nativeId
+    } else if (session.model.harness !== 'pi') this.release(session.id)
+    session.items = kept
+    session.turnId = undefined
+    session.rewind = {
+      itemId: cut.id,
+      turnId: cut.turnId,
+      tail,
+      nativeId: tipNative,
+      checkpoints: tipCheckpoints,
+      ...(resumeAt ? { resumeAt } : {}),
+      displacedDraft: pending?.displacedDraft ?? command.displacedDraft
+    }
+    this.changed(session, true)
+    return this.view(scope)
+  }
+  /** Puts a pending rewind's tail back and returns the composer draft that was displaced. */
+  private async undo(scope: AgentScope, command: ChatCommand): Promise<ChatView> {
+    const session = this.sessionFor(scope, command.sessionId)
+    const rewind = session.rewind
+    if (!rewind) return this.view(scope)
+    if (busy(session)) throw new Error('Stop the running turn before rewinding.')
+    if (session.model.harness === 'pi' && rewind.nativeId && session.nativeId !== rewind.nativeId) {
+      const switched = await this.connectionFor(session).switchSession?.(rewind.nativeId)
+      if (switched?.cancelled) throw new Error('Rewind was cancelled.')
+    }
+    session.items = [...session.items, ...rewind.tail]
+    if (rewind.nativeId) session.nativeId = rewind.nativeId
+    else if (session.model.harness === 'pi') delete session.nativeId
+    session.checkpoints = rewind.checkpoints
+    delete session.rewind
+    this.changed(session, true)
+    return this.view(scope)
   }
   /** Branches a completed section into a new, independent session. Native memory carries over only for adapters that support it (currently Claude). */
   private async fork(scope: AgentScope, command: ChatCommand): Promise<ChatView> {
@@ -1228,6 +1379,7 @@ export class AgentSessions {
         )
       }
       this.releaseIfDetached(session.id)
+      await this.noteForkPoints(session)
     }
   }
   async stopWorkspace(workspaceId: number): Promise<void> {

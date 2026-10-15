@@ -45,6 +45,7 @@ export function useComposerDraft({
   attachFiles: (files: File[]) => Promise<void>
   remove: (attachmentId: string) => void
   clear: () => void
+  replace: (text: string, attachments?: ChatAttachmentUpload[]) => void
   onDocument: (text: string, chips: Chip[]) => void
   readDraft: () => ComposerDraft
   dropHandlers: {
@@ -116,6 +117,12 @@ export function useComposerDraft({
     clear: () => {
       editorRef.current?.clear()
       commit(emptyDraft())
+    },
+    replace: (text: string, attachments: ChatAttachmentUpload[] = []) => {
+      commit({ text, attachments, chips: [] })
+      const apply = (): void => editorRef.current?.replace(text)
+      if (editorRef.current) apply()
+      else requestAnimationFrame(apply)
     },
     onDocument: (text, chips) => {
       const ids = new Set(chips.map((chip) => chip.attachmentId))

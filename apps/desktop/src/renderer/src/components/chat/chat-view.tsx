@@ -6,7 +6,10 @@ import {
   type AgentAccessMode,
   type AgentAnswer,
   type AgentModel,
-  type ChatCommand
+  type ChatAttachment,
+  type ChatAttachmentUpload,
+  type ChatCommand,
+  type ChatItem
 } from '@cerebro/core'
 import {
   DEFAULT_AGENT_BACKGROUND,
@@ -44,6 +47,25 @@ import './chat-status.css'
 
 function chatScrollBehavior(): ScrollBehavior {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+}
+
+/** Loads stored prompt images so a rewind can put the same chips back in the composer. */
+async function rewindUploads(
+  workspaceId: number,
+  sessionId: string,
+  attachments: ChatAttachment[] | undefined
+): Promise<ChatAttachmentUpload[]> {
+  if (!attachments?.length) return []
+  return Promise.all(
+    attachments.map(async (attachment) => {
+      try {
+        const content = await window.cerebro.chatAttachment(workspaceId, sessionId, attachment.id)
+        return { ...attachment, data: content.data }
+      } catch {
+        return { ...attachment, data: '' }
+      }
+    })
+  )
 }
 
 export function ChatView({
@@ -119,7 +141,8 @@ export function ChatView({
   const editorRef = useRef<ComposerEditorHandle>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   // Confirmed empty only after the section/session query has resolved.
-  const empty = !loading && !session?.items.length
+  // A rewind back to the first prompt leaves no items, and the composer stays docked.
+  const empty = !loading && !session?.items.length && !session?.rewind
   const wasEmpty = useRef(empty)
   const dockHydrated = useRef(false)
   const imageRejection = useCallback(
@@ -136,6 +159,7 @@ export function ChatView({
     attachFiles,
     remove,
     clear,
+    replace,
     onDocument,
     readDraft,
     dropHandlers
@@ -253,6 +277,63 @@ export function ChatView({
     },
     [execute, session?.id]
   )
+  const applyingRewind = useRef(false)
+  const filledRewind = useRef<string | null>(null)
+  const readDraftRef = useRef(readDraft)
+  const replaceRef = useRef(replace)
+  readDraftRef.current = readDraft
+  replaceRef.current = replace
+  const rewindTo = useCallback(
+    async (item: ChatItem, text: string): Promise<void> => {
+      if (!session || item.kind !== 'user' || applyingRewind.current) return
+      applyingRewind.current = true
+      const displacedDraft = readDraft().text
+      try {
+        const uploads = await rewindUploads(workspaceId, session.id, item.attachments)
+        const ok = await execute({
+          action: 'rewind',
+          sessionId: session.id,
+          turnId: item.turnId,
+          itemId: item.id,
+          displacedDraft
+        })
+        if (!ok) return
+        filledRewind.current = item.id
+        replace(text, uploads)
+        editorRef.current?.focus()
+      } finally {
+        applyingRewind.current = false
+      }
+    },
+    [execute, readDraft, replace, session, workspaceId]
+  )
+  const undoRewind = useCallback(async (): Promise<void> => {
+    const draft = session?.rewind?.displacedDraft ?? ''
+    filledRewind.current = null
+    if (await execute({ action: 'undo', sessionId: session?.id })) replace(draft)
+  }, [execute, replace, session?.id, session?.rewind?.displacedDraft])
+  useEffect(() => {
+    const rewind = session?.rewind
+    if (!rewind) {
+      filledRewind.current = null
+      return
+    }
+    if (applyingRewind.current || filledRewind.current === rewind.itemId) return
+    const prompt = rewind.tail.find((item) => item.id === rewind.itemId)
+    if (!prompt || prompt.kind !== 'user') return
+    if (!session || readDraftRef.current().text.trim()) {
+      filledRewind.current = rewind.itemId
+      return
+    }
+    filledRewind.current = rewind.itemId
+    const sessionId = session.id
+    void (async () => {
+      const uploads = await rewindUploads(workspaceId, sessionId, prompt.attachments)
+      if (applyingRewind.current || filledRewind.current !== rewind.itemId) return
+      if (readDraftRef.current().text.trim()) return
+      replaceRef.current(prompt.text, uploads)
+    })()
+  }, [session, workspaceId])
   useLayoutEffect(() => {
     if (stick.current && scrolling.current)
       scrolling.current.scrollTop = scrolling.current.scrollHeight
@@ -426,6 +507,9 @@ export function ChatView({
                       <ChatItem
                         item={item}
                         onReply={reply}
+                        onRewind={(text) => {
+                          void rewindTo(item, text)
+                        }}
                         workspaceId={workspaceId}
                         sessionId={session.id}
                         streaming={busy && index === session.items.length - 1}
@@ -472,6 +556,29 @@ export function ChatView({
                     )
                   })
                 : null}
+              {session?.rewind ? (
+                <div
+                  data-testid="chat-rewind-notice"
+                  className="flex items-center justify-between gap-3 py-1 text-xs text-muted-foreground"
+                >
+                  <p>
+                    {session.items.length
+                      ? 'Rewound to this response. Files were not restored.'
+                      : 'Rewound to the start. Files were not restored.'}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="xs"
+                    data-testid="chat-rewind-undo"
+                    onClick={() => {
+                      void undoRewind()
+                    }}
+                  >
+                    Undo
+                  </Button>
+                </div>
+              ) : null}
               {session?.status === 'running' ? (
                 <div role="status" className="text-sm text-muted-foreground">
                   <span className="chat-working">Working…</span>

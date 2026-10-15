@@ -10,6 +10,7 @@ import {
   type BackgroundTaskUpdate,
   type RunAttachment
 } from './adapters'
+import { claudeResumeOptions } from './adapters/claude'
 import type { AgentDelta, AgentHarness, AgentSession } from '@cerebro/core'
 const fixture = resolve(__dirname, 'fixtures/fake-harness.cjs')
 async function waitFor(condition: () => boolean, timeoutMs = 5000): Promise<void> {
@@ -19,6 +20,19 @@ async function waitFor(condition: () => boolean, timeoutMs = 5000): Promise<void
     await new Promise((resolve) => setTimeout(resolve, 10))
   }
 }
+test('claudeResumeOptions forks a rewound resume at the kept checkpoint', () => {
+  assert.deepEqual(
+    claudeResumeOptions({
+      nativeId: 'native-claude',
+      nativeResume: { at: 'chain-1', fork: true }
+    }),
+    { resume: 'native-claude', resumeSessionAt: 'chain-1', forkSession: true }
+  )
+  assert.deepEqual(claudeResumeOptions({ nativeId: 'native-claude' }), {
+    resume: 'native-claude'
+  })
+  assert.deepEqual(claudeResumeOptions({}), {})
+})
 test('claudeModelLabel keeps model names across Claude Code catalog shapes', () => {
   // Older/current shape: description tip is the versioned name.
   assert.equal(
