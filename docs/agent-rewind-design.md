@@ -10,7 +10,7 @@ On each user prompt, Rewind is the icon to the left of Copy:
 
 - **Rewind** hides that prompt and everything after it, and loads that prompt into the composer at the bottom of the pane.
 - Clicking the prompt itself makes it editable first, with the same composer document the bottom field uses. Rewind then uses that edited text.
-- **Undo**, shown only while a rewind is pending, restores the latest turn of the session and the composer draft that rewind displaced.
+- **Undo** is one line directly under the response that remains (the response before the prompt that was rewound). It restores the latest turn and the composer draft that rewind displaced.
 
 Sending while a rewind is pending commits it. The hidden tail is dropped, and the new turn continues from the kept prefix. Undo is no longer available after that send.
 
@@ -94,24 +94,25 @@ Rewind is the icon button beside Copy, on every user bubble, including a steered
 1. Read the text and attachments from the inline editor if it is open, otherwise from the stored user item.
 2. Remember the docked composer's current draft.
 3. Ask the host to cut the transcript so that every item before this user item stays, and this item onward is held aside.
-4. Load the prompt into the docked `ComposerEditor` and focus it.
-5. Show a bar above the composer: which prompt was rewound, that files were not restored, and Undo.
+4. Load that prompt into the bottom `ComposerEditor`, replacing the draft, and focus it.
+5. Render one line under the last kept response: a short description and an Undo button on that same line.
 
-The transcript, the turn rail, and fork all see the kept prefix only. The hidden tail is not rendered.
+The transcript, the turn rail, and fork all see the kept prefix only. The hidden tail is not rendered. The bottom composer is the only place the rewound prompt is edited after the click. The bubble that was rewound is no longer on screen.
 
 Rewinding again while one rewind is already pending moves the cut earlier or later. The held tail is always "everything after the current cut, through the original tip." Undo still returns to that original tip, not to the previous cut. One pending rewind, not a stack.
 
 ### 4.3 Undo
 
-Undo is a button on the rewind bar, not a control on each prompt. It is available only while `session.rewind` is set.
+Undo is the button on that one transcript line, not a control on each prompt and not a bar above the composer. It is available only while `session.rewind` is set.
 
-Undo restores:
+Pressing Undo puts the session back to how it looked before the rewind:
 
-- `session.items` to the full transcript, including the tail
-- the native binding and checkpoints that were current at the tip
-- the docked composer draft that rewind replaced
+- `session.items` is the full transcript again, including the tail
+- the native binding and checkpoints are the ones from the tip
+- the bottom composer is the draft rewind replaced, or empty when there was no draft
+- the one-line Undo row is gone
 
-The inline editor closes. The session is back on its latest turn. Nothing is sent.
+Nothing is sent.
 
 ### 4.4 Send while rewound
 
@@ -258,7 +259,7 @@ Emulated commit clears `nativeId` and does not paste the kept transcript into th
 
 ## 7. What this does not do
 
-- **Files.** Edits the agent wrote stay in the workspace. The rewind bar says so. Claude can restore tracked files only if checkpointing was on for the whole session; turning that on is a separate decision because it changes how Claude writes files. Pi's tree rewinds conversation entries, not workspace files. Codex has no matching API in this codebase.
+- **Files.** Edits the agent wrote stay in the workspace. The one-line Undo description says so. Claude can restore tracked files only if checkpointing was on for the whole session; turning that on is a separate decision because it changes how Claude writes files. Pi's tree rewinds conversation entries, not workspace files. Codex has no matching API in this codebase.
 - **Branch history.** After a committed send, the tail is gone. Getting it back is not Undo. Fork, before rewinding, is how to keep a copy.
 - **A new session.** The pane stays on the same `AgentSession`. History, title, and model stay.
 - **Queue, steering, or a running turn.** Those are refused. Stop first, then rewind.
@@ -276,7 +277,7 @@ Emulated commit clears `nativeId` and does not paste the kept transcript into th
 | `undo` | `sessionId` | `ChatView` with the tip restored and `rewind` absent |
 | `send` | unchanged | If `rewind` is set, commit it, then the existing send |
 
-The renderer does not truncate `items` locally. It renders `session.items` and, when `session.rewind` is set, the undo bar. Prefill of the composer is a renderer concern: the command returns the session, and the bubble's text is what was passed into the docked editor before the item unmounts.
+The renderer does not truncate `items` locally. It renders `session.items` and, when `session.rewind` is set, the one-line Undo row after the last kept item. Prefill of the bottom composer is a renderer concern: the command returns the session, and the bubble's text is written into the docked editor before that item unmounts.
 
 Errors use the existing thrown `Error` messages the pane already shows. No new error code. The button stays clickable when a rewind would fail; the pane shows the message. That matches the form rule of not disabling a submit control to express invalid state.
 
@@ -285,18 +286,26 @@ Errors use the existing thrown `Error` messages the pane already shows. No new e
 ```text
 transcript
   user bubble                    Rewind  Copy
-  assistant items
+  assistant response
   ──────── End of response  Fork ────
-  ...
-rewind bar (only while session.rewind is set)
-  Rewound to before “…”  Files in the workspace were not restored.  [Undo]
-docked composer, prefilled with that prompt
+  Rewound to this response. Files were not restored.        [Undo]
+bottom composer, containing the prompt that was rewound
 ```
 
-- Rewind sits in `ChatUserMessage`, in the same row as Copy and to its left, `aria-label="Rewind to before this prompt"`.
-- The icon is `Undo2` from the existing `lucide-react` set. Undo on the bar uses the word Undo, not a second icon-only control.
-- The rewind bar is a sibling of `ChatSessionChips`, above the queue and the composer shell. `data-testid="chat-rewind-bar"` and `data-testid="chat-rewind-undo"`.
-- The prompt button is `data-testid="chat-rewind"`. The bubble root gains `data-testid="chat-user-message"` (already present) and, while editing, `data-editing="true"`.
+The Undo line is the next transcript row after the kept prefix. That prefix ends at the response before the prompt whose Rewind was clicked, so the line sits directly under that response (under its "End of response" row). It is one line: the description on the left, the Undo button on the right. It is not a second composer and it does not sit in the composer dock.
+
+When the rewound prompt is the first one, there is no earlier response. The same one line is the only transcript row, and the bottom composer holds that first prompt.
+
+Description, one line:
+
+- `Rewound to this response. Files were not restored.`
+- First prompt, when nothing remains above the line: `Rewound to the start. Files were not restored.`
+
+Placement details:
+
+- Rewind sits in `ChatUserMessage`, in the same row as Copy and to its left, `aria-label="Rewind to before this prompt"`. The icon is `Undo2` from the existing `lucide-react` set.
+- The Undo control uses the word Undo. `data-testid="chat-rewind-undo"`. The line is `data-testid="chat-rewind-notice"`, rendered from `chat-view.tsx` after the kept items, not from `ChatSessionChips`.
+- The prompt button is `data-testid="chat-rewind"`. The bubble root is `data-testid="chat-user-message"` (already present) and, while editing, `data-editing="true"`.
 - The turn rail uses the items the snapshot returns, so rewound turns disappear from it without a special case.
 
 Copy on the prompt and copy/fork on the response are unchanged.
@@ -307,8 +316,8 @@ No tests in this design change.
 
 - Unit, `packages/mux/src/agents/service.test.ts`: rewind slices at a user item, undo restores items and `nativeId`, a second rewind still undoes to the original tip, rewind rejects while running or queued, a steered item with no per-message checkpoint is rejected, send-while-rewound drops the tail and clears `rewind`.
 - Adapter fixture: a Claude connect after commit passes `resume`, `resumeSessionAt`, and `forkSession: true`. A Pi rewind calls `fork` with the user entry id and undo calls `switch_session` with the previous path. An emulated harness clears `nativeId` and emits the notice.
-- Integration, renderer: the user bubble shows Rewind to the left of Copy; click-to-edit mounts the message-variant editor; Escape restores the read-only document; the rewind bar renders when `session.rewind` is set.
-- One Electron spec on the chat flow: two finished turns, Rewind on the second prompt, the first turn remains, the composer contains the second prompt, Undo brings the second turn back. Do not assert pixels.
+- Integration, renderer: the user bubble shows Rewind to the left of Copy; click-to-edit mounts the message-variant editor; Escape restores the read-only document; with `session.rewind` set, one Undo line renders after the last kept item and the composer is not wrapped in a rewind bar.
+- One Electron spec on the chat flow: two finished turns, Rewind on the second prompt, the first response stays, the one-line Undo sits under that response, the bottom composer contains the second prompt, Undo restores the second turn and clears that line. Do not assert pixels.
 
 ## 11. Decisions
 
@@ -317,6 +326,7 @@ No tests in this design change.
 | Same session or a new one? | Same session. Fork remains the way to branch. |
 | When is the tail destroyed? | On the next successful send. Undo works until then. |
 | How many undo steps? | One. Undo always restores the latest tip. |
+| Where is Undo? | One line under the response before the rewound prompt. The prompt itself is in the bottom composer. |
 | Inline edit or only the docked composer? | Both. The bubble edits with `ComposerEditor`. Rewind moves that document into the docked instance. |
 | Enter in the bubble? | Newline. Send happens only from the docked composer. |
 | Native memory | Claude resumes at the previous turn's checkpoint and forks the session id on commit. Pi RPC `fork` branches a new session file before the selected user entry; Undo `switch_session`s back. Codex drops native memory and says so. |
