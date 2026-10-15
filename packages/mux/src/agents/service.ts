@@ -37,6 +37,9 @@ import {
   type AgentSubagent,
   type ChatActivityOverview,
   type ChatAgentActivity,
+  type ChatSearchHit,
+  type ChatSearchQuery,
+  type ChatSearchResult,
   type ChatView,
   type AgentSkillList,
   type ChatSkillMention,
@@ -57,6 +60,7 @@ import {
 import { executable } from './transport'
 import { stopCodexAppServer } from './codex-server'
 import { suggestThreadTitle, threadTitleSlice, type ThreadTitleInput } from './title'
+import { SessionSearchIndex, sessionSnippet } from './search-index'
 
 export type AgentScope = {
   workspaceId: number
@@ -195,31 +199,62 @@ const activityRank: Record<AgentActivityStatus, number> = {
   finished: 4,
   idle: 5
 }
+function pendingRequestKind(session: AgentSession): 'approval' | 'question' | undefined {
+  for (let index = session.items.length - 1; index >= 0; index--) {
+    const request = session.items[index]?.request
+    if (request && !request.resolved) return request.kind
+  }
+  return undefined
+}
+
+/** Live pane ids bound to one session, highest first. */
+function panesForSession(bindings: Record<string, string>, sessionId: string): number[] {
+  const paneIds: number[] = []
+  for (const [key, id] of Object.entries(bindings)) {
+    if (id !== sessionId) continue
+    const paneId = Number(key)
+    if (Number.isInteger(paneId) && paneId > 0) paneIds.push(paneId)
+  }
+  paneIds.sort((a, b) => b - a)
+  return paneIds
+}
+
+function toActivity(session: AgentSession, paneIds: number[]): ChatAgentActivity {
+  const requestKind = pendingRequestKind(session)
+  const status = agentActivityStatus(session)
+  return {
+    sessionId: session.id,
+    workspaceId: session.workspaceId,
+    repositoryId: session.repositoryId,
+    harness: session.model.harness,
+    status,
+    title: session.title,
+    modelLabel: session.model.label,
+    ...(requestKind ? { requestKind } : {}),
+    ...(status === 'running' && session.runningSince != null
+      ? { runningSince: session.runningSince }
+      : {}),
+    paneId: paneIds[0] ?? null,
+    paneIds
+  }
+}
+
 /**
- * Sidebar agents follow open chat panes in the live layout: one entry per binding
- * whose pane still exists, including idle. Stale bindings for closed tabs are ignored.
+ * One sidebar row per open session. Open means a live chat pane is bound, including idle,
+ * or the turn is still `running` / `waiting` after its pane closed. Stale bindings are ignored.
  */
 function visibleAgents(
   sessions: AgentSession[],
   bindings: Record<string, string>,
   liveChatPanes: Set<number>
 ): ChatAgentActivity[] {
-  const byId = new Map(sessions.map((session) => [session.id, session]))
   const agents: ChatAgentActivity[] = []
-  for (const [key, sessionId] of Object.entries(bindings)) {
-    const paneId = Number(key)
-    if (!Number.isInteger(paneId) || paneId <= 0) continue
-    if (!liveChatPanes.has(paneId)) continue
-    const session = byId.get(sessionId)
-    if (!session) continue
-    agents.push({
-      sessionId: session.id,
-      workspaceId: session.workspaceId,
-      harness: session.model.harness,
-      status: agentActivityStatus(session),
-      title: session.title,
-      paneId
-    })
+  for (const session of sessions) {
+    const paneIds = panesForSession(bindings, session.id).filter((paneId) =>
+      liveChatPanes.has(paneId)
+    )
+    if (!paneIds.length && !busy(session)) continue
+    agents.push(toActivity(session, paneIds))
   }
   return agents.sort(
     (a, b) =>
@@ -255,6 +290,7 @@ export class AgentSessions {
   private catalog?: AgentCatalog
   private loadingCatalog?: Promise<AgentCatalog>
   private skillCache = new Map<string, { at: number; skills: AgentSkillList['skills'] }>()
+  private searchIndex?: SessionSearchIndex
   private stopping = false
   constructor(
     private directory: string,
@@ -266,6 +302,11 @@ export class AgentSessions {
     mkdirSync(directory, { recursive: true, mode: 0o700 })
     mkdirSync(join(directory, 'attachments'), { recursive: true, mode: 0o700 })
     this.migrateAttachmentLayout()
+    try {
+      this.searchIndex = SessionSearchIndex.open(join(directory, 'search.sqlite'))
+    } catch {
+      // A broken sidecar must not stop the agent host. Search reports itself unavailable.
+    }
     this.bindings = readJson(join(directory, 'bindings.json'), {})
     this.favorites = readJson(join(directory, 'favorites.json'), [])
     for (const file of readdirSync(directory)) {
@@ -274,6 +315,7 @@ export class AgentSessions {
       if (!session || session.version !== 1) continue
       if (busy(session)) {
         session.status = 'interrupted'
+        session.runningSince = undefined
         session.error = 'The agent host stopped during this turn. The prompt was not replayed.'
         for (const item of session.items) {
           if (item.status === 'running') item.status = 'interrupted'
@@ -295,6 +337,11 @@ export class AgentSessions {
       }
       this.sessions.set(session.id, session)
     }
+    try {
+      this.searchIndex?.sync(this.sessions.values())
+    } catch {
+      // Startup indexing is best-effort. The next persist fills a session that was missed.
+    }
   }
   private atomic(name: string, data: unknown): void {
     const file = join(this.directory, name)
@@ -304,6 +351,11 @@ export class AgentSessions {
   private persist(session: AgentSession): void {
     const { nativeResume: _resume, ...stored } = session
     this.atomic(`session-${session.id}.json`, stored)
+    try {
+      this.searchIndex?.upsert(session)
+    } catch {
+      // Index failure must not fail the turn. The JSON file is already written.
+    }
   }
   /** One-time upgrade from the old per-session layout. Attachment ids are already unique, so
    *  every file can move straight into the flat root; a fork no longer needs to touch any of this. */
@@ -383,6 +435,7 @@ export class AgentSessions {
     }
   }
   private changed(session: AgentSession, immediate = false): void {
+    if (!busy(session)) session.runningSince = undefined
     session.sequence++
     session.updatedAt = Date.now()
     if (immediate) {
@@ -509,8 +562,9 @@ export class AgentSessions {
     })
   }
   /**
-   * Workspaces with at least one open agent tab. `liveChatPanes` is the set of chat pane IDs
-   * currently present in layout; bindings for closed panes are pruned and omitted.
+   * Workspaces with at least one open session. `liveChatPanes` is the set of chat pane IDs
+   * currently present in layout; bindings for closed panes are pruned. A running or waiting
+   * turn stays listed after its pane closes.
    */
   overview(liveChatPanes: Iterable<number>): ChatActivityOverview {
     const live = new Set<number>()
@@ -533,6 +587,41 @@ export class AgentSessions {
     })
     workspaces.sort((a, b) => a.workspaceId - b.workspaceId)
     return { workspaces }
+  }
+  /** Ranked session hits for the sidebar search dialog. Synchronous, and not on the exclusive command path. */
+  search(query: ChatSearchQuery): ChatSearchResult {
+    const workspaceIds = [
+      ...new Set(query.workspaceIds.filter((id) => Number.isInteger(id) && id > 0))
+    ]
+    if (!workspaceIds.length) return { hits: [], total: 0 }
+    if (!this.searchIndex) throw new Error('Session search is unavailable.')
+    let ranked: string[]
+    try {
+      ranked = this.searchIndex.rank(query.query, workspaceIds)
+    } catch (error) {
+      throw new Error(
+        `Session search failed: ${error instanceof Error ? error.message : String(error)}`
+      )
+    }
+    const allowed = new Set(workspaceIds)
+    const hits: ChatSearchHit[] = []
+    let total = 0
+    for (const id of ranked) {
+      const session = this.sessions.get(id)
+      if (!session || !allowed.has(session.workspaceId)) continue
+      const paneIds = panesForSession(this.bindings, session.id)
+      const open = paneIds.length > 0 || busy(session)
+      if (query.pastOnly && open) continue
+      total += 1
+      if (hits.length >= 40) continue
+      hits.push({
+        ...toActivity(session, open ? paneIds : []),
+        updatedAt: session.updatedAt,
+        snippet: sessionSnippet(session, query.query),
+        open
+      })
+    }
+    return { hits, total }
   }
   /** Drop pane bindings when chat panes close so overview tracks open tabs only. */
   releasePanes(paneIds: Iterable<number>): void {
@@ -944,6 +1033,7 @@ export class AgentSessions {
       stored = this.writeAttachments(attachments)
     } catch (error) {
       session.status = 'failed'
+      session.runningSince = undefined
       session.error = 'Could not persist the prompt. It was not sent.'
       throw error
     }
@@ -1010,6 +1100,7 @@ export class AgentSessions {
     session.accessMode = accessMode
     session.reasoning = reasoning
     session.status = 'running'
+    session.runningSince = Date.now()
     session.error = undefined
     session.attention = undefined
     session.generation = randomUUID()
@@ -1113,6 +1204,7 @@ export class AgentSessions {
     if (this.stopping || busy(session)) return undefined
     const pending = this.events.get(session.id)
     session.status = 'running'
+    session.runningSince = Date.now()
     session.error = undefined
     session.attention = undefined
     session.generation = randomUUID()
@@ -1588,5 +1680,11 @@ export class AgentSessions {
     for (const timer of this.timers.values()) clearTimeout(timer)
     this.timers.clear()
     for (const session of this.sessions.values()) this.persist(session)
+    try {
+      this.searchIndex?.close()
+    } catch {
+      // Closing the sidecar must not change shutdown's result.
+    }
+    this.searchIndex = undefined
   }
 }

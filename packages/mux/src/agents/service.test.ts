@@ -858,7 +858,10 @@ test('overview lists every open bound pane including idle, and drops closed pane
       },
       {
         workspaceId: 2,
-        agents: [{ harness: 'claude', status: 'running', paneId: 22 }]
+        agents: [
+          { harness: 'codex', status: 'waiting', paneId: null },
+          { harness: 'claude', status: 'running', paneId: 22 }
+        ]
       }
     ])
     await service.command(scopeFor(1, 12), { ...send, action: 'new', workspaceId: 1, paneId: 12 })
@@ -866,6 +869,47 @@ test('overview lists every open bound pane including idle, and drops closed pane
       listed().filter((entry) => entry.workspaceId === 1),
       []
     )
+  } finally {
+    await service.shutdown()
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
+test('search finds session text, ignores a mid-word query, and lists a closed session as past', async () => {
+  const f = fixture(async (context) => {
+    context.emit({
+      type: 'item',
+      item: { id: 'answer', kind: 'text', text: 'Checked the credentials store' }
+    })
+  })
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    await service.command(scope, { ...send, text: 'Repair the login page', commandId: 'search-1' })
+    const stem = service.search({ workspaceIds: [1], query: 'log', pastOnly: false })
+    assert.equal(stem.hits.length, 1)
+    assert.equal(stem.hits[0]?.modelLabel, 'Test')
+    assert.equal(stem.hits[0]?.open, true)
+    assert.match(stem.hits[0]?.snippet ?? '', /login/i)
+    assert.equal(
+      service.search({ workspaceIds: [1], query: 'ogin', pastOnly: false }).hits.length,
+      0
+    )
+    const body = service.search({ workspaceIds: [1], query: 'credentials', pastOnly: false })
+    assert.equal(body.hits.length, 1)
+    assert.match(body.hits[0]?.snippet ?? '', /credentials/)
+    assert.equal(service.search({ workspaceIds: [1], query: '', pastOnly: true }).total, 0)
+    service.releasePanes([1])
+    const past = service.search({ workspaceIds: [1], query: 'login', pastOnly: true })
+    assert.equal(past.total, 1)
+    assert.equal(past.hits[0]?.open, false)
+    assert.equal(past.hits[0]?.paneId, null)
+    await service.shutdown()
+    const restarted = new AgentSessions(f.dir, () => {}, f.drivers)
+    try {
+      const again = restarted.search({ workspaceIds: [1], query: 'credentials', pastOnly: true })
+      assert.equal(again.total, 1)
+    } finally {
+      await restarted.shutdown()
+    }
   } finally {
     await service.shutdown()
     rmSync(f.dir, { recursive: true, force: true })

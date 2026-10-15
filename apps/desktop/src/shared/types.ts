@@ -6,6 +6,8 @@ import type {
   ChatActivityOverview,
   ChatAttachmentContent,
   ChatCommand,
+  ChatSearchQuery,
+  ChatSearchResult,
   ChatView,
   LastAgent
 } from '@cerebro/core'
@@ -300,6 +302,7 @@ export type CliInstallStatus = {
 export type CerebroApi = {
   chatCommand: (command: ChatCommand) => Promise<ChatView>
   chatOverview: () => Promise<ChatActivityOverview>
+  chatSearch: (query: ChatSearchQuery) => Promise<ChatSearchResult>
   agentCatalog: (refresh?: boolean) => Promise<AgentCatalog>
   agentSkills: (
     workspaceId: number,

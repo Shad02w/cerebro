@@ -3,6 +3,7 @@ export const KEYBIND_ACTION_IDS = [
   'newTerminal',
   'newChat',
   'openChanges',
+  'searchSessions',
   'openSettings',
   'toggleSidebar',
   'toggleDevTools'
@@ -55,6 +56,13 @@ export const KEYBIND_CATALOG: readonly KeybindAction[] = [
     description:
       'Open Changes for the focused workspace row. Focuses the existing Changes tab when one is already open.',
     defaultHotkey: 'Mod+Shift+G',
+    target: 'app'
+  },
+  {
+    id: 'searchSessions',
+    label: 'Search sessions',
+    description: 'Search open and past agent sessions in the selected workspace or its project.',
+    defaultHotkey: 'Mod+K',
     target: 'app'
   },
   {
