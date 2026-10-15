@@ -698,7 +698,127 @@ function claudePrompt(prompt, content) {
       effort: 'high',
       session_id: 'claude-test'
     })
+    // The model is done. Drop the agents from the live set so this result is the turn's end.
+    send({
+      type: 'system',
+      subtype: 'background_tasks_changed',
+      tasks: [
+        {
+          task_id: 'bash-1',
+          task_type: 'local_bash',
+          description: 'Delayed pwd',
+          tool_use_id: 'tool-bash'
+        }
+      ],
+      session_id: 'claude-test'
+    })
     claudeFinish('Review finished.')
+    return
+  }
+  if (prompt === 'one-response') {
+    const say = (id, text) =>
+      send({
+        type: 'assistant',
+        session_id: 'claude-test',
+        uuid: id,
+        message: { id, role: 'assistant', content: [{ type: 'text', text }] }
+      })
+    const result = () =>
+      send({
+        type: 'result',
+        subtype: 'success',
+        is_error: false,
+        result: 'ok',
+        session_id: 'claude-test'
+      })
+    const agents = [
+      {
+        task_id: 'agent-tooling',
+        tool_use_id: 'tool-tooling',
+        description: 'Search GitHub repos and tooling',
+        model: 'sonnet',
+        effort: 'high',
+        duration_ms: 57000,
+        tokens: 18420
+      },
+      {
+        task_id: 'agent-blogs',
+        tool_use_id: 'tool-blogs',
+        description: 'Search blogs and talks',
+        model: 'sonnet',
+        effort: 'medium',
+        duration_ms: 42000,
+        tokens: 9000
+      }
+    ]
+    send({ type: 'system', subtype: 'init', session_id: 'claude-test', tools: [], model: 'test' })
+    say('parent-1', 'Three research agents are running. I will consolidate when they report back.')
+    send({
+      type: 'system',
+      subtype: 'background_tasks_changed',
+      tasks: agents.map((agent) => ({
+        task_id: agent.task_id,
+        task_type: 'local_agent',
+        description: agent.description,
+        tool_use_id: agent.tool_use_id,
+        model: agent.model,
+        effort: agent.effort
+      })),
+      session_id: 'claude-test'
+    })
+    for (const agent of agents)
+      send({
+        type: 'system',
+        subtype: 'task_started',
+        task_id: agent.task_id,
+        tool_use_id: agent.tool_use_id,
+        description: agent.description,
+        task_type: 'local_agent',
+        is_backgrounded: true,
+        model: agent.model,
+        effort: agent.effort,
+        session_id: 'claude-test'
+      })
+    // The model paused while both agents are still out. This result must not end the turn.
+    result()
+    setTimeout(() => {
+      const first = agents[0]
+      send({
+        type: 'system',
+        subtype: 'task_notification',
+        task_id: first.task_id,
+        tool_use_id: first.tool_use_id,
+        task_type: 'local_agent',
+        status: 'completed',
+        summary: 'Found the repos.',
+        description: first.description,
+        usage: { total_tokens: first.tokens, tool_uses: 3, duration_ms: first.duration_ms },
+        model: first.model,
+        effort: first.effort,
+        session_id: 'claude-test'
+      })
+      say('parent-2', 'Tooling findings. The other agent is still running.')
+      result()
+      setTimeout(() => {
+        const second = agents[1]
+        send({
+          type: 'system',
+          subtype: 'task_notification',
+          task_id: second.task_id,
+          tool_use_id: second.tool_use_id,
+          task_type: 'local_agent',
+          status: 'completed',
+          summary: 'Found the posts.',
+          description: second.description,
+          usage: { total_tokens: second.tokens, tool_uses: 2, duration_ms: second.duration_ms },
+          model: second.model,
+          effort: second.effort,
+          session_id: 'claude-test'
+        })
+        say('parent-3', 'Final recommendation.')
+        result()
+      }, 40)
+    }, 40)
     return
   }
   send({ type: 'system', subtype: 'init', session_id: 'claude-test', tools: [], model: 'test' })

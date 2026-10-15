@@ -1328,6 +1328,62 @@ describe('agent adapters', { concurrency: 1 }, () => {
     }
   )
 
+  test('Claude: a child report does not end the parent turn', { timeout: 15_000 }, async () => {
+    process.env.CEREBRO_CLAUDE_PATH = fixture
+    const model = (await adapters.claude.models('/tmp'))[0]
+    const session = liveSession(model, 'one-response')
+    const events: AgentDelta[] = []
+    const updates: SubagentUpdate[] = []
+    let wakes = 0
+    let settled = false
+    const connection = adapters.claude.connect(session, {
+      ...idleHost,
+      subagent: (update) => updates.push(update),
+      autonomous: () => {
+        wakes += 1
+        return undefined
+      }
+    })
+    try {
+      const done = connection
+        .run({
+          session,
+          text: 'one-response',
+          signal: new AbortController().signal,
+          emit: (event) => events.push(event),
+          ask: async () => ({ allow: false, answers: {} })
+        })
+        .then(() => {
+          settled = true
+        })
+      await waitFor(() =>
+        replies(events).includes(
+          'Three research agents are running. I will consolidate when they report back.'
+        )
+      )
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      assert.equal(settled, false)
+      assert.equal(wakes, 0)
+      await done
+      assert.equal(wakes, 0)
+      assert.deepEqual(replies(events), [
+        'Three research agents are running. I will consolidate when they report back.',
+        'Tooling findings. The other agent is still running.',
+        'Final recommendation.'
+      ])
+      const finished = updates.filter((update) => update.announce)
+      assert.deepEqual(
+        finished.map((update) => [update.id, update.durationMs, update.model, update.effort]),
+        [
+          ['agent-tooling', 57000, 'sonnet', 'high'],
+          ['agent-blogs', 42000, 'sonnet', 'medium']
+        ]
+      )
+    } finally {
+      connection.close()
+    }
+  })
+
   test(
     'Codex: a collab child is a sub-agent, and another thread is ignored',
     { timeout: 15_000 },

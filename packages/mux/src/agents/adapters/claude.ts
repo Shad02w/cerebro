@@ -209,6 +209,17 @@ export const claudeAdapter: AgentAdapter = {
     // Agent task ids currently in the live set, and the timer that settles one that disappeared.
     const listedAgents = new Set<string>()
     const agentTimers = new Map<string, ReturnType<typeof setTimeout> | undefined>()
+    // Child agents still out. A model `result` while this set is non-empty is the model
+    // pausing for them, not the parent turn ending. Their later reports stay in this turn.
+    const openAgents = new Set<string>()
+    const endedAgents = new Set<string>()
+    const noteOpen = (id: string): void => {
+      if (!endedAgents.has(id)) openAgents.add(id)
+    }
+    const noteEnded = (id: string): void => {
+      endedAgents.add(id)
+      openAgents.delete(id)
+    }
     const finish = (error?: Error): void => {
       const turn = current
       current = undefined
@@ -598,6 +609,9 @@ export const claudeAdapter: AgentAdapter = {
         } catch {
           // Best-effort control-plane call; a turn's success does not depend on it.
         }
+        // A child is still out, so Claude will wake again when it reports. That continuation
+        // belongs to this same turn. Ending here is what drew an End of response per child.
+        if (openAgents.size > 0) return
         if (current === turn) finish()
       } else if (frame.type === 'system' && frame.subtype === 'background_tasks_changed') {
         // The full live set, which can precede or follow the task_notification that says how a task
@@ -655,10 +669,15 @@ export const claudeAdapter: AgentAdapter = {
           }
           listedAgents.add(id)
         }
+        // The live set is the full list. An agent that left it is no longer holding the turn
+        // open, even before the 5s stop timer. One that already ended stays ended.
+        openAgents.clear()
+        for (const id of liveAgents) noteOpen(id)
       } else if (frame.type === 'system' && frame.subtype === 'task_started') {
         if (frame.ambient) return
         if (isAgentTask(frame.task_type)) {
           const id = linkChild(String(frame.task_id), frame.tool_use_id)
+          if (frame.is_backgrounded) noteOpen(id)
           const title = String(frame.description ?? '')
           reportAgent(id, {
             status: 'running',
@@ -703,6 +722,7 @@ export const claudeAdapter: AgentAdapter = {
           if (timer) clearTimeout(timer)
           agentTimers.delete(id)
           listedAgents.delete(id)
+          noteEnded(id)
           const usage = taskUsage(frame.usage)
           const finishedAt = Date.now()
           const title = String(frame.description ?? '')

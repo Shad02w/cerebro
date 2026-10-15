@@ -455,6 +455,7 @@ export const codexAdapter: AgentAdapter = {
           break
         }
         case 'turn/completed': {
+          // This is the parent turn. A collab item/completed or subAgentActivity does not settle it.
           // Unified exec yields long-running commands back to the model; they outlive the turn.
           for (const [id, { command, startedAt }] of commands) {
             background.add(id)
