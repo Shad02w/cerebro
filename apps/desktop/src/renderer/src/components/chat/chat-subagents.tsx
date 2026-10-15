@@ -6,8 +6,21 @@ import { ChatSessionChip } from './chat-session-chip'
 const finished = (status: AgentSubagent['status']): boolean =>
   status === 'completed' || status === 'failed' || status === 'stopped'
 
-function grouped(value: number): string {
-  return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+/** Compact token count. Under 1000 stays whole. Thousands and millions use one decimal, dropped when the unit is round. */
+function compactCount(value: number): string {
+  const negative = value < 0
+  const abs = Math.abs(value)
+  if (!Number.isFinite(abs)) return '0'
+  if (abs < 1000) return `${negative ? '-' : ''}${Math.round(abs)}`
+  const scaled = (scale: number, suffix: 'k' | 'm'): string => {
+    const tenths = Math.round((abs / scale) * 10)
+    const whole = Math.trunc(tenths / 10)
+    const frac = Math.abs(tenths % 10)
+    const body = frac === 0 ? `${whole}` : `${whole}.${frac}`
+    return `${negative ? '-' : ''}${body}${suffix}`
+  }
+  if (abs >= 999_950) return scaled(1_000_000, 'm')
+  return scaled(1_000, 'k')
 }
 
 /** Elapsed time for a finished row. Hours drop the seconds. */
@@ -30,9 +43,9 @@ function formatSubagentTokens(tokens: AgentSubagentTokens | undefined): string {
     total ?? (input !== undefined && output !== undefined ? input + output : (input ?? output ?? 0))
   const split =
     input !== undefined && output !== undefined
-      ? ` (${grouped(input)} in, ${grouped(output)} out)`
+      ? ` (${compactCount(input)} in, ${compactCount(output)} out)`
       : ''
-  return `${grouped(shown)}${split}`
+  return `${compactCount(shown)}${split}`
 }
 
 function elapsed(agent: AgentSubagent): string {
@@ -52,8 +65,8 @@ export function ChatSubagents({
       <PopoverTrigger
         render={
           <ChatSessionChip
-            label="Sub-agent"
-            aria-label={`${agents.length} ${agents.length === 1 ? 'sub-agent' : 'sub-agents'}`}
+            label="Agents"
+            aria-label={`${agents.length} ${agents.length === 1 ? 'agent' : 'agents'}`}
             data-testid="chat-subagent-chip"
           />
         }
@@ -63,17 +76,13 @@ export function ChatSubagents({
         align="start"
         sideOffset={8}
         positionerClassName="z-[80]"
-        className="z-[80] w-[28rem] bg-popover p-1.5 data-starting-style:opacity-100!"
+        className="z-[80] w-max max-w-[24rem] bg-popover p-1.5 data-starting-style:opacity-100!"
         data-testid="chat-subagents"
       >
         <div
-          aria-label="Sub-agents"
-          className="grid grid-cols-[0.875rem_minmax(9rem,1fr)_3.5rem_max-content] items-center gap-x-3 gap-y-1 px-2 py-1"
+          aria-label="Agents"
+          className="grid grid-cols-[0.875rem_minmax(0,14rem)_auto_auto] items-center gap-x-3 gap-y-1 px-2 py-1"
         >
-          <span />
-          <span />
-          <span className="text-xs text-muted-foreground">Elapsed</span>
-          <span className="text-right text-xs text-muted-foreground">Tokens</span>
           {agents.map((agent) => {
             const live = !finished(agent.status)
             return (
