@@ -887,6 +887,7 @@ test('search finds session text, ignores a mid-word query, and lists a closed se
     const stem = service.search({ workspaceIds: [1], query: 'log', pastOnly: false })
     assert.equal(stem.hits.length, 1)
     assert.equal(stem.hits[0]?.modelLabel, 'Test')
+    assert.match(stem.hits[0]?.preview ?? '', /credentials/)
     assert.equal(stem.hits[0]?.open, true)
     assert.match(stem.hits[0]?.snippet ?? '', /login/i)
     assert.equal(

@@ -1,14 +1,14 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { X } from 'lucide-react'
 import type { ChatAgentActivity, LayoutState, PaneNode } from '@cerebro/core'
+import { AgentStatusIcon } from '@/components/agent-status-icon'
 import { HarnessIcon } from '@/components/harness-icon'
 import { harnessLabels } from '@/components/chat/queries'
 import { defaultChatTabLabel } from '@/lib/thread-tab-title'
-import { agentStatusLabel } from '@/lib/agent-status-text'
 import { sortAgentActivity } from '@/lib/agent-activity'
-import { layoutOptions } from '@/lib/query-client'
+import { acceptLayout, layoutOptions } from '@/lib/query-client'
 import { cn } from '@/lib/utils'
-import { SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem } from '@/components/ui/sidebar'
 
 const OPEN_SESSION_CAP = 8
 
@@ -48,6 +48,23 @@ function sessionIsActive(
   return paneIds.includes(tab.activePaneId)
 }
 
+function closeSession(agent: ChatAgentActivity, layout: LayoutState | undefined): void {
+  const paneId = agent.paneId
+  if (paneId == null || !layout) return
+  const workspace = layout.workspaces[agent.workspaceId]
+  const tab = workspace?.tabs.find((item) => containsPane(item.root, paneId))
+  if (!tab) return
+  void window.cerebro
+    .layoutCommand({
+      target: 'pane',
+      action: 'close',
+      workspaceId: agent.workspaceId,
+      tabId: tab.id,
+      paneId
+    })
+    .then((reply) => acceptLayout(reply.state))
+}
+
 export function WorkspaceSessionList({
   agents,
   activeWorkspaceId,
@@ -61,82 +78,92 @@ export function WorkspaceSessionList({
 }): React.JSX.Element | null {
   const layout = useQuery(layoutOptions).data
   const [expanded, setExpanded] = useState(false)
-  const [now, setNow] = useState(() => Date.now())
-  const running = agents.some((agent) => agent.status === 'running')
-  useEffect(() => {
-    if (!running) return
-    const timer = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(timer)
-  }, [running])
   if (!agents.length) return null
   const sorted = sortAgentActivity(agents)
   const visible = expanded ? sorted : sorted.slice(0, OPEN_SESSION_CAP)
   const hidden = sorted.length - visible.length
   return (
-    <SidebarMenuSub data-testid="workspace-sessions" className="mr-0">
+    <div data-testid="workspace-sessions" className="flex flex-col gap-1 px-1.5 pb-1.5">
       {visible.map((agent) => {
         const title = sessionTitle(agent, layout)
-        const label = agentStatusLabel(agent, now)
         const model = agent.modelLabel.trim() || harnessLabels[agent.harness]
+        const active = sessionIsActive(agent, layout, activeWorkspaceId)
         return (
-          <SidebarMenuSubItem key={agent.sessionId}>
-            <SidebarMenuSubButton
-              isActive={sessionIsActive(agent, layout, activeWorkspaceId)}
-              className={cn(
-                'h-auto flex-col items-stretch gap-0.5 py-1 pr-2',
-                muted && 'text-sidebar-foreground/55'
-              )}
-              render={
-                <button
-                  type="button"
-                  data-testid="workspace-agent-open"
-                  data-agent-title={title}
-                  data-agent-harness={agent.harness}
-                  aria-label={title}
-                  onClick={(): void => onOpenAgent(agent)}
-                />
-              }
+          <div
+            key={agent.sessionId}
+            className={cn(
+              'flex items-start gap-0.5 rounded-md bg-black/25 py-1 pr-1 pl-1.5',
+              active && 'bg-sidebar-accent',
+              muted && 'opacity-60'
+            )}
+          >
+            <button
+              type="button"
+              data-testid="workspace-agent-open"
+              data-agent-title={title}
+              data-agent-harness={agent.harness}
+              aria-label={title}
+              className="flex min-w-0 flex-1 flex-col gap-0.5 rounded-sm text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sidebar-selected"
+              onClick={(): void => onOpenAgent(agent)}
             >
-              <span className="flex w-full min-w-0 items-baseline gap-2">
-                <span className="min-w-0 flex-1 truncate text-[13px]">{title}</span>
-                {label ? (
-                  <span
-                    data-workspace-agent-status={agent.status}
-                    aria-label={label.aria}
-                    className={cn(
-                      'shrink-0 text-right text-[11px] leading-4 tabular-nums',
-                      label.color
-                    )}
-                  >
-                    {label.text}
-                  </span>
-                ) : null}
-              </span>
-              <span
-                className={cn(
-                  'flex w-full min-w-0 items-center gap-1 text-[11px] leading-4',
-                  muted ? 'text-sidebar-foreground/40' : 'text-sidebar-foreground/65'
+              <span className="flex min-w-0 items-center gap-1.5">
+                {agent.status === 'idle' ? (
+                  <span className="size-3.5 shrink-0" />
+                ) : (
+                  <AgentStatusIcon status={agent.status} surface="sidebar" className="size-3.5" />
                 )}
-              >
-                <HarnessIcon harness={agent.harness} className="size-3.5" />
-                <span className="min-w-0 truncate">{model}</span>
+                <HarnessIcon harness={agent.harness} className="size-3.5 shrink-0" />
+                <span data-session-title="" className="min-w-0 flex-1 truncate text-[13px]">
+                  {title}
+                </span>
+                <span
+                  data-session-model=""
+                  className={cn(
+                    'max-w-24 shrink-0 truncate text-[11px]',
+                    muted ? 'text-sidebar-foreground/40' : 'text-sidebar-foreground/55'
+                  )}
+                >
+                  {model}
+                </span>
               </span>
-            </SidebarMenuSubButton>
-          </SidebarMenuSubItem>
+              {agent.preview ? (
+                <span
+                  className={cn(
+                    'truncate pl-[2.375rem] text-[11px] leading-4',
+                    muted ? 'text-sidebar-foreground/35' : 'text-sidebar-foreground/55'
+                  )}
+                >
+                  {agent.preview}
+                </span>
+              ) : null}
+            </button>
+            {agent.paneId != null ? (
+              <button
+                type="button"
+                data-testid="workspace-agent-close"
+                aria-label={`Close ${title}`}
+                className="mt-0.5 inline-flex size-4 shrink-0 items-center justify-center rounded-sm text-sidebar-foreground/55 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                onClick={(event): void => {
+                  event.stopPropagation()
+                  closeSession(agent, layout)
+                }}
+              >
+                <X className="size-3" />
+              </button>
+            ) : null}
+          </div>
         )
       })}
       {hidden > 0 ? (
-        <SidebarMenuSubItem>
-          <button
-            type="button"
-            className="h-7 w-full rounded-md px-2 text-left text-[11px] text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-            data-testid="workspace-sessions-more"
-            onClick={(): void => setExpanded(true)}
-          >
-            Show {hidden} more
-          </button>
-        </SidebarMenuSubItem>
+        <button
+          type="button"
+          className="h-7 w-full rounded-md px-2 text-left text-[11px] text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+          data-testid="workspace-sessions-more"
+          onClick={(): void => setExpanded(true)}
+        >
+          Show {hidden} more
+        </button>
       ) : null}
-    </SidebarMenuSub>
+    </div>
   )
 }

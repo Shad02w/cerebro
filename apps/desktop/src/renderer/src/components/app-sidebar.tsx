@@ -172,6 +172,7 @@ function SearchPastSessions({ workspaceId }: { workspaceId: number }): React.JSX
     <PlusActionTooltip label="Search past sessions">
       <SidebarMenuAction
         showOnHover
+        tabIndex={-1}
         className="app-no-drag"
         data-testid={`workspace-search-sessions-${workspaceId}`}
         aria-label="Search past sessions"
@@ -1814,7 +1815,6 @@ export function AppSidebar({
           request={sessionSearch}
           projects={projects}
           activeWorkspaceId={activeWorkspaceId}
-          labelFor={workspaceRowLabel}
           onOpen={(hit) => openAgentSession(hit, onSelectWorkspace)}
           onClose={(): void => setSessionSearch(null)}
         />

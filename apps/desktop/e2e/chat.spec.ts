@@ -202,14 +202,18 @@ test('chat works through native adapters, survives reload, handles requests, and
     await expect(waitingRow).toHaveAttribute('data-workspace-agent-status', 'waiting')
     await expect(waitingRow).toHaveAttribute('aria-label', 'Agent needs your action')
     await expect(waitingRow).toHaveClass(/text-amber-500/)
-    await expect(waitingRow).toHaveText('Needs approval')
     await expect(waitingIcon).not.toContainText('Codex')
-    const workspaceRowBox = await page.getByTestId(`workspace-row-${workspaceId}`).boundingBox()
+    await expect(waitingIcon).toContainText('Test Model')
+    const sessionRow = page.locator(`[data-sidebar="menu-row"][data-workspace-id="${workspaceId}"]`)
+    const sessionRowBox = await sessionRow.boundingBox()
     const waitingIconBox = await waitingIcon.boundingBox()
-    const waitingStatusBox = await waitingRow.boundingBox()
-    const sessionTitleBox = await waitingIcon.locator('span').first().boundingBox()
-    expect(waitingIconBox!.y).toBeGreaterThan(workspaceRowBox!.y)
-    expect(waitingStatusBox!.x).toBeGreaterThan(sessionTitleBox!.x)
+    const titleBox = await waitingIcon.locator('[data-session-title]').boundingBox()
+    const modelBox = await waitingIcon.locator('[data-session-model]').boundingBox()
+    expect(waitingIconBox!.y).toBeGreaterThan(sessionRowBox!.y)
+    expect(waitingIconBox!.y + waitingIconBox!.height).toBeLessThanOrEqual(
+      sessionRowBox!.y + sessionRowBox!.height + 1
+    )
+    expect(modelBox!.x).toBeGreaterThan(titleBox!.x)
     const agentButton = page.locator(
       `[data-sidebar="menu-row"][data-workspace-id="${workspaceId}"] [data-testid="workspace-agent-open"]`
     )
@@ -281,7 +285,7 @@ test('chat works through native adapters, survives reload, handles requests, and
       `[data-sidebar="menu-row"][data-workspace-id="${workspaceId}"] [data-agent-harness="codex"] [data-workspace-agent-status="running"]`
     )
     await expect(runningRow).toBeVisible()
-    await expect(runningRow).toHaveText(/Working/)
+    await expect(runningRow).toHaveAttribute('aria-label', 'Agent running')
     await expect(runningRow.locator('xpath=..')).not.toContainText('Codex')
     await expect(runningRow).toHaveClass(/text-sky-500/)
     const runningTab = page.locator('[data-chat-agent-status="running"]')
@@ -323,7 +327,6 @@ test('chat works through native adapters, survives reload, handles requests, and
       `[data-sidebar="menu-row"][data-workspace-id="${workspaceId}"] [data-agent-harness="codex"] [data-workspace-agent-status="interrupted"]`
     )
     await expect(interruptedRow).toBeVisible()
-    await expect(interruptedRow).toHaveText('Interrupted')
     await expect(interruptedRow.locator('xpath=..')).not.toContainText('Codex')
     await expect(interruptedRow).toHaveAttribute('aria-label', 'Agent interrupted')
     await expect(interruptedRow).toHaveClass(/text-orange-500/)
@@ -1045,8 +1048,9 @@ test('multi-root root row keeps agent status inside the row chrome', async ({ pa
     const rootMenu = page.locator('[data-sidebar="menu-row"][data-root-row]')
     const agentButton = rootMenu.getByTestId('workspace-agent-open')
     await expect(agentButton).toHaveCount(1)
-    await expect(agentButton.locator('[data-workspace-agent-status="waiting"]')).toHaveText(
-      'Needs approval'
+    await expect(agentButton.locator('[data-workspace-agent-status="waiting"]')).toHaveAttribute(
+      'aria-label',
+      'Agent needs your action'
     )
     await expect(page.getByTestId('chat-tab')).toHaveCount(1)
     const rootBox = await rootRow.boundingBox()
@@ -1058,7 +1062,10 @@ test('multi-root root row keeps agent status inside the row chrome', async ({ pa
     await page.screenshot({ path: '/tmp/cerebro-sidebar-evidence/multi-root-root-agent.png' })
     await page.getByRole('button', { name: 'Allow once', exact: true }).click()
     await expect(page.getByTestId('chat-transcript').getByRole('status')).toHaveCount(0)
-    await expect(agentButton.locator('[data-workspace-agent-status="finished"]')).toHaveText('Done')
+    await expect(agentButton.locator('[data-workspace-agent-status="finished"]')).toHaveAttribute(
+      'aria-label',
+      'Agent finished'
+    )
     await expect(agentButton).toHaveCount(1)
     await page.screenshot({ path: '/tmp/cerebro-sidebar-evidence/multi-root-root-agent-idle.png' })
     const chatTab = page.getByTestId('chat-tab')

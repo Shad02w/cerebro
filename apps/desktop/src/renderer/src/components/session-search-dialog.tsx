@@ -4,7 +4,6 @@ import { Search } from 'lucide-react'
 import type { ChatSearchHit } from '@cerebro/core'
 import type { Project, Workspace } from '@shared/types'
 import { HarnessIcon, HarnessStatusIcon } from '@/components/harness-icon'
-import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { ShortcutKbd, useKeybindBinding } from '@/keybinds'
@@ -12,8 +11,6 @@ import { relativeUpdated } from '@/lib/agent-status-text'
 import { cn } from '@/lib/utils'
 
 export type SessionSearchRequest = { mode: 'palette' } | { mode: 'workspace'; workspaceId: number }
-
-type Scope = 'workspace' | 'project'
 
 function located(
   projects: Project[],
@@ -30,14 +27,12 @@ export function SessionSearchDialog({
   request,
   projects,
   activeWorkspaceId,
-  labelFor,
   onOpen,
   onClose
 }: {
   request: SessionSearchRequest | null
   projects: Project[]
   activeWorkspaceId: number | null
-  labelFor: (project: Project, workspace: Workspace) => string
   onOpen: (hit: ChatSearchHit) => Promise<void>
   onClose: () => void
 }): React.JSX.Element {
@@ -60,7 +55,6 @@ export function SessionSearchDialog({
           request={request}
           projects={projects}
           activeWorkspaceId={activeWorkspaceId}
-          labelFor={labelFor}
           onOpen={onOpen}
           onClose={onClose}
         />
@@ -73,21 +67,18 @@ function SessionSearchPanel({
   request,
   projects,
   activeWorkspaceId,
-  labelFor,
   onOpen,
   onClose
 }: {
   request: SessionSearchRequest
   projects: Project[]
   activeWorkspaceId: number | null
-  labelFor: (project: Project, workspace: Workspace) => string
   onOpen: (hit: ChatSearchHit) => Promise<void>
   onClose: () => void
 }): React.JSX.Element {
   const hotkey = useKeybindBinding('searchSessions')
   const [query, setQuery] = useState('')
   const [debounced, setDebounced] = useState('')
-  const [scope, setScope] = useState<Scope>('workspace')
   const [error, setError] = useState<string | null>(null)
   const [now] = useState(() => Date.now())
   const opening = useRef(false)
@@ -100,18 +91,8 @@ function SessionSearchPanel({
   const anchorId = request?.mode === 'workspace' ? request.workspaceId : activeWorkspaceId
   const anchor = anchorId == null ? null : located(projects, anchorId)
   const pastOnly = request?.mode === 'workspace'
-  const workspaceIds = useMemo(() => {
-    if (!anchor) return []
-    if (pastOnly || scope === 'workspace') return [anchor.workspace.id]
-    return anchor.project.workspaces.map((workspace) => workspace.id)
-  }, [anchor, pastOnly, scope])
-  const labels = useMemo(() => {
-    const map = new Map<number, string>()
-    if (!anchor) return map
-    for (const workspace of anchor.project.workspaces)
-      map.set(workspace.id, labelFor(anchor.project, workspace))
-    return map
-  }, [anchor, labelFor])
+  const workspaceId = anchor?.workspace.id
+  const workspaceIds = useMemo(() => (workspaceId == null ? [] : [workspaceId]), [workspaceId])
 
   const search = useQuery({
     queryKey: ['chat', 'search', workspaceIds, debounced, pastOnly],
@@ -157,8 +138,6 @@ function SessionSearchPanel({
     }
   }
 
-  const workspaceName = anchor ? labelFor(anchor.project, anchor.workspace) : ''
-  const showProjectNames = request?.mode === 'palette' && scope === 'project'
   const empty =
     request?.mode === 'palette' && activeWorkspaceId == null
       ? 'Select a workspace to search its sessions.'
@@ -183,36 +162,6 @@ function SessionSearchPanel({
           </DialogTitle>
           <ShortcutKbd hotkey={hotkey} className="ml-auto" />
         </div>
-        {request?.mode === 'palette' && anchor ? (
-          <div className="flex gap-1" role="group" aria-label="Search scope">
-            <Button
-              type="button"
-              size="xs"
-              variant={scope === 'workspace' ? 'secondary' : 'ghost'}
-              aria-pressed={scope === 'workspace'}
-              data-testid="session-search-scope-workspace"
-              onClick={() => setScope('workspace')}
-            >
-              This workspace
-              <span className="max-w-32 truncate font-normal text-muted-foreground">
-                {workspaceName}
-              </span>
-            </Button>
-            <Button
-              type="button"
-              size="xs"
-              variant={scope === 'project' ? 'secondary' : 'ghost'}
-              aria-pressed={scope === 'project'}
-              data-testid="session-search-scope-project"
-              onClick={() => setScope('project')}
-            >
-              This project
-              <span className="max-w-32 truncate font-normal text-muted-foreground">
-                {anchor.project.name}
-              </span>
-            </Button>
-          </div>
-        ) : null}
         <form
           onSubmit={(event) => {
             event.preventDefault()
@@ -255,8 +204,6 @@ function SessionSearchPanel({
                 label="Open"
                 hits={openHits}
                 activeId={active?.sessionId}
-                showWorkspace={showProjectNames}
-                labels={labels}
                 now={now}
                 onHighlight={setHighlight}
                 onChoose={(hit) => void choose(hit)}
@@ -268,8 +215,6 @@ function SessionSearchPanel({
                 label="Past"
                 hits={pastHits}
                 activeId={active?.sessionId}
-                showWorkspace={showProjectNames}
-                labels={labels}
                 now={now}
                 onHighlight={setHighlight}
                 onChoose={(hit) => void choose(hit)}
@@ -296,8 +241,6 @@ function ResultGroup({
   label,
   hits,
   activeId,
-  showWorkspace,
-  labels,
   now,
   onHighlight,
   onChoose,
@@ -306,8 +249,6 @@ function ResultGroup({
   label: string
   hits: ChatSearchHit[]
   activeId: string | undefined
-  showWorkspace: boolean
-  labels: Map<number, string>
   now: number
   onHighlight: (index: number) => void
   onChoose: (hit: ChatSearchHit) => void
@@ -318,7 +259,6 @@ function ResultGroup({
       <p className="px-2 pt-1.5 pb-1 text-[11px] font-medium text-muted-foreground">{label}</p>
       {hits.map((hit) => {
         const selected = hit.sessionId === activeId
-        const workspace = labels.get(hit.workspaceId)
         return (
           <button
             key={hit.sessionId}
@@ -349,11 +289,6 @@ function ResultGroup({
                   {relativeUpdated(hit.updatedAt, now)}
                 </span>
               </span>
-              {showWorkspace && workspace ? (
-                <span className="block truncate text-[11px] text-muted-foreground">
-                  {workspace}
-                </span>
-              ) : null}
               {hit.snippet ? (
                 <span className="block truncate text-[11px] text-muted-foreground">
                   {hit.snippet}

@@ -219,6 +219,16 @@ function panesForSession(bindings: Record<string, string>, sessionId: string): n
   return paneIds
 }
 
+function sessionPreview(session: AgentSession): string {
+  for (let index = session.items.length - 1; index >= 0; index -= 1) {
+    const item = session.items[index]
+    if (!item || item.kind === 'reasoning') continue
+    const text = item.text.trim().replace(/\s+/g, ' ')
+    if (text) return text.slice(0, 140)
+  }
+  return ''
+}
+
 function toActivity(session: AgentSession, paneIds: number[]): ChatAgentActivity {
   const requestKind = pendingRequestKind(session)
   const status = agentActivityStatus(session)
@@ -230,6 +240,7 @@ function toActivity(session: AgentSession, paneIds: number[]): ChatAgentActivity
     status,
     title: session.title,
     modelLabel: session.model.label,
+    preview: sessionPreview(session),
     ...(requestKind ? { requestKind } : {}),
     ...(status === 'running' && session.runningSince != null
       ? { runningSince: session.runningSince }

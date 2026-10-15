@@ -306,6 +306,15 @@ test('multi-root repos copy path and branch; only the project can be removed', a
     await expect(repoRow).toBeVisible()
 
     await rootRow.click()
+    await expect
+      .poll(async () => {
+        const listed = await page.evaluate(async () => window.cerebro.listProjects())
+        const root = listed.projects
+          .find((item) => item.id === project!.id)
+          ?.workspaces.find((workspace) => workspace.kind === 'root')
+        return root != null && listed.activeWorkspaceId === root.id
+      })
+      .toBe(true)
     const afterRootSelect = await page.evaluate(async () => window.cerebro.listProjects())
     const selectedRoot = afterRootSelect.projects
       .find((item) => item.id === project!.id)

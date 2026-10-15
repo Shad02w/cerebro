@@ -359,6 +359,8 @@ export type ChatAgentActivity = {
   title: string
   /** `model.label` from the session, the same name the composer shows. */
   modelLabel: string
+  /** One line of the latest message, shown under the title in the workspace row. */
+  preview: string
   /** Unresolved waiting request. Absent when the session is not blocked on one. */
   requestKind?: 'approval' | 'question'
   /** Present while `status` is `running` and the turn recorded a start time. */
