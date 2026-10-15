@@ -1409,8 +1409,7 @@ function StatusGroup({
   onOpenChange?: (open: boolean) => void
 }): React.JSX.Element {
   const presentation = WORKSPACE_STATUS_PRESENTATION[status]
-  const containsActive = entries.some((entry) => entry.workspace.id === activeWorkspaceId)
-  const startsOpen = entries.length > 0 && (status !== 'done' || containsActive)
+  const startsOpen = entries.length > 0
   const [uncontrolledOpen, setUncontrolledOpen] = useState(startsOpen)
   const open = controlledOpen ?? uncontrolledOpen
   const setOpen = (next: boolean): void => {
@@ -1514,9 +1513,14 @@ function StatusGroups({
   onSetStatus: (workspaceId: number, status: WorkspaceStatus) => void
 }): React.JSX.Element {
   const doneEntries = workspacesWithStatus(projects, 'done')
-  const [doneOpen, setDoneOpen] = useState(() =>
-    doneEntries.some((entry) => entry.workspace.id === activeWorkspaceId)
-  )
+  // Done opens with the other groups when it has workspaces, including while Todo is selected.
+  const [doneOpen, setDoneOpen] = useState(() => doneEntries.length > 0)
+  const activeInDone = doneEntries.some((entry) => entry.workspace.id === activeWorkspaceId)
+  const [trackedActiveInDone, setTrackedActiveInDone] = useState(activeInDone)
+  if (activeInDone !== trackedActiveInDone) {
+    setTrackedActiveInDone(activeInDone)
+    if (activeInDone) setDoneOpen(true)
+  }
   const group = (status: WorkspaceStatus): React.JSX.Element => (
     <StatusGroup
       key={status}

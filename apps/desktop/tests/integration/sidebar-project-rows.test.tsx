@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, type RenderResult } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { SidebarGroupBy } from '@shared/types'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -149,11 +149,14 @@ function expectItemRow(row: HTMLElement, role: string): void {
   expect(row.className).not.toContain('text-sidebar-foreground/60')
 }
 
-function renderSidebar(sidebarGroupBy: SidebarGroupBy = 'project', activeWorkspaceId = 11): void {
+function sidebarElement(
+  sidebarGroupBy: SidebarGroupBy = 'project',
+  activeWorkspaceId = 11
+): React.JSX.Element {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } }
   })
-  render(
+  return (
     <QueryClientProvider client={client}>
       <SidebarProvider>
         <AppSidebar
@@ -177,6 +180,13 @@ function renderSidebar(sidebarGroupBy: SidebarGroupBy = 'project', activeWorkspa
       </SidebarProvider>
     </QueryClientProvider>
   )
+}
+
+function renderSidebar(
+  sidebarGroupBy: SidebarGroupBy = 'project',
+  activeWorkspaceId = 11
+): RenderResult {
+  return render(sidebarElement(sidebarGroupBy, activeWorkspaceId))
 }
 
 describe('sidebar project rows', () => {
@@ -317,16 +327,29 @@ describe('sidebar project rows', () => {
     const scroll = screen.getByTestId('sidebar-status-scroll')
     expect(scroll).toContainElement(screen.getByTestId('status-group-in_progress'))
     expect(scroll).toContainElement(screen.getByTestId('status-group-ready_to_review'))
-    expect(scroll).not.toContainElement(doneHeader)
-    expect(screen.getByTestId('status-done-pinned')).toContainElement(doneHeader)
+    // The selected workspace is Todo, and Done still starts open with its rows.
+    expect(scroll).toContainElement(doneHeader)
+    expect(doneHeader).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.queryByTestId('status-done-pinned')).not.toBeInTheDocument()
+    expect(screen.getByTestId('workspace-row-14')).toBeInTheDocument()
 
     await user.click(screen.getByTestId('status-group-in_progress'))
     expect(screen.getByTestId('sidebar-status-scroll')).toContainElement(
       screen.getByTestId('status-group-in_progress')
     )
+    expect(screen.getByTestId('sidebar-status-scroll')).toContainElement(
+      screen.getByTestId('status-group-done')
+    )
+
+    await user.click(screen.getByTestId('status-group-done'))
     expect(screen.getByTestId('status-done-pinned')).toContainElement(
       screen.getByTestId('status-group-done')
     )
+    expect(screen.getByTestId('sidebar-status-scroll')).not.toContainElement(
+      screen.getByTestId('status-group-done')
+    )
+    expect(screen.getByTestId('status-group-done')).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByTestId('workspace-row-14')).not.toBeInTheDocument()
 
     await user.click(screen.getByTestId('status-group-done'))
     expect(screen.queryByTestId('status-done-pinned')).not.toBeInTheDocument()
@@ -334,6 +357,7 @@ describe('sidebar project rows', () => {
       screen.getByTestId('status-group-done')
     )
     expect(screen.getByTestId('status-group-done')).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByTestId('workspace-row-14')).toBeInTheDocument()
   })
 
   it('keeps an expanded Done group in the scrolling list', () => {
@@ -343,5 +367,20 @@ describe('sidebar project rows', () => {
       screen.getByTestId('status-group-done')
     )
     expect(screen.getByTestId('status-group-done')).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('reopens Done when the selected workspace moves into it', async () => {
+    const user = userEvent.setup()
+    const view = renderSidebar('status', 11)
+    await user.click(screen.getByTestId('status-group-done'))
+    expect(screen.getByTestId('status-group-done')).toHaveAttribute('aria-expanded', 'false')
+
+    view.rerender(sidebarElement('status', 14))
+    expect(screen.getByTestId('status-group-done')).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.queryByTestId('status-done-pinned')).not.toBeInTheDocument()
+    expect(screen.getByTestId('sidebar-status-scroll')).toContainElement(
+      screen.getByTestId('status-group-done')
+    )
+    expect(screen.getByTestId('workspace-row-14')).toHaveAttribute('aria-current', 'location')
   })
 })
