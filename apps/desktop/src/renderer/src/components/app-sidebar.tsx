@@ -1717,13 +1717,14 @@ export function AppSidebar({
           <SidebarMenu>
             <SidebarMenuItem>
               {isSettings ? (
-                <SidebarMenuButton className="app-no-drag" onClick={onBack}>
+                <SidebarMenuButton className="app-no-drag" size="sm" onClick={onBack}>
                   <ArrowLeft />
                   <span>Back</span>
                 </SidebarMenuButton>
               ) : (
                 <SidebarMenuButton
                   className="app-no-drag"
+                  size="sm"
                   onClick={onOpenSettings}
                   data-testid="settings-button"
                 >

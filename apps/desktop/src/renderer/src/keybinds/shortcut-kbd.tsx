@@ -16,7 +16,7 @@ export function ShortcutKbd({
   const keys = shortcutKeys(hotkey)
   return (
     <span
-      className={cn('inline-flex items-center gap-0.5', className)}
+      className={cn('inline-flex items-center gap-0.5 tracking-normal', className)}
       data-testid="shortcut-kbd"
       data-hotkey={hotkey}
     >
@@ -24,10 +24,10 @@ export function ShortcutKbd({
         <kbd
           key={`${key}-${index}`}
           className={cn(
-            'inline-flex h-5 min-w-5 items-center justify-center rounded border px-1 font-sans text-[10px] font-medium',
+            'inline-flex h-5 min-w-5 items-center justify-center rounded-[4px] border bg-transparent px-1 font-sans text-[10px] font-medium leading-none',
             inverted
-              ? 'border-background/30 bg-background/15 text-background'
-              : 'border-border bg-muted text-muted-foreground'
+              ? 'border-background/40 text-background shadow-[0_1px_0_0_color-mix(in_oklch,var(--background)_45%,transparent)]'
+              : 'border-foreground/20 text-muted-foreground shadow-[0_1px_0_0_color-mix(in_oklch,var(--foreground)_28%,transparent)]'
           )}
         >
           {key}
