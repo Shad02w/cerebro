@@ -35,19 +35,6 @@ function sessionTitle(agent: ChatAgentActivity, layout: LayoutState | undefined)
   return fallback
 }
 
-function sessionIsActive(
-  agent: ChatAgentActivity,
-  layout: LayoutState | undefined,
-  activeWorkspaceId: number | null
-): boolean {
-  if (activeWorkspaceId !== agent.workspaceId || !layout) return false
-  const workspace = layout.workspaces[agent.workspaceId]
-  const tab = workspace?.tabs.find((item) => item.id === workspace.activeTabId)
-  if (!tab) return false
-  const paneIds = agent.paneIds.length ? agent.paneIds : agent.paneId != null ? [agent.paneId] : []
-  return paneIds.includes(tab.activePaneId)
-}
-
 function closeSession(agent: ChatAgentActivity, layout: LayoutState | undefined): void {
   const paneId = agent.paneId
   if (paneId == null || !layout) return
@@ -67,12 +54,10 @@ function closeSession(agent: ChatAgentActivity, layout: LayoutState | undefined)
 
 export function WorkspaceSessionList({
   agents,
-  activeWorkspaceId,
   muted = false,
   onOpenAgent
 }: {
   agents: ChatAgentActivity[]
-  activeWorkspaceId: number | null
   muted?: boolean
   onOpenAgent: (agent: ChatAgentActivity) => void
 }): React.JSX.Element | null {
@@ -83,19 +68,14 @@ export function WorkspaceSessionList({
   const visible = expanded ? sorted : sorted.slice(0, OPEN_SESSION_CAP)
   const hidden = sorted.length - visible.length
   return (
-    <div data-testid="workspace-sessions" className="flex flex-col gap-1 px-1.5 pb-1.5">
+    <div data-testid="workspace-sessions" className="flex flex-col bg-transparent px-2 pb-1.5">
       {visible.map((agent) => {
         const title = sessionTitle(agent, layout)
         const model = agent.modelLabel.trim() || harnessLabels[agent.harness]
-        const active = sessionIsActive(agent, layout, activeWorkspaceId)
         return (
           <div
             key={agent.sessionId}
-            className={cn(
-              'flex items-start gap-0.5 rounded-md bg-black/25 py-1 pr-1 pl-1.5',
-              active && 'bg-sidebar-accent',
-              muted && 'opacity-60'
-            )}
+            className={cn('flex items-start gap-0.5 bg-transparent py-0.5', muted && 'opacity-60')}
           >
             <button
               type="button"

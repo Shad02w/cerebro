@@ -709,12 +709,7 @@ function MultiRootRepoRow({
             <SearchPastSessions workspaceId={workspace.id} />
             <WorkspaceOverflowMenu workspace={workspace} allowRemove={false} onRename={onRename} />
           </RowActions>
-          <WorkspaceSessionList
-            agents={agents}
-            activeWorkspaceId={active ? workspace.id : null}
-            muted={muted}
-            onOpenAgent={onOpenAgent}
-          />
+          <WorkspaceSessionList agents={agents} muted={muted} onOpenAgent={onOpenAgent} />
         </SidebarMenuRow>
       </WorkspaceHoverCard>
     </li>
@@ -909,7 +904,6 @@ function MultiRootWorkspaceTree({
               {rootWorkspace ? (
                 <WorkspaceSessionList
                   agents={rootAgents}
-                  activeWorkspaceId={activeWorkspaceId}
                   muted={rootMuted}
                   onOpenAgent={onOpenAgent}
                 />
@@ -1149,7 +1143,6 @@ function ProjectItem({
                         </RowActions>
                         <WorkspaceSessionList
                           agents={agents}
-                          activeWorkspaceId={activeWorkspaceId}
                           muted={muted}
                           onOpenAgent={onOpenAgent}
                         />
@@ -1377,7 +1370,6 @@ function WorkspaceSearchResults({
                 </RowActions>
                 <WorkspaceSessionList
                   agents={activity.get(workspace.id) ?? []}
-                  activeWorkspaceId={activeWorkspaceId}
                   onOpenAgent={onOpenAgent}
                 />
               </SidebarMenuRow>
