@@ -5,9 +5,9 @@ import { formatSessionAge, sessionCreatedLabel } from './session-age'
 const now = 1_700_000_000_000
 
 test('session age is compact and counts from creation', () => {
-  assert.equal(formatSessionAge(now - 30_000, now), '<1m')
-  assert.equal(formatSessionAge(now, now), '<1m')
-  assert.equal(formatSessionAge(now + 5_000, now), '<1m')
+  assert.equal(formatSessionAge(now - 30_000, now), '1m')
+  assert.equal(formatSessionAge(now, now), '1m')
+  assert.equal(formatSessionAge(now + 5_000, now), '1m')
   assert.equal(formatSessionAge(now - 60_000, now), '1m')
   assert.equal(formatSessionAge(now - 90_000, now), '1m')
   assert.equal(formatSessionAge(now - 59 * 60_000, now), '59m')
@@ -20,7 +20,7 @@ test('session age is compact and counts from creation', () => {
 })
 
 test('session age tooltip spells the same boundary', () => {
-  assert.equal(sessionCreatedLabel(now - 20_000, now), 'Created less than a minute ago')
+  assert.equal(sessionCreatedLabel(now - 20_000, now), 'Created 1 minute ago')
   assert.equal(sessionCreatedLabel(now - 60_000, now), 'Created 1 minute ago')
   assert.equal(sessionCreatedLabel(now - 17 * 60_000, now), 'Created 17 minutes ago')
   assert.equal(sessionCreatedLabel(now - 60 * 60_000, now), 'Created 1 hour ago')
