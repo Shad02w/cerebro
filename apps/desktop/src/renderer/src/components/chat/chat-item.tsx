@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { AgentMarkdown } from '@/components/markdown/agent-markdown'
 import { cn } from '@/lib/utils'
 import './chat-status.css'
+import { ChatAgentFinished } from './chat-agent-finished'
 import { commandInputDetail, commandRun, toolCallSummary } from './command-preview'
 import { workingHeading } from './working-label'
 import { useTurnDuration } from './turn-durations'
@@ -270,6 +271,8 @@ export const ChatItem = memo(function ChatItem({
         <pre className="whitespace-pre-wrap text-sm">{item.text}</pre>
       </section>
     )
+  if (item.kind === 'notice' && item.agent)
+    return <ChatAgentFinished agent={item.agent} text={item.text} />
   if (item.kind === 'notice' && item.task)
     return <ChatTaskOutcome task={item.task} text={item.text} />
   if (item.kind === 'notice')

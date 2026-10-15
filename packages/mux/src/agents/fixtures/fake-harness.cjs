@@ -105,6 +105,94 @@ function codexPrompt(threadId, prompt, input) {
     codexDone()
     return
   }
+  if (prompt === 'subagent') {
+    const parentStartedAtMs = Date.now() - 153000
+    const childStartedAtMs = 1_700_000_000_000
+    notify('item/started', {
+      threadId: 'thread-test',
+      item: {
+        type: 'collabAgentToolCall',
+        id: 'collab-1',
+        tool: 'spawnAgent',
+        status: 'inProgress',
+        senderThreadId: 'thread-test',
+        receiverThreadIds: ['child-thread', 'other-child'],
+        prompt: 'Review the diff',
+        model: 'parent-model',
+        startedAtMs: parentStartedAtMs,
+        agentsStates: {
+          'child-thread': {
+            status: 'running',
+            startedAtMs: childStartedAtMs,
+            model: 'gpt-test',
+            effort: 'high'
+          },
+          'other-child': { status: 'running' }
+        }
+      }
+    })
+    notify('item/completed', {
+      threadId: 'thread-test',
+      item: {
+        type: 'subAgentActivity',
+        id: 'activity-1',
+        kind: 'interacted',
+        agentThreadId: 'child-thread',
+        agentPath: '/root/review-diff'
+      }
+    })
+    // A different thread's usage must not attach to this child, and is not subscribed.
+    notify('thread/tokenUsage/updated', {
+      threadId: 'thread-other',
+      tokenUsage: { total: { totalTokens: 1, inputTokens: 1, outputTokens: 0 } }
+    })
+    notify('item/completed', {
+      threadId: 'thread-other',
+      item: {
+        type: 'subAgentActivity',
+        id: 'activity-foreign',
+        kind: 'started',
+        agentThreadId: 'foreign-thread',
+        agentPath: '/root/ignore-me'
+      }
+    })
+    notify('item/completed', {
+      threadId: 'thread-test',
+      item: {
+        type: 'collabAgentToolCall',
+        id: 'collab-1',
+        tool: 'wait',
+        status: 'completed',
+        senderThreadId: 'thread-test',
+        receiverThreadIds: ['child-thread', 'other-child'],
+        startedAtMs: parentStartedAtMs,
+        agentsStates: {
+          'child-thread': {
+            status: 'completed',
+            message: 'reviewed',
+            startedAtMs: childStartedAtMs,
+            completedAtMs: childStartedAtMs + 153000,
+            model: 'gpt-test',
+            effort: 'high'
+          },
+          'other-child': { status: 'running' }
+        }
+      }
+    })
+    notify('thread/tokenUsage/updated', {
+      threadId: 'child-thread',
+      tokenUsage: {
+        total: { totalTokens: 18420, inputTokens: 12104, outputTokens: 6316 },
+        last: { totalTokens: 10, inputTokens: 8, outputTokens: 2 }
+      }
+    })
+    notify('item/completed', {
+      threadId: 'thread-test',
+      item: { type: 'agentMessage', id: 'sub-reply', text: 'Review finished.' }
+    })
+    codexDone()
+    return
+  }
   if (prompt === 'background-command' || prompt === 'background-command-fail') {
     const failed = prompt.endsWith('-fail')
     // Unified exec yields a long-running command: its item outlives the turn and completes later.
@@ -431,6 +519,186 @@ function claudePrompt(prompt, content) {
       },
       Number(background[2] ?? 50)
     )
+    return
+  }
+  if (prompt === 'subagent' || prompt === 'subagent-fail') {
+    const failed = prompt === 'subagent-fail'
+    send({ type: 'system', subtype: 'init', session_id: 'claude-test', tools: [], model: 'test' })
+    send({
+      type: 'assistant',
+      session_id: 'claude-test',
+      uuid: 'subagent-spawn',
+      message: {
+        id: 'msg-subagent',
+        role: 'assistant',
+        content: [
+          {
+            type: 'tool_use',
+            id: 'tool-sub',
+            name: 'Task',
+            input: {
+              description: 'Review the diff',
+              prompt: 'Look at the auth change.',
+              model: 'opus',
+              effort: 'max'
+            }
+          }
+        ]
+      }
+    })
+    send({
+      type: 'stream_event',
+      session_id: 'claude-test',
+      parent_tool_use_id: 'tool-sub',
+      event: { type: 'message_start', message: { id: 'msg-child' } }
+    })
+    send({
+      type: 'stream_event',
+      session_id: 'claude-test',
+      parent_tool_use_id: 'tool-sub',
+      event: {
+        type: 'content_block_start',
+        index: 0,
+        content_block: { type: 'text', text: '' }
+      }
+    })
+    send({
+      type: 'stream_event',
+      session_id: 'claude-test',
+      parent_tool_use_id: 'tool-sub',
+      event: {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'text_delta', text: 'Looking at the diff.' }
+      }
+    })
+    send({
+      type: 'user',
+      session_id: 'claude-test',
+      parent_tool_use_id: null,
+      message: {
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 'tool-sub',
+            is_error: failed,
+            content: failed ? 'review failed' : 'reviewed',
+            ...(failed
+              ? {}
+              : { usage: { input_tokens: 12104, output_tokens: 6316, total_tokens: 18420 } })
+          }
+        ]
+      }
+    })
+    claudeFinish(failed ? 'The review failed.' : 'Review finished.')
+    return
+  }
+  if (prompt === 'agent-and-shell') {
+    const tasks = [
+      {
+        task_id: 'bash-1',
+        task_type: 'local_bash',
+        description: 'Delayed pwd',
+        tool_use_id: 'tool-bash'
+      },
+      {
+        task_id: 'agent-1',
+        task_type: 'local_agent',
+        description: 'Review the diff',
+        tool_use_id: 'tool-sub',
+        subagent_type: 'general-purpose',
+        model: 'sonnet',
+        effort: 'high'
+      },
+      {
+        task_id: 'agent-2',
+        task_type: 'remote_agent',
+        description: 'Remote review',
+        tool_use_id: 'tool-remote'
+      }
+    ]
+    send({ type: 'system', subtype: 'init', session_id: 'claude-test', tools: [], model: 'test' })
+    send({
+      type: 'system',
+      subtype: 'background_tasks_changed',
+      tasks,
+      session_id: 'claude-test'
+    })
+    for (const task of tasks)
+      send({
+        type: 'system',
+        subtype: 'task_started',
+        task_id: task.task_id,
+        tool_use_id: task.tool_use_id,
+        description: task.description,
+        task_type: task.task_type,
+        is_backgrounded: true,
+        session_id: 'claude-test'
+      })
+    send({
+      type: 'stream_event',
+      session_id: 'claude-test',
+      parent_tool_use_id: 'tool-sub',
+      event: {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'text_delta', text: 'Looking at the diff.' }
+      }
+    })
+    send({
+      type: 'assistant',
+      session_id: 'claude-test',
+      parent_tool_use_id: 'tool-sub',
+      uuid: 'child-tool',
+      message: {
+        id: 'msg-child-tool',
+        role: 'assistant',
+        content: [
+          {
+            type: 'tool_use',
+            id: 'tool-web',
+            name: 'WebSearch',
+            input: { query: 'auth change' }
+          }
+        ]
+      }
+    })
+    send({
+      type: 'system',
+      subtype: 'task_progress',
+      task_id: 'bash-1',
+      description: 'Delayed pwd',
+      usage: { total_tokens: 5, tool_uses: 1, duration_ms: 1000 },
+      session_id: 'claude-test'
+    })
+    send({
+      type: 'system',
+      subtype: 'task_progress',
+      task_id: 'agent-1',
+      tool_use_id: 'tool-sub',
+      description: 'Review the diff',
+      subagent_type: 'general-purpose',
+      usage: { total_tokens: 100, tool_uses: 2, duration_ms: 120000 },
+      model: 'sonnet',
+      effort: 'high',
+      session_id: 'claude-test'
+    })
+    send({
+      type: 'system',
+      subtype: 'task_notification',
+      task_id: 'agent-1',
+      tool_use_id: 'tool-sub',
+      task_type: 'local_agent',
+      status: 'completed',
+      summary: 'Reviewed the diff.',
+      description: 'Review the diff',
+      usage: { total_tokens: 18420, tool_uses: 3, duration_ms: 153000 },
+      model: 'sonnet',
+      effort: 'high',
+      session_id: 'claude-test'
+    })
+    claudeFinish('Review finished.')
     return
   }
   send({ type: 'system', subtype: 'init', session_id: 'claude-test', tools: [], model: 'test' })

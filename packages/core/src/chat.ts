@@ -94,6 +94,11 @@ export type ChatItem = {
   status?: 'running' | 'completed' | 'failed' | 'interrupted'
   /** On a `notice`: how a background task ended. */
   task?: AgentBackgroundTask
+  /**
+   * On a `notice`: a child agent whose end arrived on the harness stream.
+   * `text` is `agentFinishedLine`. The child's response is not stored on this item.
+   */
+  agent?: AgentSubagent
   request?: {
     id: string
     kind: 'approval' | 'question'
@@ -118,6 +123,40 @@ export type AgentContextUsage = {
   contextWindow: number
   percentage: number
 }
+export type AgentSubagentStatus = 'created' | 'running' | 'completed' | 'failed' | 'stopped'
+/** Token counts a harness reported for one child. Each field is absent when the harness did not send it. */
+export type AgentSubagentTokens = {
+  input?: number
+  output?: number
+  total?: number
+}
+/**
+ * One child agent, normalized across harnesses. `created` has been named and has not started.
+ * `running` is executing. The other three statuses are finished and stay on the list.
+ */
+export type AgentSubagent = {
+  id: string
+  title: string
+  status: AgentSubagentStatus
+  createdAt: number
+  /**
+   * Wall clock when the child starts running. The first running update stamps this when the
+   * harness omits it, and the panel ticks from it. A created row leaves it unset and shows no elapsed.
+   */
+  startedAt?: number
+  finishedAt?: number
+  /**
+   * Harness-reported duration, in milliseconds. When set, the panel shows this instead of a local
+   * tick. A later start or finish time that does not include a duration clears it.
+   */
+  durationMs?: number
+  tokens?: AgentSubagentTokens
+  summary?: string
+  /** Model the harness reported for this child. Absent when that child sent none. */
+  model?: string
+  /** Effort the harness reported for this child. Absent when that child sent none. */
+  effort?: string
+}
 export type AgentBackgroundTaskStatus = 'running' | 'completed' | 'failed' | 'stopped'
 /**
  * Native work that outlives the turn that started it, owned by the session's live harness
@@ -137,6 +176,74 @@ export type AgentBackgroundTask = {
   startedAt: number
   endedAt?: number
 }
+/** Compact token count. Under 1000 stays whole. Thousands and millions use one decimal, dropped when the unit is round. */
+export function compactTokenCount(value: number): string {
+  const negative = value < 0
+  const abs = Math.abs(value)
+  if (!Number.isFinite(abs)) return '0'
+  if (abs < 1000) return `${negative ? '-' : ''}${Math.round(abs)}`
+  const scaled = (scale: number, suffix: 'k' | 'm'): string => {
+    const tenths = Math.round((abs / scale) * 10)
+    const whole = Math.trunc(tenths / 10)
+    const frac = Math.abs(tenths % 10)
+    const body = frac === 0 ? `${whole}` : `${whole}.${frac}`
+    return `${negative ? '-' : ''}${body}${suffix}`
+  }
+  if (abs >= 999_950) return scaled(1_000_000, 'm')
+  return scaled(1_000, 'k')
+}
+
+/** Elapsed time. Hours drop the seconds. */
+export function formatAgentElapsed(ms: number): string {
+  const seconds = Math.max(0, Math.round(ms / 1000))
+  const hours = Math.floor(seconds / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  const rest = seconds % 60
+  if (hours) return `${hours}h ${minutes}m`
+  if (minutes) return `${minutes}m ${rest}s`
+  return `${rest}s`
+}
+
+function reportedElapsed(agent: AgentSubagent): number | undefined {
+  if (agent.durationMs !== undefined) return agent.durationMs
+  if (agent.startedAt === undefined || agent.finishedAt === undefined) return undefined
+  return agent.finishedAt - agent.startedAt
+}
+
+function reportedTokens(tokens: AgentSubagentTokens | undefined): string | undefined {
+  if (!tokens) return undefined
+  const { input, output, total } = tokens
+  if (input === undefined && output === undefined && total === undefined) return undefined
+  const shown =
+    total ?? (input !== undefined && output !== undefined ? input + output : (input ?? output))
+  if (shown === undefined) return undefined
+  const split =
+    input !== undefined && output !== undefined
+      ? ` (${compactTokenCount(input)} in, ${compactTokenCount(output)} out)`
+      : ''
+  return `${compactTokenCount(shown)}${split}`
+}
+
+/**
+ * One chat line for a child whose end arrived on the stream.
+ * Model, effort, elapsed, and tokens are left out when that child never reported them.
+ */
+export function agentFinishedLine(agent: AgentSubagent): string {
+  const verb =
+    agent.status === 'failed' ? 'failed' : agent.status === 'stopped' ? 'stopped' : 'finished'
+  const title = agent.title.trim() || agent.id
+  const elapsed = reportedElapsed(agent)
+  return [
+    `Agent "${title}" ${verb}`,
+    agent.model?.trim() || undefined,
+    agent.effort?.trim() || undefined,
+    elapsed === undefined ? undefined : formatAgentElapsed(elapsed),
+    reportedTokens(agent.tokens)
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join(' · ')
+}
+
 /** Plain-text outcome of a settled background task, for when the harness gave no summary. */
 export function backgroundTaskOutcome(task: AgentBackgroundTask): string {
   const verb =
@@ -184,6 +291,12 @@ export type AgentSession = {
   attention?: { kind: 'finished'; at: number }
   /** Running background tasks. Settled ones move into the transcript as `notice` items. */
   background?: AgentBackgroundTask[]
+  /**
+   * Child agents named by this session. Finished rows stay on the list. When the harness
+   * reports that child's end on the stream, one notice line is added. The child's response
+   * text is not copied into the transcript.
+   */
+  subagents?: AgentSubagent[]
 }
 export type AgentSessionSummary = Pick<
   AgentSession,

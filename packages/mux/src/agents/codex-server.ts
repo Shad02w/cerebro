@@ -144,6 +144,11 @@ class CodexAppServer {
       this.safe(handler, frame)
       return
     }
+    // Child token usage is addressed to the child thread. The parent does not subscribe to
+    // that thread, so an open session can still see the frame and keep it only for its own child.
+    if (frame.method === 'thread/tokenUsage/updated') {
+      for (const open of this.threads.values()) this.safe(open, frame)
+    }
     const queue = this.queued.get(threadId) ?? []
     queue.push(frame)
     const dropped = queue.length > 50 ? queue.shift() : undefined

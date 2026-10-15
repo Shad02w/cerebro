@@ -29,7 +29,8 @@ export function AgentStatusIcon({
   className
 }: {
   status: Exclude<AgentActivityStatus, 'idle'>
-  surface: 'sidebar' | 'tab'
+  /** Sidebar and tab set the attributes those surfaces are queried by. Other callers reuse the mark without them. */
+  surface?: 'sidebar' | 'tab'
   className?: string
 }): React.JSX.Element {
   const { label, color } = agentStatusPresentation[status]

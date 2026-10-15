@@ -12,7 +12,12 @@ import {
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { AgentSessions } from './service'
-import type { AgentModel, AgentSession, AgentStatusEvent } from '@cerebro/core'
+import {
+  agentFinishedLine,
+  type AgentModel,
+  type AgentSession,
+  type AgentStatusEvent
+} from '@cerebro/core'
 import type { AgentAdapter, ConnectionHost, RunContext } from './adapters'
 const model: AgentModel = {
   key: 'test',
@@ -1098,6 +1103,218 @@ test('tasks still running when Cerebro closes their process are recorded as stop
     assert.equal(closed?.text, 'Stopped when the agent closed.')
     assert.equal(session.background, undefined)
     await service.shutdown()
+  } finally {
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
+
+test('a running agent starts a local clock, and a later duration or start replaces it', async () => {
+  const f = liveFixture()
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    await service.command(scope, { ...send, commandId: 'open' })
+    await waitFor(() => !service['running'].size)
+    const { host } = f.opened[0]
+    host.subagent({ id: 'child', status: 'created' })
+    let session = (await service.command(scope, get)).session!
+    assert.equal(session.subagents?.[0]?.startedAt, undefined)
+    assert.equal(session.subagents?.[0]?.durationMs, undefined)
+
+    host.subagent({ id: 'child', status: 'running' })
+    session = (await service.command(scope, get)).session!
+    const running = session.subagents?.find((child) => child.id === 'child')
+    assert(running?.startedAt)
+    const localStart = running.startedAt
+    assert.equal(running.durationMs, undefined)
+
+    host.subagent({
+      id: 'child',
+      status: 'running',
+      durationMs: 120_000,
+      model: 'sonnet',
+      effort: 'high'
+    })
+    session = (await service.command(scope, get)).session!
+    const duration = session.subagents?.find((child) => child.id === 'child')
+    assert.equal(duration?.durationMs, 120_000)
+    assert.equal(duration?.startedAt, localStart)
+    assert.equal(duration?.model, 'sonnet')
+    assert.equal(duration?.effort, 'high')
+
+    host.subagent({ id: 'child', status: 'running', tokens: { total: 1 } })
+    session = (await service.command(scope, get)).session!
+    const kept = session.subagents?.find((child) => child.id === 'child')
+    assert.equal(kept?.model, 'sonnet')
+    assert.equal(kept?.effort, 'high')
+
+    host.subagent({ id: 'child', status: 'running', startedAt: 50 })
+    session = (await service.command(scope, get)).session!
+    const retimed = session.subagents?.find((child) => child.id === 'child')
+    assert.equal(retimed?.startedAt, 50)
+    assert.equal(retimed?.durationMs, undefined)
+
+    host.subagent({
+      id: 'child',
+      status: 'completed',
+      durationMs: 153_000,
+      startedAt: 50_000,
+      finishedAt: 203_000
+    })
+    session = (await service.command(scope, get)).session!
+    const finished = session.subagents?.find((child) => child.id === 'child')
+    assert.equal(finished?.durationMs, 153_000)
+    assert.equal(finished?.startedAt, 50_000)
+    assert.equal(finished?.finishedAt, 203_000)
+
+    host.subagent({ id: 'other', status: 'running', startedAt: 10, durationMs: 5_000 })
+    host.subagent({ id: 'other', status: 'completed', finishedAt: 40_000 })
+    session = (await service.command(scope, get)).session!
+    const other = session.subagents?.find((child) => child.id === 'other')
+    assert.equal(other?.durationMs, undefined)
+    assert.equal(other?.startedAt, 10)
+    assert.equal(other?.finishedAt, 40_000)
+    await service.shutdown()
+  } finally {
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
+
+test('a stream finish writes one chat line, and a later token count corrects it', async () => {
+  const f = liveFixture(async (context) => {
+    const { host } = f.opened[0]
+    host.subagent({
+      id: 'child',
+      status: 'running',
+      title: 'Review the diff',
+      model: 'sonnet',
+      effort: 'high',
+      startedAt: 1_000
+    })
+    host.subagent({
+      id: 'child',
+      status: 'completed',
+      durationMs: 153_000,
+      startedAt: 1_000,
+      finishedAt: 154_000,
+      tokens: { total: 18_420 },
+      summary: 'Looking at the diff.',
+      announce: true
+    })
+    host.subagent({ id: 'quiet', status: 'running', title: 'Remote review' })
+    host.subagent({ id: 'quiet', status: 'completed' })
+    context.emit({ type: 'item', item: { id: 'answer', kind: 'text', text: 'Review finished.' } })
+  })
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    await service.command(scope, { ...send, commandId: 'finish-line' })
+    await waitFor(() => !service['running'].size)
+    let session = (await service.command(scope, get)).session!
+    const lines = session.items.filter((item) => item.agent)
+    assert.equal(lines.length, 1)
+    const line = lines[0]
+    assert.equal(line.kind, 'notice')
+    assert.equal(line.text, 'Agent "Review the diff" finished · sonnet · high · 2m 33s · 18.4k')
+    assert.equal(line.text?.includes('Looking at the diff'), false)
+    assert.equal(line.agent?.summary, 'Looking at the diff.')
+    const answer = session.items.find((item) => item.kind === 'text')
+    assert.equal(answer?.text, 'Review finished.')
+    assert.equal(line.turnId, answer?.turnId)
+    assert.equal(
+      session.items.some((item) => item.agent?.id === 'quiet'),
+      false
+    )
+
+    f.opened[0].host.subagent({
+      id: 'child',
+      status: 'completed',
+      tokens: { input: 12_104, output: 6_316 }
+    })
+    session = (await service.command(scope, get)).session!
+    const revised = session.items.filter((item) => item.agent)
+    assert.equal(revised.length, 1)
+    assert.equal(
+      revised[0].text,
+      'Agent "Review the diff" finished · sonnet · high · 2m 33s · 18.4k (12.1k in, 6.3k out)'
+    )
+    assert.equal(
+      agentFinishedLine({
+        id: 'bare',
+        title: 'Remote review',
+        status: 'completed',
+        createdAt: 0,
+        startedAt: 0,
+        finishedAt: 31_000
+      }),
+      'Agent "Remote review" finished · 31s'
+    )
+    await service.shutdown()
+  } finally {
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
+
+test('a sub-agent stays listed after it finishes, and an open one stops with the process', async () => {
+  const f = liveFixture()
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    await service.command(scope, { ...send, commandId: 'open' })
+    await waitFor(() => !service['running'].size)
+    const { host } = f.opened[0]
+    host.subagent({ id: 'child', status: 'created' })
+    host.subagent({ id: 'child', status: 'running', title: 'Review the diff' })
+    host.subagent({ id: 'child', status: 'running', tokens: { total: 100 } })
+    host.subagent({ id: 'child', status: 'running', tokens: { input: 40 } })
+    let session = (await service.command(scope, get)).session!
+    const running = session.subagents?.find((child) => child.id === 'child')
+    assert(running)
+    assert.equal(running.title, 'Review the diff')
+    assert.equal(running.status, 'running')
+    assert.equal(typeof running.createdAt, 'number')
+    assert.equal(typeof running.startedAt, 'number')
+    assert.equal(running.finishedAt, undefined)
+    assert.deepEqual(running.tokens, { total: 100, input: 40 })
+    assert.equal(
+      session.items.some((item) => item.kind === 'notice'),
+      false
+    )
+
+    host.subagent({ id: 'child', status: 'completed', tokens: { output: 60 } })
+    session = (await service.command(scope, get)).session!
+    const finished = session.subagents?.find((child) => child.id === 'child')
+    assert(finished)
+    assert.equal(finished.status, 'completed')
+    assert.equal(finished.startedAt, running.startedAt)
+    assert.equal(typeof finished.finishedAt, 'number')
+    assert.deepEqual(finished.tokens, { total: 100, input: 40, output: 60 })
+    assert.equal(session.subagents?.length, 1)
+    assert.equal(
+      session.items.some((item) => item.kind === 'notice'),
+      false
+    )
+
+    host.subagent({ id: 'other', status: 'created', title: 'explore-auth' })
+    service.releasePanes([1])
+    assert.equal(f.opened[0].closed, true)
+    session = (await service.command(scope, { ...get, action: 'open', sessionId: session.id }))
+      .session!
+    const stopped = session.subagents?.find((child) => child.id === 'other')
+    assert.equal(stopped?.status, 'stopped')
+    assert.equal(stopped?.startedAt, undefined)
+    assert.equal(typeof stopped?.finishedAt, 'number')
+    assert.equal(session.subagents?.find((child) => child.id === 'child')?.status, 'completed')
+    host.subagent({ id: 'stale', status: 'running', title: 'stale' })
+    assert.equal(
+      (await service.command(scope, get)).session?.subagents?.some((child) => child.id === 'stale'),
+      false
+    )
+    await service.shutdown()
+
+    const restored = new AgentSessions(f.dir, () => {}, f.drivers)
+    const again = (await restored.command(scope, { ...get, action: 'open', sessionId: session.id }))
+      .session
+    assert.equal(again?.subagents?.find((child) => child.id === 'other')?.status, 'stopped')
+    assert.equal(again?.subagents?.find((child) => child.id === 'child')?.tokens?.total, 100)
+    await restored.shutdown()
   } finally {
     rmSync(f.dir, { recursive: true, force: true })
   }

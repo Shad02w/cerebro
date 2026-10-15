@@ -10,6 +10,7 @@ export type {
   AutonomousTurn,
   BackgroundTaskUpdate,
   ConnectionHost,
+  SubagentUpdate,
   RunAttachment,
   RunContext
 } from './adapter'
@@ -32,6 +33,7 @@ export async function runTurn(
   const connection = adapter.connect(context.session, {
     autonomous: () => undefined,
     task: () => {},
+    subagent: () => {},
     idle: () => {},
     exited: () => {},
     ...host
