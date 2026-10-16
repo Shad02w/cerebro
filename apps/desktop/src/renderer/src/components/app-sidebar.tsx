@@ -837,7 +837,10 @@ function PlainDirectoryRow({
         <SidebarMenuRow data-workspace-id={workspace.id}>
           <SidebarMenuButton
             isActive={active}
-            className={cn('app-no-drag h-8 pr-14', muted && !active && todoWorkspaceMuteClass)}
+            className={cn(
+              'app-no-drag h-8! items-center gap-0 px-2 py-0 pr-14 text-xs font-medium',
+              muted && !active && todoWorkspaceMuteClass
+            )}
             render={
               <button
                 type="button"
