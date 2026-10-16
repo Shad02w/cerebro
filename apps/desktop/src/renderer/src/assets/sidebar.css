@@ -96,10 +96,26 @@
   text-align: left;
 }
 
-/* The multi-root badge sits beside the folder name. Growing the label pushes
-   that badge under the history and menu buttons. */
+/* Keep the folder name beside the badge. A growing label pushes the badge
+   under the history button; sizing to the text leaves that button clear. */
 .cerebro-sidebar [data-directory-name-line] [data-row-label] {
   flex: 0 1 auto;
+}
+
+/* Nested repos under a multi-root use the same quiet label as a project row:
+   12px, medium, about 60% of the sidebar foreground, including when selected. */
+.cerebro-sidebar .sidebar-nested-workspace,
+.cerebro-sidebar .sidebar-nested-workspace:hover,
+.cerebro-sidebar .sidebar-nested-workspace[data-active='true'],
+.cerebro-sidebar .sidebar-nested-workspace[data-active='true']:hover {
+  font-size: 12px;
+  font-weight: 500;
+  color: color-mix(in oklch, var(--sidebar-foreground) 60%, transparent);
+}
+
+.cerebro-sidebar .sidebar-nested-workspace [data-row-label],
+.cerebro-sidebar .sidebar-nested-workspace [data-branch-line] {
+  color: color-mix(in oklch, var(--sidebar-foreground) 60%, transparent);
 }
 
 /* Pull a second line up into the name line's lower half so the name stays

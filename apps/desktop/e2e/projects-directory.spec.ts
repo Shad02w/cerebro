@@ -99,7 +99,9 @@ test('adds a folder of git repos as one workspace', async ({ page, electronApp }
     await expect(page.getByTestId(/project-row-/)).toHaveCount(0)
     await expect(page.getByTestId(/project-add-workspace-/)).toHaveCount(0)
     await expect(row.getByTestId(/workspace-multi-root-/)).toHaveText('multi-root')
+    await expect(row).toHaveClass(/sidebar-project-button/)
     await expect(row).toHaveClass(/text-xs/)
+    await expect(row).toHaveClass(/text-sidebar-foreground\/60/)
     const group = page.getByTestId(/workspace-root-/)
     await expect(group.getByTestId('workspace-nested-repo-frontend')).toBeVisible()
     await expect(group.getByTestId('workspace-nested-branch-frontend')).toHaveText('main')
@@ -131,11 +133,9 @@ test('adds a folder of git repos as one workspace', async ({ page, electronApp }
       .locator('[data-workspace-role="repository"]')
     await nestedFrontend.click()
     await expect(nestedFrontend).toHaveAttribute('aria-current', 'location')
-    await page.screenshot({ path: '/opt/cursor/artifacts/multi-root-sidebar.png' })
     await group.getByTestId(/workspace-nested-toggle-/).click()
     await expect(group.getByTestId('workspace-nested-repo-frontend')).toBeHidden()
     await expect(row).toBeVisible()
-    await page.screenshot({ path: '/opt/cursor/artifacts/multi-root-sidebar-collapsed.png' })
 
     const workspaceId = project?.workspaces[0]?.id
     await page.getByTestId(`workspace-row-${workspaceId}`).locator('[data-row-label]').click()

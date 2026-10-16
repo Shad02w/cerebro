@@ -437,7 +437,8 @@ describe('sidebar project rows', () => {
     render(sidebarElement('project', 41, [apps, frontend, notes], onSelectWorkspace))
 
     const row = screen.getByTestId('workspace-row-41')
-    expectItemRow(row, 'directory')
+    expectSectionLabel(row)
+    expect(row).toHaveAttribute('data-workspace-role', 'directory')
     const menuRow = row.closest('[data-sidebar="menu-row"]')
     const nameLine = screen
       .getByTestId('workspace-search-sessions-41')

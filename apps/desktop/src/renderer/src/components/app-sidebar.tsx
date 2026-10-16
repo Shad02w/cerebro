@@ -832,7 +832,7 @@ function NestedRepoBody({ repo }: { repo: NestedRepo }): React.JSX.Element {
       </span>
       {repo.branch ? (
         <span
-          className="text-[11px] leading-4 text-sidebar-foreground/65"
+          className="text-[11px] leading-4 text-sidebar-foreground/60"
           data-branch-line=""
           data-testid={`workspace-nested-branch-${repo.name}`}
         >
@@ -865,7 +865,7 @@ function NestedRepoRow({
 }): React.JSX.Element {
   const active = match != null && match.id === activeWorkspaceId
   const rowClass =
-    'flex w-full min-w-0 flex-col items-stretch rounded-md px-2 py-0 text-left text-xs font-medium text-sidebar-foreground/60'
+    'sidebar-nested-workspace flex w-full min-w-0 flex-col items-stretch rounded-md px-2 py-0 text-left text-xs font-medium text-sidebar-foreground/60'
   return (
     <li data-testid={`workspace-nested-repo-${repo.name}`}>
       <WorkspaceHoverCard workspace={match ?? undefined} showStatus={false}>
@@ -876,7 +876,7 @@ function NestedRepoRow({
               className={cn(
                 'app-no-drag pr-14',
                 rowClass,
-                'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+                'hover:bg-sidebar-accent hover:text-sidebar-foreground/60'
               )}
               data-testid={`workspace-row-${match.id}`}
               data-workspace-id={match.id}
@@ -1011,14 +1011,14 @@ function DirectoryNameLine({
   onSetStatus: (workspaceId: number, status: WorkspaceStatus) => void
 }): React.JSX.Element {
   return (
-    <div className="relative z-10" data-directory-name-line="">
+    <div className="relative z-10 w-full" data-directory-name-line="">
       <SidebarMenuButton
-        isActive={active}
+        isActive={!grouped && active}
         className={cn(
           'app-no-drag items-center gap-0 px-2 py-0',
-          'h-8! text-xs font-medium',
-          grouped ? 'pr-20' : 'pr-14',
-          muted && !active && todoWorkspaceMuteClass
+          grouped
+            ? projectSectionLabelClass
+            : cn('h-8! pr-14! text-xs font-medium', muted && !active && todoWorkspaceMuteClass)
         )}
         render={
           <button
