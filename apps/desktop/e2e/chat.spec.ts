@@ -1022,7 +1022,9 @@ test('forking a completed response branches it into a new tab or a new pane, lea
   }
 })
 
-test('multi-root root row keeps agent status inside the row chrome', async ({ page }) => {
+test('a repo added from a folder of repos keeps agent status inside the row chrome', async ({
+  page
+}) => {
   const root = await mkdtemp(join(tmpdir(), 'cerebro-multiroot-agent-e2e-'))
   const parent = join(root, 'apps-folder')
   const frontend = join(parent, 'frontend')
@@ -1044,13 +1046,14 @@ test('multi-root root row keeps agent status inside the row chrome', async ({ pa
       (directory) => window.cerebro.createProjectFromDirectory(directory),
       parent
     )
-    const rootWorkspace = project.workspaces.find((workspace) => workspace.kind === 'root')
-    expect(rootWorkspace).toBeTruthy()
+    const workspace = project.workspaces.find((item) => item.kind === 'default')
+    expect(project.kind).toBe('directory')
+    expect(workspace).toBeTruthy()
     await page.reload()
     const projectRow = page.getByTestId(`project-row-${project.id}`)
     await expect(projectRow).toBeVisible()
     if ((await projectRow.getAttribute('aria-expanded')) === 'false') await projectRow.click()
-    const rootRow = page.getByTestId(`project-root-${project.id}`)
+    const rootRow = page.getByTestId(`workspace-row-${workspace!.id}`)
     await rootRow.click()
     await page.getByRole('button', { name: /^New Agent tab/ }).click()
     await page.getByTestId('chat-model-picker').click()
@@ -1066,7 +1069,7 @@ test('multi-root root row keeps agent status inside the row chrome', async ({ pa
     await page.getByRole('textbox', { name: 'Message agent' }).fill('approval')
     await page.getByRole('button', { name: 'Send message', exact: true }).click()
     await expect(page.getByRole('button', { name: 'Allow once', exact: true })).toBeVisible()
-    const rootMenu = page.locator('[data-sidebar="menu-row"][data-root-row]')
+    const rootMenu = page.locator(`[data-sidebar="menu-row"][data-workspace-id="${workspace!.id}"]`)
     const agentButton = rootMenu.getByTestId('workspace-agent-open')
     await expect(agentButton).toHaveCount(1)
     await expect(agentButton.locator('[data-workspace-agent-status="waiting"]')).toHaveAttribute(
@@ -1080,7 +1083,7 @@ test('multi-root root row keeps agent status inside the row chrome', async ({ pa
     expect(agentBox).toBeTruthy()
     expect(agentBox!.y).toBeGreaterThanOrEqual(rootBox!.y + rootBox!.height - 1)
     await mkdir('/tmp/cerebro-sidebar-evidence', { recursive: true })
-    await page.screenshot({ path: '/tmp/cerebro-sidebar-evidence/multi-root-root-agent.png' })
+    await page.screenshot({ path: '/tmp/cerebro-sidebar-evidence/repo-row-agent.png' })
     await page.getByRole('button', { name: 'Allow once', exact: true }).click()
     await expect(page.getByTestId('chat-transcript').getByRole('status')).toHaveCount(0)
     await expect(agentButton.locator('[data-workspace-agent-status="finished"]')).toHaveAttribute(
@@ -1088,7 +1091,7 @@ test('multi-root root row keeps agent status inside the row chrome', async ({ pa
       'Agent finished'
     )
     await expect(agentButton).toHaveCount(1)
-    await page.screenshot({ path: '/tmp/cerebro-sidebar-evidence/multi-root-root-agent-idle.png' })
+    await page.screenshot({ path: '/tmp/cerebro-sidebar-evidence/repo-row-agent-idle.png' })
     const chatTab = page.getByTestId('chat-tab')
     await chatTab.hover()
     await chatTab.getByTestId('content-tab-close').click()

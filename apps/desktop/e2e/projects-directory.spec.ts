@@ -1,4 +1,3 @@
-import type { Locator } from '@playwright/test'
 import { mkdir, mkdtemp, realpath, rm, writeFile, access } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -42,15 +41,6 @@ async function readClipboard(electronApp: ElectronApplication): Promise<string> 
   return electronApp.evaluate(({ clipboard }) => clipboard.readText())
 }
 
-function multiRootRepoRow(page: Page, repoName: string): Locator {
-  return page
-    .locator('[data-slot="sidebar"]')
-    .getByTestId(/workspace-row-/)
-    .filter({
-      has: page.getByTestId(/workspace-repo-/).filter({ hasText: repoName })
-    })
-}
-
 test('adds a local git folder as a directory project', async ({ page, electronApp }) => {
   const root = await mkdtemp(join(tmpdir(), 'cerebro-dir-e2e-'))
   const repo = join(root, 'opened-alpha')
@@ -90,125 +80,60 @@ test('adds a local git folder as a directory project', async ({ page, electronAp
   }
 })
 
-test('adds a folder of git repos as a multi-root workspace', async ({ page, electronApp }) => {
+test('adds each git repo in a folder as its own project', async ({ page, electronApp }) => {
   const root = await mkdtemp(join(tmpdir(), 'cerebro-multiroot-e2e-'))
   const parent = join(root, 'apps-folder')
   const frontend = join(parent, 'frontend')
   const backend = join(parent, 'backend')
+  const notes = join(parent, 'notes')
 
   try {
     await initGitRepo(frontend, 'main', 'frontend-app')
-    await initGitRepo(backend, 'main', 'backend-app')
+    await initGitRepo(backend, 'develop', 'backend-app')
+    await mkdir(notes, { recursive: true })
+    await writeFile(join(notes, 'notes.txt'), 'hello\n')
     await addDirectoryViaUi(page, electronApp, parent)
 
-    const projectRow = page.getByTestId(/project-row-/).filter({ hasText: 'apps-folder' })
-    await expect(projectRow).toBeVisible({ timeout: 30_000 })
-    await expect(projectRow).toHaveAttribute('data-project-kind', 'multi-root')
-    await expect(projectRow).toHaveAttribute('data-project-icon', 'folders')
-    await expect(page.getByTestId(/project-multi-root-/)).toHaveText('multi-root')
+    const frontendRow = page.getByTestId(/project-row-/).filter({ hasText: 'frontend' })
+    const backendRow = page.getByTestId(/project-row-/).filter({ hasText: 'backend' })
+    await expect(frontendRow).toBeVisible({ timeout: 30_000 })
+    await expect(backendRow).toBeVisible()
+    await expect(frontendRow).toHaveAttribute('data-project-kind', 'directory')
+    await expect(backendRow).toHaveAttribute('data-project-kind', 'directory')
+    await expect(frontendRow).toHaveAttribute('data-project-icon', 'folder')
+    await expect(backendRow).toHaveAttribute('data-project-icon', 'folder')
+    await expect(page.getByTestId(/project-row-/).filter({ hasText: 'apps-folder' })).toHaveCount(0)
+    await expect(page.getByTestId(/project-row-/).filter({ hasText: 'notes' })).toHaveCount(0)
+    await expect(page.getByTestId(/project-multi-root-/)).toHaveCount(0)
+    await expect(page.getByTestId(/project-root-/)).toHaveCount(0)
+    await expect(page.locator('[data-workspace-role="root"]')).toHaveCount(0)
     await expect(page.getByTestId(/project-add-workspace-/)).toHaveCount(0)
-    await expect(projectRow.locator('svg')).toHaveCount(1)
+
+    if ((await frontendRow.getAttribute('aria-expanded')) !== 'true') await frontendRow.click()
+    if ((await backendRow.getAttribute('aria-expanded')) !== 'true') await backendRow.click()
 
     const sidebar = page.locator('[data-slot="sidebar"]')
-    await expect(sidebar.getByTestId(/project-root-/)).toHaveText(/^root\s*2 repos$/)
-    await expect(sidebar.locator('[data-workspace-role="root"]')).toHaveCount(1)
-    await expect(sidebar.locator('[data-workspace-icon="folder-tree"]')).toHaveCount(1)
-    await expect(sidebar.getByTestId(/project-repo-tree-/)).toBeVisible()
-    const rootGroup = sidebar.getByTestId(/root-group-/)
-    await expect(rootGroup.getByTestId(/project-root-/)).toBeVisible()
-    await expect(rootGroup.getByRole('list', { name: 'Repositories in root' })).toBeVisible()
-    await expect(rootGroup.getByTestId(/workspace-row-/)).toHaveCount(2)
-    await expect(rootGroup.getByTestId(/root-repo-count-/)).toHaveText('2 repos')
-    await expect(rootGroup).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
-    await expect(sidebar.getByTestId(/project-repo-tree-/)).toHaveCSS('border-left-width', '0px')
-    await expect(sidebar.locator('[data-workspace-role="repository"]')).toHaveCount(2)
-    await expect(sidebar.locator('[data-workspace-icon="directory-name"]')).toHaveCount(2)
-    await expect(sidebar.locator('[data-workspace-icon="branch"]')).toHaveCount(0)
-
-    const backendRow = multiRootRepoRow(page, 'backend')
-    const frontendRow = multiRootRepoRow(page, 'frontend')
-    await expect(backendRow).toBeVisible()
-    await expect(frontendRow).toBeVisible()
-    await expect(backendRow.getByTestId(/workspace-repo-/)).toHaveText('backend')
-    await expect(frontendRow.getByTestId(/workspace-repo-/)).toHaveText('frontend')
-    await expect(backendRow.getByTestId(/workspace-branch-/)).toHaveText('main')
-    await expect(frontendRow.getByTestId(/workspace-branch-/)).toHaveText('main')
-    // Branch / PR icons live in the branch line (in flow, not absolutely over the name).
-    const backendIcon = backendRow.getByTestId(/workspace-default-icon-/)
-    const frontendIcon = frontendRow.getByTestId(/workspace-default-icon-/)
-    await expect(backendIcon).toBeVisible()
-    await expect(frontendIcon).toBeVisible()
-
-    const backendNameBox = await backendRow.getByTestId(/workspace-repo-/).boundingBox()
-    const backendBranchBox = await backendRow.getByTestId(/workspace-branch-/).boundingBox()
-    const backendIconBox = await backendIcon.boundingBox()
-    const backendBox = await backendRow.boundingBox()
-    const frontendBox = await frontendRow.boundingBox()
-    expect(backendNameBox).toBeTruthy()
-    expect(backendBranchBox).toBeTruthy()
-    expect(backendIconBox).toBeTruthy()
-    expect(backendBox).toBeTruthy()
-    expect(frontendBox).toBeTruthy()
-    expect(backendBranchBox!.y).toBeGreaterThan(backendNameBox!.y)
-    expect(backendBranchBox!.x).toBeGreaterThanOrEqual(backendNameBox!.x - 1)
-    expect(backendBranchBox!.x - backendNameBox!.x).toBeLessThan(20)
-    expect(backendIconBox!.y).toBeGreaterThan(backendNameBox!.y + backendNameBox!.height - 2)
-    expect(backendIconBox!.y + backendIconBox!.height).toBeLessThanOrEqual(
-      backendBranchBox!.y + backendBranchBox!.height + 2
-    )
-    await mkdir('/tmp/cerebro-sidebar-evidence', { recursive: true })
-    await page.screenshot({
-      path: '/tmp/cerebro-sidebar-evidence/multi-root-repo-icons.png'
-    })
-    const innerGap = backendBranchBox!.y - (backendNameBox!.y + backendNameBox!.height)
-    const firstBox = backendBox!.y < frontendBox!.y ? backendBox! : frontendBox!
-    const secondBox = backendBox!.y < frontendBox!.y ? frontendBox! : backendBox!
-    const groupGap = secondBox.y - (firstBox.y + firstBox.height)
-    expect(groupGap).toBeGreaterThan(innerGap)
-
-    await projectRow.hover()
-    const badge = page.getByTestId(/project-multi-root-/)
-    const projectName = projectRow.getByText('apps-folder', { exact: true })
-    const projectMenu = page.getByTestId(/project-menu-/)
-    const badgeBox = await badge.boundingBox()
-    const nameBox = await projectName.boundingBox()
-    const menuBox = await projectMenu.boundingBox()
-    expect(badgeBox).toBeTruthy()
-    expect(nameBox).toBeTruthy()
-    expect(menuBox).toBeTruthy()
-    expect(nameBox!.x + nameBox!.width).toBeLessThanOrEqual(badgeBox!.x + 1)
-    expect(badgeBox!.x + badgeBox!.width).toBeLessThanOrEqual(menuBox!.x + 1)
-
-    const workspaceRow = multiRootRepoRow(page, 'frontend')
-    const group = sidebar.locator('[data-slot="sidebar-group"]').first()
-    const rowBox = await workspaceRow.boundingBox()
-    const groupBox = await group.boundingBox()
-    expect(rowBox).toBeTruthy()
-    expect(groupBox).toBeTruthy()
-    expect(groupBox!.x + groupBox!.width - (rowBox!.x + rowBox!.width)).toBeLessThanOrEqual(16)
+    await expect(sidebar.getByTestId(/workspace-row-/).filter({ hasText: 'main' })).toBeVisible()
+    await expect(sidebar.getByTestId(/workspace-row-/).filter({ hasText: 'develop' })).toBeVisible()
+    await expect(sidebar.locator('[data-workspace-icon="branch"]')).toHaveCount(2)
 
     const listed = await page.evaluate(async () => window.cerebro.listProjects())
-    const project = listed.projects.find((item) => item.name === 'apps-folder')
-    expect(project?.kind).toBe('multi-root')
-    expect(project?.github).toBeNull()
-    expect(project?.repositories.map((repo) => repo.name).sort()).toEqual(['backend', 'frontend'])
-    const repoWorkspaces =
-      project?.workspaces.filter((workspace) => workspace.kind === 'default') ?? []
-    const rootWorkspace = project?.workspaces.find((workspace) => workspace.kind === 'root')
-    expect(repoWorkspaces).toHaveLength(2)
-    expect(rootWorkspace).toBeTruthy()
-    expect(rootWorkspace?.localPath).toBe(await realpath(parent))
-
-    const backendPath = await realpath(backend)
+    expect(listed.projects.map((project) => project.name).sort()).toEqual(['backend', 'frontend'])
+    expect(listed.projects.every((project) => project.kind === 'directory')).toBe(true)
+    expect(listed.projects.every((project) => project.github == null)).toBe(true)
+    expect(listed.projects.every((project) => project.repositories.length === 1)).toBe(true)
+    expect(
+      listed.projects.every(
+        (project) => project.workspaces.length === 1 && project.workspaces[0]?.kind === 'default'
+      )
+    ).toBe(true)
     const frontendPath = await realpath(frontend)
-    const backendWorkspace = project?.workspaces.find(
-      (workspace) => workspace.localPath === backendPath
-    )
-    const frontendWorkspace = project?.workspaces.find(
-      (workspace) => workspace.localPath === frontendPath
-    )
-    expect(backendWorkspace).toBeTruthy()
-    expect(frontendWorkspace).toBeTruthy()
+    const frontendProject = listed.projects.find((project) => project.name === 'frontend')
+    const frontendWorkspace = frontendProject?.workspaces[0]
+    expect(frontendWorkspace?.localPath).toBe(frontendPath)
+    expect(frontendWorkspace?.branch).toBe('main')
+    const backendProject = listed.projects.find((project) => project.name === 'backend')
+    expect(backendProject?.workspaces[0]?.branch).toBe('develop')
     expect(listed.activeWorkspaceId).toBeNull()
     await expect(page.getByTestId('content-tab-bar')).toHaveCount(0)
 
@@ -217,12 +142,13 @@ test('adds a folder of git repos as a multi-root workspace', async ({ page, elec
     expect(afterSelect.activeWorkspaceId).toBe(frontendWorkspace!.id)
     await expect(page.getByTestId('content-tab-bar')).toBeVisible()
     await expect(page.locator('[data-terminal-workspace-id]')).toHaveCount(0)
+    await page.screenshot({ path: '/opt/cursor/artifacts/folder-of-repos.png' })
   } finally {
     await rm(root, { recursive: true, force: true })
   }
 })
 
-test('multi-root repos copy path and branch; only the project can be removed', async ({
+test('repos added from one folder copy path and branch on their own project', async ({
   page,
   electronApp
 }) => {
@@ -236,34 +162,31 @@ test('multi-root repos copy path and branch; only the project can be removed', a
     await initGitRepo(backend, 'develop', 'backend-app')
     await addDirectoryViaUi(page, electronApp, parent)
 
-    const projectRow = page.getByTestId(/project-row-/).filter({ hasText: 'apps-folder' })
+    const projectRow = page.getByTestId(/project-row-/).filter({ hasText: 'frontend' })
     await expect(projectRow).toBeVisible({ timeout: 30_000 })
+    if ((await projectRow.getAttribute('aria-expanded')) !== 'true') await projectRow.click()
 
     const listed = await page.evaluate(async () => window.cerebro.listProjects())
-    const project = listed.projects.find((item) => item.name === 'apps-folder')
+    const project = listed.projects.find((item) => item.name === 'frontend')
     expect(project).toBeTruthy()
     const frontendPath = await realpath(frontend)
-    const parentPath = await realpath(parent)
     const frontendWorkspace = project!.workspaces.find(
       (workspace) => workspace.localPath === frontendPath
     )
     expect(frontendWorkspace).toBeTruthy()
 
     const sidebar = page.locator('[data-slot="sidebar"]')
-    await expect(multiRootRepoRow(page, 'frontend').getByTestId(/workspace-branch-/)).toHaveText(
-      'main'
-    )
-    await expect(multiRootRepoRow(page, 'backend').getByTestId(/workspace-branch-/)).toHaveText(
-      'develop'
-    )
-
     const repoRow = sidebar.getByTestId(`workspace-row-${frontendWorkspace!.id}`)
+    await expect(repoRow).toContainText('main')
     await repoRow.hover()
     await page.getByTestId(`workspace-menu-${frontendWorkspace!.id}`).click()
     await expect(page.getByTestId(`workspace-${frontendWorkspace!.id}-copy-branch`)).toBeVisible()
     await expect(page.getByTestId(`workspace-${frontendWorkspace!.id}-copy-path`)).toBeVisible()
-    await expect(page.getByTestId(`workspace-delete-${frontendWorkspace!.id}`)).toHaveCount(0)
-    await expect(page.getByTestId(`workspace-remove-${frontendWorkspace!.id}`)).toHaveCount(0)
+    await expect(
+      page.getByTestId(`workspace-delete-${frontendWorkspace!.id}`).getByRole('menuitem', {
+        name: 'Delete'
+      })
+    ).toBeDisabled()
 
     await page.getByTestId(`workspace-${frontendWorkspace!.id}-copy-branch`).click()
     await expect.poll(() => readClipboard(electronApp)).toBe(frontendWorkspace!.branch)
@@ -273,63 +196,11 @@ test('multi-root repos copy path and branch; only the project can be removed', a
     await page.getByTestId(`workspace-${frontendWorkspace!.id}-copy-path`).click()
     await expect.poll(() => readClipboard(electronApp)).toBe(frontendPath)
 
-    const rootRow = sidebar.getByTestId(`project-root-${project!.id}`)
-    const rootToggle = page.getByTestId(`root-toggle-${project!.id}`)
-    const rootMenu = page.getByTestId(`root-menu-${project!.id}`)
-    await expect(rootToggle).toHaveCSS('opacity', '1')
-    await expect(rootMenu).toHaveCSS('opacity', '0')
-    await rootRow.hover()
-    await expect(rootToggle).toHaveCSS('opacity', '1')
-    await expect(rootMenu).toHaveCSS('opacity', '1')
-    const toggleBox = await rootToggle.boundingBox()
-    const menuBox = await rootMenu.boundingBox()
-    expect(toggleBox).toBeTruthy()
-    expect(menuBox).toBeTruthy()
-    expect(toggleBox!.x + toggleBox!.width).toBeLessThanOrEqual(menuBox!.x + 1)
-    await rootMenu.click()
-    await expect(page.getByTestId(`root-${project!.id}-copy-branch`)).toBeDisabled()
-    await expect(page.getByTestId(`root-${project!.id}-copy-path`)).toBeVisible()
-    await expect(page.getByTestId(`project-delete-${project!.id}`)).toHaveCount(0)
-    await page.getByTestId(`root-${project!.id}-copy-path`).click()
-    await expect.poll(() => readClipboard(electronApp)).toBe(parentPath)
-
-    await expect(sidebar.getByTestId(`project-repo-tree-${project!.id}`)).toBeVisible()
-    await rootRow.hover()
-    await rootToggle.click()
-    await expect(sidebar.getByTestId(`project-repo-tree-${project!.id}`)).toBeHidden()
-    await expect(repoRow).toBeHidden()
-    await expect(page.getByTestId(`root-repo-count-${project!.id}`)).toHaveText('2 repos')
-    await expect(rootToggle).toHaveAttribute('aria-expanded', 'false')
-    await rootRow.hover()
-    await rootToggle.click()
-    await expect(sidebar.getByTestId(`project-repo-tree-${project!.id}`)).toBeVisible()
-    await expect(repoRow).toBeVisible()
-
-    await rootRow.click()
-    await expect
-      .poll(async () => {
-        const listed = await page.evaluate(async () => window.cerebro.listProjects())
-        const root = listed.projects
-          .find((item) => item.id === project!.id)
-          ?.workspaces.find((workspace) => workspace.kind === 'root')
-        return root != null && listed.activeWorkspaceId === root.id
-      })
-      .toBe(true)
-    const afterRootSelect = await page.evaluate(async () => window.cerebro.listProjects())
-    const selectedRoot = afterRootSelect.projects
-      .find((item) => item.id === project!.id)
-      ?.workspaces.find((workspace) => workspace.kind === 'root')
-    expect(selectedRoot).toBeTruthy()
-    expect(afterRootSelect.activeWorkspaceId).toBe(selectedRoot!.id)
-    expect(selectedRoot!.localPath).toBe(parentPath)
-    await expect(page.getByTestId('content-tab-bar')).toBeVisible()
-    await expect(page.locator('[data-terminal-workspace-id]')).toHaveCount(0)
-    await expect(sidebar.getByTestId(`project-repo-tree-${project!.id}`)).toBeVisible()
-
     await projectRow.hover()
     await page.getByTestId(`project-menu-${project!.id}`).click()
     await expect(page.getByTestId(`project-delete-${project!.id}`)).toBeVisible()
     await expect(page.getByTestId(`project-remove-${project!.id}`)).toBeVisible()
+    await expect(page.getByTestId(/project-row-/).filter({ hasText: 'backend' })).toBeVisible()
   } finally {
     await rm(root, { recursive: true, force: true })
   }
@@ -368,7 +239,7 @@ test('adds a folder even when it is not a git repository', async ({ page, electr
   }
 })
 
-test('upgrades an opened git folder after sibling git repos appear', async ({
+test('does not regroup an opened git folder when sibling repos appear', async ({
   page,
   electronApp
 }) => {
@@ -389,35 +260,23 @@ test('upgrades an opened git folder after sibling git repos appear', async ({
     await page.reload()
     await page.waitForLoadState('domcontentloaded')
 
-    await expect(projectRow).toHaveAttribute('data-project-kind', 'multi-root', { timeout: 30_000 })
-    await expect(projectRow).toHaveAttribute('data-project-icon', 'folders')
-    await expect(page.getByTestId(/project-multi-root-/)).toHaveText('multi-root')
-    await expect(page.getByTestId(/project-root-/)).toHaveText(/^root\s*2 repos$/)
-    await expect(multiRootRepoRow(page, 'ark-ui')).toBeVisible()
-    await expect(multiRootRepoRow(page, 'other-app')).toBeVisible()
-    await expect(multiRootRepoRow(page, 'ark-ui').getByTestId(/workspace-branch-/)).toHaveText(
-      'main'
-    )
-    await expect(multiRootRepoRow(page, 'other-app').getByTestId(/workspace-branch-/)).toHaveText(
-      'main'
-    )
+    await expect(projectRow).toHaveAttribute('data-project-kind', 'directory', { timeout: 30_000 })
+    await expect(page.getByTestId(/project-multi-root-/)).toHaveCount(0)
+    await expect(page.getByTestId(/project-root-/)).toHaveCount(0)
+    await expect(page.getByTestId(/project-row-/).filter({ hasText: 'ark-ui' })).toHaveCount(0)
+    await expect(page.getByTestId(/project-row-/).filter({ hasText: 'other-app' })).toHaveCount(0)
 
     const listed = await page.evaluate(async () => window.cerebro.listProjects())
     const project = listed.projects.find((item) => item.name === 'abc')
-    expect(project?.kind).toBe('multi-root')
-    expect(project?.repositories.map((repo) => repo.name).sort()).toEqual(['ark-ui', 'other-app'])
-    expect(project?.workspaces.find((workspace) => workspace.kind === 'root')?.localPath).toBe(
-      await realpath(parent)
-    )
+    expect(project?.kind).toBe('directory')
+    expect(project?.repositories.map((repo) => repo.name)).toEqual(['abc'])
+    expect(project?.workspaces.some((workspace) => workspace.kind === 'root')).toBe(false)
   } finally {
     await rm(tmp, { recursive: true, force: true })
   }
 })
 
-test('treats leftover submodule siblings as roots in a multi-root folder', async ({
-  page,
-  electronApp
-}) => {
+test('skips sibling folders that are not usable git repos', async ({ page, electronApp }) => {
   const root = await mkdtemp(join(tmpdir(), 'cerebro-submodule-e2e-'))
   const parent = join(root, 'lab-folder')
   const realRepo = join(parent, 'app')
@@ -430,30 +289,28 @@ test('treats leftover submodule siblings as roots in a multi-root folder', async
 
     await addDirectoryViaUi(page, electronApp, parent)
 
-    const projectRow = page.getByTestId(/project-row-/).filter({ hasText: 'lab-folder' })
+    const projectRow = page.getByTestId(/project-row-/).filter({ hasText: 'app' })
     await expect(projectRow).toBeVisible({ timeout: 30_000 })
-    await expect(projectRow).toHaveAttribute('data-project-kind', 'multi-root')
-    await expect(projectRow).toHaveAttribute('data-project-icon', 'folders')
-    await expect(page.getByTestId(/project-multi-root-/)).toHaveText('multi-root')
-    await expect(multiRootRepoRow(page, 'app')).toBeVisible()
-    await expect(multiRootRepoRow(page, 'ark-ui')).toBeVisible()
-    await expect(multiRootRepoRow(page, 'app').getByTestId(/workspace-branch-/)).toHaveText('main')
-    await expect(multiRootRepoRow(page, 'ark-ui').getByTestId(/workspace-branch-/)).toHaveCount(0)
-    await expect(page.getByTestId(/project-root-/)).toHaveText(/^root\s*2 repos$/)
-    await expect(page.locator('[data-workspace-icon="folder-tree"]')).toHaveCount(1)
-    await expect(page.locator('[data-workspace-icon="directory-name"]')).toHaveCount(2)
-    await expect(page.locator('[data-workspace-icon="repository"]')).toHaveCount(0)
+    await expect(projectRow).toHaveAttribute('data-project-kind', 'directory')
+    await expect(page.getByTestId(/project-row-/).filter({ hasText: 'lab-folder' })).toHaveCount(0)
+    await expect(page.getByTestId(/project-row-/).filter({ hasText: 'ark-ui' })).toHaveCount(0)
+    await expect(page.getByTestId(/project-multi-root-/)).toHaveCount(0)
+    await expect(page.getByTestId(/project-root-/)).toHaveCount(0)
+    await expect(page.getByTestId(/workspace-row-/).filter({ hasText: 'main' })).toBeVisible()
 
     const listed = await page.evaluate(async () => window.cerebro.listProjects())
-    const project = listed.projects.find((item) => item.name === 'lab-folder')
-    expect(project?.kind).toBe('multi-root')
-    expect(project?.repositories.map((repo) => repo.name).sort()).toEqual(['app', 'ark-ui'])
+    expect(listed.projects.map((project) => project.name)).toEqual(['app'])
+    expect(listed.projects[0]?.kind).toBe('directory')
+    expect(listed.projects[0]?.repositories.map((repo) => repo.name)).toEqual(['app'])
   } finally {
     await rm(root, { recursive: true, force: true })
   }
 })
 
-test('treats a git folder with sibling git repos as multi-root', async ({ page, electronApp }) => {
+test('adds sibling git repos as separate projects and skips the parent folder', async ({
+  page,
+  electronApp
+}) => {
   const root = await mkdtemp(join(tmpdir(), 'cerebro-parentgit-e2e-'))
   const parent = join(root, 'abc')
   const arkUi = join(parent, 'ark-ui')
@@ -465,25 +322,19 @@ test('treats a git folder with sibling git repos as multi-root', async ({ page, 
     await initGitRepo(other, 'main', 'other-app')
     await addDirectoryViaUi(page, electronApp, parent)
 
-    const projectRow = page.getByTestId(/project-row-/).filter({ hasText: 'abc' })
-    await expect(projectRow).toBeVisible({ timeout: 30_000 })
-    await expect(projectRow).toHaveAttribute('data-project-kind', 'multi-root')
-    await expect(projectRow).toHaveAttribute('data-project-icon', 'folders')
-    await expect(page.getByTestId(/project-multi-root-/)).toHaveText('multi-root')
-    await expect(page.getByTestId(/project-root-/)).toHaveText(/^root\s*2 repos$/)
-    await expect(multiRootRepoRow(page, 'ark-ui')).toBeVisible()
-    await expect(multiRootRepoRow(page, 'other-app')).toBeVisible()
-    await expect(multiRootRepoRow(page, 'ark-ui').getByTestId(/workspace-branch-/)).toHaveText(
-      'main'
-    )
-    await expect(multiRootRepoRow(page, 'other-app').getByTestId(/workspace-branch-/)).toHaveText(
-      'main'
-    )
+    const arkRow = page.getByTestId(/project-row-/).filter({ hasText: 'ark-ui' })
+    const otherRow = page.getByTestId(/project-row-/).filter({ hasText: 'other-app' })
+    await expect(arkRow).toBeVisible({ timeout: 30_000 })
+    await expect(otherRow).toBeVisible()
+    await expect(arkRow).toHaveAttribute('data-project-kind', 'directory')
+    await expect(otherRow).toHaveAttribute('data-project-kind', 'directory')
+    await expect(page.getByTestId(/project-row-/).filter({ hasText: /^abc$/ })).toHaveCount(0)
+    await expect(page.getByTestId(/project-multi-root-/)).toHaveCount(0)
+    await expect(page.getByTestId(/project-root-/)).toHaveCount(0)
 
     const listed = await page.evaluate(async () => window.cerebro.listProjects())
-    const project = listed.projects.find((item) => item.name === 'abc')
-    expect(project?.kind).toBe('multi-root')
-    expect(project?.repositories.map((repo) => repo.name).sort()).toEqual(['ark-ui', 'other-app'])
+    expect(listed.projects.map((project) => project.name).sort()).toEqual(['ark-ui', 'other-app'])
+    expect(listed.projects.every((project) => project.kind === 'directory')).toBe(true)
   } finally {
     await rm(root, { recursive: true, force: true })
   }

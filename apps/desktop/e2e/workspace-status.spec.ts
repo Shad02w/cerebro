@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { basename, join, resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import type { Workspace } from '@cerebro/core'
 import type { Locator } from '@playwright/test'
@@ -94,9 +94,13 @@ test('marks workspace rows and groups the sidebar by project or status', async (
       BrowserWindow.getAllWindows()[0].setSize(760, 900)
     })
     await addDirectoryViaUi(page, electronApp, source)
-    await expect(page.getByTestId(/project-row-/).filter({ hasText: 'design-tools' })).toBeVisible({
+    await expect(page.getByTestId(/project-row-/).filter({ hasText: 'storefront' })).toBeVisible({
       timeout: 30_000
     })
+    await expect(page.getByTestId(/project-row-/).filter({ hasText: 'api' })).toBeVisible()
+    await expect(page.getByTestId(/project-row-/).filter({ hasText: 'design-tools' })).toHaveCount(
+      0
+    )
     await addDirectoryViaUi(page, electronApp, notesDir)
     await expect(page.getByTestId(/project-row-/).filter({ hasText: 'notes' })).toBeVisible({
       timeout: 30_000
@@ -107,55 +111,43 @@ test('marks workspace rows and groups the sidebar by project or status', async (
     })
 
     const listed = await page.evaluate(async () => window.cerebro.listProjects())
-    const project = listed.projects.find((item) => item.name === 'design-tools')
+    const storefrontProject = listed.projects.find((item) => item.name === 'storefront')
+    const apiProject = listed.projects.find((item) => item.name === 'api')
     const notes = listed.projects.find((item) => item.name === 'notes')
     const ledger = listed.projects.find((item) => item.name === 'ledger')
-    expect(project && notes && ledger).toBeTruthy()
-    const root = project!.workspaces.find((workspace) => workspace.kind === 'root')
-    const storefront = project!.workspaces.find(
-      (workspace) => basename(workspace.localPath) === 'storefront'
-    )
-    const api = project!.workspaces.find((workspace) => basename(workspace.localPath) === 'api')
+    expect(storefrontProject && apiProject && notes && ledger).toBeTruthy()
+    const storefront = storefrontProject!.workspaces[0]
+    const api = apiProject!.workspaces[0]
     const notesWorkspace = notes!.workspaces[0]
     const ledgerWorkspace = ledger!.workspaces[0]
-    expect(root && storefront && api && notesWorkspace && ledgerWorkspace).toBeTruthy()
-    for (const workspace of [
-      root,
-      storefront,
-      api,
-      notesWorkspace,
-      ledgerWorkspace
-    ] as Workspace[]) {
+    expect(storefront && api && notesWorkspace && ledgerWorkspace).toBeTruthy()
+    for (const workspace of [storefront, api, notesWorkspace, ledgerWorkspace] as Workspace[]) {
       expect(workspace.status).toBe('todo')
+      expect(workspace.kind).toBe('default')
     }
 
-    await expandProject(page, project!.id)
+    await expandProject(page, storefrontProject!.id)
+    await expandProject(page, apiProject!.id)
     await expandProject(page, notes!.id)
     await expandProject(page, ledger!.id)
 
-    const rootRow = page.getByTestId(`project-root-${project!.id}`)
+    const storefrontRow = page.getByTestId(`workspace-row-${storefront!.id}`)
     const notesRow = page.getByTestId(`workspace-row-${notesWorkspace!.id}`)
     const ledgerRow = page.getByTestId(`workspace-row-${ledgerWorkspace!.id}`)
-    const storefrontRow = page.getByTestId(`workspace-row-${storefront!.id}`)
     const apiRow = page.getByTestId(`workspace-row-${api!.id}`)
-    for (const row of [rootRow, notesRow, ledgerRow]) {
+    for (const row of [storefrontRow, notesRow, ledgerRow, apiRow]) {
       await expect(row).toHaveAttribute('data-workspace-status', 'todo')
       await expect(row.locator('[data-workspace-status-icon]')).toHaveCount(0)
+      await expect(row).toHaveAttribute('data-workspace-icon', 'branch')
     }
-    await expect(rootRow).toHaveAttribute('data-workspace-icon', 'folder-tree')
-    await expect(notesRow).toHaveAttribute('data-workspace-icon', 'branch')
-    await expect(ledgerRow).toHaveAttribute('data-workspace-icon', 'branch')
     await expect(page.getByTestId(`workspace-default-icon-${notesWorkspace!.id}`)).toBeVisible()
     await expect(page.getByTestId(`workspace-default-icon-${ledgerWorkspace!.id}`)).toBeVisible()
-    for (const row of [storefrontRow, apiRow]) {
-      await expect(row).not.toHaveAttribute('data-workspace-status')
-      await expect(row.locator('[data-workspace-status-icon]')).toHaveCount(0)
-    }
+    await expect(page.getByTestId(/project-root-/)).toHaveCount(0)
 
     await storefrontRow.hover()
     await page.getByTestId(`workspace-menu-${storefront!.id}`).click()
     await expect(page.getByRole('menuitem', { name: 'Copy path' })).toBeVisible()
-    await expect(page.getByRole('menuitem', { name: 'Move to status' })).toHaveCount(0)
+    await expect(page.getByRole('menuitem', { name: 'Move to status' })).toBeVisible()
     await page.keyboard.press('Escape')
     await notesRow.click({ button: 'right' })
     await expect(page.getByRole('menuitem', { name: 'Move to status' })).toHaveCount(0)
@@ -186,9 +178,9 @@ test('marks workspace rows and groups the sidebar by project or status', async (
     await expect(notesRow.locator('[data-workspace-status-icon]')).toHaveCount(0)
     await expect(page.getByTestId(`workspace-default-icon-${notesWorkspace!.id}`)).toBeVisible()
 
-    await openStatusSubmenu(page, rootRow, `root-menu-${project!.id}`, root!.id)
-    await page.getByTestId(`workspace-status-option-${root!.id}-done`).click()
-    await expect(rootRow).toHaveAttribute('data-workspace-status', 'done')
+    await openStatusSubmenu(page, storefrontRow, `workspace-menu-${storefront!.id}`, storefront!.id)
+    await page.getByTestId(`workspace-status-option-${storefront!.id}-done`).click()
+    await expect(storefrontRow).toHaveAttribute('data-workspace-status', 'done')
 
     const home = await electronApp.evaluate(() => process.env.CEREBRO_HOME!)
     const reviewed = await cli<Workspace>(
@@ -204,8 +196,8 @@ test('marks workspace rows and groups the sidebar by project or status', async (
     await expect(ledgerRow).toHaveAttribute('data-workspace-status', 'ready_to_review', {
       timeout: 15_000
     })
-    await expect(apiRow).not.toHaveAttribute('data-workspace-status')
-    await expect(storefrontRow).not.toHaveAttribute('data-workspace-status')
+    await expect(apiRow).toHaveAttribute('data-workspace-status', 'in_progress')
+    await expect(storefrontRow).toHaveAttribute('data-workspace-status', 'done')
 
     await page.mouse.move(700, 20)
     const headingColor = await page
@@ -260,7 +252,7 @@ test('marks workspace rows and groups the sidebar by project or status', async (
     await expect(page.getByTestId('sidebar-group-by')).toHaveAttribute('data-group-by', 'status')
     await expect(page.getByTestId(/project-row-/)).toHaveCount(0)
     await expect(page.getByTestId('status-count-todo')).toHaveText('0')
-    await expect(page.getByTestId('status-count-in_progress')).toHaveText('1')
+    await expect(page.getByTestId('status-count-in_progress')).toHaveText('2')
     await expect(page.getByTestId('status-count-ready_to_review')).toHaveText('1')
     await expect(page.getByTestId('status-count-done')).toHaveText('1')
 
@@ -268,7 +260,7 @@ test('marks workspace rows and groups the sidebar by project or status', async (
       page.locator('[data-slot="collapsible"]').filter({
         has: page.getByTestId(`status-group-${status}`)
       })
-    for (const status of ['ready_to_review', 'done']) {
+    for (const status of ['in_progress', 'ready_to_review', 'done']) {
       const header = page.getByTestId(`status-group-${status}`)
       if ((await header.getAttribute('aria-expanded')) !== 'true') await header.click()
     }
@@ -278,20 +270,22 @@ test('marks workspace rows and groups the sidebar by project or status', async (
     await expect(
       group('in_progress').getByTestId(`workspace-row-${notesWorkspace!.id}`)
     ).toBeVisible()
-    await expect(group('in_progress').getByTestId(`workspace-row-${api!.id}`)).toHaveCount(0)
+    await expect(group('in_progress').getByTestId(`workspace-row-${api!.id}`)).toBeVisible()
     await expect(
       group('ready_to_review').getByTestId(`status-project-ready_to_review-${ledger!.id}`)
     ).toBeVisible()
     await expect(
       group('ready_to_review').getByTestId(`workspace-row-${ledgerWorkspace!.id}`)
     ).toBeVisible()
-    await expect(group('done').getByTestId(`status-project-done-${project!.id}`)).toBeVisible()
-    await expect(group('done').getByTestId(`project-root-${project!.id}`)).toBeVisible()
-    await expect(group('done').getByTestId(`project-root-${project!.id}`)).toHaveAttribute(
+    await expect(
+      group('done').getByTestId(`status-project-done-${storefrontProject!.id}`)
+    ).toBeVisible()
+    await expect(group('done').getByTestId(`workspace-row-${storefront!.id}`)).toBeVisible()
+    await expect(group('done').getByTestId(`workspace-row-${storefront!.id}`)).toHaveAttribute(
       'data-workspace-icon',
-      'folder-tree'
+      'branch'
     )
-    await expect(group('done').getByText('root', { exact: true })).toBeVisible()
+    await expect(group('done').getByText('root', { exact: true })).toHaveCount(0)
     await expect(
       group('in_progress').getByTestId(`workspace-row-${notesWorkspace!.id}`)
     ).toHaveAttribute('data-workspace-icon', 'branch')
@@ -305,8 +299,8 @@ test('marks workspace rows and groups the sidebar by project or status', async (
     await expect(
       page.getByTestId('status-group-todo').locator('[data-workspace-status-icon="todo"]')
     ).toBeVisible()
-    // The multi-root tree lists every repository under its root, whatever the repo's own status.
     await expect(group('done').getByTestId(`workspace-row-${storefront!.id}`)).toHaveCount(1)
+    await expect(group('in_progress').getByTestId(`workspace-row-${api!.id}`)).toHaveCount(1)
     await expect(group('todo').getByTestId(/workspace-row-/)).toHaveCount(0)
 
     await page.evaluate(() => {
@@ -324,16 +318,17 @@ test('marks workspace rows and groups the sidebar by project or status', async (
     await expect(page.getByTestId('sidebar-group-by')).toHaveAttribute('data-group-by', 'status', {
       timeout: 30_000
     })
-    await expect(page.getByTestId('status-count-in_progress')).toHaveText('1')
+    await expect(page.getByTestId('status-count-in_progress')).toHaveText('2')
     await expect(page.getByTestId('status-count-done')).toHaveText('1')
 
     await page.getByTestId('sidebar-group-by').click()
     await page.getByTestId('sidebar-group-project').click()
-    await expandProject(page, project!.id)
+    await expandProject(page, storefrontProject!.id)
+    await expandProject(page, apiProject!.id)
     await expandProject(page, notes!.id)
     await expect(notesRow).toHaveAttribute('data-workspace-status', 'in_progress')
-    await expect(rootRow).toHaveAttribute('data-workspace-status', 'done')
-    await expect(apiRow).not.toHaveAttribute('data-workspace-status')
+    await expect(storefrontRow).toHaveAttribute('data-workspace-status', 'done')
+    await expect(apiRow).toHaveAttribute('data-workspace-status', 'in_progress')
     await expect(
       page.evaluate(async () => (await window.cerebro.getSettings()).sidebarGroupBy)
     ).resolves.toBe('project')

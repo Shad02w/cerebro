@@ -114,8 +114,8 @@ export function AddProjectDialog({
               <code className="rounded bg-muted px-1 py-0.5 text-xs">
                 {defaultCloneDir ?? '~/cerebro'}
               </code>
-              , or choose any folder. A folder with multiple git repositories is added as a
-              multi-root workspace.
+              , or choose a folder. When it contains several git repositories, each one is added as
+              its own project.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
