@@ -9,6 +9,7 @@ import {
   type Workspace
 } from '@shared/types'
 import type { AgentModel } from '@cerebro/core'
+import { AsciiField } from '@/components/ascii-field'
 import { BrainMark } from '@/components/brain-mark'
 import { Button } from '@/components/ui/button'
 import { TerminalStack } from '@/components/terminal-stack'
@@ -65,7 +66,8 @@ export function WorkspaceView({
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
       {!workspace ? (
-        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-background px-8 text-center">
+        <div className="absolute inset-0 isolate z-10 flex flex-col items-center justify-center gap-3 bg-background px-8 text-center">
+          {agentBackground === 'ascii' ? <AsciiField /> : null}
           <BrainMark className="mb-8" />
           {hasProjects ? null : (
             <div className="space-y-1">

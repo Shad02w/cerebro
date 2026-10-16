@@ -1,4 +1,5 @@
 import { FileDiff, MessageSquare, SquareTerminal } from 'lucide-react'
+import { AsciiField } from '@/components/ascii-field'
 import { BrainMark } from '@/components/brain-mark'
 import { Button } from '@/components/ui/button'
 import { ShortcutKbd, useKeybindBinding } from '@/keybinds'
@@ -7,9 +8,12 @@ type WorkspaceEmptyStateProps = {
   onNewTerminal: () => void
   onOpenChat: () => void
   onOpenChanges: () => void
+  /** Draw the drifting ASCII texture behind the guide. */
+  ascii?: boolean
 }
 
 export function WorkspaceEmptyState({
+  ascii = false,
   onNewTerminal,
   onOpenChanges,
   onOpenChat
@@ -21,8 +25,9 @@ export function WorkspaceEmptyState({
   return (
     <div
       data-testid="workspace-empty-state"
-      className="flex h-full flex-col items-center justify-center gap-6 px-6 text-center"
+      className="relative isolate flex h-full flex-col items-center justify-center gap-6 px-6 text-center"
     >
+      {ascii ? <AsciiField /> : null}
       <BrainMark />
       <div className="space-y-1">
         <h2 className="text-lg font-medium">Start in this workspace</h2>

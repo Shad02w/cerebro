@@ -122,8 +122,8 @@ export type ProjectBranch = {
 /** Stored keyboard shortcut overrides keyed by action id (e.g. `closeTab`). */
 export type KeybindOverrides = Partial<Record<string, string>>
 
-/** Empty agent pane background. `stars` is the default. */
-export const AGENT_BACKGROUNDS = ['glow', 'stars', 'off'] as const
+/** Empty pane background. `stars` is the default; `ascii` is a drifting character texture. */
+export const AGENT_BACKGROUNDS = ['glow', 'stars', 'ascii', 'off'] as const
 export type AgentBackground = (typeof AGENT_BACKGROUNDS)[number]
 export const DEFAULT_AGENT_BACKGROUND: AgentBackground = 'stars'
 

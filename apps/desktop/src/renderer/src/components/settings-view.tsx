@@ -11,6 +11,7 @@ import type {
   GitHubStatus
 } from '@shared/types'
 import {
+  AGENT_BACKGROUNDS,
   MAX_TERMINAL_FONT_SIZE,
   MIN_TERMINAL_FONT_SIZE,
   TERMINAL_FONT_FAMILY_AUTO
@@ -126,6 +127,7 @@ type GeneralSettingsProps = {
 const AGENT_BACKGROUND_ITEMS = [
   { value: 'glow', label: 'Glow' },
   { value: 'stars', label: 'Stars' },
+  { value: 'ascii', label: 'ASCII' },
   { value: 'off', label: 'Off' }
 ]
 
@@ -224,16 +226,16 @@ function GeneralSettings({
             </Label>
             <p className="text-xs leading-relaxed text-muted-foreground">
               Glow sits behind the composer. Stars fill the empty pane until the first message is
-              sent. Off leaves the pane plain.
+              sent. ASCII fills empty panes with drifting characters that ripple when you click
+              empty space. Off leaves the pane plain.
             </p>
           </div>
           <Select
             items={AGENT_BACKGROUND_ITEMS}
             value={settings.agentBackground}
             onValueChange={(value): void => {
-              if (value === 'glow' || value === 'stars' || value === 'off') {
-                void persistAgentBackground(value)
-              }
+              const next = AGENT_BACKGROUNDS.find((background) => background === value)
+              if (next) void persistAgentBackground(next)
             }}
           >
             <SelectTrigger

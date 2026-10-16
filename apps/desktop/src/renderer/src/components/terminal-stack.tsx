@@ -737,6 +737,7 @@ export function TerminalStack({
         layoutQuery.isSuccess &&
         !workspace?.tabs.length ? (
           <WorkspaceEmptyState
+            ascii={agentBackground === 'ascii'}
             onNewTerminal={() => addTab(activeWorkspaceId)}
             onOpenChat={() => addTab(activeWorkspaceId, 'chat')}
             onOpenChanges={() => openChanges(activeWorkspaceId)}

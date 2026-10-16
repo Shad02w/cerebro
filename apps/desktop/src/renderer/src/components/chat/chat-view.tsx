@@ -20,6 +20,7 @@ import {
   type AgentModelDefaults,
   type LastAgent
 } from '@shared/types'
+import { AsciiField } from '@/components/ascii-field'
 import { Button } from '@/components/ui/button'
 import { SuccessToast } from '@/components/success-toast'
 import { acceptLayout } from '@/lib/query-client'
@@ -535,15 +536,25 @@ export function ChatView({
   }, [active, loading])
   const alertText = session?.error ?? (view.error ? String(view.error) : null)
   const starsWanted = agentBackground === 'stars' && empty
+  const asciiWanted = agentBackground === 'ascii' && empty
   const [starPhase, setStarPhase] = useState<'on' | 'out' | 'off'>('off')
   if (starsWanted && starPhase !== 'on') setStarPhase('on')
   else if (!starsWanted && starPhase === 'on') setStarPhase('out')
+  const [asciiPhase, setAsciiPhase] = useState<'on' | 'out' | 'off'>('off')
+  if (asciiWanted && asciiPhase !== 'on') setAsciiPhase('on')
+  else if (!asciiWanted && asciiPhase === 'on') setAsciiPhase('out')
   useEffect(() => {
-    if (starPhase !== 'out') return
+    if (starPhase !== 'out' && asciiPhase !== 'out') return
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    const timeout = window.setTimeout(() => setStarPhase('off'), reduce ? 0 : 480)
+    const timeout = window.setTimeout(
+      () => {
+        setStarPhase((phase) => (phase === 'out' ? 'off' : phase))
+        setAsciiPhase((phase) => (phase === 'out' ? 'off' : phase))
+      },
+      reduce ? 0 : 480
+    )
     return () => window.clearTimeout(timeout)
-  }, [starPhase])
+  }, [starPhase, asciiPhase])
   const transcript = session?.items.length ? session : null
   const knownTurnIds = transcriptTurnIds(transcript?.items, transcript?.turnId)
   const watchedTurnIds = watchedTurns(transcript?.items, busy, transcript?.turnId)
@@ -573,6 +584,9 @@ export function ChatView({
           pointerEvents={false}
           className="chat-stars pointer-events-none absolute inset-0 -z-10"
         />
+      ) : null}
+      {asciiPhase !== 'off' ? (
+        <AsciiField visible={asciiPhase === 'on'} className="chat-stars" />
       ) : null}
       {loading ? (
         <div
