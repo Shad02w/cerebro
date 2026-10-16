@@ -61,7 +61,7 @@ export const KEYBIND_CATALOG: readonly KeybindAction[] = [
   {
     id: 'searchSessions',
     label: 'Search sessions',
-    description: 'Search open and past agent sessions in the selected workspace or its project.',
+    description: 'Search open and closed agent sessions in every project.',
     defaultHotkey: 'Mod+K',
     target: 'app'
   },

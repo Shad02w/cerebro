@@ -17,6 +17,7 @@ import {
   Folders,
   FolderTree,
   GitBranch,
+  History,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -166,16 +167,16 @@ function repositoryWorkspaces(project: Project): Workspace[] {
 
 const OpenSessionSearchContext = createContext<(workspaceId: number) => void>(() => {})
 
-function SearchPastSessions({ workspaceId }: { workspaceId: number }): React.JSX.Element {
+function WorkspaceSessionHistory({ workspaceId }: { workspaceId: number }): React.JSX.Element {
   const onSearch = useContext(OpenSessionSearchContext)
   return (
-    <PlusActionTooltip label="Search past sessions">
+    <PlusActionTooltip label="Session history">
       <SidebarMenuAction
         showOnHover
         tabIndex={-1}
         className="app-no-drag"
         data-testid={`workspace-search-sessions-${workspaceId}`}
-        aria-label="Search past sessions"
+        aria-label="Session history"
         onPointerDown={(event): void => event.stopPropagation()}
         onClick={(event): void => {
           event.preventDefault()
@@ -183,8 +184,8 @@ function SearchPastSessions({ workspaceId }: { workspaceId: number }): React.JSX
           onSearch(workspaceId)
         }}
       >
-        <Search className="size-3.5" />
-        <span className="sr-only">Search past sessions</span>
+        <History className="size-3.5" />
+        <span className="sr-only">Session history</span>
       </SidebarMenuAction>
     </PlusActionTooltip>
   )
@@ -706,7 +707,7 @@ function MultiRootRepoRow({
             ) : null}
           </button>
           <RowActions overlay>
-            <SearchPastSessions workspaceId={workspace.id} />
+            <WorkspaceSessionHistory workspaceId={workspace.id} />
             <WorkspaceOverflowMenu workspace={workspace} allowRemove={false} onRename={onRename} />
           </RowActions>
           <WorkspaceSessionList agents={agents} muted={muted} onOpenAgent={onOpenAgent} />
@@ -891,7 +892,9 @@ function MultiRootWorkspaceTree({
                       {rootOpen ? 'Collapse repositories' : 'Expand repositories'}
                     </span>
                   </SidebarMenuAction>
-                  {rootWorkspace ? <SearchPastSessions workspaceId={rootWorkspace.id} /> : null}
+                  {rootWorkspace ? (
+                    <WorkspaceSessionHistory workspaceId={rootWorkspace.id} />
+                  ) : null}
                   <RootOverflowMenu
                     project={project}
                     onRename={(): void => {
@@ -1133,7 +1136,7 @@ function ProjectItem({
                         </SidebarMenuSubButton>
                         <BranchIconOverlay workspace={workspace} />
                         <RowActions overlay>
-                          <SearchPastSessions workspaceId={workspace.id} />
+                          <WorkspaceSessionHistory workspaceId={workspace.id} />
                           <WorkspaceOverflowMenu
                             workspace={workspace}
                             onRename={(): void => onRenameWorkspace(workspace)}
@@ -1366,7 +1369,7 @@ function WorkspaceSearchResults({
                   </SidebarMenuButton>
                 </WorkspaceHoverCard>
                 <RowActions overlay>
-                  <SearchPastSessions workspaceId={workspace.id} />
+                  <WorkspaceSessionHistory workspaceId={workspace.id} />
                 </RowActions>
                 <WorkspaceSessionList
                   agents={activity.get(workspace.id) ?? []}
@@ -1806,7 +1809,6 @@ export function AppSidebar({
         <SessionSearchDialog
           request={sessionSearch}
           projects={projects}
-          activeWorkspaceId={activeWorkspaceId}
           onOpen={(hit) => openAgentSession(hit, onSelectWorkspace)}
           onClose={(): void => setSessionSearch(null)}
         />
