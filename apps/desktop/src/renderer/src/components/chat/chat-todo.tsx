@@ -10,20 +10,24 @@ const marks: Record<TodoStatus, { icon: typeof Circle; tone: string }> = {
   completed: { icon: Check, tone: 'text-muted-foreground' }
 }
 
-/** Checklist rows. An empty list renders nothing. */
+/** Checklist rows. An empty list renders nothing. The panel supplies its own heading. */
 export function ChatTodoList({
-  todo
+  todo,
+  showHeading = true
 }: {
   todo: TodoSnapshot | undefined
+  showHeading?: boolean
 }): React.JSX.Element | null {
   if (!todo?.items.length) return null
   const completed = todo.items.filter((item) => item.status === 'completed').length
   const total = todo.items.length
   return (
     <div data-testid="chat-todo-list">
-      <p className="px-2 pt-1 pb-1.5 text-xs font-medium text-muted-foreground">
-        Tasks <span className="tabular-nums">{`${completed}/${total}`}</span>
-      </p>
+      {showHeading ? (
+        <p className="px-2 pt-1 pb-1.5 text-xs font-medium text-muted-foreground">
+          Tasks <span className="tabular-nums">{`${completed}/${total}`}</span>
+        </p>
+      ) : null}
       <ol aria-label="Tasks" className="flex flex-col">
         {todo.items.map((item) => {
           const mark = marks[item.status]

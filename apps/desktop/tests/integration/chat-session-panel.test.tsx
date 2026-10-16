@@ -14,6 +14,12 @@ import { ChatView } from '@/components/chat/chat-view'
 
 const wide = '@min-[56rem]/chat'
 
+function badgeCounts(root: HTMLElement): string[][] {
+  return within(root)
+    .getAllByTestId('chat-session-badge')
+    .map((badge) => [badge.getAttribute('data-section') ?? '', badge.textContent ?? ''])
+}
+
 const model: AgentModel = {
   key: 'test',
   instance: 'local',
@@ -98,6 +104,15 @@ describe('ChatSessionPanel', () => {
       'Delayed pwd'
     )
     expect(within(agents).getByRole('heading', { name: 'Agents' })).toBeInTheDocument()
+    expect(badgeCounts(panel)).toEqual([
+      ['tasks', '2'],
+      ['background', '1'],
+      ['agents', '1']
+    ])
+    for (const badge of within(panel).getAllByTestId('chat-session-badge')) {
+      expect(badge.className).toContain('bg-[var(--sidebar-selected)]')
+      expect(badge.className).not.toMatch(/bg-(?:teal|red|blue|green|orange)-|bg-\[#/)
+    }
     const agent = within(agents).getByTestId('chat-subagent')
     expect(agent).toHaveAttribute('data-status', 'completed')
     expect(agent).toHaveTextContent('Review the diff')
@@ -119,6 +134,7 @@ describe('ChatSessionPanel', () => {
     expect(screen.getByTestId('chat-session-panel-background')).toBeInTheDocument()
     expect(screen.queryByTestId('chat-session-panel-tasks')).toBeNull()
     expect(screen.queryByTestId('chat-session-panel-agents')).toBeNull()
+    expect(badgeCounts(screen.getByTestId('chat-session-panel'))).toEqual([['background', '1']])
   })
 
   it('collapses to a vertical icon list and expands back to every section', async () => {
@@ -134,6 +150,16 @@ describe('ChatSessionPanel', () => {
         .getAllByRole('button')
         .map((button) => button.getAttribute('aria-label'))
     ).toEqual(['Expand session status', '2 tasks', '1 background job', '1 agent'])
+    expect(badgeCounts(rail)).toEqual([
+      ['tasks', '2'],
+      ['background', '1'],
+      ['agents', '1']
+    ])
+    expect(
+      within(rail)
+        .getByRole('button', { name: 'Expand session status' })
+        .querySelector('[data-testid="chat-session-badge"]')
+    ).toBeNull()
     await user.click(within(rail).getByRole('button', { name: 'Expand session status' }))
     expect(screen.getByTestId('chat-session-panel')).toHaveAttribute('data-expanded', 'true')
     expect(screen.getByTestId('chat-session-panel-tasks')).toBeInTheDocument()

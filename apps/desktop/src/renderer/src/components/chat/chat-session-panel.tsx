@@ -1,9 +1,11 @@
 import { Fragment, useState } from 'react'
 import { Bot, ListTodo, LoaderCircle, PanelRightClose, PanelRightOpen } from 'lucide-react'
 import type { AgentBackgroundTask, AgentSession, AgentSubagent, TodoSnapshot } from '@cerebro/core'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { cn } from '@/lib/utils'
 import { ChatBackgroundTaskList } from './chat-background-tasks'
 import { ChatSubagentStack } from './chat-subagents'
 import { ChatTodoList } from './chat-todo'
@@ -86,18 +88,19 @@ function SessionSections({ status }: { status: SessionStatus }): React.JSX.Eleme
   const blocks = [
     status.todo ? (
       <section key="tasks" data-testid="chat-session-panel-tasks" className="px-1 py-2">
-        <ChatTodoList todo={status.todo} />
+        <SectionHeading title="Tasks" count={status.todo.items.length} section="tasks" />
+        <ChatTodoList todo={status.todo} showHeading={false} />
       </section>
     ) : null,
     status.tasks ? (
       <section key="background" data-testid="chat-session-panel-background" className="px-1 py-2">
-        <h2 className="px-2 pt-1 pb-1 text-xs font-medium text-muted-foreground">Background</h2>
+        <SectionHeading title="Background" count={status.tasks.length} section="background" />
         <ChatBackgroundTaskList tasks={status.tasks} />
       </section>
     ) : null,
     status.agents ? (
       <section key="agents" data-testid="chat-session-panel-agents" className="px-1 py-2">
-        <h2 className="px-2 pt-1 pb-1 text-xs font-medium text-muted-foreground">Agents</h2>
+        <SectionHeading title="Agents" count={status.agents.length} section="agents" />
         <ChatSubagentStack agents={status.agents} />
       </section>
     ) : null
@@ -124,18 +127,24 @@ function SessionRail({
   const icons = [
     status.todo
       ? {
+          section: 'tasks',
+          count: status.todo.items.length,
           label: countLabel(status.todo.items.length, 'task', 'tasks'),
           icon: <ListTodo />
         }
       : null,
     status.tasks
       ? {
+          section: 'background',
+          count: status.tasks.length,
           label: `${status.tasks.length} background ${status.tasks.length === 1 ? 'job' : 'jobs'}`,
           icon: <LoaderCircle className="animate-spin" />
         }
       : null,
     status.agents
       ? {
+          section: 'agents',
+          count: status.agents.length,
           label: countLabel(status.agents.length, 'agent', 'agents'),
           icon: <Bot />
         }
@@ -152,9 +161,52 @@ function SessionRail({
       {icons.map((item) => (
         <RailButton key={item.label} label={item.label} onClick={onExpand}>
           {item.icon}
+          <CountBadge count={item.count} section={item.section} corner />
         </RailButton>
       ))}
     </div>
+  )
+}
+
+function SectionHeading({
+  title,
+  count,
+  section
+}: {
+  title: string
+  count: number
+  section: string
+}): React.JSX.Element {
+  return (
+    <div className="flex items-center gap-1.5 px-2 pt-1 pb-1">
+      <h2 className="text-xs font-medium text-muted-foreground">{title}</h2>
+      <CountBadge count={count} section={section} />
+    </div>
+  )
+}
+
+/** Count pill in the theme accent. Hidden when the section is empty. */
+function CountBadge({
+  count,
+  section,
+  corner = false
+}: {
+  count: number
+  section: string
+  corner?: boolean
+}): React.JSX.Element | null {
+  if (count < 1) return null
+  return (
+    <Badge
+      data-testid="chat-session-badge"
+      data-section={section}
+      className={cn(
+        'h-4 min-w-4 border-transparent bg-[var(--sidebar-selected)] px-1 text-[10px] leading-none text-background tabular-nums',
+        corner && 'pointer-events-none absolute -top-1 -right-1'
+      )}
+    >
+      {count}
+    </Badge>
   )
 }
 
@@ -176,6 +228,7 @@ function RailButton({
             size="icon-sm"
             variant="ghost"
             aria-label={label}
+            className="relative"
             onClick={onClick}
           />
         }

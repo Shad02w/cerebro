@@ -79,7 +79,7 @@ export function ChatTurnRail({
     <nav
       aria-label="Conversation turns"
       data-testid="chat-turn-rail"
-      className="pointer-events-auto absolute top-1/2 left-2 z-20 -translate-y-1/2"
+      className="pointer-events-auto absolute top-1/2 left-2 z-20 hidden -translate-y-1/2 @min-[56rem]/chat:block"
     >
       <ol className="flex flex-col items-start gap-px">
         {turns.map((turn, index) => (
