@@ -175,7 +175,7 @@ function SessionSearchPanel({
   return (
     <DialogContent
       data-testid="session-search-dialog"
-      className="top-[12%] flex max-h-[min(32rem,calc(100%-6rem))] translate-y-0 flex-col gap-0 overflow-hidden p-0 sm:max-w-xl"
+      className="top-[12%] z-[60] flex min-h-[min(36rem,calc(100%-8rem))] max-h-[min(36rem,calc(100%-6rem))] w-[min(44rem,calc(100%-2rem))] max-w-none translate-y-0 flex-col gap-0 overflow-hidden bg-popover p-0 opacity-100 shadow-xl transition-none data-starting-style:opacity-100! sm:max-w-none"
       showCloseButton={false}
     >
       <SessionSearchHeader
@@ -326,7 +326,7 @@ function SessionSearchResults({
       id="session-search-results"
       role="listbox"
       aria-label="Sessions"
-      className="min-h-0 flex-1 overflow-y-auto p-1"
+      className="min-h-0 flex-1 overflow-y-auto bg-popover p-1"
     >
       {error ? (
         <p role="alert" className="px-2 py-6 text-center text-sm text-destructive">

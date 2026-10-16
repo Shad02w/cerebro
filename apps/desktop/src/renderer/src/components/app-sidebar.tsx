@@ -165,10 +165,13 @@ function repositoryWorkspaces(project: Project): Workspace[] {
   return project.workspaces.filter((workspace) => workspace.kind !== 'root')
 }
 
-const OpenSessionSearchContext = createContext<(workspaceId: number) => void>(() => {})
+const OpenSessionSearchContext = createContext<{
+  open: (workspaceId: number) => void
+  historyWorkspaceId: number | null
+}>({ open: () => {}, historyWorkspaceId: null })
 
 function WorkspaceSessionHistory({ workspaceId }: { workspaceId: number }): React.JSX.Element {
-  const onSearch = useContext(OpenSessionSearchContext)
+  const { open, historyWorkspaceId } = useContext(OpenSessionSearchContext)
   return (
     <PlusActionTooltip label="Session history">
       <SidebarMenuAction
@@ -176,12 +179,13 @@ function WorkspaceSessionHistory({ workspaceId }: { workspaceId: number }): Reac
         tabIndex={-1}
         className="app-no-drag"
         data-testid={`workspace-search-sessions-${workspaceId}`}
+        data-popup-open={historyWorkspaceId === workspaceId ? '' : undefined}
         aria-label="Session history"
         onPointerDown={(event): void => event.stopPropagation()}
         onClick={(event): void => {
           event.preventDefault()
           event.stopPropagation()
-          onSearch(workspaceId)
+          open(workspaceId)
         }}
       >
         <History className="size-3.5" />
@@ -1656,7 +1660,12 @@ export function AppSidebar({
   const statusLayout = !isSettings && !query && projects.length > 0 && groupBy === 'status'
 
   return (
-    <OpenSessionSearchContext.Provider value={openWorkspaceSearch}>
+    <OpenSessionSearchContext.Provider
+      value={{
+        open: openWorkspaceSearch,
+        historyWorkspaceId: sessionSearch?.mode === 'workspace' ? sessionSearch.workspaceId : null
+      }}
+    >
       <>
         <Sidebar
           collapsible={isSettings ? 'none' : 'offcanvas'}
