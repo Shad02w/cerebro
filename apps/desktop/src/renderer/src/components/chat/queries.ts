@@ -1,4 +1,5 @@
 import type { AgentCatalog, AgentHarness, AgentSkillList } from '@cerebro/core'
+import { isRecoverableMuxDisconnect } from '@shared/mux-retry'
 export const harnessLabels: Record<AgentHarness, string> = {
   claude: 'Claude Code',
   codex: 'Codex',
@@ -15,6 +16,24 @@ export const catalogOptions = {
     return catalog
   },
   staleTime: 60_000
+}
+
+/** Live chat pane. A dropped mux socket is retried; the turn is still on the server. */
+export function chatPaneQuery(
+  workspaceId: number,
+  paneId: number
+): {
+  queryKey: readonly ['chat', number, number]
+  queryFn: () => ReturnType<typeof window.cerebro.chatCommand>
+  staleTime: typeof Infinity
+  retry: (failureCount: number, error: unknown) => boolean
+} {
+  return {
+    queryKey: ['chat', workspaceId, paneId] as const,
+    queryFn: () => window.cerebro.chatCommand({ action: 'get', workspaceId, paneId }),
+    staleTime: Infinity,
+    retry: (failureCount, error) => failureCount < 4 && isRecoverableMuxDisconnect(error)
+  }
 }
 
 /** Skills the composer can mention for the selected harness in this pane. */

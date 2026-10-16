@@ -7,6 +7,7 @@ import {
   type WorkspaceTab
 } from '@cerebro/core'
 import { HarnessIcon, HarnessStatusIcon } from '@/components/harness-icon'
+import { chatPaneQuery } from './queries'
 
 function chatPaneIds(node: PaneNode): number[] {
   if (node.type === 'pane') return node.kind === 'chat' ? [node.id] : []
@@ -25,9 +26,7 @@ export function ChatTabIcon({
   const paneIds = chatPaneIds(tab.root)
   const sessions = useQueries({
     queries: paneIds.map((paneId) => ({
-      queryKey: ['chat', workspaceId, paneId],
-      queryFn: () => window.cerebro.chatCommand({ action: 'get', workspaceId, paneId }),
-      staleTime: Infinity,
+      ...chatPaneQuery(workspaceId, paneId),
       select: (view: Awaited<ReturnType<typeof window.cerebro.chatCommand>>): TabSession | null =>
         view.session
           ? {
