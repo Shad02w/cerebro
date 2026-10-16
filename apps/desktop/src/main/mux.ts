@@ -3,6 +3,7 @@ import { join, resolve } from 'node:path'
 import { connectMux, MuxError, type MuxClient, type TerminalEvent } from '@cerebro/mux'
 import type { AgentStatusEvent, LayoutState, WorkspaceTabs } from '@cerebro/core'
 import { IPC } from '../shared/ipc'
+import { isRecoverableMuxDisconnect, retriesAfterMuxDisconnect } from '../shared/mux-retry'
 
 let connection: Promise<MuxClient> | undefined
 let quitting = false
@@ -120,14 +121,30 @@ export function getMux(): Promise<MuxClient> {
     })
   return connection
 }
-export async function muxCall<T>(method: string, params: unknown = {}): Promise<T> {
+export async function muxCall<T>(
+  method: string,
+  params: unknown = {},
+  allowRetry = true
+): Promise<T> {
   const action = (params as { action?: string })?.action
   if (
     method === 'terminal.restart' ||
     ((method === 'registry' || method === 'layout.command') && action && action !== 'list')
   )
     intentionallyStopped = false
-  return (await getMux()).request<T>(method, params)
+  try {
+    return await (await getMux()).request<T>(method, params)
+  } catch (error) {
+    // The turn keeps running after the socket drops. Read it back instead of failing the prompt.
+    if (
+      !allowRetry ||
+      intentionallyStopped ||
+      !retriesAfterMuxDisconnect(method, params) ||
+      !isRecoverableMuxDisconnect(error)
+    )
+      throw error
+    return muxCall<T>(method, params, false)
+  }
 }
 export function disconnectMux(): void {
   quitting = true

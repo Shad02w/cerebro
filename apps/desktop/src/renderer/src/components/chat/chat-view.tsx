@@ -52,7 +52,8 @@ import { chatImageAccept, useComposerDraft } from './use-composer-draft'
 import { ModelPicker } from './model-picker'
 import { ContextUsageRing } from './context-usage-ring'
 import { messageToResend } from './model-switch'
-import { agentSkillOptions, catalogOptions, harnessLabels } from './queries'
+import { agentSkillOptions, catalogOptions, chatPaneQuery, harnessLabels } from './queries'
+import { isRecoverableMuxDisconnect } from '@shared/mux-retry'
 import { observeChatLayout } from './chat-layout'
 import './chat-status.css'
 
@@ -114,11 +115,7 @@ export function ChatView({
     [composerVim, composerVimMode]
   )
   const queryKey = ['chat', workspaceId, paneId]
-  const view = useQuery({
-    queryKey,
-    queryFn: () => window.cerebro.chatCommand({ action: 'get', workspaceId, paneId }),
-    staleTime: Infinity
-  })
+  const view = useQuery(chatPaneQuery(workspaceId, paneId))
   const catalog = useQuery(catalogOptions)
   // Pending with no data is "not confirmed yet" — never treat it as empty.
   const loading = !view.data && view.isPending
@@ -321,13 +318,19 @@ export function ChatView({
         await mutateAsync({ ...command, workspaceId, paneId })
         return true
       } catch (error) {
+        // The prompt may already be on the server. Reread the pane instead of sticking the
+        // disconnect over Working / Reasoning until the app is restarted.
+        if (isRecoverableMuxDisconnect(error)) {
+          void client.invalidateQueries({ queryKey: ['chat', workspaceId] })
+          return false
+        }
         notify(error instanceof Error ? error.message : String(error))
         return false
       } finally {
         inFlight.current = false
       }
     },
-    [mutateAsync, notify, workspaceId, paneId]
+    [client, mutateAsync, notify, workspaceId, paneId]
   )
   const reply = useCallback(
     (requestId: string, answer: AgentAnswer): void => {
@@ -535,7 +538,13 @@ export function ChatView({
     if (document.activeElement?.matches('[role="tablist"] :focus-visible')) return
     editorRef.current?.focus()
   }, [active, loading])
-  const alertText = session?.error ?? (view.error ? String(view.error) : null)
+  const queryError = view.error ? String(view.error) : null
+  // A dropped socket still has the turn on the server. Keep the transcript up while it is reread.
+  const alertText =
+    session?.error ??
+    (queryError && !(session && view.isFetching && isRecoverableMuxDisconnect(view.error))
+      ? queryError
+      : null)
   const starsWanted = agentBackground === 'stars' && empty
   const asciiWanted = agentBackground === 'ascii' && empty
   const [starPhase, setStarPhase] = useState<'on' | 'out' | 'off'>('off')

@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto'
 import type { Query, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import { shellEnv } from '../../shell-env'
 import { executable, describe, type Frame } from '../transport'
+import { spawnClaudeProcess } from '../claude-spawn'
 import type { AgentAdapter, AutonomousTurn, RunAttachment } from './adapter'
 import { claudeContextUsage } from '../context-usage'
 import { activeTurn, inline, item, model } from './shared'
@@ -167,7 +168,8 @@ const askClaude = async <T>(cwd: string, read: (query: Query) => Promise<T>): Pr
       cwd,
       pathToClaudeCodeExecutable: binary,
       env: { ...shellEnv() },
-      settingSources: ['user', 'project', 'local']
+      settingSources: ['user', 'project', 'local'],
+      spawnClaudeCodeProcess: spawnClaudeProcess
     }
   })
   try {
@@ -819,6 +821,7 @@ export const claudeAdapter: AgentAdapter = {
         options: {
           cwd: session.cwd,
           pathToClaudeCodeExecutable: executable('claude'),
+          spawnClaudeCodeProcess: spawnClaudeProcess,
           // Models Claude Code does not recognize omit Task tools unless the session opts in.
           env: { ...shellEnv(), CLAUDE_CODE_ENABLE_TODO_TOOLS: '1' },
           model: session.model.id || undefined,
