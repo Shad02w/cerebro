@@ -8,9 +8,55 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Input } from '@/components/ui/input'
 import { ShortcutKbd, useKeybindBinding } from '@/keybinds'
 import { relativeUpdated } from '@/lib/agent-status-text'
+import {
+  groupSessionsByProject,
+  sessionWorkspaceLine,
+  type SessionProjectGroup
+} from '@/lib/session-workspace-line'
 import { cn } from '@/lib/utils'
 
 export type SessionSearchRequest = { mode: 'palette' } | { mode: 'workspace'; workspaceId: number }
+
+function sessionSearchEmpty(pastOnly: boolean, query: string, failed: boolean): string | null {
+  if (failed) return null
+  if (pastOnly && !query.trim()) return 'No closed sessions in this workspace.'
+  if (query.trim()) return 'No matching sessions.'
+  return 'No sessions.'
+}
+
+function paletteWorkspaceIds(request: SessionSearchRequest, projects: Project[]): number[] {
+  if (request.mode === 'workspace') return [request.workspaceId]
+  return [
+    ...new Set(projects.flatMap((project) => project.workspaces.map((workspace) => workspace.id)))
+  ]
+}
+
+function moveHighlight(key: string, highlight: number, count: number): number | null {
+  if (key !== 'ArrowDown' && key !== 'ArrowUp') return null
+  if (!count) return highlight
+  const next = key === 'ArrowDown' ? highlight + 1 : highlight - 1
+  return (next + count) % count
+}
+
+async function openChosen(
+  hit: ChatSearchHit,
+  opening: { current: boolean },
+  onOpen: (hit: ChatSearchHit) => Promise<void>,
+  onClose: () => void,
+  setError: (message: string | null) => void
+): Promise<void> {
+  if (opening.current) return
+  opening.current = true
+  setError(null)
+  try {
+    await onOpen(hit)
+    onClose()
+  } catch (caught) {
+    setError(caught instanceof Error ? caught.message : String(caught))
+  } finally {
+    opening.current = false
+  }
+}
 
 function located(
   projects: Project[],
@@ -26,13 +72,11 @@ function located(
 export function SessionSearchDialog({
   request,
   projects,
-  activeWorkspaceId,
   onOpen,
   onClose
 }: {
   request: SessionSearchRequest | null
   projects: Project[]
-  activeWorkspaceId: number | null
   onOpen: (hit: ChatSearchHit) => Promise<void>
   onClose: () => void
 }): React.JSX.Element {
@@ -54,7 +98,6 @@ export function SessionSearchDialog({
           key={requestKey}
           request={request}
           projects={projects}
-          activeWorkspaceId={activeWorkspaceId}
           onOpen={onOpen}
           onClose={onClose}
         />
@@ -66,13 +109,11 @@ export function SessionSearchDialog({
 function SessionSearchPanel({
   request,
   projects,
-  activeWorkspaceId,
   onOpen,
   onClose
 }: {
   request: SessionSearchRequest
   projects: Project[]
-  activeWorkspaceId: number | null
   onOpen: (hit: ChatSearchHit) => Promise<void>
   onClose: () => void
 }): React.JSX.Element {
@@ -88,11 +129,9 @@ function SessionSearchPanel({
     return () => clearTimeout(timer)
   }, [query])
 
-  const anchorId = request?.mode === 'workspace' ? request.workspaceId : activeWorkspaceId
-  const anchor = anchorId == null ? null : located(projects, anchorId)
-  const pastOnly = request?.mode === 'workspace'
-  const workspaceId = anchor?.workspace.id
-  const workspaceIds = useMemo(() => (workspaceId == null ? [] : [workspaceId]), [workspaceId])
+  const history = request.mode === 'workspace' ? located(projects, request.workspaceId) : null
+  const pastOnly = request.mode === 'workspace'
+  const workspaceIds = useMemo(() => paletteWorkspaceIds(request, projects), [request, projects])
 
   const search = useQuery({
     queryKey: ['chat', 'search', workspaceIds, debounced, pastOnly],
@@ -106,134 +145,243 @@ function SessionSearchPanel({
   })
 
   const hits = search.data?.hits ?? []
-  const openHits = hits.filter((hit) => hit.open)
-  const pastHits = hits.filter((hit) => !hit.open)
-  const rows = [...openHits, ...pastHits]
+  const groups = groupSessionsByProject(projects, hits)
+  const rows = groups.flatMap((group) => [...group.open, ...group.closed])
+  const lineFor = (hit: ChatSearchHit): string => {
+    const place = located(projects, hit.workspaceId)
+    return place ? sessionWorkspaceLine(place.project, place.workspace) : ''
+  }
   const resultKey = `${debounced}\0${workspaceIds.join(',')}\0${String(pastOnly)}`
   const [highlightState, setHighlightState] = useState({ key: resultKey, index: 0 })
   const highlight = highlightState.key === resultKey ? highlightState.index : 0
   const active = rows[Math.min(highlight, Math.max(rows.length - 1, 0))]
   const setHighlight = (index: number): void => setHighlightState({ key: resultKey, index })
 
-  const choose = async (hit: ChatSearchHit): Promise<void> => {
-    if (opening.current) return
-    opening.current = true
-    setError(null)
-    try {
-      await onOpen(hit)
-      onClose()
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught))
-    } finally {
-      opening.current = false
-    }
-  }
+  const choose = (hit: ChatSearchHit): Promise<void> =>
+    openChosen(hit, opening, onOpen, onClose, setError)
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>): void => {
-    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-      event.preventDefault()
-      if (!rows.length) return
-      const next = event.key === 'ArrowDown' ? highlight + 1 : highlight - 1
-      setHighlight((next + rows.length) % rows.length)
-    }
+    const next = moveHighlight(event.key, highlight, rows.length)
+    if (next == null) return
+    event.preventDefault()
+    setHighlight(next)
   }
 
-  const empty =
-    request?.mode === 'palette' && activeWorkspaceId == null
-      ? 'Select a workspace to search its sessions.'
-      : search.isError
-        ? null
-        : pastOnly && !debounced.trim()
-          ? 'No past sessions in this workspace.'
-          : debounced.trim()
-            ? 'No matching sessions.'
-            : 'No sessions.'
+  const empty = sessionSearchEmpty(pastOnly, debounced, search.isError)
+  const scope = history
+    ? `${history.project.name} · ${sessionWorkspaceLine(history.project, history.workspace)}`
+    : null
 
   return (
     <DialogContent
       data-testid="session-search-dialog"
-      className="top-[12%] flex max-h-[min(32rem,calc(100%-6rem))] translate-y-0 flex-col gap-0 overflow-hidden p-0 sm:max-w-xl"
+      className="top-[12%] z-[60] flex min-h-[min(36rem,calc(100%-8rem))] max-h-[min(36rem,calc(100%-6rem))] w-[min(44rem,calc(100%-2rem))] max-w-none translate-y-0 flex-col gap-0 overflow-hidden bg-popover p-0 opacity-100 shadow-xl transition-none data-starting-style:opacity-100! sm:max-w-none"
       showCloseButton={false}
     >
-      <DialogHeader className="gap-3 border-b px-3 py-3">
-        <div className="flex items-center gap-2 pr-2">
-          <DialogTitle className="text-sm">
-            {pastOnly ? 'Past sessions' : 'Search sessions'}
-          </DialogTitle>
-          <ShortcutKbd hotkey={hotkey} className="ml-auto" />
-        </div>
-        <form
-          onSubmit={(event) => {
-            event.preventDefault()
-            if (active) void choose(active)
-          }}
-        >
-          <div className="relative">
-            <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              autoFocus
-              value={query}
-              placeholder={pastOnly ? 'Search past sessions' : 'Search sessions'}
-              aria-label={pastOnly ? 'Search past sessions' : 'Search sessions'}
-              data-testid="session-search-input"
-              className="pl-8"
-              aria-controls="session-search-results"
-              aria-activedescendant={active ? `session-search-hit-${active.sessionId}` : undefined}
-              onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={onKeyDown}
-            />
-          </div>
-        </form>
-      </DialogHeader>
-      <div
-        id="session-search-results"
-        role="listbox"
-        aria-label="Sessions"
-        className="min-h-0 flex-1 overflow-y-auto p-1"
+      <SessionSearchHeader
+        pastOnly={pastOnly}
+        scope={scope}
+        hotkey={hotkey}
+        query={query}
+        activeId={active?.sessionId}
+        onQuery={setQuery}
+        onKeyDown={onKeyDown}
+        onSubmit={() => {
+          if (active) void choose(active)
+        }}
+      />
+      <SessionSearchResults
+        error={search.isError ? search.error : null}
+        empty={empty}
+        pastOnly={pastOnly}
+        groups={groups}
+        rows={rows}
+        activeId={active?.sessionId}
+        now={now}
+        lineFor={lineFor}
+        onHighlight={setHighlight}
+        onChoose={(hit) => void choose(hit)}
+      />
+      <SessionSearchNotice
+        error={error}
+        shown={search.data?.hits.length ?? 0}
+        total={search.data?.total ?? 0}
+      />
+    </DialogContent>
+  )
+}
+
+function SessionSearchNotice({
+  error,
+  shown,
+  total
+}: {
+  error: string | null
+  shown: number
+  total: number
+}): React.JSX.Element | null {
+  if (error) {
+    return (
+      <p role="alert" className="border-t px-3 py-2 text-sm text-destructive">
+        {error}
+      </p>
+    )
+  }
+  if (total > shown) {
+    return (
+      <p className="border-t px-3 py-2 text-xs text-muted-foreground">
+        Showing {shown} of {total}
+      </p>
+    )
+  }
+  return null
+}
+
+function SessionSearchHeader({
+  pastOnly,
+  scope,
+  hotkey,
+  query,
+  activeId,
+  onQuery,
+  onKeyDown,
+  onSubmit
+}: {
+  pastOnly: boolean
+  scope: string | null
+  hotkey: string
+  query: string
+  activeId: string | undefined
+  onQuery: (value: string) => void
+  onKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void
+  onSubmit: () => void
+}): React.JSX.Element {
+  const label = pastOnly ? 'Search this workspace' : 'Search sessions'
+  return (
+    <DialogHeader className="gap-3 border-b px-3 py-3">
+      <div className="flex items-center gap-2 pr-2">
+        <DialogTitle className="text-sm">{pastOnly ? 'History' : 'Search sessions'}</DialogTitle>
+        {scope ? (
+          <span
+            data-testid="session-search-scope"
+            className="truncate text-xs text-muted-foreground"
+          >
+            {scope}
+          </span>
+        ) : null}
+        {pastOnly ? null : <ShortcutKbd hotkey={hotkey} className="ml-auto" />}
+      </div>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault()
+          onSubmit()
+        }}
       >
-        {search.isError ? (
-          <p role="alert" className="px-2 py-6 text-center text-sm text-destructive">
-            {search.error instanceof Error ? search.error.message : 'Search failed.'}
-          </p>
-        ) : rows.length === 0 ? (
-          <p className="px-2 py-6 text-center text-sm text-muted-foreground">{empty}</p>
-        ) : (
-          <>
-            {openHits.length > 0 ? (
+        <div className="relative">
+          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            autoFocus
+            value={query}
+            placeholder={label}
+            aria-label={label}
+            data-testid="session-search-input"
+            className="pl-8"
+            aria-controls="session-search-results"
+            aria-activedescendant={activeId ? `session-search-hit-${activeId}` : undefined}
+            onChange={(event) => onQuery(event.target.value)}
+            onKeyDown={onKeyDown}
+          />
+        </div>
+      </form>
+    </DialogHeader>
+  )
+}
+
+function SessionSearchResults({
+  error,
+  empty,
+  pastOnly,
+  groups,
+  rows,
+  activeId,
+  now,
+  lineFor,
+  onHighlight,
+  onChoose
+}: {
+  error: unknown
+  empty: string | null
+  pastOnly: boolean
+  groups: SessionProjectGroup[]
+  rows: ChatSearchHit[]
+  activeId: string | undefined
+  now: number
+  lineFor: (hit: ChatSearchHit) => string
+  onHighlight: (index: number) => void
+  onChoose: (hit: ChatSearchHit) => void
+}): React.JSX.Element {
+  const indexOf = (hit: ChatSearchHit): number => rows.indexOf(hit)
+  return (
+    <div
+      id="session-search-results"
+      role="listbox"
+      aria-label="Sessions"
+      className="min-h-0 flex-1 overflow-y-auto bg-popover p-1"
+    >
+      {error ? (
+        <p role="alert" className="px-2 py-6 text-center text-sm text-destructive">
+          {error instanceof Error ? error.message : 'Search failed.'}
+        </p>
+      ) : rows.length === 0 ? (
+        <p className="px-2 py-6 text-center text-sm text-muted-foreground">{empty}</p>
+      ) : pastOnly ? (
+        <ResultGroup
+          label="Closed"
+          hits={rows}
+          activeId={activeId}
+          now={now}
+          lineFor={lineFor}
+          onHighlight={onHighlight}
+          onChoose={onChoose}
+          indexOf={indexOf}
+        />
+      ) : (
+        groups.map((group) => (
+          <div key={group.project.id} className="mb-2">
+            <p
+              data-testid="session-search-project"
+              className="px-2 pt-1.5 text-xs font-medium text-foreground"
+            >
+              {group.project.name}
+            </p>
+            {group.open.length > 0 ? (
               <ResultGroup
                 label="Open"
-                hits={openHits}
-                activeId={active?.sessionId}
+                hits={group.open}
+                activeId={activeId}
                 now={now}
-                onHighlight={setHighlight}
-                onChoose={(hit) => void choose(hit)}
-                indexOf={(hit) => rows.indexOf(hit)}
+                lineFor={lineFor}
+                onHighlight={onHighlight}
+                onChoose={onChoose}
+                indexOf={indexOf}
               />
             ) : null}
-            {pastHits.length > 0 ? (
+            {group.closed.length > 0 ? (
               <ResultGroup
-                label="Past"
-                hits={pastHits}
-                activeId={active?.sessionId}
+                label="Closed"
+                hits={group.closed}
+                activeId={activeId}
                 now={now}
-                onHighlight={setHighlight}
-                onChoose={(hit) => void choose(hit)}
-                indexOf={(hit) => rows.indexOf(hit)}
+                lineFor={lineFor}
+                onHighlight={onHighlight}
+                onChoose={onChoose}
+                indexOf={indexOf}
               />
             ) : null}
-          </>
-        )}
-      </div>
-      {error ? (
-        <p role="alert" className="border-t px-3 py-2 text-sm text-destructive">
-          {error}
-        </p>
-      ) : search.data && search.data.total > search.data.hits.length ? (
-        <p className="border-t px-3 py-2 text-xs text-muted-foreground">
-          Showing {search.data.hits.length} of {search.data.total}
-        </p>
-      ) : null}
-    </DialogContent>
+          </div>
+        ))
+      )}
+    </div>
   )
 }
 
@@ -242,6 +390,7 @@ function ResultGroup({
   hits,
   activeId,
   now,
+  lineFor,
   onHighlight,
   onChoose,
   indexOf
@@ -250,6 +399,7 @@ function ResultGroup({
   hits: ChatSearchHit[]
   activeId: string | undefined
   now: number
+  lineFor: (hit: ChatSearchHit) => string
   onHighlight: (index: number) => void
   onChoose: (hit: ChatSearchHit) => void
   indexOf: (hit: ChatSearchHit) => number
@@ -289,11 +439,12 @@ function ResultGroup({
                   {relativeUpdated(hit.updatedAt, now)}
                 </span>
               </span>
-              {hit.snippet ? (
-                <span className="block truncate text-[11px] text-muted-foreground">
-                  {hit.snippet}
-                </span>
-              ) : null}
+              <span
+                data-session-workspace
+                className="block truncate text-[11px] text-muted-foreground"
+              >
+                {lineFor(hit)}
+              </span>
             </span>
           </button>
         )

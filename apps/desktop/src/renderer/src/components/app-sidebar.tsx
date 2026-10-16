@@ -17,6 +17,7 @@ import {
   Folders,
   FolderTree,
   GitBranch,
+  History,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -164,27 +165,31 @@ function repositoryWorkspaces(project: Project): Workspace[] {
   return project.workspaces.filter((workspace) => workspace.kind !== 'root')
 }
 
-const OpenSessionSearchContext = createContext<(workspaceId: number) => void>(() => {})
+const OpenSessionSearchContext = createContext<{
+  open: (workspaceId: number) => void
+  historyWorkspaceId: number | null
+}>({ open: () => {}, historyWorkspaceId: null })
 
-function SearchPastSessions({ workspaceId }: { workspaceId: number }): React.JSX.Element {
-  const onSearch = useContext(OpenSessionSearchContext)
+function WorkspaceSessionHistory({ workspaceId }: { workspaceId: number }): React.JSX.Element {
+  const { open, historyWorkspaceId } = useContext(OpenSessionSearchContext)
   return (
-    <PlusActionTooltip label="Search past sessions">
+    <PlusActionTooltip label="Session history">
       <SidebarMenuAction
         showOnHover
         tabIndex={-1}
         className="app-no-drag"
         data-testid={`workspace-search-sessions-${workspaceId}`}
-        aria-label="Search past sessions"
+        data-popup-open={historyWorkspaceId === workspaceId ? '' : undefined}
+        aria-label="Session history"
         onPointerDown={(event): void => event.stopPropagation()}
         onClick={(event): void => {
           event.preventDefault()
           event.stopPropagation()
-          onSearch(workspaceId)
+          open(workspaceId)
         }}
       >
-        <Search className="size-3.5" />
-        <span className="sr-only">Search past sessions</span>
+        <History className="size-3.5" />
+        <span className="sr-only">Session history</span>
       </SidebarMenuAction>
     </PlusActionTooltip>
   )
@@ -706,7 +711,7 @@ function MultiRootRepoRow({
             ) : null}
           </button>
           <RowActions overlay>
-            <SearchPastSessions workspaceId={workspace.id} />
+            <WorkspaceSessionHistory workspaceId={workspace.id} />
             <WorkspaceOverflowMenu workspace={workspace} allowRemove={false} onRename={onRename} />
           </RowActions>
           <WorkspaceSessionList agents={agents} muted={muted} onOpenAgent={onOpenAgent} />
@@ -891,7 +896,9 @@ function MultiRootWorkspaceTree({
                       {rootOpen ? 'Collapse repositories' : 'Expand repositories'}
                     </span>
                   </SidebarMenuAction>
-                  {rootWorkspace ? <SearchPastSessions workspaceId={rootWorkspace.id} /> : null}
+                  {rootWorkspace ? (
+                    <WorkspaceSessionHistory workspaceId={rootWorkspace.id} />
+                  ) : null}
                   <RootOverflowMenu
                     project={project}
                     onRename={(): void => {
@@ -1133,7 +1140,7 @@ function ProjectItem({
                         </SidebarMenuSubButton>
                         <BranchIconOverlay workspace={workspace} />
                         <RowActions overlay>
-                          <SearchPastSessions workspaceId={workspace.id} />
+                          <WorkspaceSessionHistory workspaceId={workspace.id} />
                           <WorkspaceOverflowMenu
                             workspace={workspace}
                             onRename={(): void => onRenameWorkspace(workspace)}
@@ -1366,7 +1373,7 @@ function WorkspaceSearchResults({
                   </SidebarMenuButton>
                 </WorkspaceHoverCard>
                 <RowActions overlay>
-                  <SearchPastSessions workspaceId={workspace.id} />
+                  <WorkspaceSessionHistory workspaceId={workspace.id} />
                 </RowActions>
                 <WorkspaceSessionList
                   agents={activity.get(workspace.id) ?? []}
@@ -1653,7 +1660,12 @@ export function AppSidebar({
   const statusLayout = !isSettings && !query && projects.length > 0 && groupBy === 'status'
 
   return (
-    <OpenSessionSearchContext.Provider value={openWorkspaceSearch}>
+    <OpenSessionSearchContext.Provider
+      value={{
+        open: openWorkspaceSearch,
+        historyWorkspaceId: sessionSearch?.mode === 'workspace' ? sessionSearch.workspaceId : null
+      }}
+    >
       <>
         <Sidebar
           collapsible={isSettings ? 'none' : 'offcanvas'}
@@ -1806,7 +1818,6 @@ export function AppSidebar({
         <SessionSearchDialog
           request={sessionSearch}
           projects={projects}
-          activeWorkspaceId={activeWorkspaceId}
           onOpen={(hit) => openAgentSession(hit, onSelectWorkspace)}
           onClose={(): void => setSessionSearch(null)}
         />
