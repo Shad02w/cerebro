@@ -1,10 +1,10 @@
 import type { Locator } from '@playwright/test'
-import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { expect, test, stopMux, type ElectronApplication, type Page } from './fixtures'
+import { expect, test, stopMux, type Page } from './fixtures'
 
 const execFileAsync = promisify(execFile)
 
@@ -25,15 +25,6 @@ async function addProjectViaUi(page: Page, gitUrl: string, projectName: string):
   await expect(page.getByTestId(/project-row-/).filter({ hasText: projectName })).toBeVisible({
     timeout: 60_000
   })
-}
-
-async function mockChooseFolder(
-  electronApp: ElectronApplication,
-  directory: string
-): Promise<void> {
-  await electronApp.evaluate(async ({ dialog }, dir: string) => {
-    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [dir] })
-  }, directory)
 }
 
 async function selectWorkspaceRow(page: Page, name: string): Promise<void> {
@@ -681,147 +672,6 @@ test('content tabs use pill selection and reveal close on hover or keyboard focu
   }
 })
 
-test('does not spawn a terminal for a multi-root project until New terminal is clicked', async ({
-  page,
-  electronApp
-}) => {
-  const root = await mkdtemp(join(tmpdir(), 'cerebro-multiroot-tabs-e2e-'))
-  const parent = join(root, 'apps-folder')
-  const frontend = join(parent, 'frontend')
-  const backend = join(parent, 'backend')
-
-  try {
-    await initGitRepo(frontend, 'main', 'frontend-app')
-    await initGitRepo(backend, 'main', 'backend-app')
-
-    await mockChooseFolder(electronApp, parent)
-    await page.getByRole('button', { name: 'Add project' }).first().click()
-    await page.getByTestId('add-project-choose-folder').click()
-
-    const projectRow = page.getByTestId(/project-row-/).filter({ hasText: 'apps-folder' })
-    await expect(projectRow).toBeVisible({ timeout: 30_000 })
-    await expect(page.getByTestId(/workspace-row-/).filter({ hasText: 'frontend' })).toBeVisible()
-    await expect(page.getByTestId(/workspace-row-/).filter({ hasText: 'backend' })).toBeVisible()
-
-    const listed = await page.evaluate(async () => window.cerebro.listProjects())
-    expect(listed.activeWorkspaceId).toBeNull()
-    await expect(page.getByTestId('content-tab-bar')).toHaveCount(0)
-    await expect(page.getByTestId('brain-mark')).toBeVisible()
-    await expect(page.locator('[data-terminal-workspace-id]')).toHaveCount(0)
-
-    await projectRow.click()
-    await expect(page.getByTestId(/workspace-row-/).filter({ hasText: 'frontend' })).toBeHidden()
-    await expect(page.getByTestId('content-tab-bar')).toHaveCount(0)
-
-    await projectRow.click()
-    const rootRow = page.getByTestId(/project-root-/)
-    await expect(rootRow).toHaveAttribute('data-active', 'false')
-    await rootRow.click()
-
-    const parentPath = await realpath(parent)
-    const frontendPath = await realpath(frontend)
-    const backendPath = await realpath(backend)
-
-    const rootId = await page.evaluate(async () => {
-      const current = await window.cerebro.listProjects()
-      const project = current.projects.find((item) => item.name === 'apps-folder')
-      const root = project?.workspaces.find((workspace) => workspace.kind === 'root')
-      return {
-        activeId: current.activeWorkspaceId,
-        rootId: root?.id ?? null,
-        rootPath: root?.localPath ?? null
-      }
-    })
-    expect(rootId.rootId).not.toBeNull()
-    expect(rootId.activeId).toBe(rootId.rootId)
-    expect(rootId.rootPath).toBe(parentPath)
-    await expect(rootRow).toHaveAttribute('data-active', 'true')
-    await expect(
-      page.getByTestId(/workspace-row-/).filter({ hasText: 'frontend' })
-    ).toHaveAttribute('data-active', 'false')
-    await expect(page.getByTestId('content-tab-bar')).toBeVisible()
-    await expect(page.getByTestId('terminal-tab')).toHaveCount(0)
-    await expect(page.locator('[data-terminal-workspace-id]')).toHaveCount(0)
-
-    await openNewTerminal(page)
-    await expect(
-      page.locator(
-        `[data-terminal-workspace-id="${rootId.rootId}"][data-terminal-active="true"] .xterm`
-      )
-    ).toBeVisible()
-    const rootActive = await readActiveWorkspace(page)
-    expect(rootActive.kind).toBe('root')
-    expect(rootActive.localPath).toBe(parentPath)
-
-    const toggle = page.getByTestId(/root-toggle-/)
-    await page.getByTestId(/project-root-/).hover()
-    await toggle.click()
-    await expect(page.getByTestId(/workspace-row-/).filter({ hasText: 'frontend' })).toBeHidden()
-    await expect(
-      page.locator(
-        `[data-terminal-workspace-id="${rootId.rootId}"][data-terminal-active="true"] .xterm`
-      )
-    ).toBeVisible()
-    await page.getByTestId(/project-root-/).hover()
-    await toggle.click()
-
-    await selectWorkspaceRow(page, 'frontend')
-
-    const frontendId = await page.evaluate(async () => {
-      const current = await window.cerebro.listProjects()
-      return current.activeWorkspaceId
-    })
-    expect(frontendId).not.toBeNull()
-    expect(frontendId).not.toBe(rootId.rootId)
-    const frontendActive = await readActiveWorkspace(page)
-    expect(frontendActive.kind).toBe('default')
-    expect(frontendActive.localPath).toBe(frontendPath)
-    await expect(rootRow).toHaveAttribute('data-active', 'false')
-    await expect(
-      page.getByTestId(/workspace-row-/).filter({ hasText: 'frontend' })
-    ).toHaveAttribute('data-active', 'true')
-    await expect(page.getByTestId('content-tab-bar')).toBeVisible()
-    await expect(page.getByTestId('terminal-tab')).toHaveCount(0)
-    await expect(page.locator(`[data-terminal-workspace-id="${frontendId}"]`)).toHaveCount(0)
-    await expect(
-      page.locator(`[data-terminal-workspace-id="${rootId.rootId}"][data-terminal-active="false"]`)
-    ).toHaveCount(0)
-
-    await openNewTerminal(page)
-    await expect(
-      page.locator(
-        `[data-terminal-workspace-id="${frontendId}"][data-terminal-active="true"] .xterm`
-      )
-    ).toBeVisible()
-
-    await clickNewTerminalMenu(page)
-    await expect(page.getByTestId('terminal-tab')).toHaveCount(2)
-    await waitForActiveTerminal(page)
-
-    await selectWorkspaceRow(page, 'backend')
-    const backendId = await page.evaluate(async () => {
-      const current = await window.cerebro.listProjects()
-      return current.activeWorkspaceId
-    })
-    expect(backendId).not.toBe(frontendId)
-    const backendActive = await readActiveWorkspace(page)
-    expect(backendActive.kind).toBe('default')
-    expect(backendActive.localPath).toBe(backendPath)
-    await expect(page.getByTestId('terminal-tab')).toHaveCount(0)
-    await expect(page.locator(`[data-terminal-workspace-id="${backendId}"]`)).toHaveCount(0)
-
-    await openNewTerminal(page)
-    await expect(
-      page.locator(
-        `[data-terminal-workspace-id="${backendId}"][data-terminal-active="true"] .xterm`
-      )
-    ).toBeVisible()
-    await expect(page.getByTestId('terminal-tab')).toHaveCount(1)
-  } finally {
-    await rm(root, { recursive: true, force: true })
-  }
-})
-
 test('closes the active terminal tab with Mod+W', async ({ page, electronApp }) => {
   const sourcesRoot = await mkdtemp(join(tmpdir(), 'cerebro-terminal-keybind-e2e-'))
   const source = join(sourcesRoot, 'term-keybind')
@@ -921,73 +771,6 @@ test('opens a terminal with Mod+T when a default-branch workspace row is focused
     await waitForActiveTerminal(page)
   } finally {
     await rm(sourcesRoot, { recursive: true, force: true })
-  }
-})
-
-test('opens a terminal with Mod+T from multi-root workspace rows', async ({
-  page,
-  electronApp
-}) => {
-  const root = await mkdtemp(join(tmpdir(), 'cerebro-multiroot-modt-e2e-'))
-  const parent = join(root, 'apps-folder')
-  const frontend = join(parent, 'frontend')
-  const backend = join(parent, 'backend')
-
-  try {
-    await initGitRepo(frontend, 'main', 'frontend-app')
-    await initGitRepo(backend, 'main', 'backend-app')
-
-    await mockChooseFolder(electronApp, parent)
-    await page.getByRole('button', { name: 'Add project' }).first().click()
-    await page.getByTestId('add-project-choose-folder').click()
-
-    const projectRow = page.getByTestId(/project-row-/).filter({ hasText: 'apps-folder' })
-    await expect(projectRow).toBeVisible({ timeout: 30_000 })
-
-    const listed = await page.evaluate(async () => window.cerebro.listProjects())
-    const project = listed.projects.find((item) => item.name === 'apps-folder')
-    const frontendPath = await realpath(frontend)
-    const rootWorkspace = project?.workspaces.find((workspace) => workspace.kind === 'root')
-    const frontendWorkspace = project?.workspaces.find(
-      (workspace) => workspace.localPath === frontendPath
-    )
-    expect(rootWorkspace).toBeTruthy()
-    expect(frontendWorkspace).toBeTruthy()
-
-    const rootRow = page.getByTestId(/project-root-/)
-    await expect(rootRow).toHaveAttribute('data-workspace-role', 'root')
-    await expect(page.getByRole('dialog')).toHaveCount(0)
-    await rootRow.focus()
-    await expect(rootRow).toBeFocused()
-    await page.keyboard.press(newTerminalChord())
-    await expect(
-      page.locator(
-        `[data-terminal-workspace-id="${rootWorkspace!.id}"][data-terminal-active="true"] .xterm`
-      )
-    ).toBeVisible({ timeout: 30_000 })
-    const rootState = await readActiveWorkspace(page)
-    expect(rootState.kind).toBe('root')
-    expect(rootState.id).toBe(rootWorkspace!.id)
-
-    const frontendRow = page.getByTestId(/workspace-row-/).filter({ hasText: 'frontend' })
-    await expect(frontendRow).toHaveAttribute('data-workspace-role', 'repository')
-    await frontendRow.focus()
-    await page.keyboard.press(newTerminalChord())
-    await expect(
-      page.locator(
-        `[data-terminal-workspace-id="${frontendWorkspace!.id}"][data-terminal-active="true"] .xterm`
-      )
-    ).toBeVisible({ timeout: 30_000 })
-    const frontendState = await readActiveWorkspace(page)
-    expect(frontendState.kind).toBe('default')
-    expect(frontendState.id).toBe(frontendWorkspace!.id)
-    await expect(
-      page.locator(
-        `[data-terminal-workspace-id="${rootWorkspace!.id}"][data-terminal-active="false"]`
-      )
-    ).toHaveCount(0)
-  } finally {
-    await rm(root, { recursive: true, force: true })
   }
 })
 

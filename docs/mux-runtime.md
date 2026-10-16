@@ -25,7 +25,7 @@ Use returned JSON IDs, replacing the angle-bracket placeholders. Workspace creat
 
 ## Identity and state
 
-Project, workspace and repository IDs use the existing registry. Tabs, panes and split nodes share a durable monotonic allocator. Pane repository scope uses the existing `repositoryId`; `--sub-repo` is its CLI name. Nested repository rows default to their repository. A multi-root parent defaults to the whole folder; explicit subrepo scope changes the terminal CWD and Changes filter.
+Project, workspace and repository IDs use the existing registry. Tabs, panes and split nodes share a durable monotonic allocator. Pane repository scope uses the existing `repositoryId`; `--sub-repo` is its CLI name. A git project uses its checkout. Explicit subrepo scope changes the terminal CWD and Changes filter.
 
 Each terminal launch gets a new UUID session generation. Input and resize from an old attachment are rejected. Shell environment includes `CEREBRO_HOME`, `CEREBRO_PROJECT_ID`, `CEREBRO_WORKSPACE_ID`, `CEREBRO_WORKSPACE_PATH`, `CEREBRO_TAB_ID` and `CEREBRO_PANE_ID`; scoped panes also receive `CEREBRO_REPOSITORY_ID` and `CEREBRO_SUB_REPO_ID`. Inherited identities are cleared first.
 

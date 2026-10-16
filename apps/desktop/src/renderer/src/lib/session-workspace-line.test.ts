@@ -19,11 +19,10 @@ function workspace(
   }
 }
 
-test('palette workspace line uses the branch, the nested repo, or root', () => {
+test('palette workspace line uses the branch or the folder name', () => {
   const single = {
     name: 'cerebro',
-    kind: 'directory' as const,
-    repositories: [{ id: 1, name: 'cerebro' }]
+    kind: 'directory' as const
   }
   assert.equal(
     sessionWorkspaceLine(single, {
@@ -43,41 +42,14 @@ test('palette workspace line uses the branch, the nested repo, or root', () => {
     }),
     'feat/palette'
   )
-
-  const multi = {
-    name: 'clients',
-    kind: 'multi-root' as const,
-    repositories: [
-      { id: 2, name: 'backend' },
-      { id: 3, name: 'frontend' }
-    ]
-  }
   assert.equal(
-    sessionWorkspaceLine(multi, {
-      kind: 'root',
-      branch: '.',
-      repositoryId: 2,
-      localPath: '/clients'
-    }),
-    'root'
-  )
-  assert.equal(
-    sessionWorkspaceLine(multi, {
+    sessionWorkspaceLine(single, {
       kind: 'default',
-      branch: 'main',
-      repositoryId: 2,
-      localPath: '/clients/backend'
+      branch: '',
+      repositoryId: 1,
+      localPath: '/tmp/notes'
     }),
-    'backend · main'
-  )
-  assert.equal(
-    sessionWorkspaceLine(multi, {
-      kind: 'default',
-      branch: 'main',
-      repositoryId: 3,
-      localPath: '/clients/frontend'
-    }),
-    'frontend · main'
+    'cerebro'
   )
 })
 

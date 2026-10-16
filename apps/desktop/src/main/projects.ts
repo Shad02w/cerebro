@@ -87,8 +87,7 @@ export async function removeProject(
 export async function listProjectBranches(projectId: number): Promise<ProjectBranch[]> {
   const { projects } = await listProjects()
   const project = projects.find((project) => project.id === projectId)
-  if (!project?.github || project.kind === 'multi-root')
-    throw new Error('Worktrees require a GitHub-linked single-root project.')
+  if (!project?.github) throw new Error('Worktrees require a GitHub-linked project.')
   const repo = project.repositories[0]
   const names = await repositoryService.branches(
     project.github.owner,
