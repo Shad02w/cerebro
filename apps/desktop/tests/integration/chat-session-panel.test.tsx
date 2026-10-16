@@ -114,6 +114,12 @@ describe('ChatSessionPanel', () => {
       background.compareDocumentPosition(agents) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy()
 
+    const sessionInset = screen.getByText('Session').parentElement
+    expect(sessionInset).toHaveClass('px-2')
+    for (const section of [tasks, background, agents]) {
+      expect(section.className).not.toMatch(/(?:^|\s)px-/)
+      expect(within(section).getByRole('heading').parentElement).toHaveClass('px-2')
+    }
     expect(within(tasks).getByRole('list', { name: 'Tasks' })).toBeInTheDocument()
     expect(within(tasks).getByText('Inspect')).toHaveClass('line-through')
     expect(within(tasks).getByText('Connect')).toBeInTheDocument()
@@ -192,7 +198,13 @@ describe('ChatSessionPanel', () => {
       ]
     })
     const changes = await screen.findByTestId('chat-session-panel-changes')
-    expect(within(changes).getByRole('heading', { name: 'Changes' })).toBeInTheDocument()
+    expect(changes.className).not.toMatch(/(?:^|\s)px-/)
+    const changesHeading = within(changes).getByRole('heading', { name: 'Changes' })
+    expect(changesHeading.parentElement).toHaveClass('px-2')
+    expect(changesHeading.parentElement?.className).toBe(
+      within(screen.getByTestId('chat-session-panel-tasks')).getByRole('heading').parentElement
+        ?.className
+    )
     const stat = within(changes).getByTestId('chat-diff-stat')
     expect(stat).toHaveTextContent('+15 -5')
     expect(stat).toHaveAttribute('data-additions', '15')
@@ -204,8 +216,20 @@ describe('ChatSessionPanel', () => {
     expect(screen.getByTestId('chat-session-panel-tasks')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Collapse session status' }))
     const rail = screen.getByTestId('chat-session-panel-rail')
-    expect(within(rail).getByRole('button', { name: '+15 -5' })).toBeInTheDocument()
-    expect(within(rail).getByTestId('chat-diff-stat')).toHaveTextContent('+15 -5')
+    expect(rail.className).toContain('w-8')
+    expect(rail.className).toContain('overflow-visible')
+    expect(rail.className).not.toContain('w-max')
+    const changesButton = within(rail).getByRole('button', { name: '+15 -5' })
+    expect(changesButton.className).not.toContain('w-auto')
+    expect(changesButton.className).toContain('max-w-8')
+    const expandButton = within(rail).getByRole('button', { name: 'Expand session status' })
+    expect(changesButton.className).toBe(expandButton.className)
+    const mark = within(changesButton).getByTestId('chat-diff-stat')
+    expect(mark.className).toContain('absolute')
+    expect(mark).not.toHaveTextContent('+')
+    expect(mark).toHaveAttribute('data-additions', '15')
+    expect(mark).toHaveAttribute('data-deletions', '5')
+    expect(mark.className).toContain('bg-green-500')
   })
 
   it('collapses to a vertical icon list and expands back to every section', async () => {

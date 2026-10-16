@@ -126,29 +126,35 @@ function SessionSections({
 }): React.JSX.Element {
   const blocks = [
     status?.todo ? (
-      <section key="tasks" data-testid="chat-session-panel-tasks" className="px-1 py-2">
-        <SectionHeading title="Tasks" count={status.todo.items.length} section="tasks" />
+      <section key="tasks" data-testid="chat-session-panel-tasks" className="py-2">
+        <SectionHeading
+          title="Tasks"
+          trailing={<CountBadge count={status.todo.items.length} section="tasks" />}
+        />
         <ChatTodoList todo={status.todo} showHeading={false} />
       </section>
     ) : null,
     status?.tasks ? (
-      <section key="background" data-testid="chat-session-panel-background" className="px-1 py-2">
-        <SectionHeading title="Background" count={status.tasks.length} section="background" />
+      <section key="background" data-testid="chat-session-panel-background" className="py-2">
+        <SectionHeading
+          title="Background"
+          trailing={<CountBadge count={status.tasks.length} section="background" />}
+        />
         <ChatBackgroundTaskList tasks={status.tasks} />
       </section>
     ) : null,
     status?.agents ? (
-      <section key="agents" data-testid="chat-session-panel-agents" className="px-1 py-2">
-        <SectionHeading title="Agents" count={status.agents.length} section="agents" />
+      <section key="agents" data-testid="chat-session-panel-agents" className="py-2">
+        <SectionHeading
+          title="Agents"
+          trailing={<CountBadge count={status.agents.length} section="agents" />}
+        />
         <ChatSubagentStack agents={status.agents} />
       </section>
     ) : null,
     hasDiffStat(diff) ? (
-      <section key="changes" data-testid="chat-session-panel-changes" className="px-1 py-2">
-        <div className="flex items-center gap-1.5 px-2 pt-1 pb-1">
-          <h2 className="text-xs font-medium text-muted-foreground">Changes</h2>
-          <DiffStatLine diff={diff} />
-        </div>
+      <section key="changes" data-testid="chat-session-panel-changes" className="py-2">
+        <SectionHeading title="Changes" trailing={<DiffStatLine diff={diff} />} />
       </section>
     ) : null
   ].filter((block) => block != null)
@@ -178,7 +184,6 @@ function SessionRail({
     count: number
     label: string
     icon: React.ReactNode
-    wide?: boolean
     stat?: DiffStat
   } | null> = [
     status?.todo
@@ -211,7 +216,6 @@ function SessionRail({
           count: 0,
           label: diffLabel(diff),
           icon: <FileDiff />,
-          wide: true,
           stat: diff
         }
       : null
@@ -219,21 +223,16 @@ function SessionRail({
   return (
     <div
       data-testid="chat-session-panel-rail"
-      className="flex flex-col gap-1 rounded-xl border bg-popover p-1 shadow-lg"
+      className="box-content flex w-8 flex-col items-center gap-1 overflow-visible rounded-xl border bg-popover p-1 shadow-lg"
     >
       <RailButton label="Expand session status" onClick={onExpand}>
         <PanelRightOpen />
       </RailButton>
       {icons.map((item) => (
-        <RailButton
-          key={item.label}
-          label={item.label}
-          onClick={onExpand}
-          className={item.wide ? 'h-8 w-auto gap-1 px-1.5' : undefined}
-        >
+        <RailButton key={item.label} label={item.label} onClick={onExpand}>
           {item.icon}
           {item.stat ? (
-            <DiffStatLine diff={item.stat} />
+            <ChangesRailMark diff={item.stat} />
           ) : (
             <CountBadge count={item.count} section={item.section} corner />
           )}
@@ -243,19 +242,18 @@ function SessionRail({
   )
 }
 
+/** Same `px-2` as the card header, so every section title shares Session's left edge. */
 function SectionHeading({
   title,
-  count,
-  section
+  trailing
 }: {
   title: string
-  count: number
-  section: string
+  trailing: React.ReactNode
 }): React.JSX.Element {
   return (
     <div className="flex items-center gap-1.5 px-2 pt-1 pb-1">
       <h2 className="text-xs font-medium text-muted-foreground">{title}</h2>
-      <CountBadge count={count} section={section} />
+      {trailing}
     </div>
   )
 }
@@ -292,11 +290,31 @@ function DiffStatLine({ diff }: { diff: DiffStat }): React.JSX.Element | null {
       data-testid="chat-diff-stat"
       data-additions={diff.additions}
       data-deletions={diff.deletions}
-      className="text-xs font-medium tabular-nums"
+      className="text-xs font-medium whitespace-nowrap tabular-nums"
     >
       <span className="text-green-500">+{diff.additions}</span>{' '}
       <span className="text-red-500">-{diff.deletions}</span>
     </span>
+  )
+}
+
+/**
+ * Presence pip on the changes icon. A full +N -M is wider than the icon and
+ * stretches the rail, so the number stays on the expanded row and in the tooltip.
+ */
+function ChangesRailMark({ diff }: { diff: DiffStat }): React.JSX.Element | null {
+  if (!hasDiffStat(diff)) return null
+  return (
+    <span
+      data-testid="chat-diff-stat"
+      data-additions={diff.additions}
+      data-deletions={diff.deletions}
+      aria-hidden="true"
+      className={cn(
+        'pointer-events-none absolute -top-1 -right-1 z-10 size-2 rounded-full',
+        diff.additions > 0 ? 'bg-green-500' : 'bg-red-500'
+      )}
+    />
   )
 }
 
@@ -320,7 +338,7 @@ function RailButton({
             size="icon-sm"
             variant="ghost"
             aria-label={label}
-            className={cn('relative', className)}
+            className={cn('relative size-8 max-w-8 min-w-8 shrink-0 overflow-visible', className)}
             onClick={onClick}
           />
         }
