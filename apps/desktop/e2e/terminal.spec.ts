@@ -681,7 +681,7 @@ test('content tabs use pill selection and reveal close on hover or keyboard focu
   }
 })
 
-test('does not spawn a terminal for a multi-root project until New terminal is clicked', async ({
+test('does not spawn a terminal for repos added from one folder until New terminal is clicked', async ({
   page,
   electronApp
 }) => {
@@ -698,10 +698,12 @@ test('does not spawn a terminal for a multi-root project until New terminal is c
     await page.getByRole('button', { name: 'Add project' }).first().click()
     await page.getByTestId('add-project-choose-folder').click()
 
-    const projectRow = page.getByTestId(/project-row-/).filter({ hasText: 'apps-folder' })
-    await expect(projectRow).toBeVisible({ timeout: 30_000 })
-    await expect(page.getByTestId(/workspace-row-/).filter({ hasText: 'frontend' })).toBeVisible()
-    await expect(page.getByTestId(/workspace-row-/).filter({ hasText: 'backend' })).toBeVisible()
+    const frontendProject = page.getByTestId(/project-row-/).filter({ hasText: 'frontend' })
+    const backendProject = page.getByTestId(/project-row-/).filter({ hasText: 'backend' })
+    await expect(frontendProject).toBeVisible({ timeout: 30_000 })
+    await expect(backendProject).toBeVisible()
+    await expect(page.getByTestId(/project-row-/).filter({ hasText: 'apps-folder' })).toHaveCount(0)
+    await expect(page.getByTestId(/project-root-/)).toHaveCount(0)
 
     const listed = await page.evaluate(async () => window.cerebro.listProjects())
     expect(listed.activeWorkspaceId).toBeNull()
@@ -709,36 +711,18 @@ test('does not spawn a terminal for a multi-root project until New terminal is c
     await expect(page.getByTestId('brain-mark')).toBeVisible()
     await expect(page.locator('[data-terminal-workspace-id]')).toHaveCount(0)
 
-    await projectRow.click()
-    await expect(page.getByTestId(/workspace-row-/).filter({ hasText: 'frontend' })).toBeHidden()
-    await expect(page.getByTestId('content-tab-bar')).toHaveCount(0)
-
-    await projectRow.click()
-    const rootRow = page.getByTestId(/project-root-/)
-    await expect(rootRow).toHaveAttribute('data-active', 'false')
-    await rootRow.click()
-
-    const parentPath = await realpath(parent)
     const frontendPath = await realpath(frontend)
     const backendPath = await realpath(backend)
+    const frontendWorkspace = listed.projects.find((project) => project.name === 'frontend')
+      ?.workspaces[0]
+    const backendWorkspace = listed.projects.find((project) => project.name === 'backend')
+      ?.workspaces[0]
+    expect(frontendWorkspace?.localPath).toBe(frontendPath)
+    expect(backendWorkspace?.localPath).toBe(backendPath)
 
-    const rootId = await page.evaluate(async () => {
-      const current = await window.cerebro.listProjects()
-      const project = current.projects.find((item) => item.name === 'apps-folder')
-      const root = project?.workspaces.find((workspace) => workspace.kind === 'root')
-      return {
-        activeId: current.activeWorkspaceId,
-        rootId: root?.id ?? null,
-        rootPath: root?.localPath ?? null
-      }
-    })
-    expect(rootId.rootId).not.toBeNull()
-    expect(rootId.activeId).toBe(rootId.rootId)
-    expect(rootId.rootPath).toBe(parentPath)
-    await expect(rootRow).toHaveAttribute('data-active', 'true')
-    await expect(
-      page.getByTestId(/workspace-row-/).filter({ hasText: 'frontend' })
-    ).toHaveAttribute('data-active', 'false')
+    if ((await frontendProject.getAttribute('aria-expanded')) !== 'true')
+      await frontendProject.click()
+    await page.getByTestId(`workspace-row-${frontendWorkspace!.id}`).click()
     await expect(page.getByTestId('content-tab-bar')).toBeVisible()
     await expect(page.getByTestId('terminal-tab')).toHaveCount(0)
     await expect(page.locator('[data-terminal-workspace-id]')).toHaveCount(0)
@@ -746,74 +730,37 @@ test('does not spawn a terminal for a multi-root project until New terminal is c
     await openNewTerminal(page)
     await expect(
       page.locator(
-        `[data-terminal-workspace-id="${rootId.rootId}"][data-terminal-active="true"] .xterm`
+        `[data-terminal-workspace-id="${frontendWorkspace!.id}"][data-terminal-active="true"] .xterm`
       )
     ).toBeVisible()
-    const rootActive = await readActiveWorkspace(page)
-    expect(rootActive.kind).toBe('root')
-    expect(rootActive.localPath).toBe(parentPath)
-
-    const toggle = page.getByTestId(/root-toggle-/)
-    await page.getByTestId(/project-root-/).hover()
-    await toggle.click()
-    await expect(page.getByTestId(/workspace-row-/).filter({ hasText: 'frontend' })).toBeHidden()
-    await expect(
-      page.locator(
-        `[data-terminal-workspace-id="${rootId.rootId}"][data-terminal-active="true"] .xterm`
-      )
-    ).toBeVisible()
-    await page.getByTestId(/project-root-/).hover()
-    await toggle.click()
-
-    await selectWorkspaceRow(page, 'frontend')
-
-    const frontendId = await page.evaluate(async () => {
-      const current = await window.cerebro.listProjects()
-      return current.activeWorkspaceId
-    })
-    expect(frontendId).not.toBeNull()
-    expect(frontendId).not.toBe(rootId.rootId)
     const frontendActive = await readActiveWorkspace(page)
     expect(frontendActive.kind).toBe('default')
     expect(frontendActive.localPath).toBe(frontendPath)
-    await expect(rootRow).toHaveAttribute('data-active', 'false')
+
+    await frontendProject.click()
+    await expect(page.getByTestId(`workspace-row-${frontendWorkspace!.id}`)).toBeHidden()
     await expect(
-      page.getByTestId(/workspace-row-/).filter({ hasText: 'frontend' })
-    ).toHaveAttribute('data-active', 'true')
-    await expect(page.getByTestId('content-tab-bar')).toBeVisible()
+      page.locator(
+        `[data-terminal-workspace-id="${frontendWorkspace!.id}"][data-terminal-active="true"] .xterm`
+      )
+    ).toBeVisible()
+
+    if ((await backendProject.getAttribute('aria-expanded')) !== 'true')
+      await backendProject.click()
+    await page.getByTestId(`workspace-row-${backendWorkspace!.id}`).click()
+    const backendActive = await readActiveWorkspace(page)
+    expect(backendActive.id).toBe(backendWorkspace!.id)
+    expect(backendActive.kind).toBe('default')
+    expect(backendActive.localPath).toBe(backendPath)
     await expect(page.getByTestId('terminal-tab')).toHaveCount(0)
-    await expect(page.locator(`[data-terminal-workspace-id="${frontendId}"]`)).toHaveCount(0)
     await expect(
-      page.locator(`[data-terminal-workspace-id="${rootId.rootId}"][data-terminal-active="false"]`)
+      page.locator(`[data-terminal-workspace-id="${backendWorkspace!.id}"]`)
     ).toHaveCount(0)
 
     await openNewTerminal(page)
     await expect(
       page.locator(
-        `[data-terminal-workspace-id="${frontendId}"][data-terminal-active="true"] .xterm`
-      )
-    ).toBeVisible()
-
-    await clickNewTerminalMenu(page)
-    await expect(page.getByTestId('terminal-tab')).toHaveCount(2)
-    await waitForActiveTerminal(page)
-
-    await selectWorkspaceRow(page, 'backend')
-    const backendId = await page.evaluate(async () => {
-      const current = await window.cerebro.listProjects()
-      return current.activeWorkspaceId
-    })
-    expect(backendId).not.toBe(frontendId)
-    const backendActive = await readActiveWorkspace(page)
-    expect(backendActive.kind).toBe('default')
-    expect(backendActive.localPath).toBe(backendPath)
-    await expect(page.getByTestId('terminal-tab')).toHaveCount(0)
-    await expect(page.locator(`[data-terminal-workspace-id="${backendId}"]`)).toHaveCount(0)
-
-    await openNewTerminal(page)
-    await expect(
-      page.locator(
-        `[data-terminal-workspace-id="${backendId}"][data-terminal-active="true"] .xterm`
+        `[data-terminal-workspace-id="${backendWorkspace!.id}"][data-terminal-active="true"] .xterm`
       )
     ).toBeVisible()
     await expect(page.getByTestId('terminal-tab')).toHaveCount(1)
@@ -924,7 +871,7 @@ test('opens a terminal with Mod+T when a default-branch workspace row is focused
   }
 })
 
-test('opens a terminal with Mod+T from multi-root workspace rows', async ({
+test('opens a terminal with Mod+T from each repo added in one folder', async ({
   page,
   electronApp
 }) => {
@@ -941,37 +888,30 @@ test('opens a terminal with Mod+T from multi-root workspace rows', async ({
     await page.getByRole('button', { name: 'Add project' }).first().click()
     await page.getByTestId('add-project-choose-folder').click()
 
-    const projectRow = page.getByTestId(/project-row-/).filter({ hasText: 'apps-folder' })
-    await expect(projectRow).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByTestId(/project-row-/).filter({ hasText: 'frontend' })).toBeVisible({
+      timeout: 30_000
+    })
+    await expect(page.getByRole('dialog')).toHaveCount(0)
 
     const listed = await page.evaluate(async () => window.cerebro.listProjects())
-    const project = listed.projects.find((item) => item.name === 'apps-folder')
-    const frontendPath = await realpath(frontend)
-    const rootWorkspace = project?.workspaces.find((workspace) => workspace.kind === 'root')
-    const frontendWorkspace = project?.workspaces.find(
-      (workspace) => workspace.localPath === frontendPath
-    )
-    expect(rootWorkspace).toBeTruthy()
+    const frontendWorkspace = listed.projects.find((project) => project.name === 'frontend')
+      ?.workspaces[0]
+    const backendWorkspace = listed.projects.find((project) => project.name === 'backend')
+      ?.workspaces[0]
     expect(frontendWorkspace).toBeTruthy()
+    expect(backendWorkspace).toBeTruthy()
 
-    const rootRow = page.getByTestId(/project-root-/)
-    await expect(rootRow).toHaveAttribute('data-workspace-role', 'root')
-    await expect(page.getByRole('dialog')).toHaveCount(0)
-    await rootRow.focus()
-    await expect(rootRow).toBeFocused()
-    await page.keyboard.press(newTerminalChord())
-    await expect(
-      page.locator(
-        `[data-terminal-workspace-id="${rootWorkspace!.id}"][data-terminal-active="true"] .xterm`
-      )
-    ).toBeVisible({ timeout: 30_000 })
-    const rootState = await readActiveWorkspace(page)
-    expect(rootState.kind).toBe('root')
-    expect(rootState.id).toBe(rootWorkspace!.id)
+    const frontendProject = page.getByTestId(/project-row-/).filter({ hasText: 'frontend' })
+    const backendProject = page.getByTestId(/project-row-/).filter({ hasText: 'backend' })
+    if ((await frontendProject.getAttribute('aria-expanded')) !== 'true')
+      await frontendProject.click()
+    if ((await backendProject.getAttribute('aria-expanded')) !== 'true')
+      await backendProject.click()
 
-    const frontendRow = page.getByTestId(/workspace-row-/).filter({ hasText: 'frontend' })
-    await expect(frontendRow).toHaveAttribute('data-workspace-role', 'repository')
+    const frontendRow = page.getByTestId(`workspace-row-${frontendWorkspace!.id}`)
+    await expect(frontendRow).toHaveAttribute('data-workspace-role', 'branch')
     await frontendRow.focus()
+    await expect(frontendRow).toBeFocused()
     await page.keyboard.press(newTerminalChord())
     await expect(
       page.locator(
@@ -981,9 +921,21 @@ test('opens a terminal with Mod+T from multi-root workspace rows', async ({
     const frontendState = await readActiveWorkspace(page)
     expect(frontendState.kind).toBe('default')
     expect(frontendState.id).toBe(frontendWorkspace!.id)
+
+    const backendRow = page.getByTestId(`workspace-row-${backendWorkspace!.id}`)
+    await backendRow.focus()
+    await page.keyboard.press(newTerminalChord())
     await expect(
       page.locator(
-        `[data-terminal-workspace-id="${rootWorkspace!.id}"][data-terminal-active="false"]`
+        `[data-terminal-workspace-id="${backendWorkspace!.id}"][data-terminal-active="true"] .xterm`
+      )
+    ).toBeVisible({ timeout: 30_000 })
+    const backendState = await readActiveWorkspace(page)
+    expect(backendState.kind).toBe('default')
+    expect(backendState.id).toBe(backendWorkspace!.id)
+    await expect(
+      page.locator(
+        `[data-terminal-workspace-id="${frontendWorkspace!.id}"][data-terminal-active="false"]`
       )
     ).toHaveCount(0)
   } finally {

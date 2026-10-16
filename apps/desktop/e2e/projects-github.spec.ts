@@ -736,7 +736,7 @@ test('login refreshes existing workspaces and disconnect clears their cached PRs
   await expect(page.getByTestId(`workspace-default-icon-${id}`)).toBeVisible()
 })
 
-test('multi-root repositories and sibling worktrees share PR queries and track live branches', async ({
+test('separate repo projects and a sibling worktree share PR queries and track live branches', async ({
   page,
   githubMock,
   electronApp
@@ -760,15 +760,23 @@ test('multi-root repositories and sibling worktrees share PR queries and track l
     ])
     await connectGitHub(page, githubMock)
     const before = githubMock.requestCount()
-    const project = await page.evaluate(
-      (directory) => window.cerebro.createProjectFromDirectory(directory),
-      root
-    )
+    await page.evaluate((directory) => window.cerebro.createProjectFromDirectory(directory), root)
     await focusCerebro(electronApp)
-    await expect(page.getByTestId(`project-row-${project.id}`)).toBeVisible()
-    const a = project.workspaces.find((workspace) => workspace.localPath === repoA)!
-    const review = project.workspaces.find((workspace) => workspace.localPath === worktree)!
-    const b = project.workspaces.find((workspace) => workspace.localPath === repoB)!
+    const listed = await page.evaluate(async () => window.cerebro.listProjects())
+    expect(listed.projects.map((project) => project.name).sort()).toEqual([
+      'repo-a',
+      'repo-a-review',
+      'repo-b'
+    ])
+    for (const project of listed.projects) {
+      const row = page.getByTestId(`project-row-${project.id}`)
+      await expect(row).toBeVisible()
+      if ((await row.getAttribute('aria-expanded')) !== 'true') await row.click()
+    }
+    const workspaces = listed.projects.flatMap((project) => project.workspaces)
+    const a = workspaces.find((workspace) => workspace.localPath === repoA)!
+    const review = workspaces.find((workspace) => workspace.localPath === worktree)!
+    const b = workspaces.find((workspace) => workspace.localPath === repoB)!
     await expect(page.getByTestId(`workspace-pr-icon-${a.id}`)).toHaveAttribute(
       'data-pr-state',
       'approved'
@@ -784,7 +792,7 @@ test('multi-root repositories and sibling worktrees share PR queries and track l
     for (const workspace of [a, review, b]) {
       const row = page.getByTestId(`workspace-row-${workspace.id}`)
       const icon = page.getByTestId(`workspace-pr-icon-${workspace.id}`)
-      const branch = page.getByTestId(`workspace-branch-${workspace.id}`).locator('span').last()
+      const branch = row.locator('[data-row-label]')
       const iconBox = await icon.boundingBox()
       const branchBox = await branch.boundingBox()
       // The mark leads the branch name on the same line. Its hit target can

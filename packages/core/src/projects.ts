@@ -236,35 +236,30 @@ function uniquifyRepositoryUrls(repositories: DiscoveredRepository[]): Discovere
   return repositories
 }
 
-async function discoverDirectoryProject(root: string): Promise<{
-  kind: Exclude<ProjectKind, 'clone'>
-  repositories: DiscoveredRepository[]
-}> {
+/**
+ * Repositories to register for a chosen folder.
+ * Several sibling git checkouts each become their own project, named after that
+ * checkout. Folders that are not usable git repos are skipped. A single git
+ * checkout, including one nested under the chosen folder, is that one project.
+ * A folder with no git checkout is still opened as itself.
+ */
+async function discoverImportRepositories(root: string): Promise<DiscoveredRepository[]> {
   const childPaths = listImmediateGitCheckouts(root)
-  const children = await Promise.all(childPaths.map((path) => describeCheckout(path)))
-
-  // Sibling git checkouts win even if the chosen folder is itself a git repo.
-  if (children.length > 1) {
-    return { kind: 'multi-root', repositories: uniquifyRepositoryUrls(children) }
+  if (childPaths.length > 1) {
+    const described = await Promise.all(childPaths.map((path) => describeCheckout(path)))
+    const usable = described.filter((repo) => isUsableGitWorkTree(repo.localPath))
+    if (usable.length > 0) return uniquifyRepositoryUrls(usable)
   }
 
   const rootRepo = isUsableGitWorkTree(root) ? await tryDescribeGitRepository(root) : null
-  if (rootRepo) {
-    return {
-      kind: 'directory',
-      repositories: [rootRepo]
-    }
+  if (rootRepo) return [rootRepo]
+
+  if (childPaths.length === 1) {
+    const child = await describeCheckout(childPaths[0]!)
+    if (isUsableGitWorkTree(child.localPath)) return [child]
   }
 
-  if (children.length === 1) {
-    return { kind: 'directory', repositories: children }
-  }
-
-  // Any other folder still becomes a project. Git is only used to detect multi-root.
-  return {
-    kind: 'directory',
-    repositories: [describeLocalDirectory(root)]
-  }
+  return [describeLocalDirectory(root)]
 }
 
 /** Sentinel branch for a multi-root parent folder. Not a git branch. */
@@ -337,71 +332,86 @@ VALUES (?, ?, 'default', ?, ?)
   return firstWorkspaceId
 }
 
-function replaceProjectRepositories(
-  projectId: number,
-  kind: ProjectKind,
-  repositories: DiscoveredRepository[],
-  directoryRoot?: string
-): number {
-  const db = getDb()
-  db.prepare('DELETE FROM repositories WHERE project_id = ?').run(projectId)
-  db.prepare(`UPDATE projects SET kind = ?, updated_at = datetime('now') WHERE id = ?`).run(
-    kind,
-    projectId
-  )
-
-  return insertRepositoriesAndDefaultWorkspaces(db, projectId, kind, repositories, directoryRoot)
+/** Keep a checkout that is a real git repo. Missing paths stay registered. */
+function shouldKeepSplitRepository(localPath: string): boolean {
+  if (!existsSync(localPath)) return true
+  return isUsableGitWorkTree(localPath)
 }
 
-async function upgradeDirectoryProjectsWithNestedRepos(): Promise<void> {
+/**
+ * Turn a stored multi-root project into one directory project per git repository.
+ * The parent-folder workspace is removed, and child folders that are not git repos
+ * are removed. Workspace ids of the kept repositories stay the same.
+ */
+function splitMultiRootProjects(): void {
   const db = getDb()
-  const rows = db
-    .prepare(
-      `
-SELECT p.id AS project_id, r.local_path
-FROM projects p
-JOIN repositories r ON r.project_id = p.id
-WHERE p.kind = 'directory'
-GROUP BY p.id
-HAVING COUNT(r.id) = 1
-      `
-    )
-    .all() as Array<{ project_id: number; local_path: string }>
+  const projects = db
+    .prepare(`SELECT id FROM projects WHERE kind = 'multi-root' ORDER BY id ASC`)
+    .all() as Array<{ id: number }>
+  for (const project of projects) splitMultiRootProject(db, project.id)
+}
 
-  for (const row of rows) {
-    let childPaths: string[]
-    try {
-      childPaths = listImmediateGitCheckouts(row.local_path)
-    } catch {
-      continue
-    }
-    if (childPaths.length <= 1) continue
+function splitMultiRootProject(db: ReturnType<typeof getDb>, projectId: number): void {
+  const reposStmt = db.prepare(
+    `
+SELECT id, name, local_path
+FROM repositories
+WHERE project_id = ?
+ORDER BY id ASC
+    `
+  )
+  const deleteRoot = db.prepare(`DELETE FROM workspaces WHERE project_id = ? AND kind = 'root'`)
+  const deleteRepo = db.prepare(`DELETE FROM repositories WHERE id = ?`)
+  const deleteProject = db.prepare(`DELETE FROM projects WHERE id = ?`)
+  const rename = db.prepare(
+    `UPDATE projects SET name = ?, kind = 'directory', updated_at = datetime('now') WHERE id = ?`
+  )
+  const insertProject = db.prepare(`INSERT INTO projects (name, kind) VALUES (?, 'directory')`)
+  const moveRepo = db.prepare(`UPDATE repositories SET project_id = ? WHERE id = ?`)
+  const moveWorkspaces = db.prepare(`UPDATE workspaces SET project_id = ? WHERE repository_id = ?`)
 
-    const workspaceCount = db
-      .prepare('SELECT COUNT(*) AS n FROM workspaces WHERE project_id = ?')
-      .get(row.project_id) as { n: number }
-    if (workspaceCount.n !== 1) continue
-
-    const repositories = uniquifyRepositoryUrls(
-      await Promise.all(childPaths.map((path) => describeCheckout(path)))
-    )
-    const previousActive = getActiveWorkspaceId(db)
-
-    try {
-      db.exec('BEGIN IMMEDIATE')
-      replaceProjectRepositories(row.project_id, 'multi-root', repositories, row.local_path)
-      const activeStillValid =
-        previousActive != null &&
-        db.prepare('SELECT id FROM workspaces WHERE id = ?').get(previousActive) != null
-      if (!activeStillValid) clearActiveWorkspaceId(db)
+  try {
+    db.exec('BEGIN IMMEDIATE')
+    const still = db
+      .prepare(`SELECT id FROM projects WHERE id = ? AND kind = 'multi-root'`)
+      .get(projectId) as { id: number } | undefined
+    if (!still) {
       db.exec('COMMIT')
-    } catch {
-      try {
-        db.exec('ROLLBACK')
-      } catch {
-        // Ignore rollback failures when the transaction never started.
+      return
+    }
+
+    deleteRoot.run(projectId)
+    const repos = reposStmt.all(projectId) as Array<{
+      id: number
+      name: string
+      local_path: string
+    }>
+    const keep = repos.filter((repo) => shouldKeepSplitRepository(repo.local_path))
+    for (const repo of repos) {
+      if (!keep.includes(repo)) deleteRepo.run(repo.id)
+    }
+
+    const first = keep[0]
+    if (!first) {
+      deleteProject.run(projectId)
+    } else {
+      rename.run(first.name, projectId)
+      for (const repo of keep.slice(1)) {
+        const inserted = insertProject.run(repo.name)
+        const nextProjectId = toId(inserted.lastInsertRowid)
+        moveRepo.run(nextProjectId, repo.id)
+        moveWorkspaces.run(nextProjectId, repo.id)
       }
     }
+    ensureActiveWorkspaceValid(projectId, db)
+    db.exec('COMMIT')
+  } catch (error) {
+    try {
+      db.exec('ROLLBACK')
+    } catch {
+      // Ignore rollback failures when the transaction never started.
+    }
+    throw error
   }
 }
 
@@ -607,7 +617,7 @@ ORDER BY
 }
 
 export async function listProjects(): Promise<ProjectListResult> {
-  await upgradeDirectoryProjectsWithNestedRepos()
+  splitMultiRootProjects()
   const { projects, activeWorkspaceId } = loadProjectsFromDb()
   return { projects, activeWorkspaceId }
 }
@@ -706,20 +716,18 @@ export async function createProjectFromGitUrl(
 export async function createProjectFromDirectory(directory: string): Promise<Project> {
   try {
     const root = resolveExistingDirectory(directory)
-    const discovered = await discoverDirectoryProject(root)
-    assertPathsAvailable(discovered.repositories.map((repo) => repo.localPath))
+    const repositories = await discoverImportRepositories(root)
+    assertPathsAvailable(repositories.map((repo) => repo.localPath))
 
     const db = getDb()
+    let firstProjectId = 0
     try {
       db.exec('BEGIN IMMEDIATE')
-      const projectId = insertProjectWithRepositories(
-        basename(root),
-        discovered.kind,
-        discovered.repositories,
-        discovered.kind === 'multi-root' ? root : undefined
-      )
+      for (const repo of repositories) {
+        const projectId = insertProjectWithRepositories(repo.name, 'directory', [repo])
+        if (firstProjectId === 0) firstProjectId = projectId
+      }
       db.exec('COMMIT')
-      return await loadCreatedProject(projectId)
     } catch (error) {
       try {
         db.exec('ROLLBACK')
@@ -728,6 +736,7 @@ export async function createProjectFromDirectory(directory: string): Promise<Pro
       }
       throw error
     }
+    return await loadCreatedProject(firstProjectId)
   } catch (error) {
     throw directoryImportError(error)
   }

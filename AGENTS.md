@@ -49,17 +49,15 @@ The window is two regions: **sidebar** | **content area**. Use these names, not 
 - **sidebar** — left column (`AppSidebar`). Project list (expand/collapse), add project, and nested workspace rows. Can collapse (offcanvas).
 - **content area** — everything to the right of the sidebar (`SidebarInset`). Header plus the selected workspace (`WorkspaceView`), or the empty state when nothing is selected. Workspace content opens in **tabs**.
 - **tab** — a content surface in the content area containing a BSP (Binary Space Partitioning) tree of panes. A tab can mix Terminal and Changes panes. The tab bar lists open tabs for the selected workspace.
-- **pane** — a typed leaf in a tab’s BSP tree. Adding a pane splits the active pane 50/50: right when wide, down when tall, or an explicit direction. Split directions remain fixed; dividers resize the ratio. Exactly one pane per tab is active, with a glowing border when the tab contains multiple panes. Pane IDs float at the top right; the close control is shown only for multiple panes. Inactive multi-pane edges use `--pane-border` (points at `--ring`); active pane glow, workspace rows, and multi-root badges share `--sidebar-selected`. Closing a pane expands its sibling; closing the last pane closes the tab.
+- **pane** — a typed leaf in a tab’s BSP tree. Adding a pane splits the active pane 50/50: right when wide, down when tall, or an explicit direction. Split directions remain fixed; dividers resize the ratio. Exactly one pane per tab is active, with a glowing border when the tab contains multiple panes. Pane IDs float at the top right; the close control is shown only for multiple panes. Inactive multi-pane edges use `--pane-border` (points at `--ring`); active pane glow and workspace rows share `--sidebar-selected`. Closing a pane expands its sibling; closing the last pane closes the tab.
 
 ### Domain terminology
 
-- **project** — a cloned Git repository, an opened folder, or a **multi-root workspace** (a folder with multiple git repositories as immediate children). Clicking the project row expands or collapses its workspaces; it does **not** open a terminal. GitHub-linked single-root projects can add worktrees via a per-project `+`.
-- **workspace** — a checkout under a project: the default-branch clone or opened repo, plus each extra git worktree. In a multi-root project, the parent folder is a root workspace and each nested git repo is a default workspace.
+- **project** — a cloned Git repository or an opened folder. Choosing a folder that contains several git repositories adds each usable git repository as its own project, named after that repository. Sibling folders that are not git repositories are skipped. Clicking the project row expands or collapses its workspaces; it does **not** open a terminal. GitHub-linked projects can add worktrees via a per-project `+`.
+- **workspace** — a checkout under a project: the default-branch clone or opened repo, plus each extra git worktree.
 - **workspace row** — a focusable sidebar row that selects a workspace. Not the project row. Workspace rows include:
-  - **default branch workspace** — the default-branch checkout of a single-root project
+  - **default branch workspace** — the default-branch checkout of a project
   - **worktree workspace** — an extra git worktree under a project
-  - **multi-root workspace** — the `root` row of a multi-root project (the parent folder)
-  - **nested repo** — a child git repository under a multi-root project
 
   Clicking a workspace row selects it. A terminal opens when the user adds one from the tab bar, or when they press Mod+T while a workspace row is focused.
 
@@ -113,16 +111,16 @@ CI runs the specs as five parallel groups (`test:e2e:app|projects|terminal|chat|
 
 Pick specs by the flow you touched:
 
-| Changed area                      | Spec                         |
-| --------------------------------- | ---------------------------- |
-| app chrome, empty state, menu     | `smoke.spec.ts`              |
-| settings                          | `settings.spec.ts`           |
-| GitHub login / integrations       | `github.spec.ts`             |
-| add local / multi-root folder     | `projects-directory.spec.ts` |
-| clone from GitHub, worktrees, PRs | `projects-github.spec.ts`    |
-| workspace terminal                | `terminal.spec.ts`           |
-| BSP panes and tab/pane CLI        | `panes.spec.ts`              |
-| Changes content                   | `changes.spec.ts`            |
+| Changed area                           | Spec                         |
+| -------------------------------------- | ---------------------------- |
+| app chrome, empty state, menu          | `smoke.spec.ts`              |
+| settings                               | `settings.spec.ts`           |
+| GitHub login / integrations            | `github.spec.ts`             |
+| add local folder / folder of git repos | `projects-directory.spec.ts` |
+| clone from GitHub, worktrees, PRs      | `projects-github.spec.ts`    |
+| workspace terminal                     | `terminal.spec.ts`           |
+| BSP panes and tab/pane CLI             | `panes.spec.ts`              |
+| Changes content                        | `changes.spec.ts`            |
 
 If a change spans several flows, list those specs together (`settings.spec.ts smoke.spec.ts`). Do not add unrelated specs "just in case."
 
@@ -237,13 +235,13 @@ cerebro workspace list --project 3
 
 **Stable error codes** in the `code` field: `not_found`, `conflict`, `create_failed`, `list_failed`, `usage`, `internal`. Mux commands also return `unavailable` for startup/connection failures.
 
-**`workspace create` is for GitHub-linked single-root projects only.** Multi-root projects cannot add worktrees.
+**`workspace create` is for GitHub-linked projects only.**
 
 **`workspace create` when a workspace for that branch already exists exits 1 with `code: "conflict"`.** Check for this before retrying. Creating a new branch with `--from` also exits `conflict` if that branch already exists locally or on origin.
 
 **`workspace delete` / `workspace remove` on a default workspace exits 1 with `code: "conflict"`.** Remove the project instead (`project delete` / `project remove`).
 
-**`workspace status` sets the sidebar status of any workspace row** (default branch, worktree, multi-root root, or nested repo). Values: `todo` (the initial status), `in-progress`, `ready-to-review`, `done`. Omitting the status prints the workspace, including `status`. JSON stores `in_progress` and `ready_to_review`. Unknown status exits 2 with `code: "usage"`. Missing workspace exits 1 with `code: "not_found"`.
+**`workspace status` sets the sidebar status of any workspace row** (default branch or worktree). Values: `todo` (the initial status), `in-progress`, `ready-to-review`, `done`. Omitting the status prints the workspace, including `status`. JSON stores `in_progress` and `ready_to_review`. Unknown status exits 2 with `code: "usage"`. Missing workspace exits 1 with `code: "not_found"`.
 
 - `project delete` / `workspace delete` — remove worktree directories from disk (`git worktree remove`), then unregister.
 - `project remove` / `workspace remove` — unregister only; directories stay on disk.

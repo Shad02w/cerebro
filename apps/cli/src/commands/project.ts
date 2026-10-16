@@ -12,7 +12,7 @@ Usage: cerebro project <command>
 Commands:
   list                          List all projects (JSON)
   create <git-url>              Clone a git URL and register it as a new project
-  create --directory <path>     Add an existing folder (multi-root if it contains multiple git repos)
+  create --directory <path>     Add a folder. Each git repository in it becomes its own project
   delete <project-id>           Delete nested worktrees from disk, then unregister the project
   remove <project-id>           Unregister the project; leave directories on disk
 

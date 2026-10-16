@@ -18,10 +18,10 @@ test('header searches projects, repositories and branches without changing tree 
     await addDirectoryViaUi(page, electronApp, source)
     await expect(page.getByRole('dialog')).toHaveCount(0)
     const sidebar = page.locator('[data-slot="sidebar"]')
-    const projectRow = sidebar.getByTestId(/project-row-/)
-    await expect(projectRow).toHaveAttribute('aria-expanded', 'true')
-    await projectRow.click()
-    await expect(projectRow).toHaveAttribute('aria-expanded', 'false')
+    const clientRow = sidebar.getByTestId(/project-row-/).filter({ hasText: 'client' })
+    const serverRow = sidebar.getByTestId(/project-row-/).filter({ hasText: 'server' })
+    await expect(clientRow).toHaveAttribute('aria-expanded', 'false')
+    await expect(serverRow).toHaveAttribute('aria-expanded', 'false')
 
     const search = page.getByRole('textbox', { name: 'Search projects and workspaces' })
     const results = sidebar.getByTestId(/workspace-search-result-/)
@@ -35,9 +35,6 @@ test('header searches projects, repositories and branches without changing tree 
     await expect(page.getByTestId('content-tab-bar')).toBeVisible()
     await expect(page.locator('[data-terminal-workspace-id]')).toHaveCount(0)
 
-    await search.fill(source.split('/').at(-1)!)
-    await expect(results).toHaveCount(3)
-    await expect(sidebar.getByRole('status')).toHaveText('3 workspaces found')
     await search.fill('no-such-workspace')
     await expect(results).toHaveCount(0)
     await expect(sidebar.getByRole('status')).toHaveText('No matching workspaces')
@@ -52,13 +49,15 @@ test('header searches projects, repositories and branches without changing tree 
     await page.getByRole('button', { name: 'Clear search' }).click()
     await expect(search).toBeFocused()
     await expect(search).toHaveValue('')
-    await expect(projectRow).toBeVisible()
-    await expect(projectRow).toHaveAttribute('aria-expanded', 'false')
+    await expect(clientRow).toBeVisible()
+    await expect(clientRow).toHaveAttribute('aria-expanded', 'false')
+    await expect(serverRow).toHaveAttribute('aria-expanded', 'false')
     await search.fill('server')
     await expect(results).toHaveCount(1)
     await search.press('Escape')
     await expect(search).toHaveValue('')
-    await expect(projectRow).toHaveAttribute('aria-expanded', 'false')
+    await expect(clientRow).toHaveAttribute('aria-expanded', 'false')
+    await expect(serverRow).toHaveAttribute('aria-expanded', 'false')
   } finally {
     await rm(source, { recursive: true, force: true })
   }
@@ -159,16 +158,26 @@ test('sidebar keeps keyboard selection and disclosures usable in both themes', a
     await addDirectoryViaUi(page, electronApp, source)
     await expect(page.getByTestId(/project-row-/).filter({ hasText: 'cerebro' })).toBeVisible()
     await addDirectoryViaUi(page, electronApp, collection)
-    const projectRow = page.getByTestId(/project-row-/).filter({ hasText: 'design-tools' })
+    const projectRow = page.getByTestId(/project-row-/).filter({ hasText: 'component-library' })
     await expect(projectRow).toBeVisible()
+    await expect(page.getByTestId(/project-row-/).filter({ hasText: 'design-tools' })).toHaveCount(
+      0
+    )
     await expect(page.getByRole('dialog')).toHaveCount(0)
     await projectRow.focus()
     await expect(projectRow).toBeFocused()
     await page.keyboard.press('Enter')
     await expect(projectRow).toHaveAttribute('aria-expanded', 'true')
 
-    const repoRow = page.getByTestId(/workspace-row-/).filter({ hasText: 'component-library' })
+    const libraryId = await page.evaluate(async () => {
+      const listed = await window.cerebro.listProjects()
+      return listed.projects.find((project) => project.name === 'component-library')?.workspaces[0]
+        ?.id
+    })
+    expect(libraryId).toBeTruthy()
+    const repoRow = page.getByTestId(`workspace-row-${libraryId}`)
     await expect(repoRow).toBeVisible()
+    await expect(repoRow).toContainText('main')
     await repoRow.focus()
     await expect(repoRow).toBeFocused()
     await expect(repoRow).toHaveCSS('outline-style', 'solid')
@@ -194,11 +203,12 @@ test('sidebar keeps keyboard selection and disclosures usable in both themes', a
     await expect(repoRow).toHaveAttribute('aria-current', 'location')
 
     const sidebar = page.locator('[data-slot="sidebar"]')
-    const rootGroup = sidebar.getByTestId(/root-group-/)
-    await expect(rootGroup.getByTestId(/root-repo-count-/)).toHaveText('4 repos')
-    await expect(rootGroup.getByTestId(/workspace-row-/)).toHaveCount(4)
+    await expect(sidebar.getByTestId(/project-root-/)).toHaveCount(0)
+    await expect(sidebar.getByTestId(/project-row-/)).toHaveCount(5)
 
     const cerebroProject = sidebar.getByTestId(/project-row-/).filter({ hasText: 'cerebro' })
+    if ((await cerebroProject.getAttribute('aria-expanded')) !== 'true')
+      await cerebroProject.click()
     const branchRow = sidebar
       .getByTestId(/workspace-row-/)
       .filter({ hasText: 'feature/sidebar-refinements' })
@@ -211,41 +221,15 @@ test('sidebar keeps keyboard selection and disclosures usable in both themes', a
     for (const subtree of await sidebar.locator('[data-sidebar="menu-sub"]').all()) {
       await expect(subtree).toHaveCSS('margin-left', '0px')
       await expect(subtree).toHaveCSS('padding-left', '0px')
+      await expect(subtree).toHaveCSS('border-left-width', '0px')
     }
-    const repoTree = sidebar.getByTestId(/project-repo-tree-/)
-    await expect(repoTree).toHaveCSS('margin-left', '0px')
-    const rootButton = sidebar.locator('[data-workspace-role="root"]')
-    const rootBox = await rootButton.boundingBox()
-    const repoBox = await repoRow.boundingBox()
-    expect(rootBox).toBeTruthy()
-    expect(repoBox).toBeTruthy()
-    expect(Math.abs(repoBox!.x - rootBox!.x)).toBeLessThanOrEqual(2)
-
-    await rootButton.click()
-    await expect(rootButton).toHaveAttribute('data-active', 'true')
-    await expect(rootGroup).toHaveAttribute('data-active', 'true')
-    await expect(rootGroup).toHaveCSS('box-shadow', /0px 0px 0px 1px inset/)
-    await expect(rootButton).toHaveCSS('box-shadow', 'none')
-    const groupBox = await rootGroup.boundingBox()
-    expect(groupBox).toBeTruthy()
-    expect(groupBox!.height).toBeGreaterThan(rootBox!.height + 40)
-    for (const row of await rootGroup.locator('[data-workspace-role="repository"]').all()) {
-      await expect(row).toHaveAttribute('data-active', 'false')
-      await expect(row).toHaveCSS('box-shadow', 'none')
-    }
-    await sidebar.screenshot({
-      path: testInfo.outputPath('multi-root-block-selected.png'),
-      animations: 'disabled'
-    })
 
     await repoRow.click()
     await expect(repoRow).toHaveAttribute('data-active', 'true')
     await expect(repoRow).toHaveCSS('box-shadow', /0px 0px 0px 1px inset/)
-    await expect(rootGroup).toHaveAttribute('data-active', 'false')
-    await expect(rootButton).toHaveAttribute('data-active', 'false')
-    await expect(rootGroup).not.toHaveCSS('box-shadow', /0px 0px 0px 1px inset/)
+    await expect(branchRow).toHaveAttribute('data-active', 'false')
     await sidebar.screenshot({
-      path: testInfo.outputPath('multi-root-repo-selected.png'),
+      path: testInfo.outputPath('repo-project-selected.png'),
       animations: 'disabled'
     })
 
@@ -290,18 +274,16 @@ test('renames workspace rows from the menu and can reset to the default label', 
     })
     await addDirectoryViaUi(page, electronApp, suite)
     await expect(page.getByRole('dialog')).toHaveCount(0)
+    await expect(page.getByTestId(/project-row-/).filter({ hasText: 'suite' })).toHaveCount(0)
 
     const listed = await page.evaluate(async () => window.cerebro.listProjects())
     const alphaProject = listed.projects.find((item) => item.name === 'alpha')
-    const suiteProject = listed.projects.find((item) => item.name === 'suite')
+    const frontendProject = listed.projects.find((item) => item.name === 'frontend')
     const branchWorkspace = alphaProject?.workspaces[0]
-    const frontend = suiteProject?.workspaces.find((workspace) =>
-      workspace.localPath.endsWith('/frontend')
-    )
-    const rootWorkspace = suiteProject?.workspaces.find((workspace) => workspace.kind === 'root')
+    const frontend = frontendProject?.workspaces[0]
     expect(branchWorkspace?.id).toBeTruthy()
     expect(frontend?.id).toBeTruthy()
-    expect(rootWorkspace?.id).toBeTruthy()
+    expect(frontend?.branch).toBe('main')
 
     await expandProject(page, 'alpha')
     const branchRow = page.getByTestId(`workspace-row-${branchWorkspace!.id}`)
@@ -354,21 +336,20 @@ test('renames workspace rows from the menu and can reset to the default label', 
     await expect(branchRow).toContainText('main')
     await expect(branchRow).not.toContainText('Alpha checkout')
 
-    await expandProject(page, 'suite')
-    const repoName = page.getByTestId(`workspace-repo-${frontend!.id}`)
-    await expect(repoName).toHaveText('frontend')
+    await expandProject(page, 'frontend')
     const repoRow = page.getByTestId(`workspace-row-${frontend!.id}`)
+    await expect(repoRow).toContainText('main')
     await repoRow.scrollIntoViewIfNeeded()
     await repoRow.hover()
     await page.getByTestId(`workspace-menu-${frontend!.id}`).click()
     await page.getByTestId(`workspace-rename-${frontend!.id}`).click()
-    await expect(input).toHaveValue('frontend')
-    await expect(page.getByTestId('workspace-rename-default')).toHaveText('Default: frontend')
+    await expect(input).toHaveValue('main')
+    await expect(page.getByTestId('workspace-rename-default')).toHaveText('Default: main')
     await input.fill('Web client')
     await page.getByTestId('workspace-rename-submit').click()
     await expect(dialog).toHaveCount(0)
-    await expect(repoName).toHaveText('Web client')
-    await expect(page.getByTestId(`workspace-branch-${frontend!.id}`)).toContainText('main')
+    await expect(repoRow).toContainText('Web client')
+    await expect(repoRow).not.toContainText('main')
     await page.screenshot({
       path: testInfo.outputPath('workspace-rename-directory.png'),
       animations: 'disabled'
@@ -378,24 +359,8 @@ test('renames workspace rows from the menu and can reset to the default label', 
     await page.getByTestId(`workspace-menu-${frontend!.id}`).click()
     await page.getByTestId(`workspace-rename-${frontend!.id}`).click()
     await page.getByTestId('workspace-rename-reset').click()
-    await expect(repoName).toHaveText('frontend')
-
-    const rootButton = page.getByTestId(`project-root-${suiteProject!.id}`)
-    await expect(rootButton).toContainText('root')
-    await rootButton.scrollIntoViewIfNeeded()
-    await rootButton.hover()
-    await page.getByTestId(`root-menu-${suiteProject!.id}`).click()
-    await page.getByTestId(`workspace-rename-${rootWorkspace!.id}`).click()
-    await expect(input).toHaveValue('root')
-    await input.fill('Suite root')
-    await page.getByTestId('workspace-rename-submit').click()
-    await expect(rootButton).toContainText('Suite root')
-    await rootButton.hover()
-    await page.getByTestId(`root-menu-${suiteProject!.id}`).click()
-    await page.getByTestId(`workspace-rename-${rootWorkspace!.id}`).click()
-    await page.getByTestId('workspace-rename-reset').click()
-    await expect(rootButton).toContainText('root')
-    await expect(rootButton).not.toContainText('Suite root')
+    await expect(repoRow).toContainText('main')
+    await expect(repoRow).not.toContainText('Web client')
   } finally {
     await rm(sourcesRoot, { recursive: true, force: true })
   }

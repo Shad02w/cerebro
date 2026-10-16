@@ -796,7 +796,7 @@ test('expands and collapses Pierre folders and preserves expansion across refres
   }
 })
 
-test('groups multi-root changes by repo on the root workspace and scopes nested repos', async ({
+test('scopes changes to the selected repo when several repos were added together', async ({
   page,
   electronApp
 }) => {
@@ -812,37 +812,38 @@ test('groups multi-root changes by repo on the root workspace and scopes nested 
     await writeFile(join(backend, 'README.md'), 'backend-app\nback-change\n')
     await addDirectoryViaUi(page, electronApp, parent)
 
-    const project = await listedProject(page, 'apps-folder')
-    const frontendWorkspace = project?.workspaces.find(
-      (workspace) => workspace.kind !== 'root' && workspace.localPath.endsWith('frontend')
-    )
-    expect(project?.id).toBeTruthy()
+    const frontendProject = await listedProject(page, 'frontend')
+    const backendProject = await listedProject(page, 'backend')
+    const frontendWorkspace = frontendProject?.workspaces[0]
+    const backendWorkspace = backendProject?.workspaces[0]
     expect(frontendWorkspace?.id).toBeTruthy()
+    expect(backendWorkspace?.id).toBeTruthy()
+    await expect(page.getByTestId(/project-root-/)).toHaveCount(0)
 
-    await page.getByTestId(`project-root-${project?.id}`).click()
-    await openChanges(page)
-    const rootChanges = activeChanges(page)
-    await expect(
-      rootChanges.getByTestId('changes-repo-header').filter({ hasText: 'backend' })
-    ).toBeVisible({
-      timeout: 15_000
-    })
-    await expect(
-      rootChanges.getByTestId('changes-repo-header').filter({ hasText: 'frontend' })
-    ).toBeVisible()
-    await expect(rootChanges.locator('[role="treeitem"][data-item-type="file"]')).toHaveCount(2)
-    await expect(rootChanges.getByTestId('changes-diff')).toContainText('front-change')
-    await expect(rootChanges.getByTestId('changes-diff')).toContainText('back-change')
-
+    for (const project of [frontendProject, backendProject]) {
+      const row = page.getByTestId(`project-row-${project?.id}`)
+      if ((await row.getAttribute('aria-expanded')) !== 'true') await row.click()
+    }
     await page.getByTestId(`workspace-row-${frontendWorkspace?.id}`).click()
     await openChanges(page)
-    const repoChanges = activeChanges(page)
-    await expect(repoChanges.locator('[role="treeitem"][data-item-type="file"]')).toHaveCount(1, {
-      timeout: 15_000
-    })
-    await expect(repoChanges.getByTestId('changes-repo-header')).toHaveCount(0)
-    await expect(repoChanges.getByTestId('changes-diff')).toContainText('front-change')
-    await expect(repoChanges.getByTestId('changes-diff')).not.toContainText('back-change')
+    const frontendChanges = activeChanges(page)
+    await expect(frontendChanges.locator('[role="treeitem"][data-item-type="file"]')).toHaveCount(
+      1,
+      { timeout: 15_000 }
+    )
+    await expect(frontendChanges.getByTestId('changes-repo-header')).toHaveCount(0)
+    await expect(frontendChanges.getByTestId('changes-diff')).toContainText('front-change')
+    await expect(frontendChanges.getByTestId('changes-diff')).not.toContainText('back-change')
+
+    await page.getByTestId(`workspace-row-${backendWorkspace?.id}`).click()
+    await openChanges(page)
+    const backendChanges = activeChanges(page)
+    await expect(backendChanges.locator('[role="treeitem"][data-item-type="file"]')).toHaveCount(
+      1,
+      { timeout: 15_000 }
+    )
+    await expect(backendChanges.getByTestId('changes-diff')).toContainText('back-change')
+    await expect(backendChanges.getByTestId('changes-diff')).not.toContainText('front-change')
   } finally {
     await rm(root, { recursive: true, force: true })
   }

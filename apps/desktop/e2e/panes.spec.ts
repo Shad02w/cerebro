@@ -479,9 +479,22 @@ test('CLI rejects invalid and cross-workspace targets without changing the layou
     await repo(join(dir, 'one'))
     await repo(join(dir, 'two'))
     const home = await homeOf(electronApp)
-    const project = await cli<Project>(home, 'project', 'create', '--directory', dir)
-    const root = project.workspaces.find((w: { kind: string }) => w.kind === 'root')
-    const nested = project.workspaces.find((w: { kind: string }) => w.kind === 'default')
+    const oneProject = await cli<Project>(
+      home,
+      'project',
+      'create',
+      '--directory',
+      join(dir, 'one')
+    )
+    const twoProject = await cli<Project>(
+      home,
+      'project',
+      'create',
+      '--directory',
+      join(dir, 'two')
+    )
+    const root = oneProject.workspaces.find((w: { kind: string }) => w.kind === 'default')
+    const nested = twoProject.workspaces.find((w: { kind: string }) => w.kind === 'default')
     const tab = await cli<WorkspaceTab>(
       home,
       'tab',
@@ -492,9 +505,14 @@ test('CLI rejects invalid and cross-workspace targets without changing the layou
       'changes',
       '--focus'
     )
-    await selectWorkspace(page, root.id)
-    await expect(pane(page, tab.activePaneId).getByTestId('changes-view')).toContainText('one')
-    await expect(pane(page, tab.activePaneId).getByTestId('changes-view')).toContainText('two')
+    const oneRow = page.getByTestId(`project-row-${oneProject.id}`)
+    await expect(oneRow).toBeVisible()
+    if ((await oneRow.getAttribute('aria-expanded')) !== 'true') await oneRow.click()
+    await page.locator(`button[data-workspace-id="${root.id}"]`).click()
+    await expect(pane(page, tab.activePaneId).getByTestId('changes-view')).toContainText(
+      'example.txt'
+    )
+    await expect(pane(page, tab.activePaneId).getByTestId('changes-view')).not.toContainText('two')
     const other = await cli<WorkspaceTab>(home, 'tab', 'create', '--workspace', String(nested.id))
     await expect(pane(page, tab.activePaneId)).toBeVisible()
     await expect(pane(page, other.activePaneId)).toBeHidden()
@@ -577,14 +595,11 @@ test('CLI rejects invalid and cross-workspace targets without changing the layou
       String(nested.id)
     )
     expect(nestedPanes).toHaveLength(2)
-    // One token updates all three surfaces without changing component styles.
+    // One token updates the pane border and the selected workspace row.
     await page.evaluate(() =>
       document.documentElement.style.setProperty('--sidebar-selected', 'rgb(120, 90, 220)')
     )
-    await expect(page.getByTestId(`project-multi-root-${project.id}`)).toHaveCSS(
-      'color',
-      'rgb(120, 90, 220)'
-    )
+    await expect(page.getByTestId(/project-multi-root-/)).toHaveCount(0)
     const focused = nestedPanes.find((pane) => pane.active)!
     await expect(pane(page, focused.id).getByTestId('pane-border')).toHaveCSS(
       'border-top-color',
