@@ -100,8 +100,14 @@ export async function startServer(): Promise<void> {
     return next
   }
   const publish = (event: string, data: unknown): void => {
-    for (const peer of peers)
-      if (peer.authorized && peer.subscribed) peer.wire.send({ event, data })
+    for (const peer of peers) {
+      if (!peer.authorized || !peer.subscribed) continue
+      try {
+        peer.wire.send({ event, data })
+      } catch {
+        // A single bad frame must not take the host down mid-turn.
+      }
+    }
   }
   const agents = new AgentSessions(
     join(muxDirectory(), 'agents'),
@@ -264,10 +270,22 @@ export async function startServer(): Promise<void> {
         }
     })
     peer.wire.on('message', (message: Message) => {
-      if (++peer.inFlight > 256) {
-        socket.destroy()
+      // Closing the socket here fails every in-flight call, including a prompt the host
+      // has already accepted. Reject the extra request and let the rest finish.
+      if (peer.inFlight >= 256) {
+        if (typeof message.id === 'string') {
+          try {
+            peer.wire.send({
+              id: message.id,
+              error: { code: 'unavailable', message: 'Too many mux requests are in flight.' }
+            })
+          } catch {
+            /* Peer is gone. */
+          }
+        }
         return
       }
+      peer.inFlight++
       void (async () => {
         const p = (message.params ?? {}) as RequestParams
         if (
@@ -506,14 +524,33 @@ export async function startServer(): Promise<void> {
       })().then(
         (result) => {
           peer.inFlight--
-          if (result !== SENT) peer.wire.send({ id: message.id, result })
+          if (result === SENT) return
+          try {
+            peer.wire.send({ id: message.id, result })
+          } catch (error) {
+            try {
+              peer.wire.send({
+                id: message.id,
+                error: {
+                  code: 'internal',
+                  message: error instanceof Error ? error.message : String(error)
+                }
+              })
+            } catch {
+              /* Peer is gone. The call may already have been applied. */
+            }
+          }
         },
         (error) => {
           peer.inFlight--
-          peer.wire.send({
-            id: message.id,
-            error: { code: error.code ?? 'internal', message: error.message }
-          })
+          try {
+            peer.wire.send({
+              id: message.id,
+              error: { code: error.code ?? 'internal', message: error.message }
+            })
+          } catch {
+            /* Peer is gone. */
+          }
         }
       )
     })

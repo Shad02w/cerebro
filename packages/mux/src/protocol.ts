@@ -66,13 +66,13 @@ export class Wire extends EventEmitter {
   send(message: Message): void {
     if (this.socket.destroyed) return
     const payload = Buffer.from(JSON.stringify(message))
-    if (
-      payload.length > MAX_MESSAGE ||
-      this.socket.writableLength > MAX_MESSAGE + 2 * 1024 * 1024
-    ) {
+    if (payload.length > MAX_MESSAGE) {
       this.socket.destroy(new Error('Mux client must resynchronize.'))
       return
     }
+    // A lagging peer must not lose the reply to a call that already finished. Dropping
+    // the socket there surfaces "operation may have completed" while the turn is saved.
+    if (message.event && this.socket.writableLength > MAX_MESSAGE + 2 * 1024 * 1024) return
     this.socket.cork()
     for (let offset = 0; offset < payload.length; offset += 65536) {
       const part = payload.subarray(offset, offset + 65536)
