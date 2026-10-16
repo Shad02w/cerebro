@@ -53,7 +53,8 @@
 
 .cerebro-sidebar [data-workspace-role='branch'],
 .cerebro-sidebar [data-workspace-role='root'],
-.cerebro-sidebar [data-workspace-role='directory'] {
+.cerebro-sidebar [data-workspace-role='directory'],
+.cerebro-sidebar [data-workspace-role='repository'] {
   min-height: var(--sidebar-row-line);
   height: auto;
   font-size: 12px;
@@ -95,6 +96,12 @@
   text-align: left;
 }
 
+/* The multi-root badge sits beside the folder name. Growing the label pushes
+   that badge under the history and menu buttons. */
+.cerebro-sidebar [data-directory-name-line] [data-row-label] {
+  flex: 0 1 auto;
+}
+
 /* Pull a second line up into the name line's lower half so the name stays
    centered with the buttons without a gap under the text. */
 .cerebro-sidebar [data-branch-line] {
@@ -128,6 +135,7 @@
   position: absolute;
   top: 0;
   right: 0.25rem;
+  z-index: 2;
   pointer-events: none;
 }
 
@@ -316,7 +324,15 @@
   .sidebar-root-group[data-active='true']
   [data-workspace-role='root'][data-active='true']:hover,
 .cerebro-sidebar .sidebar-root-group[data-hover='true'] [data-workspace-role='root'],
-.cerebro-sidebar .sidebar-root-group[data-hover='true'] [data-workspace-role='root']:hover {
+.cerebro-sidebar .sidebar-root-group[data-hover='true'] [data-workspace-role='root']:hover,
+.cerebro-sidebar
+  .sidebar-root-group[data-active='true']
+  [data-workspace-role='directory'][data-active='true'],
+.cerebro-sidebar
+  .sidebar-root-group[data-active='true']
+  [data-workspace-role='directory'][data-active='true']:hover,
+.cerebro-sidebar .sidebar-root-group[data-hover='true'] [data-workspace-role='directory'],
+.cerebro-sidebar .sidebar-root-group[data-hover='true'] [data-workspace-role='directory']:hover {
   background-color: transparent;
   box-shadow: none;
 }

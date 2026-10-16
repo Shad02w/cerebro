@@ -27,6 +27,7 @@ import {
 import type { ChatAgentActivity, LayoutState, PaneNode } from '@cerebro/core'
 import {
   WORKSPACE_STATUSES,
+  type NestedRepo,
   type Project,
   type SidebarGroupBy,
   type Workspace,
@@ -65,6 +66,7 @@ import {
   isPlainDirectoryProject,
   projectsBesidesNestedRepos,
   workspaceCarriesStatus,
+  workspaceMatchingPath,
   workspaceStatus
 } from '@/lib/workspace-status'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -820,8 +822,325 @@ function ProjectItem({
   )
 }
 
+function NestedRepoBody({ repo }: { repo: NestedRepo }): React.JSX.Element {
+  return (
+    <>
+      <span data-row-line="">
+        <span className="text-xs font-medium text-sidebar-foreground/60" data-row-label="">
+          {repo.name}
+        </span>
+      </span>
+      {repo.branch ? (
+        <span
+          className="text-[11px] leading-4 text-sidebar-foreground/65"
+          data-branch-line=""
+          data-testid={`workspace-nested-branch-${repo.name}`}
+        >
+          <span
+            aria-hidden
+            className="h-2.5 w-2 shrink-0 rounded-bl-[3px] border-b border-l border-current opacity-40"
+          />
+          <GitBranch className="size-3 shrink-0" />
+          <span className="min-w-0 truncate">{repo.branch}</span>
+        </span>
+      ) : null}
+    </>
+  )
+}
+
+function NestedRepoRow({
+  repo,
+  match,
+  activeWorkspaceId,
+  agents,
+  onSelectWorkspace,
+  onOpenAgent
+}: {
+  repo: NestedRepo
+  match: Workspace | null
+  activeWorkspaceId: number | null
+  agents: ChatAgentActivity[]
+  onSelectWorkspace: (workspaceId: number) => void
+  onOpenAgent: (agent: ChatAgentActivity) => void
+}): React.JSX.Element {
+  const active = match != null && match.id === activeWorkspaceId
+  const rowClass =
+    'flex w-full min-w-0 flex-col items-stretch rounded-md px-2 py-0 text-left text-xs font-medium text-sidebar-foreground/60'
+  return (
+    <li data-testid={`workspace-nested-repo-${repo.name}`}>
+      <WorkspaceHoverCard workspace={match ?? undefined} showStatus={false}>
+        <SidebarMenuRow data-workspace-id={match?.id}>
+          {match ? (
+            <button
+              type="button"
+              className={cn(
+                'app-no-drag pr-14',
+                rowClass,
+                'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+              )}
+              data-testid={`workspace-row-${match.id}`}
+              data-workspace-id={match.id}
+              data-workspace-role="repository"
+              data-workspace-icon="directory-name"
+              data-active={active ? 'true' : 'false'}
+              aria-current={active ? 'location' : undefined}
+              onClick={(): void => onSelectWorkspace(match.id)}
+            >
+              <NestedRepoBody repo={repo} />
+            </button>
+          ) : (
+            <div
+              className={rowClass}
+              data-workspace-role="repository"
+              data-workspace-icon="directory-name"
+            >
+              <NestedRepoBody repo={repo} />
+            </div>
+          )}
+          {match ? (
+            <RowActions overlay>
+              <WorkspaceSessionHistory workspaceId={match.id} />
+            </RowActions>
+          ) : null}
+          <WorkspaceSessionList agents={agents} onOpenAgent={onOpenAgent} />
+        </SidebarMenuRow>
+      </WorkspaceHoverCard>
+    </li>
+  )
+}
+
+function DirectoryRowMenu({
+  project,
+  workspace,
+  onRenameWorkspace,
+  onRemoveProject,
+  onSetStatus
+}: {
+  project: Project
+  workspace: Workspace
+  onRenameWorkspace: (workspace: Workspace) => void
+  onRemoveProject: (projectId: number, deleteFiles: boolean) => void
+  onSetStatus: (workspaceId: number, status: WorkspaceStatus) => void
+}): React.JSX.Element {
+  return (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger
+        render={
+          <SidebarMenuAction
+            className="app-no-drag workspace-row-menu"
+            showOnHover
+            data-testid={`workspace-menu-${workspace.id}`}
+            onClick={(event): void => event.stopPropagation()}
+            onPointerDown={(event): void => event.stopPropagation()}
+          />
+        }
+      >
+        <MoreHorizontal />
+        <span className="sr-only">Workspace actions</span>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" side="right" className="w-56">
+        <RenameMenuItem
+          workspaceId={workspace.id}
+          onRename={(): void => onRenameWorkspace(workspace)}
+        />
+        <WorkspaceStatusMenu workspace={workspace} onSetStatus={onSetStatus} />
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          data-testid={`workspace-${workspace.id}-copy-path`}
+          onClick={(event): void => {
+            event.stopPropagation()
+            void copyToClipboard(workspace.localPath)
+          }}
+        >
+          <Copy />
+          Copy path
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          variant="destructive"
+          data-testid={`project-delete-${project.id}`}
+          onClick={(event): void => {
+            event.stopPropagation()
+            onRemoveProject(project.id, true)
+          }}
+        >
+          <Trash2 />
+          Delete
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          variant="destructive"
+          data-testid={`project-remove-${project.id}`}
+          onClick={(event): void => {
+            event.stopPropagation()
+            onRemoveProject(project.id, false)
+          }}
+        >
+          <Trash2 />
+          Remove from app
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+function DirectoryNameLine({
+  project,
+  workspace,
+  nestedCount,
+  grouped,
+  active,
+  muted,
+  reposOpen,
+  onToggleRepos,
+  onSelectWorkspace,
+  onRenameWorkspace,
+  onRemoveProject,
+  onSetStatus
+}: {
+  project: Project
+  workspace: Workspace
+  nestedCount: number
+  grouped: boolean
+  active: boolean
+  muted: boolean
+  reposOpen: boolean
+  onToggleRepos: () => void
+  onSelectWorkspace: (workspaceId: number) => void
+  onRenameWorkspace: (workspace: Workspace) => void
+  onRemoveProject: (projectId: number, deleteFiles: boolean) => void
+  onSetStatus: (workspaceId: number, status: WorkspaceStatus) => void
+}): React.JSX.Element {
+  return (
+    <div className="relative z-10" data-directory-name-line="">
+      <SidebarMenuButton
+        isActive={active}
+        className={cn(
+          'app-no-drag items-center gap-0 px-2 py-0',
+          'h-8! text-xs font-medium',
+          grouped ? 'pr-20' : 'pr-14',
+          muted && !active && todoWorkspaceMuteClass
+        )}
+        render={
+          <button
+            type="button"
+            data-testid={`workspace-row-${workspace.id}`}
+            data-workspace-id={workspace.id}
+            data-workspace-role="directory"
+            data-workspace-icon="folder"
+            data-project-kind="directory"
+            data-todo-muted={muted && !active ? 'true' : undefined}
+            data-workspace-status={workspaceStatus(workspace.status)}
+            aria-current={active ? 'location' : undefined}
+            onClick={(): void => onSelectWorkspace(workspace.id)}
+          />
+        }
+      >
+        <span data-row-line="">
+          <span data-row-icon="">
+            <Folder />
+          </span>
+          <span className="truncate font-medium" data-row-label="">
+            {workspaceRowLabel(project, workspace)}
+          </span>
+          {nestedCount > 1 ? (
+            <span
+              className="shrink-0 rounded-md bg-[color-mix(in_oklch,var(--sidebar-selected)_15%,transparent)] px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-[var(--sidebar-selected)] uppercase"
+              data-testid={`workspace-multi-root-${workspace.id}`}
+            >
+              multi-root
+            </span>
+          ) : null}
+        </span>
+      </SidebarMenuButton>
+      <RowActions overlay>
+        {grouped ? (
+          <SidebarMenuAction
+            className="app-no-drag"
+            data-testid={`workspace-nested-toggle-${workspace.id}`}
+            aria-expanded={reposOpen}
+            aria-label={reposOpen ? 'Collapse repositories' : 'Expand repositories'}
+            onClick={(event): void => {
+              event.stopPropagation()
+              onToggleRepos()
+            }}
+            onPointerDown={(event): void => event.stopPropagation()}
+          >
+            <ChevronRight
+              className={cn('size-3.5 shrink-0 transition-transform', reposOpen && 'rotate-90')}
+            />
+            <span className="sr-only">
+              {reposOpen ? 'Collapse repositories' : 'Expand repositories'}
+            </span>
+          </SidebarMenuAction>
+        ) : null}
+        <WorkspaceSessionHistory workspaceId={workspace.id} />
+        <DirectoryRowMenu
+          project={project}
+          workspace={workspace}
+          onRenameWorkspace={onRenameWorkspace}
+          onRemoveProject={onRemoveProject}
+          onSetStatus={onSetStatus}
+        />
+      </RowActions>
+    </div>
+  )
+}
+
+function NestedRepoList({
+  projectName,
+  workspaceId,
+  nested,
+  catalog,
+  activeWorkspaceId,
+  activity,
+  open,
+  onOpenChange,
+  onSelectWorkspace,
+  onOpenAgent
+}: {
+  projectName: string
+  workspaceId: number
+  nested: NestedRepo[]
+  catalog: Project[]
+  activeWorkspaceId: number | null
+  activity: Map<number, ChatAgentActivity[]>
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onSelectWorkspace: (workspaceId: number) => void
+  onOpenAgent: (agent: ChatAgentActivity) => void
+}): React.JSX.Element {
+  return (
+    <Collapsible open={open} onOpenChange={onOpenChange}>
+      <CollapsibleContent>
+        <ul
+          className="flex min-w-0 flex-col gap-1 px-2 pt-1 pb-1.5"
+          aria-label={`Repositories in ${projectName}`}
+          data-nested-repos=""
+          data-testid={`workspace-nested-repos-${workspaceId}`}
+        >
+          {nested.map((repo) => {
+            const match = workspaceMatchingPath(catalog, repo.localPath)
+            return (
+              <NestedRepoRow
+                key={repo.localPath}
+                repo={repo}
+                match={match}
+                activeWorkspaceId={activeWorkspaceId}
+                agents={match ? (activity.get(match.id) ?? []) : []}
+                onSelectWorkspace={onSelectWorkspace}
+                onOpenAgent={onOpenAgent}
+              />
+            )
+          })}
+        </ul>
+      </CollapsibleContent>
+    </Collapsible>
+  )
+}
+
 function PlainDirectoryRow({
   project,
+  catalog,
   activeWorkspaceId,
   activity,
   onSelectWorkspace,
@@ -832,6 +1151,7 @@ function PlainDirectoryRow({
   muted = false
 }: {
   project: Project
+  catalog: Project[]
   activeWorkspaceId: number | null
   activity: Map<number, ChatAgentActivity[]>
   onSelectWorkspace: (workspaceId: number) => void
@@ -842,147 +1162,64 @@ function PlainDirectoryRow({
   muted?: boolean
 }): React.JSX.Element | null {
   const workspace = project.workspaces[0]
+  const nested = project.nestedRepos ?? []
+  const grouped = nested.length > 0
+  const [reposOpen, setReposOpen] = useState(true)
+  const [rootHovered, setRootHovered] = useState(false)
   if (!workspace) return null
   const active = workspace.id === activeWorkspaceId
   const agents = activity.get(workspace.id) ?? []
 
   return (
     <SidebarMenuItem className={projectGroupSpacingClass}>
-      <WorkspaceHoverCard workspace={workspace}>
-        <SidebarMenuRow data-workspace-id={workspace.id}>
-          <SidebarMenuButton
-            isActive={active}
-            className={cn(
-              'app-no-drag h-8! items-center gap-0 px-2 py-0 pr-14 text-xs font-medium',
-              muted && !active && todoWorkspaceMuteClass
-            )}
-            render={
-              <button
-                type="button"
-                data-testid={`workspace-row-${workspace.id}`}
-                data-workspace-id={workspace.id}
-                data-workspace-role="directory"
-                data-workspace-icon="folder"
-                data-project-kind="directory"
-                data-todo-muted={muted && !active ? 'true' : undefined}
-                data-workspace-status={workspaceStatus(workspace.status)}
-                aria-current={active ? 'location' : undefined}
-                onClick={(): void => onSelectWorkspace(workspace.id)}
-              />
-            }
+      <div
+        className={cn(grouped && 'sidebar-root-group')}
+        data-testid={grouped ? `workspace-root-${workspace.id}` : undefined}
+        data-active={grouped && active ? 'true' : 'false'}
+        data-hover={grouped && rootHovered ? 'true' : 'false'}
+      >
+        <WorkspaceHoverCard workspace={workspace}>
+          <SidebarMenuRow
+            data-workspace-id={workspace.id}
+            onPointerEnter={grouped ? (): void => setRootHovered(true) : undefined}
+            onPointerLeave={grouped ? (): void => setRootHovered(false) : undefined}
           >
-            <span data-row-line="">
-              <span data-row-icon="">
-                <Folder />
-              </span>
-              <span className="truncate font-medium" data-row-label="">
-                {workspaceRowLabel(project, workspace)}
-              </span>
-              {(project.nestedRepos?.length ?? 0) > 1 ? (
-                <span
-                  className="shrink-0 rounded-md bg-[color-mix(in_oklch,var(--sidebar-selected)_15%,transparent)] px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-[var(--sidebar-selected)] uppercase"
-                  data-testid={`workspace-multi-root-${workspace.id}`}
-                >
-                  multi-root
-                </span>
-              ) : null}
-            </span>
-          </SidebarMenuButton>
-          <RowActions overlay>
-            <WorkspaceSessionHistory workspaceId={workspace.id} />
-            <DropdownMenu modal={false}>
-              <DropdownMenuTrigger
-                render={
-                  <SidebarMenuAction
-                    className="app-no-drag workspace-row-menu"
-                    showOnHover
-                    data-testid={`workspace-menu-${workspace.id}`}
-                    onClick={(event): void => event.stopPropagation()}
-                    onPointerDown={(event): void => event.stopPropagation()}
-                  />
-                }
-              >
-                <MoreHorizontal />
-                <span className="sr-only">Workspace actions</span>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" side="right" className="w-56">
-                <RenameMenuItem
-                  workspaceId={workspace.id}
-                  onRename={(): void => onRenameWorkspace(workspace)}
-                />
-                <WorkspaceStatusMenu workspace={workspace} onSetStatus={onSetStatus} />
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  data-testid={`workspace-${workspace.id}-copy-path`}
-                  onClick={(event): void => {
-                    event.stopPropagation()
-                    void copyToClipboard(workspace.localPath)
-                  }}
-                >
-                  <Copy />
-                  Copy path
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  variant="destructive"
-                  data-testid={`project-delete-${project.id}`}
-                  onClick={(event): void => {
-                    event.stopPropagation()
-                    onRemoveProject(project.id, true)
-                  }}
-                >
-                  <Trash2 />
-                  Delete
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  variant="destructive"
-                  data-testid={`project-remove-${project.id}`}
-                  onClick={(event): void => {
-                    event.stopPropagation()
-                    onRemoveProject(project.id, false)
-                  }}
-                >
-                  <Trash2 />
-                  Remove from app
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </RowActions>
-          <WorkspaceSessionList
-            agents={agents}
-            muted={muted && !active}
+            <DirectoryNameLine
+              project={project}
+              workspace={workspace}
+              nestedCount={nested.length}
+              grouped={grouped}
+              active={active}
+              muted={muted}
+              reposOpen={reposOpen}
+              onToggleRepos={(): void => setReposOpen((open) => !open)}
+              onSelectWorkspace={onSelectWorkspace}
+              onRenameWorkspace={onRenameWorkspace}
+              onRemoveProject={onRemoveProject}
+              onSetStatus={onSetStatus}
+            />
+            <WorkspaceSessionList
+              agents={agents}
+              muted={muted && !active}
+              onOpenAgent={onOpenAgent}
+            />
+          </SidebarMenuRow>
+        </WorkspaceHoverCard>
+        {grouped ? (
+          <NestedRepoList
+            projectName={workspaceRowLabel(project, workspace)}
+            workspaceId={workspace.id}
+            nested={nested}
+            catalog={catalog}
+            activeWorkspaceId={activeWorkspaceId}
+            activity={activity}
+            open={reposOpen}
+            onOpenChange={setReposOpen}
+            onSelectWorkspace={onSelectWorkspace}
             onOpenAgent={onOpenAgent}
           />
-          {(project.nestedRepos?.length ?? 0) > 0 ? (
-            <ul
-              className="flex min-w-0 flex-col gap-1 px-2 pt-1 pb-1.5"
-              aria-label={`Repositories in ${workspaceRowLabel(project, workspace)}`}
-              data-nested-repos=""
-              data-testid={`workspace-nested-repos-${workspace.id}`}
-            >
-              {project.nestedRepos?.map((repo) => (
-                <li key={repo.localPath} data-testid={`workspace-nested-repo-${repo.name}`}>
-                  <span className="block truncate text-[13px] font-medium">{repo.name}</span>
-                  {repo.branch ? (
-                    <span
-                      className="text-[11px] leading-4 text-sidebar-foreground/65"
-                      data-branch-line=""
-                      data-testid={`workspace-nested-branch-${repo.name}`}
-                    >
-                      <span
-                        aria-hidden
-                        className="h-2.5 w-2 shrink-0 rounded-bl-[3px] border-b border-l border-current opacity-40"
-                      />
-                      <GitBranch className="size-3 shrink-0" />
-                      <span className="min-w-0 truncate">{repo.branch}</span>
-                    </span>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </SidebarMenuRow>
-      </WorkspaceHoverCard>
+        ) : null}
+      </div>
     </SidebarMenuItem>
   )
 }
@@ -1232,6 +1469,7 @@ function projectsWithStatus(
 
 function StatusGroup({
   status,
+  catalog,
   entries,
   activeWorkspaceId,
   activity,
@@ -1246,6 +1484,7 @@ function StatusGroup({
   onOpenChange
 }: {
   status: WorkspaceStatus
+  catalog: Project[]
   entries: Array<{ project: Project; workspace: Workspace }>
   activeWorkspaceId: number | null
   activity: Map<number, ChatAgentActivity[]>
@@ -1318,6 +1557,7 @@ function StatusGroup({
                 <PlainDirectoryRow
                   key={project.id}
                   project={project}
+                  catalog={catalog}
                   activeWorkspaceId={activeWorkspaceId}
                   activity={activity}
                   onSelectWorkspace={onSelectWorkspace}
@@ -1358,6 +1598,7 @@ function StatusGroup({
 
 function StatusGroups({
   projects,
+  catalog,
   activeWorkspaceId,
   activity,
   onSelectWorkspace,
@@ -1369,6 +1610,7 @@ function StatusGroups({
   onSetStatus
 }: {
   projects: Project[]
+  catalog: Project[]
   activeWorkspaceId: number | null
   activity: Map<number, ChatAgentActivity[]>
   onSelectWorkspace: (workspaceId: number) => void
@@ -1392,6 +1634,7 @@ function StatusGroups({
     <StatusGroup
       key={status}
       status={status}
+      catalog={catalog}
       entries={status === 'done' ? doneEntries : workspacesWithStatus(projects, status)}
       activeWorkspaceId={activeWorkspaceId}
       activity={activity}
@@ -1570,6 +1813,7 @@ export function AppSidebar({
                     <div className={cn('flex min-h-0 flex-1 flex-col', query && 'hidden')}>
                       <StatusGroups
                         projects={sidebarProjects}
+                        catalog={projects}
                         activeWorkspaceId={activeWorkspaceId}
                         activity={activity}
                         onSelectWorkspace={onSelectWorkspace}
@@ -1589,6 +1833,7 @@ export function AppSidebar({
                             <PlainDirectoryRow
                               key={project.id}
                               project={project}
+                              catalog={projects}
                               activeWorkspaceId={activeWorkspaceId}
                               activity={activity}
                               onSelectWorkspace={onSelectWorkspace}

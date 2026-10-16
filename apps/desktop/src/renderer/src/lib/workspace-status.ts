@@ -71,6 +71,18 @@ function isInsideDirectory(parent: string, child: string): boolean {
   return path.startsWith(`${parent}/`) || path.startsWith(`${parent}\\`)
 }
 
+/** The checkout registered for a nested repository path, when one exists. */
+export function workspaceMatchingPath(projects: Project[], localPath: string): Workspace | null {
+  const target = normalizedPath(localPath)
+  if (!target) return null
+  for (const project of projects) {
+    for (const workspace of project.workspaces) {
+      if (normalizedPath(workspace.localPath) === target) return workspace
+    }
+  }
+  return null
+}
+
 /**
  * A repository checked out inside a directory workspace is listed on that row.
  * It is not a second workspace, so the sidebar drops the separate project.

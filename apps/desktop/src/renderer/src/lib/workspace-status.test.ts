@@ -2,7 +2,11 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { Circle, CircleCheck, CircleDot, Eye } from 'lucide-react'
 import type { Project } from '@shared/types'
-import { WORKSPACE_STATUS_PRESENTATION, projectsBesidesNestedRepos } from './workspace-status'
+import {
+  WORKSPACE_STATUS_PRESENTATION,
+  projectsBesidesNestedRepos,
+  workspaceMatchingPath
+} from './workspace-status'
 
 test('Todo uses the sky status color and Done uses the neutral color', () => {
   assert.equal(WORKSPACE_STATUS_PRESENTATION.todo.Icon, Circle)
@@ -66,4 +70,10 @@ test('a checkout inside a directory workspace is not a separate sidebar project'
     visible.map((project) => project.id),
     [1, 3, 5]
   )
+  assert.equal(workspaceMatchingPath(visible, '/apps/frontend'), null)
+  assert.equal(
+    workspaceMatchingPath([folder, frontend, notes] as Project[], '/apps/frontend/')?.localPath,
+    '/apps/frontend'
+  )
+  assert.equal(workspaceMatchingPath([notes] as Project[], '/missing'), null)
 })
