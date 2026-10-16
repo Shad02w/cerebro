@@ -1,11 +1,17 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { WorkspaceChanges } from '@cerebro/core'
-import { changedFileCount, changedFileRows } from './changed-file-count'
+import { workspaceDiffStat } from './changed-file-count'
 
-const file = (path: string) => ({ path, oldPath: null, status: 'modified' as const })
+const file = (path: string, additions: number, deletions: number) => ({
+  path,
+  oldPath: null,
+  status: 'modified' as const,
+  additions,
+  deletions
+})
 
-test('sums changed files across every nested repository', () => {
+test('sums additions and deletions across every nested repository', () => {
   const changes: WorkspaceChanges = {
     workspaceId: 1,
     groups: [
@@ -13,13 +19,13 @@ test('sums changed files across every nested repository', () => {
         repositoryId: 10,
         repositoryName: 'api',
         workspaceId: 2,
-        files: [file('src/a.ts'), file('src/b.ts')]
+        files: [file('src/a.ts', 10, 2), file('src/b.ts', 1, 0)]
       },
       {
         repositoryId: 11,
         repositoryName: 'web',
         workspaceId: 3,
-        files: [file('app.tsx')]
+        files: [file('app.tsx', 4, 3)]
       },
       {
         repositoryId: 12,
@@ -29,14 +35,10 @@ test('sums changed files across every nested repository', () => {
       }
     ]
   }
-  assert.equal(changedFileCount(changes), 3)
-  assert.deepEqual(
-    changedFileRows(changes).map((row) => row.label),
-    ['api/src/a.ts', 'api/src/b.ts', 'web/app.tsx']
-  )
+  assert.deepEqual(workspaceDiffStat(changes), { additions: 15, deletions: 5 })
 })
 
-test('counts a single repository without a repo prefix', () => {
+test('keeps a single repository as one stat', () => {
   const changes: WorkspaceChanges = {
     workspaceId: 1,
     groups: [
@@ -44,16 +46,31 @@ test('counts a single repository without a repo prefix', () => {
         repositoryId: 10,
         repositoryName: 'app',
         workspaceId: 1,
-        files: [file('README.md')]
+        files: [file('README.md', 3, 2)]
       }
     ]
   }
-  assert.equal(changedFileCount(changes), 1)
-  assert.deepEqual(changedFileRows(changes), [{ id: '10:README.md', label: 'README.md' }])
+  assert.deepEqual(workspaceDiffStat(changes), { additions: 3, deletions: 2 })
 })
 
-test('is zero when the workspace has no changes', () => {
-  assert.equal(changedFileCount(undefined), 0)
-  assert.deepEqual(changedFileRows(undefined), [])
-  assert.equal(changedFileCount({ workspaceId: 1, groups: [] }), 0)
+test('is zero when the workspace has no line changes', () => {
+  assert.deepEqual(workspaceDiffStat(undefined), { additions: 0, deletions: 0 })
+  assert.deepEqual(workspaceDiffStat({ workspaceId: 1, groups: [] }), {
+    additions: 0,
+    deletions: 0
+  })
+  assert.deepEqual(
+    workspaceDiffStat({
+      workspaceId: 1,
+      groups: [
+        {
+          repositoryId: 10,
+          repositoryName: 'app',
+          workspaceId: 1,
+          files: [file('empty.txt', 0, 0)]
+        }
+      ]
+    }),
+    { additions: 0, deletions: 0 }
+  )
 })

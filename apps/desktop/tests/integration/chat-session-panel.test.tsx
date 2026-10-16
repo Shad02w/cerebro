@@ -162,6 +162,7 @@ describe('ChatSessionPanel', () => {
   })
 
   it('sums nested repositories into one Changes section', async () => {
+    const user = userEvent.setup()
     renderPanel(filled, {
       workspaceId: 1,
       groups: [
@@ -170,31 +171,41 @@ describe('ChatSessionPanel', () => {
           repositoryName: 'api',
           workspaceId: 2,
           files: [
-            { path: 'src/a.ts', oldPath: null, status: 'modified' },
-            { path: 'src/b.ts', oldPath: null, status: 'added' }
+            { path: 'src/a.ts', oldPath: null, status: 'modified', additions: 10, deletions: 2 },
+            { path: 'src/b.ts', oldPath: null, status: 'added', additions: 1, deletions: 0 }
           ]
         },
         {
           repositoryId: 11,
           repositoryName: 'web',
           workspaceId: 3,
-          files: [{ path: 'app.tsx', oldPath: null, status: 'untracked' }]
+          files: [
+            { path: 'app.tsx', oldPath: null, status: 'untracked', additions: 4, deletions: 3 }
+          ]
+        },
+        {
+          repositoryId: 12,
+          repositoryName: 'docs',
+          workspaceId: 4,
+          files: []
         }
       ]
     })
     const changes = await screen.findByTestId('chat-session-panel-changes')
     expect(within(changes).getByRole('heading', { name: 'Changes' })).toBeInTheDocument()
-    expect(within(changes).getByTestId('chat-session-badge')).toHaveTextContent('3')
-    expect(within(changes).getByTestId('chat-session-badge').className).toContain(
-      'bg-[var(--sidebar-selected)]'
-    )
-    expect(
-      within(changes)
-        .getAllByTestId('chat-changed-file')
-        .map((row) => row.textContent)
-    ).toEqual(['api/src/a.ts', 'api/src/b.ts', 'web/app.tsx'])
-    expect(screen.getAllByRole('heading', { name: 'Changes' })).toHaveLength(1)
+    const stat = within(changes).getByTestId('chat-diff-stat')
+    expect(stat).toHaveTextContent('+15 -5')
+    expect(stat).toHaveAttribute('data-additions', '15')
+    expect(stat).toHaveAttribute('data-deletions', '5')
+    expect(within(stat).getByText('+15', { exact: true })).toHaveClass('text-green-500')
+    expect(within(stat).getByText('-5', { exact: true })).toHaveClass('text-red-500')
+    expect(within(changes).queryByTestId('chat-session-badge')).toBeNull()
+    expect(screen.getAllByTestId('chat-diff-stat')).toHaveLength(1)
     expect(screen.getByTestId('chat-session-panel-tasks')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Collapse session status' }))
+    const rail = screen.getByTestId('chat-session-panel-rail')
+    expect(within(rail).getByRole('button', { name: '+15 -5' })).toBeInTheDocument()
+    expect(within(rail).getByTestId('chat-diff-stat')).toHaveTextContent('+15 -5')
   })
 
   it('collapses to a vertical icon list and expands back to every section', async () => {

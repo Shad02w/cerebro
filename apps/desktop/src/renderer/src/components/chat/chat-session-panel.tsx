@@ -13,7 +13,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { changedFileRows, type ChangedFileRow } from '@/lib/changed-file-count'
+import { workspaceDiffStat, type DiffStat } from '@/lib/changed-file-count'
 import { changesManifestOptions } from '@/lib/changes-query'
 import { cn } from '@/lib/utils'
 import { ChatBackgroundTaskList } from './chat-background-tasks'
@@ -43,10 +43,10 @@ export function ChatSessionPanel({
     enabled: true,
     refetchInterval: 5_000
   })
-  const files = changedFileRows(listed.data)
+  const diff = workspaceDiffStat(listed.data)
   const status = sessionStatus(session)
   const [expanded, setExpanded] = useState(true)
-  if (!status && files.length < 1) return null
+  if (!status && !hasDiffStat(diff)) return null
   return (
     <TooltipProvider>
       <aside
@@ -56,9 +56,9 @@ export function ChatSessionPanel({
         className="pointer-events-auto absolute top-8 right-3 z-20 hidden max-h-[calc(100%-11rem)] flex-col @min-[56rem]/chat:flex"
       >
         {expanded ? (
-          <SessionCard status={status} files={files} onCollapse={() => setExpanded(false)} />
+          <SessionCard status={status} diff={diff} onCollapse={() => setExpanded(false)} />
         ) : (
-          <SessionRail status={status} files={files} onExpand={() => setExpanded(true)} />
+          <SessionRail status={status} diff={diff} onExpand={() => setExpanded(true)} />
         )}
       </aside>
     </TooltipProvider>
@@ -78,13 +78,21 @@ function countLabel(count: number, singular: string, plural: string): string {
   return `${count} ${count === 1 ? singular : plural}`
 }
 
+function hasDiffStat(diff: DiffStat): boolean {
+  return diff.additions > 0 || diff.deletions > 0
+}
+
+function diffLabel(diff: DiffStat): string {
+  return `+${diff.additions} -${diff.deletions}`
+}
+
 function SessionCard({
   status,
-  files,
+  diff,
   onCollapse
 }: {
   status: SessionStatus | null
-  files: ChangedFileRow[]
+  diff: DiffStat
   onCollapse: () => void
 }): React.JSX.Element {
   return (
@@ -103,7 +111,7 @@ function SessionCard({
       </div>
       <Separator />
       <div className="min-h-0 overflow-y-auto">
-        <SessionSections status={status} files={files} />
+        <SessionSections status={status} diff={diff} />
       </div>
     </div>
   )
@@ -111,10 +119,10 @@ function SessionCard({
 
 function SessionSections({
   status,
-  files
+  diff
 }: {
   status: SessionStatus | null
-  files: ChangedFileRow[]
+  diff: DiffStat
 }): React.JSX.Element {
   const blocks = [
     status?.todo ? (
@@ -135,20 +143,12 @@ function SessionSections({
         <ChatSubagentStack agents={status.agents} />
       </section>
     ) : null,
-    files.length > 0 ? (
+    hasDiffStat(diff) ? (
       <section key="changes" data-testid="chat-session-panel-changes" className="px-1 py-2">
-        <SectionHeading title="Changes" count={files.length} section="changes" />
-        <ul aria-label="Changed files" className="flex flex-col">
-          {files.map((file) => (
-            <li
-              key={file.id}
-              data-testid="chat-changed-file"
-              className="truncate px-2 py-1 text-xs"
-            >
-              {file.label}
-            </li>
-          ))}
-        </ul>
+        <div className="flex items-center gap-1.5 px-2 pt-1 pb-1">
+          <h2 className="text-xs font-medium text-muted-foreground">Changes</h2>
+          <DiffStatLine diff={diff} />
+        </div>
       </section>
     ) : null
   ].filter((block) => block != null)
@@ -166,14 +166,21 @@ function SessionSections({
 
 function SessionRail({
   status,
-  files,
+  diff,
   onExpand
 }: {
   status: SessionStatus | null
-  files: ChangedFileRow[]
+  diff: DiffStat
   onExpand: () => void
 }): React.JSX.Element {
-  const icons = [
+  const icons: Array<{
+    section: string
+    count: number
+    label: string
+    icon: React.ReactNode
+    wide?: boolean
+    stat?: DiffStat
+  } | null> = [
     status?.todo
       ? {
           section: 'tasks',
@@ -198,12 +205,14 @@ function SessionRail({
           icon: <Bot />
         }
       : null,
-    files.length > 0
+    hasDiffStat(diff)
       ? {
           section: 'changes',
-          count: files.length,
-          label: countLabel(files.length, 'changed file', 'changed files'),
-          icon: <FileDiff />
+          count: 0,
+          label: diffLabel(diff),
+          icon: <FileDiff />,
+          wide: true,
+          stat: diff
         }
       : null
   ].filter((item) => item != null)
@@ -216,9 +225,18 @@ function SessionRail({
         <PanelRightOpen />
       </RailButton>
       {icons.map((item) => (
-        <RailButton key={item.label} label={item.label} onClick={onExpand}>
+        <RailButton
+          key={item.label}
+          label={item.label}
+          onClick={onExpand}
+          className={item.wide ? 'h-8 w-auto gap-1 px-1.5' : undefined}
+        >
           {item.icon}
-          <CountBadge count={item.count} section={item.section} corner />
+          {item.stat ? (
+            <DiffStatLine diff={item.stat} />
+          ) : (
+            <CountBadge count={item.count} section={item.section} corner />
+          )}
         </RailButton>
       ))}
     </div>
@@ -267,13 +285,30 @@ function CountBadge({
   )
 }
 
+function DiffStatLine({ diff }: { diff: DiffStat }): React.JSX.Element | null {
+  if (!hasDiffStat(diff)) return null
+  return (
+    <span
+      data-testid="chat-diff-stat"
+      data-additions={diff.additions}
+      data-deletions={diff.deletions}
+      className="text-xs font-medium tabular-nums"
+    >
+      <span className="text-green-500">+{diff.additions}</span>{' '}
+      <span className="text-red-500">-{diff.deletions}</span>
+    </span>
+  )
+}
+
 function RailButton({
   label,
   onClick,
+  className,
   children
 }: {
   label: string
   onClick: () => void
+  className?: string
   children: React.ReactNode
 }): React.JSX.Element {
   return (
@@ -285,7 +320,7 @@ function RailButton({
             size="icon-sm"
             variant="ghost"
             aria-label={label}
-            className="relative"
+            className={cn('relative', className)}
             onClick={onClick}
           />
         }
