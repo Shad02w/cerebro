@@ -44,10 +44,26 @@ test('a checkout inside a directory workspace is not a separate sidebar project'
     repositories: [{ localPath: '/notes' }],
     workspaces: [{ localPath: '/notes' }, { localPath: '/notes-feature' }]
   }
+  const resolvedDifferently = {
+    id: 4,
+    repositories: [{ localPath: '/apps/ark-ui' }],
+    workspaces: [{ localPath: '/apps/ark-ui' }, { localPath: '/apps/ark-ui-main' }]
+  }
+  const similarPrefix = {
+    id: 5,
+    repositories: [{ localPath: '/apps-extra' }],
+    workspaces: [{ localPath: '/apps-extra' }]
+  }
 
-  const visible = projectsBesidesNestedRepos([folder, frontend, notes] as Project[])
+  const visible = projectsBesidesNestedRepos([
+    folder,
+    frontend,
+    notes,
+    resolvedDifferently,
+    similarPrefix
+  ] as Project[])
   assert.deepEqual(
     visible.map((project) => project.id),
-    [1, 3]
+    [1, 3, 5]
   )
 })

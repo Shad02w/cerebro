@@ -1652,7 +1652,7 @@ export function AppSidebar({
         ) : null}
         <SessionSearchDialog
           request={sessionSearch}
-          projects={projects}
+          projects={sidebarProjects}
           onOpen={(hit) => openAgentSession(hit, onSelectWorkspace)}
           onClose={(): void => setSessionSearch(null)}
         />

@@ -65,25 +65,41 @@ function normalizedPath(path: string): string {
   return path.replace(/[\\/]+$/, '')
 }
 
+function isInsideDirectory(parent: string, child: string): boolean {
+  const path = normalizedPath(child)
+  if (!parent || !path || path === parent) return false
+  return path.startsWith(`${parent}/`) || path.startsWith(`${parent}\\`)
+}
+
 /**
  * A repository checked out inside a directory workspace is listed on that row.
  * It is not a second workspace, so the sidebar drops the separate project.
  */
 export function projectsBesidesNestedRepos(projects: Project[]): Project[] {
+  const roots: string[] = []
   const covered = new Set<string>()
   for (const project of projects) {
+    if ((project.nestedRepos?.length ?? 0) === 0) continue
+    for (const workspace of project.workspaces) {
+      const directory = normalizedPath(workspace.localPath)
+      if (directory) roots.push(directory)
+    }
     for (const repo of project.nestedRepos ?? []) {
-      if (repo.localPath) covered.add(normalizedPath(repo.localPath))
+      const localPath = normalizedPath(repo.localPath)
+      if (localPath) covered.add(localPath)
     }
   }
-  if (covered.size === 0) return projects
+  if (roots.length === 0 && covered.size === 0) return projects
   return projects.filter((project) => {
     if ((project.nestedRepos?.length ?? 0) > 0) return true
     const paths = [
       ...project.repositories.map((repository) => repository.localPath),
       ...project.workspaces.map((workspace) => workspace.localPath)
     ]
-    return !paths.some((localPath) => covered.has(normalizedPath(localPath)))
+    return !paths.some((localPath) => {
+      const path = normalizedPath(localPath)
+      return covered.has(path) || roots.some((root) => isInsideDirectory(root, path))
+    })
   })
 }
 
