@@ -135,7 +135,8 @@ function expectSharedNameLine(row: HTMLElement): void {
 
 function sidebarElement(
   sidebarGroupBy: SidebarGroupBy = 'project',
-  activeWorkspaceId = 11
+  activeWorkspaceId = 11,
+  projects: Project[] = [notes, scratch]
 ): React.JSX.Element {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } }
@@ -146,7 +147,7 @@ function sidebarElement(
         <SidebarProvider>
           <AppSidebar
             mode="projects"
-            projects={[notes, scratch]}
+            projects={projects}
             activeWorkspaceId={activeWorkspaceId}
             settingsSection="general"
             onSelectWorkspace={vi.fn()}
@@ -170,9 +171,10 @@ function sidebarElement(
 
 function renderSidebar(
   sidebarGroupBy: SidebarGroupBy = 'project',
-  activeWorkspaceId = 11
+  activeWorkspaceId = 11,
+  projects?: Project[]
 ): RenderResult {
-  return render(sidebarElement(sidebarGroupBy, activeWorkspaceId))
+  return render(sidebarElement(sidebarGroupBy, activeWorkspaceId, projects))
 }
 
 describe('sidebar project rows', () => {
@@ -370,5 +372,74 @@ describe('sidebar project rows', () => {
       screen.getByTestId('status-group-done')
     )
     expect(screen.getByTestId('workspace-row-14')).toHaveAttribute('aria-current', 'location')
+  })
+
+  it('lists child repositories inside the directory row instead of as their own projects', () => {
+    const apps: Project = {
+      ...scratch,
+      id: 4,
+      name: 'apps-folder',
+      nestedRepos: [
+        { name: 'frontend', branch: 'main', localPath: '/tmp/apps-folder/frontend' },
+        { name: 'backend', branch: 'develop', localPath: '/tmp/apps-folder/backend' }
+      ],
+      repositories: [
+        {
+          ...scratch.repositories[0]!,
+          id: 4,
+          projectId: 4,
+          name: 'apps-folder',
+          localPath: '/tmp/apps-folder'
+        }
+      ],
+      workspaces: [
+        workspace({
+          id: 41,
+          projectId: 4,
+          repositoryId: 4,
+          kind: 'default',
+          branch: '',
+          localPath: '/tmp/apps-folder'
+        })
+      ]
+    }
+    const frontend: Project = {
+      ...notes,
+      id: 5,
+      name: 'frontend',
+      github: null,
+      kind: 'directory',
+      repositories: [
+        {
+          ...notes.repositories[0]!,
+          id: 5,
+          projectId: 5,
+          name: 'frontend',
+          localPath: '/tmp/apps-folder/frontend',
+          defaultBranch: 'main'
+        }
+      ],
+      workspaces: [
+        workspace({
+          id: 51,
+          projectId: 5,
+          repositoryId: 5,
+          kind: 'default',
+          branch: 'main',
+          localPath: '/tmp/apps-folder/frontend'
+        })
+      ]
+    }
+
+    renderSidebar('project', 41, [apps, frontend, notes])
+
+    const row = screen.getByTestId('workspace-row-41')
+    const card = row.closest('[data-sidebar="menu-row"]')
+    expect(card).toContainElement(screen.getByTestId('workspace-nested-repo-frontend'))
+    expect(card).toContainElement(screen.getByTestId('workspace-nested-branch-backend'))
+    expect(screen.getByTestId('workspace-nested-branch-backend')).toHaveTextContent('develop')
+    expect(screen.queryByTestId('project-row-5')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('workspace-row-51')).not.toBeInTheDocument()
+    expect(screen.getByTestId('project-row-1')).toBeInTheDocument()
   })
 })

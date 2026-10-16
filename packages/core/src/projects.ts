@@ -158,13 +158,19 @@ async function listNestedRepos(directory: string): Promise<NestedRepo[]> {
     if (!entry.isDirectory() || entry.name.startsWith('.')) continue
     const localPath = join(directory, entry.name)
     if (!isUsableGitWorkTree(localPath)) continue
+    let resolvedPath = localPath
+    try {
+      resolvedPath = realpathSync(localPath)
+    } catch {
+      resolvedPath = localPath
+    }
     let branch = ''
     try {
       branch = await readDefaultBranch(localPath)
     } catch {
       branch = ''
     }
-    nested.push({ name: entry.name, branch, localPath })
+    nested.push({ name: entry.name, branch, localPath: resolvedPath })
   }
   return nested.sort((left, right) => left.name.localeCompare(right.name))
 }
