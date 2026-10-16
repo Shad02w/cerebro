@@ -420,8 +420,9 @@ test('chat works through native adapters, survives reload, handles requests, and
     const surfaceBox = await composer.getByTestId('chat-composer-surface').boundingBox()
     expect(fadeBox!.height).toBeLessThanOrEqual(48)
     expect(fadeBox!.y).toBe(floatingTop)
-    // Session chips sit on the solid surface, so the fade meets that surface rather than the form.
-    await expect(composer.getByTestId('chat-todo-chip')).toBeVisible()
+    // A wide pane moves tasks into the side column. The fade still meets the composer surface.
+    await expect(page.getByTestId('chat-session-panel')).toBeVisible()
+    await expect(composer.getByTestId('chat-todo-chip')).toBeHidden()
     expect(fadeBox!.y + fadeBox!.height).toBeCloseTo(surfaceBox!.y, 0)
     expect(formBox!.y).toBeGreaterThan(surfaceBox!.y)
     expect(formBox!.y + formBox!.height).toBeLessThanOrEqual(surfaceBox!.y + surfaceBox!.height + 1)
@@ -1571,8 +1572,9 @@ test('Claude background jobs outlive their response, list under a chip, and repo
 }) => {
   const directory = await mkdtemp(join(tmpdir(), 'cerebro-chat-background-e2e-'))
   try {
+    // Narrow enough that the chat pane keeps background jobs on the chip above the composer.
     await electronApp.evaluate(({ BrowserWindow }) =>
-      BrowserWindow.getAllWindows()[0].setSize(1250, 900)
+      BrowserWindow.getAllWindows()[0].setSize(1000, 900)
     )
     const project = await page.evaluate(
       (directory) => window.cerebro.createProjectFromDirectory(directory),
@@ -1607,7 +1609,7 @@ test('Claude background jobs outlive their response, list under a chip, and repo
     await chip.click()
     const jobs = page.getByTestId('chat-background-tasks')
     await expect(jobs).toBeVisible()
-    await expect(page.getByTestId('chat-background-task')).toHaveText([
+    await expect(jobs.getByTestId('chat-background-task')).toHaveText([
       'Delayed pwd',
       'Delayed pwd 2'
     ])

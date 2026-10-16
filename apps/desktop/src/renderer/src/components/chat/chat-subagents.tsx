@@ -56,13 +56,8 @@ function needsClock(agents: AgentSubagent[]): boolean {
   )
 }
 
-export function ChatSubagents({
-  agents
-}: {
-  agents: AgentSubagent[] | undefined
-}): React.JSX.Element | null {
-  const listed = agents ?? []
-  const ticking = needsClock(listed)
+function useSubagentNow(agents: AgentSubagent[]): number {
+  const ticking = needsClock(agents)
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
     if (!ticking) return
@@ -71,6 +66,92 @@ export function ChatSubagents({
     const timer = window.setInterval(refresh, 1000)
     return () => window.clearInterval(timer)
   }, [ticking])
+  return now
+}
+
+/** Child agents in the popover grid. */
+export function ChatSubagentList({ agents }: { agents: AgentSubagent[] }): React.JSX.Element {
+  const now = useSubagentNow(agents)
+  return (
+    <div
+      aria-label="Agents"
+      className="grid grid-cols-[0.875rem_minmax(0,12rem)_auto_auto_auto] items-center gap-x-3 gap-y-1 px-2 py-1"
+    >
+      {agents.map((agent) => {
+        const live = !finished(agent.status)
+        return (
+          <div
+            key={agent.id}
+            className="contents"
+            data-testid="chat-subagent"
+            data-status={agent.status}
+          >
+            <span data-cell="" className="flex size-3.5 items-center justify-center">
+              <AgentStatusIcon status={live ? 'running' : 'finished'} />
+            </span>
+            <span data-cell="" className="min-w-0 truncate text-xs" title={agent.title || agent.id}>
+              {agent.title || agent.id}
+            </span>
+            <span data-cell="" className="text-xs text-muted-foreground">
+              {reportedIdentity(agent)}
+            </span>
+            <span data-cell="" className="text-xs text-muted-foreground tabular-nums">
+              {elapsed(agent, now)}
+            </span>
+            <span data-cell="" className="text-right text-xs text-muted-foreground tabular-nums">
+              {live ? '' : formatSubagentTokens(agent.tokens)}
+            </span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+/** Child agents stacked for the side column, where the popover grid is too wide. */
+export function ChatSubagentStack({ agents }: { agents: AgentSubagent[] }): React.JSX.Element {
+  const now = useSubagentNow(agents)
+  return (
+    <ul aria-label="Agents" className="flex flex-col">
+      {agents.map((agent) => {
+        const live = !finished(agent.status)
+        const identity = reportedIdentity(agent)
+        const time = elapsed(agent, now)
+        return (
+          <li
+            key={agent.id}
+            data-testid="chat-subagent"
+            data-status={agent.status}
+            className="flex items-start gap-2 rounded-sm px-2 py-1.5 text-xs"
+          >
+            <span className="mt-0.5 flex size-3.5 shrink-0 items-center justify-center">
+              <AgentStatusIcon status={live ? 'running' : 'finished'} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate" title={agent.title || agent.id}>
+                {agent.title || agent.id}
+              </span>
+              {identity ? (
+                <span className="block truncate text-muted-foreground">{identity}</span>
+              ) : null}
+            </span>
+            <span className="shrink-0 text-right text-muted-foreground tabular-nums">
+              {time ? <span className="block">{time}</span> : null}
+              {live ? null : <span className="block">{formatSubagentTokens(agent.tokens)}</span>}
+            </span>
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
+export function ChatSubagents({
+  agents
+}: {
+  agents: AgentSubagent[] | undefined
+}): React.JSX.Element | null {
+  const listed = agents ?? []
   if (!listed.length) return null
   return (
     <Popover>
@@ -91,45 +172,7 @@ export function ChatSubagents({
         className="z-[80] w-max max-w-[24rem] bg-popover p-1.5 data-starting-style:opacity-100!"
         data-testid="chat-subagents"
       >
-        <div
-          aria-label="Agents"
-          className="grid grid-cols-[0.875rem_minmax(0,12rem)_auto_auto_auto] items-center gap-x-3 gap-y-1 px-2 py-1"
-        >
-          {listed.map((agent) => {
-            const live = !finished(agent.status)
-            return (
-              <div
-                key={agent.id}
-                className="contents"
-                data-testid="chat-subagent"
-                data-status={agent.status}
-              >
-                <span data-cell="" className="flex size-3.5 items-center justify-center">
-                  <AgentStatusIcon status={live ? 'running' : 'finished'} />
-                </span>
-                <span
-                  data-cell=""
-                  className="min-w-0 truncate text-xs"
-                  title={agent.title || agent.id}
-                >
-                  {agent.title || agent.id}
-                </span>
-                <span data-cell="" className="text-xs text-muted-foreground">
-                  {reportedIdentity(agent)}
-                </span>
-                <span data-cell="" className="text-xs text-muted-foreground tabular-nums">
-                  {elapsed(agent, now)}
-                </span>
-                <span
-                  data-cell=""
-                  className="text-right text-xs text-muted-foreground tabular-nums"
-                >
-                  {live ? '' : formatSubagentTokens(agent.tokens)}
-                </span>
-              </div>
-            )
-          })}
-        </div>
+        <ChatSubagentList agents={listed} />
       </PopoverContent>
     </Popover>
   )
