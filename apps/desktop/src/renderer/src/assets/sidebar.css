@@ -176,49 +176,57 @@
   background-color: color-mix(in srgb, var(--sidebar-selected) 16%, var(--sidebar));
 }
 
-/* An open session continues the workspace row. It stays transparent and uses
-   the row's hover or selected fill, with no second outline. */
-.cerebro-sidebar [data-sidebar='menu-row']:has([data-testid='workspace-sessions']):hover {
+/* Sessions and the nested repo list continue the workspace row. They stay
+   inside its hover or selected fill, with no second outline. */
+.cerebro-sidebar
+  [data-sidebar='menu-row']:is(
+    :has([data-testid='workspace-sessions']),
+    :has([data-nested-repos])
+  ):hover {
   border-radius: 7px;
   background-color: var(--sidebar-accent);
 }
 
 .cerebro-sidebar
-  [data-sidebar='menu-row']:has([data-testid='workspace-sessions']):has([data-active='true']) {
+  [data-sidebar='menu-row']:is(
+    :has([data-testid='workspace-sessions']),
+    :has([data-nested-repos])
+  ):has([data-active='true']) {
   border-radius: 7px;
   background-color: color-mix(in srgb, var(--sidebar-selected) 10%, var(--sidebar));
 }
 
 .cerebro-sidebar
-  [data-sidebar='menu-row']:has([data-testid='workspace-sessions']):hover:has(
-    [data-active='true']
-  ) {
+  [data-sidebar='menu-row']:is(
+    :has([data-testid='workspace-sessions']),
+    :has([data-nested-repos])
+  ):hover:has([data-active='true']) {
   background-color: color-mix(in srgb, var(--sidebar-selected) 16%, var(--sidebar));
 }
 
 .cerebro-sidebar
-  [data-sidebar='menu-row']:has([data-testid='workspace-sessions']):is(
-    :hover,
-    :has([data-active='true'])
-  )
+  [data-sidebar='menu-row']:is(
+    :has([data-testid='workspace-sessions']),
+    :has([data-nested-repos])
+  ):is(:hover, :has([data-active='true']))
   :is([data-sidebar='menu-button'], [data-workspace-role]),
 .cerebro-sidebar
-  [data-sidebar='menu-row']:has([data-testid='workspace-sessions']):is(
-    :hover,
-    :has([data-active='true'])
-  )
+  [data-sidebar='menu-row']:is(
+    :has([data-testid='workspace-sessions']),
+    :has([data-nested-repos])
+  ):is(:hover, :has([data-active='true']))
   :is([data-sidebar='menu-button'], [data-workspace-role]):hover,
 .cerebro-sidebar
-  [data-sidebar='menu-row']:has([data-testid='workspace-sessions']):is(
-    :hover,
-    :has([data-active='true'])
-  )
+  [data-sidebar='menu-row']:is(
+    :has([data-testid='workspace-sessions']),
+    :has([data-nested-repos])
+  ):is(:hover, :has([data-active='true']))
   [data-active='true']:is([data-sidebar='menu-button'], [data-workspace-role]),
 .cerebro-sidebar
-  [data-sidebar='menu-row']:has([data-testid='workspace-sessions']):is(
-    :hover,
-    :has([data-active='true'])
-  )
+  [data-sidebar='menu-row']:is(
+    :has([data-testid='workspace-sessions']),
+    :has([data-nested-repos])
+  ):is(:hover, :has([data-active='true']))
   [data-active='true']:is([data-sidebar='menu-button'], [data-workspace-role]):hover {
   background-color: transparent;
   box-shadow: none;

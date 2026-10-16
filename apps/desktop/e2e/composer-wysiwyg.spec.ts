@@ -90,9 +90,7 @@ test('agent composer renders bullets, inline code, a code block, and skill menti
     )
     const workspaceId = project.workspaces[0].id
     await page.reload()
-    const projectRow = page.getByTestId(/project-row-/).first()
-    await expect(projectRow).toBeVisible()
-    if ((await projectRow.getAttribute('aria-expanded')) === 'false') await projectRow.click()
+    await expect(page.locator(`button[data-workspace-id="${workspaceId}"]`)).toBeVisible()
     await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
     await page.getByRole('button', { name: /^New Agent tab/ }).click()
     const dock = page.getByTestId('chat-composer')
@@ -263,9 +261,7 @@ test('agent composer mentions a file under the working directory', async ({
     )
     const workspaceId = project.workspaces[0].id
     await page.reload()
-    const projectRow = page.getByTestId(/project-row-/).first()
-    await expect(projectRow).toBeVisible()
-    if ((await projectRow.getAttribute('aria-expanded')) === 'false') await projectRow.click()
+    await expect(page.locator(`button[data-workspace-id="${workspaceId}"]`)).toBeVisible()
     await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
     await page.getByRole('button', { name: /^New Agent tab/ }).click()
     const composer = page.getByRole('textbox', { name: 'Message agent' })

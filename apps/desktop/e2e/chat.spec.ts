@@ -8,6 +8,13 @@ import { test, expect, stopMux } from './fixtures'
 const executable = resolve(__dirname, '../../../packages/mux/src/agents/fixtures/fake-harness.cjs')
 const chatEvidenceDir = '/tmp/cerebro-chat-evidence'
 
+async function openWorkspace(page: Page, workspaceId: number): Promise<Locator> {
+  const row = page.locator(`button[data-workspace-id="${workspaceId}"]`)
+  await expect(row).toBeVisible()
+  await row.click()
+  return row
+}
+
 async function expectPickerHarness(
   picker: Locator,
   harness: 'claude' | 'codex' | 'pi',
@@ -47,10 +54,7 @@ test('chat works through native adapters, survives reload, handles requests, and
     )
     const workspaceId = project.workspaces[0].id
     await page.reload()
-    const projectRow = page.getByTestId(/project-row-/).first()
-    await expect(projectRow).toBeVisible()
-    if ((await projectRow.getAttribute('aria-expanded')) === 'false') await projectRow.click()
-    await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
+    await openWorkspace(page, workspaceId)
     await page.getByRole('button', { name: /^New Agent tab/ }).click()
     await expect(page.getByTestId('chat-view')).toBeVisible()
     await expect(page.getByRole('combobox', { name: 'Access mode' })).toHaveValue('full')
@@ -155,6 +159,9 @@ test('chat works through native adapters, survives reload, handles requests, and
     const copyButton = userMessage.getByRole('button', { name: 'Copy message', exact: true })
     const previousClipboard = await electronApp.evaluate(({ clipboard }) => clipboard.readText())
     try {
+      // The session card floats over the top-right of a wide transcript.
+      const collapseSession = page.getByRole('button', { name: 'Collapse session status' })
+      if (await collapseSession.isVisible()) await collapseSession.click()
       await copyButton.click()
       await expect(page.getByTestId('chat-copy-toast')).toContainText(
         'Message copied to clipboard.'
@@ -256,24 +263,19 @@ test('chat works through native adapters, survives reload, handles requests, and
     await expect(page.locator('[data-chat-agent-status="waiting"] .agent-status-dots')).toHaveCount(
       0
     )
-    await expect(page.getByTestId(`project-agent-status-${project.id}`)).toHaveCount(0)
+    await expect(page.getByTestId(/project-agent-status-/)).toHaveCount(0)
+    await expect(page.getByTestId(/project-row-/)).toHaveCount(0)
     await expect(page.getByTestId('chat-tab').first()).toHaveText(userText)
     await screenshotChatEvidence(page, 'agent-status-blocked.png')
-    await projectRow.click()
-    const projectStatus = page.getByTestId(`project-agent-status-${project.id}`)
-    await expect(projectStatus.locator('[data-harness-icon="codex"]')).toBeVisible()
-    await expect(projectStatus.locator('[data-workspace-agent-status="waiting"]')).toBeVisible()
-    await expect(projectStatus).not.toContainText('Codex')
-    await expect(projectStatus).toHaveCSS('opacity', '0.6')
+    // A plain folder is one workspace row, so the waiting agent stays on that row.
     await page.getByTestId('new-content-tab').click()
     await page.getByTestId('open-terminal-tab').click()
     await expect(page.getByTestId('terminal-tab').last()).toHaveAttribute('data-active', 'true')
-    await projectStatus.getByTestId('workspace-agent-open').click()
-    await expect(projectRow).toHaveAttribute('aria-expanded', 'false')
+    await expect(waitingRow).toBeVisible()
+    await agentButton.click()
     await expect(page.getByTestId('chat-tab').first()).toHaveAttribute('data-active', 'true')
     await page.mouse.move(8, 8)
     await expect(page.getByRole('tooltip')).toHaveCount(0)
-    await projectRow.click()
     await expect(waitingRow).toBeVisible()
     await page.getByRole('button', { name: 'Decline', exact: true }).click()
     await expect(page.getByTestId('chat-transcript')).toContainText('Permission resolved.')
@@ -601,10 +603,7 @@ test('queued messages during a running turn can be steered in immediately or sen
     )
     const workspaceId = project.workspaces[0].id
     await page.reload()
-    const projectRow = page.getByTestId(/project-row-/).first()
-    await expect(projectRow).toBeVisible()
-    if ((await projectRow.getAttribute('aria-expanded')) === 'false') await projectRow.click()
-    await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
+    await openWorkspace(page, workspaceId)
     await page.getByRole('button', { name: /^New Agent tab/ }).click()
     await expectPickerHarness(page.getByTestId('chat-model-picker'), 'claude')
     const message = page.getByRole('textbox', { name: 'Message agent' })
@@ -708,11 +707,7 @@ test('Mod+N opens independent Agent tabs from a workspace row, composer, and ter
     )
     const workspaceId = project.workspaces[0].id
     await page.reload()
-    const projectRow = page.getByTestId(/project-row-/).first()
-    await expect(projectRow).toBeVisible()
-    if ((await projectRow.getAttribute('aria-expanded')) === 'false') await projectRow.click()
-    const row = page.locator(`button[data-workspace-id="${workspaceId}"]`)
-    await row.click()
+    const row = await openWorkspace(page, workspaceId)
     await expect(
       page.getByTestId('workspace-empty-state').locator('[data-hotkey="Mod+N"]')
     ).toBeVisible()
@@ -1155,10 +1150,7 @@ test('agent pane loading does not flash empty placeholder before session is conf
     )
     const workspaceId = project.workspaces[0].id
     await page.reload()
-    const projectRow = page.getByTestId(/project-row-/).first()
-    await expect(projectRow).toBeVisible()
-    if ((await projectRow.getAttribute('aria-expanded')) === 'false') await projectRow.click()
-    await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
+    await openWorkspace(page, workspaceId)
     await page.getByRole('button', { name: /^New Agent tab/ }).click()
 
     const chat = page.getByTestId('chat-view')
@@ -1239,10 +1231,7 @@ test('empty agent pane shows a light teal star field until the first message', a
     )
     const workspaceId = project.workspaces[0].id
     await page.reload()
-    const projectRow = page.getByTestId(/project-row-/).first()
-    await expect(projectRow).toBeVisible()
-    if ((await projectRow.getAttribute('aria-expanded')) === 'false') await projectRow.click()
-    await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
+    await openWorkspace(page, workspaceId)
     await page.getByRole('button', { name: /^New Agent tab/ }).click()
 
     await expect(page.getByTestId('chat-empty-hero')).toBeVisible()
@@ -1302,10 +1291,7 @@ test('empty agent pane switches between stars, glow, and off', async ({
     )
     const workspaceId = project.workspaces[0].id
     await page.reload()
-    const projectRow = page.getByTestId(/project-row-/).first()
-    await expect(projectRow).toBeVisible()
-    if ((await projectRow.getAttribute('aria-expanded')) === 'false') await projectRow.click()
-    await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
+    await openWorkspace(page, workspaceId)
     await page.getByRole('button', { name: /^New Agent tab/ }).click()
 
     const choose = async (
@@ -1364,10 +1350,7 @@ test('new agent panes reuse the last model and settings choose each harness defa
     )
     const workspaceId = project.workspaces[0].id
     await page.reload()
-    const projectRow = page.getByTestId(/project-row-/).first()
-    await expect(projectRow).toBeVisible()
-    if ((await projectRow.getAttribute('aria-expanded')) === 'false') await projectRow.click()
-    await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
+    await openWorkspace(page, workspaceId)
     await page.getByRole('button', { name: /^New Agent tab/ }).click()
     const first = page.locator('[data-pane-kind="chat"]:visible')
     await expectPickerHarness(first.getByTestId('chat-model-picker'), 'claude', 'Test Model')
@@ -1566,10 +1549,7 @@ test('Claude background jobs outlive their response, list in the session panel, 
     )
     const workspaceId = project.workspaces[0].id
     await page.reload()
-    const projectRow = page.getByTestId(/project-row-/).first()
-    await expect(projectRow).toBeVisible()
-    if ((await projectRow.getAttribute('aria-expanded')) === 'false') await projectRow.click()
-    await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
+    await openWorkspace(page, workspaceId)
     await page.getByRole('button', { name: /^New Agent tab/ }).click()
     await page.getByTestId('chat-model-picker').click()
     await page.keyboard.type('Test Sonnet 5')
