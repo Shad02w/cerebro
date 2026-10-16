@@ -37,7 +37,7 @@ async function initGitRepo(dir: string, branch: string): Promise<void> {
   await execFileAsync('git', ['commit', '--allow-empty', '-m', 'init'], { cwd: dir })
 }
 
-test('a non-git directory is one workspace and ignores sibling repositories', async () => {
+test('a non-git directory stays one workspace and lists child repo branches', async () => {
   await withHome('cerebro-plain-dir-', async (home) => {
     const parent = join(home, 'apps')
     await initGitRepo(join(parent, 'frontend'), 'main')
@@ -53,6 +53,13 @@ test('a non-git directory is one workspace and ignores sibling repositories', as
     assert.equal(project.workspaces[0]?.kind, 'default')
     assert.equal(project.workspaces[0]?.branch, '')
     assert.equal(project.workspaces[0]?.localPath, parent)
+    assert.deepEqual(
+      project.nestedRepos?.map((repo) => ({ name: repo.name, branch: repo.branch })),
+      [
+        { name: 'backend', branch: 'develop' },
+        { name: 'frontend', branch: 'main' }
+      ]
+    )
 
     const listed = await listProjects()
     assert.equal(listed.projects.length, 1)
@@ -76,6 +83,7 @@ test('a git checkout stays its own project when sibling repositories exist', asy
     assert.equal(project.repositories[0]?.defaultBranch, 'main')
     assert.equal(project.workspaces.length, 1)
     assert.equal(project.workspaces[0]?.branch, 'main')
+    assert.deepEqual(project.nestedRepos, [])
     assert.equal((await listProjects()).projects.length, 1)
   })
 })

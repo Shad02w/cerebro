@@ -87,7 +87,7 @@ test('adds a folder of git repos as one workspace', async ({ page, electronApp }
 
   try {
     await initGitRepo(frontend, 'main', 'frontend-app')
-    await initGitRepo(backend, 'main', 'backend-app')
+    await initGitRepo(backend, 'develop', 'backend-app')
     await addDirectoryViaUi(page, electronApp, parent)
 
     const row = page.getByTestId(/workspace-row-/).filter({ hasText: 'apps-folder' })
@@ -96,8 +96,11 @@ test('adds a folder of git repos as one workspace', async ({ page, electronApp }
     await expect(row).toHaveAttribute('data-project-kind', 'directory')
     await expect(page.getByTestId(/project-row-/)).toHaveCount(0)
     await expect(page.getByTestId(/project-add-workspace-/)).toHaveCount(0)
-    await expect(page.getByText('frontend', { exact: true })).toHaveCount(0)
-    await expect(page.getByText('backend', { exact: true })).toHaveCount(0)
+    await expect(row.getByTestId(/workspace-multi-root-/)).toHaveText('multi-root')
+    await expect(page.getByTestId('workspace-nested-repo-frontend')).toBeVisible()
+    await expect(page.getByTestId('workspace-nested-branch-frontend')).toHaveText('main')
+    await expect(page.getByTestId('workspace-nested-repo-backend')).toBeVisible()
+    await expect(page.getByTestId('workspace-nested-branch-backend')).toHaveText('develop')
 
     const listed = await page.evaluate(async () => window.cerebro.listProjects())
     expect(listed.projects).toHaveLength(1)
@@ -248,8 +251,10 @@ test('does not import child repos from a non-git folder', async ({ page, electro
     await expect(row).toBeVisible({ timeout: 30_000 })
     await expect(row).toHaveAttribute('data-workspace-role', 'directory')
     await expect(page.getByTestId(/project-row-/)).toHaveCount(0)
-    await expect(page.getByText('app', { exact: true })).toHaveCount(0)
+    await expect(page.getByTestId('workspace-nested-repo-app')).toBeVisible()
+    await expect(page.getByTestId('workspace-nested-branch-app')).toHaveText('main')
     await expect(page.getByText('ark-ui', { exact: true })).toHaveCount(0)
+    await expect(row.getByTestId(/workspace-multi-root-/)).toHaveCount(0)
 
     const listed = await page.evaluate(async () => window.cerebro.listProjects())
     expect(listed.projects).toHaveLength(1)

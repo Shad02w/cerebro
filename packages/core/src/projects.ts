@@ -1,11 +1,12 @@
 import type { GitRemoteRunner } from './git'
-import { existsSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs'
 import { basename, isAbsolute, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import {
   isWorkspaceStatus,
   WORKSPACE_NAME_MAX_LENGTH,
   type LinkedRepository,
+  type NestedRepo,
   type Project,
   type ProjectBranch,
   type ProjectKind,
@@ -133,6 +134,47 @@ function isUsableGitWorkTree(dir: string): boolean {
     return false
   }
   return false
+}
+
+/** Current branch of each immediate child git checkout. The parent stays one workspace. */
+async function listNestedRepos(directory: string): Promise<NestedRepo[]> {
+  let entries: ReturnType<typeof readdirSync>
+  try {
+    entries = readdirSync(directory, { withFileTypes: true })
+  } catch {
+    return []
+  }
+
+  const nested: NestedRepo[] = []
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name.startsWith('.')) continue
+    const localPath = join(directory, entry.name)
+    if (!isUsableGitWorkTree(localPath)) continue
+    let branch = ''
+    try {
+      branch = await readDefaultBranch(localPath)
+    } catch {
+      branch = ''
+    }
+    nested.push({ name: entry.name, branch, localPath })
+  }
+  return nested.sort((left, right) => left.name.localeCompare(right.name))
+}
+
+function isPlainDirectory(project: Project): boolean {
+  if (project.kind !== 'directory' || project.github) return false
+  if (project.repositories.length !== 1 || project.workspaces.length !== 1) return false
+  const repository = project.repositories[0]
+  const workspace = project.workspaces[0]
+  if (!repository || !workspace || workspace.kind === 'root') return false
+  return repository.defaultBranch.trim() === '' && workspace.branch.trim() === ''
+}
+
+async function withNestedRepos(project: Project): Promise<Project> {
+  if (!isPlainDirectory(project)) return { ...project, nestedRepos: [] }
+  const directory = project.workspaces[0]?.localPath
+  if (!directory) return { ...project, nestedRepos: [] }
+  return { ...project, nestedRepos: await listNestedRepos(directory) }
 }
 
 function directoryImportError(error: unknown): Error {
@@ -635,8 +677,9 @@ ORDER BY
 
 export async function listProjects(): Promise<ProjectListResult> {
   await splitLegacyMultiRootProjects()
-  const { projects, activeWorkspaceId } = loadProjectsFromDb()
-  return { projects, activeWorkspaceId }
+  const loaded = loadProjectsFromDb()
+  const projects = await Promise.all(loaded.projects.map((project) => withNestedRepos(project)))
+  return { projects, activeWorkspaceId: loaded.activeWorkspaceId }
 }
 
 export async function setActiveWorkspace(workspaceId: number): Promise<ProjectListResult> {

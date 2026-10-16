@@ -863,6 +863,14 @@ function PlainDirectoryRow({
               <span className="truncate font-medium" data-row-label="">
                 {workspaceRowLabel(project, workspace)}
               </span>
+              {(project.nestedRepos?.length ?? 0) > 1 ? (
+                <span
+                  className="shrink-0 rounded-md bg-[color-mix(in_oklch,var(--sidebar-selected)_15%,transparent)] px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-[var(--sidebar-selected)] uppercase"
+                  data-testid={`workspace-multi-root-${workspace.id}`}
+                >
+                  multi-root
+                </span>
+              ) : null}
             </span>
           </SidebarMenuButton>
           <RowActions overlay>
@@ -932,6 +940,33 @@ function PlainDirectoryRow({
           />
         </SidebarMenuRow>
       </WorkspaceHoverCard>
+      {(project.nestedRepos?.length ?? 0) > 0 ? (
+        <ul
+          className="flex min-w-0 flex-col gap-1 px-2 pt-1 pb-0.5"
+          aria-label={`Repositories in ${workspaceRowLabel(project, workspace)}`}
+          data-testid={`workspace-nested-repos-${workspace.id}`}
+        >
+          {project.nestedRepos?.map((repo) => (
+            <li key={repo.localPath} data-testid={`workspace-nested-repo-${repo.name}`}>
+              <span className="block truncate text-[13px] font-medium">{repo.name}</span>
+              {repo.branch ? (
+                <span
+                  className="text-[11px] leading-4 text-sidebar-foreground/65"
+                  data-branch-line=""
+                  data-testid={`workspace-nested-branch-${repo.name}`}
+                >
+                  <span
+                    aria-hidden
+                    className="h-2.5 w-2 shrink-0 rounded-bl-[3px] border-b border-l border-current opacity-40"
+                  />
+                  <GitBranch className="size-3 shrink-0" />
+                  <span className="min-w-0 truncate">{repo.branch}</span>
+                </span>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </SidebarMenuItem>
   )
 }
