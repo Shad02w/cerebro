@@ -672,15 +672,28 @@ function ProjectItem({
   addTestId?: string
   muteWorkspaceRows?: boolean
 }): React.JSX.Element {
-  const [open, setOpen] = useState(defaultOpen)
-  const githubLinked = project.github != null
   const listed = workspaces ?? project.workspaces
+  const containsActive = listed.some((workspace) => workspace.id === activeWorkspaceId)
+  const [open, setOpen] = useState(defaultOpen)
+  const [trackedActive, setTrackedActive] = useState(containsActive)
+  // A collapse while this project is selected stays closed. Becoming selected
+  // from outside (CLI focus, another surface) opens it so the active row is visible.
+  const [userClosed, setUserClosed] = useState(false)
+  if (containsActive !== trackedActive) {
+    setTrackedActive(containsActive)
+    if (!containsActive && userClosed) setUserClosed(false)
+    else if (containsActive && !userClosed) setOpen(true)
+  }
+  const githubLinked = project.github != null
   const summary = collapsedProjectAgents(listed, open, activity)
 
   return (
     <Collapsible
       open={open}
-      onOpenChange={setOpen}
+      onOpenChange={(next): void => {
+        setUserClosed(!next && containsActive)
+        setOpen(next)
+      }}
       className={cn('group/collapsible', projectGroupSpacingClass)}
     >
       <SidebarMenuItem>

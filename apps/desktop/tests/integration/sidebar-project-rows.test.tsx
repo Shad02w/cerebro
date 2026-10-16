@@ -442,4 +442,43 @@ describe('sidebar project rows', () => {
     expect(screen.queryByTestId('workspace-row-51')).not.toBeInTheDocument()
     expect(screen.getByTestId('project-row-1')).toBeInTheDocument()
   })
+
+  it('opens a project when selection moves to it and keeps a manual collapse', async () => {
+    const user = userEvent.setup()
+    const ledger: Project = {
+      ...notes,
+      id: 3,
+      name: 'ledger',
+      repositories: [
+        {
+          ...notes.repositories[0]!,
+          id: 3,
+          projectId: 3,
+          name: 'ledger',
+          localPath: '/tmp/ledger'
+        }
+      ],
+      workspaces: [
+        workspace({
+          id: 31,
+          projectId: 3,
+          repositoryId: 3,
+          kind: 'default',
+          branch: 'main',
+          localPath: '/tmp/ledger'
+        })
+      ]
+    }
+    const view = renderSidebar('project', 11, [notes, ledger])
+    expect(screen.getByTestId('workspace-row-11')).toBeInTheDocument()
+    expect(screen.queryByTestId('workspace-row-31')).not.toBeInTheDocument()
+
+    view.rerender(sidebarElement('project', 31, [notes, ledger]))
+    expect(screen.getByTestId('workspace-row-31')).toBeInTheDocument()
+
+    await user.click(screen.getByTestId('project-row-3'))
+    expect(screen.queryByTestId('workspace-row-31')).not.toBeInTheDocument()
+    view.rerender(sidebarElement('project', 31, [notes, ledger]))
+    expect(screen.queryByTestId('workspace-row-31')).not.toBeInTheDocument()
+  })
 })
