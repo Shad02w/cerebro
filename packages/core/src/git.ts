@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { readFile, stat } from 'node:fs/promises'
-import { extname, join, resolve, sep } from 'node:path'
+import { extname, isAbsolute, join, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
 import type {
   ChangedFile,
@@ -186,6 +186,13 @@ export async function readOriginUrl(repoPath: string): Promise<string | null> {
   } catch {
     return null
   }
+}
+
+/** Shared git directory for a checkout and its linked worktrees. */
+export async function readGitCommonDir(repoPath: string): Promise<string> {
+  const raw = await runGit(['rev-parse', '--git-common-dir'], repoPath)
+  if (!raw) throw new Error('Could not resolve the git directory.')
+  return isAbsolute(raw) ? raw : resolve(repoPath, raw)
 }
 
 export async function readDefaultBranch(repoPath: string): Promise<string> {

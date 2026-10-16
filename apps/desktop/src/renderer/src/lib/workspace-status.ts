@@ -55,8 +55,20 @@ export function workspaceStatus(status: unknown): WorkspaceStatus {
   return isWorkspaceStatus(status) ? status : 'todo'
 }
 
-/** Status lives on a normal workspace row, or on the multi-root root row. */
+/** Status lives on each workspace row. A leftover multi-root root keeps it for the group. */
 export function workspaceCarriesStatus(project: Project, workspace: Workspace): boolean {
   const multiRoot = project.kind === 'multi-root' || project.repositories.length > 1
   return !multiRoot || workspace.kind === 'root'
+}
+
+/** A folder that is not a git checkout. The sidebar shows it as one workspace row. */
+export function isPlainDirectoryProject(
+  project: Pick<Project, 'kind' | 'github' | 'repositories' | 'workspaces'>
+): boolean {
+  if (project.kind !== 'directory' || project.github) return false
+  if (project.repositories.length !== 1 || project.workspaces.length !== 1) return false
+  const repository = project.repositories[0]
+  const workspace = project.workspaces[0]
+  if (!repository || !workspace || workspace.kind === 'root') return false
+  return repository.defaultBranch.trim() === '' && workspace.branch.trim() === ''
 }

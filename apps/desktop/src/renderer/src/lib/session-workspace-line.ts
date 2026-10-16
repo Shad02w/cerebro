@@ -1,35 +1,18 @@
 import type { ChatSearchHit } from '@cerebro/core'
 import type { Project, Workspace } from '../../../shared/types'
 
-type LineProject = Pick<Project, 'name' | 'kind' | 'repositories'>
+type LineProject = Pick<Project, 'name' | 'kind'>
 type LineWorkspace = Pick<Workspace, 'kind' | 'branch' | 'repositoryId' | 'localPath'>
-
-function repoName(project: LineProject, workspace: LineWorkspace): string {
-  const repo = project.repositories.find(
-    (item) => Number(item.id) === Number(workspace.repositoryId)
-  )
-  const parts = workspace.localPath.split(/[/\\]/).filter((part) => part.length > 0)
-  const fromPath = parts[parts.length - 1]
-  return repo?.name || fromPath || 'repo'
-}
 
 function branchName(workspace: LineWorkspace): string {
   const branch = workspace.branch.trim()
   return branch && branch !== '.' ? branch : ''
 }
 
-/**
- * Workspace identity on a palette row. A single-root workspace is its branch.
- * A nested repo is `backend · main`. The multi-root root is `root`.
- */
+/** Workspace identity on a palette row. A git checkout is its branch; a folder is its name. */
 export function sessionWorkspaceLine(project: LineProject, workspace: LineWorkspace): string {
   if (workspace.kind === 'root') return 'root'
-  const branch = branchName(workspace)
-  if (project.kind === 'multi-root' || project.repositories.length > 1) {
-    const name = repoName(project, workspace)
-    return branch ? `${name} · ${branch}` : name
-  }
-  return branch || project.name
+  return branchName(workspace) || project.name
 }
 
 export type SessionProjectGroup = {

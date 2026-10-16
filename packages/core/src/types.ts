@@ -98,6 +98,13 @@ export type ProjectGitHub = {
 
 export type ProjectKind = 'clone' | 'directory' | 'multi-root'
 
+/** A git checkout inside a non-git folder. Listed under that folder's workspace row. */
+export type NestedRepo = {
+  name: string
+  branch: string
+  localPath: string
+}
+
 export type Project = {
   id: number
   name: string
@@ -107,6 +114,8 @@ export type Project = {
   repositories: LinkedRepository[]
   workspaces: Workspace[]
   github: ProjectGitHub | null
+  /** Immediate child git checkouts when this project is a non-git folder. */
+  nestedRepos?: NestedRepo[]
 }
 
 export type ProjectListResult = {

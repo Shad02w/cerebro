@@ -796,58 +796,6 @@ test('expands and collapses Pierre folders and preserves expansion across refres
   }
 })
 
-test('groups multi-root changes by repo on the root workspace and scopes nested repos', async ({
-  page,
-  electronApp
-}) => {
-  const root = await mkdtemp(join(tmpdir(), 'cerebro-changes-multiroot-e2e-'))
-  const parent = join(root, 'apps-folder')
-  const frontend = join(parent, 'frontend')
-  const backend = join(parent, 'backend')
-
-  try {
-    await initGitRepo(frontend, 'main', 'frontend-app')
-    await initGitRepo(backend, 'main', 'backend-app')
-    await writeFile(join(frontend, 'README.md'), 'frontend-app\nfront-change\n')
-    await writeFile(join(backend, 'README.md'), 'backend-app\nback-change\n')
-    await addDirectoryViaUi(page, electronApp, parent)
-
-    const project = await listedProject(page, 'apps-folder')
-    const frontendWorkspace = project?.workspaces.find(
-      (workspace) => workspace.kind !== 'root' && workspace.localPath.endsWith('frontend')
-    )
-    expect(project?.id).toBeTruthy()
-    expect(frontendWorkspace?.id).toBeTruthy()
-
-    await page.getByTestId(`project-root-${project?.id}`).click()
-    await openChanges(page)
-    const rootChanges = activeChanges(page)
-    await expect(
-      rootChanges.getByTestId('changes-repo-header').filter({ hasText: 'backend' })
-    ).toBeVisible({
-      timeout: 15_000
-    })
-    await expect(
-      rootChanges.getByTestId('changes-repo-header').filter({ hasText: 'frontend' })
-    ).toBeVisible()
-    await expect(rootChanges.locator('[role="treeitem"][data-item-type="file"]')).toHaveCount(2)
-    await expect(rootChanges.getByTestId('changes-diff')).toContainText('front-change')
-    await expect(rootChanges.getByTestId('changes-diff')).toContainText('back-change')
-
-    await page.getByTestId(`workspace-row-${frontendWorkspace?.id}`).click()
-    await openChanges(page)
-    const repoChanges = activeChanges(page)
-    await expect(repoChanges.locator('[role="treeitem"][data-item-type="file"]')).toHaveCount(1, {
-      timeout: 15_000
-    })
-    await expect(repoChanges.getByTestId('changes-repo-header')).toHaveCount(0)
-    await expect(repoChanges.getByTestId('changes-diff')).toContainText('front-change')
-    await expect(repoChanges.getByTestId('changes-diff')).not.toContainText('back-change')
-  } finally {
-    await rm(root, { recursive: true, force: true })
-  }
-})
-
 test('keeps terminals when opening and closing a Changes tab', async ({ page, electronApp }) => {
   const root = await mkdtemp(join(tmpdir(), 'cerebro-changes-tabs-e2e-'))
   const repo = join(root, 'changed-tabs')

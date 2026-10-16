@@ -1,13 +1,10 @@
-import { execFile } from 'node:child_process'
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { promisify } from 'node:util'
 import { crc32, deflateSync } from 'node:zlib'
 import type { ElectronApplication, JSHandle, Locator, Page } from '@playwright/test'
 import { test, expect, stopMux } from './fixtures'
 
-const execFileAsync = promisify(execFile)
 const executable = resolve(__dirname, '../../../packages/mux/src/agents/fixtures/fake-harness.cjs')
 const chatEvidenceDir = '/tmp/cerebro-chat-evidence'
 
@@ -1024,36 +1021,23 @@ test('forking a completed response branches it into a new tab or a new pane, lea
   }
 })
 
-test('multi-root root row keeps agent status inside the row chrome', async ({ page }) => {
-  const root = await mkdtemp(join(tmpdir(), 'cerebro-multiroot-agent-e2e-'))
-  const parent = join(root, 'apps-folder')
-  const frontend = join(parent, 'frontend')
-  const backend = join(parent, 'backend')
+test('directory workspace row keeps agent status inside the row chrome', async ({ page }) => {
+  const root = await mkdtemp(join(tmpdir(), 'cerebro-directory-agent-e2e-'))
+  const folder = join(root, 'notes')
   try {
-    for (const [dir, marker] of [
-      [frontend, 'frontend-app'],
-      [backend, 'backend-app']
-    ] as const) {
-      await mkdir(dir, { recursive: true })
-      await execFileAsync('git', ['init', '-b', 'main'], { cwd: dir })
-      await execFileAsync('git', ['config', 'user.email', 'e2e@cerebro.local'], { cwd: dir })
-      await execFileAsync('git', ['config', 'user.name', 'Cerebro E2E'], { cwd: dir })
-      await writeFile(join(dir, 'README.md'), `${marker}\n`)
-      await execFileAsync('git', ['add', '.'], { cwd: dir })
-      await execFileAsync('git', ['commit', '-m', `init ${marker}`], { cwd: dir })
-    }
+    await mkdir(folder, { recursive: true })
+    await writeFile(join(folder, 'notes.txt'), 'hello\n')
     const project = await page.evaluate(
       (directory) => window.cerebro.createProjectFromDirectory(directory),
-      parent
+      folder
     )
-    const rootWorkspace = project.workspaces.find((workspace) => workspace.kind === 'root')
-    expect(rootWorkspace).toBeTruthy()
+    const workspace = project.workspaces[0]
+    expect(workspace?.kind).toBe('default')
     await page.reload()
-    const projectRow = page.getByTestId(`project-row-${project.id}`)
-    await expect(projectRow).toBeVisible()
-    if ((await projectRow.getAttribute('aria-expanded')) === 'false') await projectRow.click()
-    const rootRow = page.getByTestId(`project-root-${project.id}`)
-    await rootRow.click()
+    const row = page.getByTestId(`workspace-row-${workspace.id}`)
+    await expect(row).toBeVisible()
+    await expect(row).toHaveAttribute('data-workspace-role', 'directory')
+    await row.click()
     await page.getByRole('button', { name: /^New Agent tab/ }).click()
     await page.getByTestId('chat-model-picker').click()
     await page
@@ -1068,7 +1052,7 @@ test('multi-root root row keeps agent status inside the row chrome', async ({ pa
     await page.getByRole('textbox', { name: 'Message agent' }).fill('approval')
     await page.getByRole('button', { name: 'Send message', exact: true }).click()
     await expect(page.getByRole('button', { name: 'Allow once', exact: true })).toBeVisible()
-    const rootMenu = page.locator('[data-sidebar="menu-row"][data-root-row]')
+    const rootMenu = page.locator('[data-sidebar="menu-row"]').filter({ has: row })
     const agentButton = rootMenu.getByTestId('workspace-agent-open')
     await expect(agentButton).toHaveCount(1)
     await expect(agentButton.locator('[data-workspace-agent-status="waiting"]')).toHaveAttribute(
@@ -1076,13 +1060,13 @@ test('multi-root root row keeps agent status inside the row chrome', async ({ pa
       'Agent needs your action'
     )
     await expect(page.getByTestId('chat-tab')).toHaveCount(1)
-    const rootBox = await rootRow.boundingBox()
+    const rootBox = await row.boundingBox()
     const agentBox = await agentButton.boundingBox()
     expect(rootBox).toBeTruthy()
     expect(agentBox).toBeTruthy()
     expect(agentBox!.y).toBeGreaterThanOrEqual(rootBox!.y + rootBox!.height - 1)
     await mkdir('/tmp/cerebro-sidebar-evidence', { recursive: true })
-    await page.screenshot({ path: '/tmp/cerebro-sidebar-evidence/multi-root-root-agent.png' })
+    await page.screenshot({ path: '/tmp/cerebro-sidebar-evidence/directory-agent.png' })
     await page.getByRole('button', { name: 'Allow once', exact: true }).click()
     await expect(page.getByTestId('chat-transcript').getByRole('status')).toHaveCount(0)
     await expect(agentButton.locator('[data-workspace-agent-status="finished"]')).toHaveAttribute(
@@ -1090,7 +1074,7 @@ test('multi-root root row keeps agent status inside the row chrome', async ({ pa
       'Agent finished'
     )
     await expect(agentButton).toHaveCount(1)
-    await page.screenshot({ path: '/tmp/cerebro-sidebar-evidence/multi-root-root-agent-idle.png' })
+    await page.screenshot({ path: '/tmp/cerebro-sidebar-evidence/directory-agent-idle.png' })
     const chatTab = page.getByTestId('chat-tab')
     await chatTab.hover()
     await chatTab.getByTestId('content-tab-close').click()

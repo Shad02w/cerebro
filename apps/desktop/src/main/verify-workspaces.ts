@@ -107,37 +107,20 @@ export async function verifyWorkspaces(): Promise<void> {
       'Opened git folder should use the original path instead of cloning.'
     )
 
-    const multiRootDir = join(sources, 'multi-root')
-    await initGitRepo(join(multiRootDir, 'svc-a'), 'main', 'svc-a')
-    await initGitRepo(join(multiRootDir, 'svc-b'), 'develop', 'svc-b')
-    const multiRoot = await createProjectFromDirectory(multiRootDir)
-    assert(multiRoot.kind === 'multi-root', 'Folder with sibling git repos should be multi-root.')
+    const siblingsDir = join(sources, 'siblings')
+    await initGitRepo(join(siblingsDir, 'svc-a'), 'main', 'svc-a')
+    await initGitRepo(join(siblingsDir, 'svc-b'), 'develop', 'svc-b')
+    const siblings = await createProjectFromDirectory(siblingsDir)
+    assert(siblings.kind === 'directory', 'A non-git parent should be a directory workspace.')
+    assert(siblings.github === null, 'A non-git folder is not GitHub-linked.')
+    assert(siblings.repositories.length === 1, 'Sibling git repos should not be imported.')
     assert(
-      multiRoot.github === null,
-      'Multi-root projects are not GitHub-linked at the project level.'
+      siblings.repositories[0].localPath === (await realpath(siblingsDir)),
+      'The selected folder should be the workspace path.'
     )
-    assert(multiRoot.repositories.length === 2, 'Multi-root should register each child git repo.')
-    const multiRootDefaults = multiRoot.workspaces.filter(
-      (workspace) => workspace.kind === 'default'
-    )
-    const multiRootRoot = multiRoot.workspaces.find((workspace) => workspace.kind === 'root')
-    assert(multiRootDefaults.length === 2, 'Multi-root should create a default workspace per repo.')
-    assert(
-      multiRootRoot != null,
-      'Multi-root should create a root workspace for the parent folder.'
-    )
-    assert(
-      multiRootRoot.localPath === (await realpath(multiRootDir)),
-      'Root workspace should point at the multi-root directory.'
-    )
-    assert(
-      multiRootDefaults.every((workspace) => workspace.kind === 'default'),
-      'Multi-root default workspaces should be kind default.'
-    )
-    assert(
-      new Set(multiRootDefaults.map((workspace) => workspace.branch)).size === 2,
-      'Sibling repos may share a project while using different default branches.'
-    )
+    assert(siblings.workspaces.length === 1, 'A non-git folder is one workspace.')
+    assert(siblings.workspaces[0].kind === 'default', 'A non-git folder workspace is kind default.')
+    assert(siblings.workspaces[0].branch === '', 'A non-git folder has no branch.')
 
     const plainDir = join(sources, 'plain-folder')
     await mkdir(plainDir, { recursive: true })
@@ -155,11 +138,11 @@ export async function verifyWorkspaces(): Promise<void> {
       `Expected 6 projects, found ${afterDirectory.projects.length}.`
     )
     assert(
-      afterDirectory.projects.some((project) => project.kind === 'multi-root'),
-      'Listed projects should include the multi-root workspace.'
+      afterDirectory.projects.every((project) => project.kind !== 'multi-root'),
+      'Listed projects should not include a multi-root workspace.'
     )
 
-    console.log('Directory + multi-root project import verified.')
+    console.log('Directory project import verified.')
     console.log(
       JSON.stringify(
         {

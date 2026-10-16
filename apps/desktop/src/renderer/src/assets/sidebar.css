@@ -52,7 +52,8 @@
 }
 
 .cerebro-sidebar [data-workspace-role='branch'],
-.cerebro-sidebar [data-workspace-role='root'] {
+.cerebro-sidebar [data-workspace-role='root'],
+.cerebro-sidebar [data-workspace-role='directory'] {
   min-height: var(--sidebar-row-line);
   height: auto;
   font-size: 12px;
