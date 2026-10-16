@@ -5,6 +5,7 @@ import {
   readdirSync,
   renameSync,
   rmdirSync,
+  statSync,
   unlinkSync,
   writeFileSync,
   type Dirent
@@ -245,6 +246,9 @@ function toActivity(session: AgentSession, paneIds: number[]): ChatAgentActivity
     ...(status === 'running' && session.runningSince != null
       ? { runningSince: session.runningSince }
       : {}),
+    ...(session.createdAt != null && Number.isFinite(session.createdAt)
+      ? { createdAt: session.createdAt }
+      : {}),
     paneId: paneIds[0] ?? null,
     paneIds
   }
@@ -322,8 +326,13 @@ export class AgentSessions {
     this.favorites = readJson(join(directory, 'favorites.json'), [])
     for (const file of readdirSync(directory)) {
       if (!file.startsWith('session-') || !file.endsWith('.json')) continue
-      const session = readJson<AgentSession | null>(join(directory, file), null)
+      const filePath = join(directory, file)
+      const session = readJson<AgentSession | null>(filePath, null)
       if (!session || session.version !== 1) continue
+      if (session.createdAt == null || !Number.isFinite(session.createdAt)) {
+        const birth = statSync(filePath).birthtimeMs
+        if (birth > 0) session.createdAt = Math.round(birth)
+      }
       if (busy(session)) {
         session.status = 'interrupted'
         session.runningSince = undefined
@@ -1015,6 +1024,7 @@ export class AgentSessions {
     let created = false
     if (!session) {
       const slice = threadTitleSlice(command.text)
+      const now = Date.now()
       session = {
         version: 1,
         id: randomUUID(),
@@ -1026,7 +1036,8 @@ export class AgentSessions {
         status: 'idle',
         generation: '',
         sequence: 0,
-        updatedAt: Date.now(),
+        createdAt: now,
+        updatedAt: now,
         items: [],
         commands: []
       }
@@ -1469,6 +1480,7 @@ export class AgentSessions {
       turnId: undefined,
       sequence: 0,
       error: undefined,
+      createdAt: Date.now(),
       updatedAt: Date.now(),
       items: structuredClone(source.items.slice(0, cut + 1)),
       commands: [],

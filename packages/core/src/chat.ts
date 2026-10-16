@@ -320,6 +320,11 @@ export type AgentSession = {
   generation: string
   turnId?: string
   sequence: number
+  /**
+   * Wall clock when this thread was created. Later turns update `updatedAt` only.
+   * Absent on sessions saved before this field existed.
+   */
+  createdAt?: number
   updatedAt: number
   nativeId?: string
   error?: string
@@ -403,8 +408,13 @@ export type ChatAgentActivity = {
   title: string
   /** `model.label` from the session, the same name the composer shows. */
   modelLabel: string
-  /** One line of the latest message, shown under the title in the workspace row. */
+  /** One line of the latest message. Search uses it. The sidebar row does not. */
   preview: string
+  /**
+   * Wall clock when the thread was created. The sidebar age is this, not `updatedAt`.
+   * Absent when the session file predates the field and has no file birth time.
+   */
+  createdAt?: number
   /** Unresolved waiting request. Absent when the session is not blocked on one. */
   requestKind?: 'approval' | 'question'
   /** Present while `status` is `running` and the turn recorded a start time. */

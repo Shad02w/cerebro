@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { X } from 'lucide-react'
 import type { ChatAgentActivity, LayoutState, PaneNode } from '@cerebro/core'
@@ -8,9 +8,19 @@ import { harnessLabels } from '@/components/chat/queries'
 import { defaultChatTabLabel } from '@/lib/thread-tab-title'
 import { sortAgentActivity } from '@/lib/agent-activity'
 import { acceptLayout, layoutOptions } from '@/lib/query-client'
+import { formatSessionAge, sessionCreatedLabel } from '@/lib/session-age'
 import { cn } from '@/lib/utils'
 
 const OPEN_SESSION_CAP = 8
+
+function useMinuteClock(): number {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 30_000)
+    return () => window.clearInterval(id)
+  }, [])
+  return now
+}
 
 function containsPane(node: PaneNode, paneId: number): boolean {
   if (node.type === 'pane') return node.id === paneId
@@ -61,6 +71,7 @@ export function WorkspaceSessionList({
   muted?: boolean
   onOpenAgent: (agent: ChatAgentActivity) => void
 }): React.JSX.Element | null {
+  const now = useMinuteClock()
   const layout = useQuery(layoutOptions).data
   const [expanded, setExpanded] = useState(false)
   if (!agents.length) return null
@@ -72,10 +83,12 @@ export function WorkspaceSessionList({
       {visible.map((agent) => {
         const title = sessionTitle(agent, layout)
         const model = agent.modelLabel.trim() || harnessLabels[agent.harness]
+        const age = agent.createdAt == null ? '' : formatSessionAge(agent.createdAt, now)
+        const ageLabel = agent.createdAt == null ? '' : sessionCreatedLabel(agent.createdAt, now)
         return (
           <div
             key={agent.sessionId}
-            className={cn('flex items-start gap-0.5 bg-transparent py-0.5', muted && 'opacity-60')}
+            className={cn('session-row relative bg-transparent py-0.5', muted && 'opacity-60')}
           >
             <button
               type="button"
@@ -83,10 +96,10 @@ export function WorkspaceSessionList({
               data-agent-title={title}
               data-agent-harness={agent.harness}
               aria-label={title}
-              className="flex min-w-0 flex-1 flex-col gap-0.5 rounded-sm text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sidebar-selected"
+              className="flex min-w-0 w-full flex-col gap-0.5 rounded-sm text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sidebar-selected"
               onClick={(): void => onOpenAgent(agent)}
             >
-              <span className="flex min-w-0 items-center gap-1.5">
+              <span className="flex min-w-0 items-center gap-1.5 pr-5">
                 {agent.status === 'idle' ? (
                   <span className="size-3.5 shrink-0" />
                 ) : (
@@ -96,33 +109,37 @@ export function WorkspaceSessionList({
                 <span data-session-title="" className="min-w-0 flex-1 truncate text-[13px]">
                   {title}
                 </span>
+              </span>
+              <span className="flex min-w-0 items-center gap-2">
                 <span
                   data-session-model=""
                   className={cn(
-                    'max-w-24 shrink-0 truncate text-[11px]',
+                    'min-w-0 truncate text-[11px] leading-4',
                     muted ? 'text-sidebar-foreground/40' : 'text-sidebar-foreground/55'
                   )}
                 >
                   {model}
                 </span>
+                {age ? (
+                  <span
+                    data-session-age=""
+                    title={ageLabel}
+                    className={cn(
+                      'ml-auto shrink-0 text-[11px] leading-4 tabular-nums',
+                      muted ? 'text-sidebar-foreground/35' : 'text-sidebar-foreground/45'
+                    )}
+                  >
+                    {age}
+                  </span>
+                ) : null}
               </span>
-              {agent.preview ? (
-                <span
-                  className={cn(
-                    'truncate pl-[2.375rem] text-[11px] leading-4',
-                    muted ? 'text-sidebar-foreground/35' : 'text-sidebar-foreground/55'
-                  )}
-                >
-                  {agent.preview}
-                </span>
-              ) : null}
             </button>
             {agent.paneId != null ? (
               <button
                 type="button"
                 data-testid="workspace-agent-close"
                 aria-label={`Close ${title}`}
-                className="mt-0.5 inline-flex size-4 shrink-0 items-center justify-center rounded-sm text-sidebar-foreground/55 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                className="session-row-close absolute top-0.5 right-0 inline-flex size-4 items-center justify-center rounded-sm text-sidebar-foreground/55 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                 onClick={(event): void => {
                   event.stopPropagation()
                   closeSession(agent, layout)

@@ -276,6 +276,8 @@ test('fork copies a completed section into a new session, leaves the source unto
     await service.command(scope, { ...send, commandId: 'second', text: 'again' })
     const beforeFork = await service.command(scope, { ...send, action: 'get' })
     assert.equal(beforeFork.session!.items.length, 4)
+    assert.equal(typeof first.session!.createdAt, 'number')
+    assert.equal(beforeFork.session!.createdAt, first.session!.createdAt)
 
     await assert.rejects(
       service.command(scope, {
@@ -308,9 +310,12 @@ test('fork copies a completed section into a new session, leaves the source unto
     assert.equal(forked.session!.nativeId, undefined)
     assert.equal(forked.session!.commands.length, 0)
     assert.equal(forked.session!.title, `${first.session!.title} (fork)`)
+    assert.equal(typeof forked.session!.createdAt, 'number')
+    assert.ok(forked.session!.createdAt! >= first.session!.createdAt!)
 
     const source = await service.command(scope, { ...send, action: 'open', sessionId: sourceId })
     assert.equal(source.session!.items.length, 4)
+    assert.equal(source.session!.createdAt, first.session!.createdAt)
 
     await service.shutdown()
     const restored = new AgentSessions(f.dir, () => {}, f.drivers)
@@ -887,6 +892,16 @@ test('search finds session text, ignores a mid-word query, and lists a closed se
     const stem = service.search({ workspaceIds: [1], query: 'log', pastOnly: false })
     assert.equal(stem.hits.length, 1)
     assert.equal(stem.hits[0]?.modelLabel, 'Test')
+    const createdAt = stem.hits[0]?.createdAt
+    assert.equal(typeof createdAt, 'number')
+    await service.command(scope, {
+      ...send,
+      text: 'Follow up on the login page',
+      commandId: 'search-2'
+    })
+    const followed = service.search({ workspaceIds: [1], query: 'log', pastOnly: false })
+    assert.equal(followed.hits[0]?.createdAt, createdAt)
+    assert.ok((followed.hits[0]?.updatedAt ?? 0) >= createdAt!)
     assert.match(stem.hits[0]?.preview ?? '', /credentials/)
     assert.equal(stem.hits[0]?.open, true)
     assert.match(stem.hits[0]?.snippet ?? '', /login/i)
@@ -908,6 +923,7 @@ test('search finds session text, ignores a mid-word query, and lists a closed se
     try {
       const again = restarted.search({ workspaceIds: [1], query: 'credentials', pastOnly: true })
       assert.equal(again.total, 1)
+      assert.equal(again.hits[0]?.createdAt, createdAt)
     } finally {
       await restarted.shutdown()
     }
