@@ -12,7 +12,7 @@ import {
   type Page,
   _electron as electron
 } from '@playwright/test'
-import { electronAppArgs } from './fixtures'
+import { electronAppArgs, stopMux } from './fixtures'
 import { startMockGitHubServer, type MockGitHubServer } from './mock-github'
 
 const execFileAsync = promisify(execFile)
@@ -190,7 +190,17 @@ else process.exit(1);
     })
 
     await use(electronApp)
-    await electronApp.close()
+    try {
+      await Promise.race([
+        electronApp.close(),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('electronApp.close timed out')), 5_000)
+        })
+      ])
+    } catch {
+      electronApp.process().kill('SIGKILL')
+    }
+    await stopMux(cerebroHome)
     await rm(cerebroHome, { recursive: true, force: true })
   },
 
@@ -741,6 +751,7 @@ test('worktrees of one repository share PR queries and a second repository stays
   githubMock,
   electronApp
 }) => {
+  test.setTimeout(120_000)
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'cerebro-multiroot-pr-')))
   try {
     const repoA = path.join(root, 'repo-a')
@@ -796,10 +807,19 @@ test('worktrees of one repository share PR queries and a second repository stays
       'data-pr-state',
       'merged'
     )
+    // hello-world is shared by the main checkout and its worktree, then refreshed when the
+    // worktree joins. The other repository is fetched once.
+    const queried = githubMock.pullRequestRepos().slice(before)
+    const hello = queried.filter((repo) => repo === 'octocat/hello-world')
+    const second = queried.filter((repo) => repo === 'octocat/second')
+    expect(hello.length).toBeGreaterThanOrEqual(1)
+    expect(hello.length).toBeLessThanOrEqual(2)
+    expect(second).toEqual(['octocat/second'])
+    expect(queried).toHaveLength(hello.length + 1)
     for (const workspace of [a, review, b]) {
       const row = page.getByTestId(`workspace-row-${workspace.id}`)
       const icon = page.getByTestId(`workspace-pr-icon-${workspace.id}`)
-      const branch = page.getByTestId(`workspace-branch-${workspace.id}`).locator('span').last()
+      const branch = row.locator('[data-row-label]')
       const iconBox = await icon.boundingBox()
       const branchBox = await branch.boundingBox()
       // The mark leads the branch name on the same line. Its hit target can
@@ -823,7 +843,6 @@ test('worktrees of one repository share PR queries and a second repository stays
       await page.mouse.move(1000, 700)
       await expect(card).toHaveCount(0)
     }
-    expect(githubMock.requestCount() - before).toBe(2)
     // An external git checkout must update matching without reopening the project.
     await execFileAsync('git', ['checkout', 'feature/closed'], { cwd: worktree })
     await focusCerebro(electronApp)

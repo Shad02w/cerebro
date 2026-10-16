@@ -592,6 +592,9 @@ test('CLI rejects invalid and cross-workspace targets without changing the layou
       'border-top-color',
       'rgb(120, 90, 220)'
     )
+    const secondProject = page.getByTestId(/project-row-/).filter({ hasText: /^two$/ })
+    await expect(secondProject).toBeVisible()
+    if ((await secondProject.getAttribute('aria-expanded')) !== 'true') await secondProject.click()
     const rowGlow = await page
       .locator(`button[data-workspace-id="${nested.id}"]`)
       .evaluate((el) => getComputedStyle(el).boxShadow)
@@ -622,7 +625,8 @@ test('removing a project with several open workspaces leaves layout commands wor
     await repo(join(dir, 'solo'))
     const home = await homeOf(electronApp)
     const multi = await cli<Project>(home, 'project', 'create', '--directory', join(dir, 'multi'))
-    expect(multi.workspaces.length).toBeGreaterThanOrEqual(3)
+    expect(multi.workspaces).toHaveLength(1)
+    expect(multi.nestedRepos?.map((repo) => repo.name)).toEqual(['one', 'two'])
     for (const workspace of multi.workspaces)
       await cli(home, 'tab', 'create', '--workspace', String(workspace.id))
     const solo = await cli<Project>(home, 'project', 'create', '--directory', join(dir, 'solo'))

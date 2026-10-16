@@ -366,7 +366,7 @@ test(
 )
 
 test(
-  'removing a multi-workspace project keeps the layout store consistent with the database',
+  'removing a directory of nested repos keeps the layout store consistent with the database',
   { timeout: 60000, skip: process.platform === 'win32' },
   async () => {
     const home = await mkdtemp(join(tmpdir(), 'cerebro-mux-remove-'))
@@ -406,7 +406,14 @@ test(
       await repository('multi', 'a')
       await repository('multi', 'b')
       const multi = (await cli('project', 'create', '--directory', join(home, 'multi'))) as Project
-      assert.ok(multi.workspaces.length >= 2)
+      assert.equal(multi.workspaces.length, 1)
+      assert.deepEqual(
+        multi.nestedRepos?.map((repo) => ({ name: repo.name, branch: repo.branch })),
+        [
+          { name: 'a', branch: 'main' },
+          { name: 'b', branch: 'main' }
+        ]
+      )
       for (const workspace of multi.workspaces)
         await cli('tab', 'create', '--workspace', String(workspace.id))
       client = await connectMux({ runtimeDir })

@@ -115,9 +115,14 @@ test('adds a folder of git repos as one workspace', async ({ page, electronApp }
     expect(listed.activeWorkspaceId).toBeNull()
     await expect(page.getByTestId('content-tab-bar')).toHaveCount(0)
 
-    await row.click()
-    const afterSelect = await page.evaluate(async () => window.cerebro.listProjects())
-    expect(afterSelect.activeWorkspaceId).toBe(project?.workspaces[0]?.id)
+    const workspaceId = project?.workspaces[0]?.id
+    await page.getByTestId(`workspace-row-${workspaceId}`).locator('[data-row-label]').click()
+    await expect
+      .poll(async () => {
+        const selected = await page.evaluate(async () => window.cerebro.listProjects())
+        return selected.activeWorkspaceId
+      })
+      .toBe(workspaceId)
     await expect(page.getByTestId('content-tab-bar')).toBeVisible()
     await expect(page.locator('[data-terminal-workspace-id]')).toHaveCount(0)
   } finally {

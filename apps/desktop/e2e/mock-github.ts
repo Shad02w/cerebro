@@ -29,6 +29,7 @@ export type MockGitHubServer = {
   setApiError: (status: number | null) => void
   holdPullRequests: () => () => void
   requestCount: () => number
+  pullRequestRepos: () => string[]
   refreshCount: () => number
   expireAccessTokens: () => void
   setTokenLifetime: (seconds: number) => void
@@ -74,6 +75,7 @@ export async function startMockGitHubServer(): Promise<MockGitHubServer> {
   let lifetime = 28800
   let refreshCount = 0
   let requestCount = 0
+  const queriedRepos: string[] = []
   let apiError: number | null = null
   let pullRequestsReady = Promise.resolve()
   let releasePullRequests = (): void => {}
@@ -261,6 +263,7 @@ export async function startMockGitHubServer(): Promise<MockGitHubServer> {
         await pullRequestsReady
         const owner = parsed.variables?.owner ?? 'octocat'
         const name = parsed.variables?.name ?? 'hello-world'
+        queriedRepos.push(`${owner}/${name}`)
         const allNodes = [...(pullRequestsByRepo.get(repoKey(owner, name)) ?? [])].sort((a, b) =>
           b.updatedAt.localeCompare(a.updatedAt)
         )
@@ -357,6 +360,7 @@ export async function startMockGitHubServer(): Promise<MockGitHubServer> {
   return {
     baseUrl,
     requestCount: () => requestCount,
+    pullRequestRepos: () => queriedRepos.slice(),
     holdPullRequests: () => {
       pullRequestsReady = new Promise<void>((resolve) => {
         releasePullRequests = resolve

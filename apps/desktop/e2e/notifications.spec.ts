@@ -20,10 +20,8 @@ async function openAgentThenBackground(page: Page, directory: string): Promise<v
     (directory) => window.cerebro.createProjectFromDirectory(directory),
     directory
   )
-  await page.reload()
-  const projectRow = page.getByTestId(/project-row-/).first()
-  if ((await projectRow.getAttribute('aria-expanded')) === 'false') await projectRow.click()
   const workspaceId = project.workspaces[0].id
+  await page.reload()
   await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
   await page.getByRole('button', { name: /^New Agent tab/ }).click()
   await expect(page.getByTestId('chat-view')).toBeVisible()
@@ -60,14 +58,13 @@ async function openAgentThenBackground(page: Page, directory: string): Promise<v
 test('a pane the user is looking at raises no card', async ({ page }) => {
   const directory = await mkdtemp(join(tmpdir(), 'cerebro-notify-e2e-'))
   try {
-    await page.evaluate(
+    const project = await page.evaluate(
       (directory) => window.cerebro.createProjectFromDirectory(directory),
       directory
     )
+    const workspaceId = project.workspaces[0].id
     await page.reload()
-    const projectRow = page.getByTestId(/project-row-/).first()
-    if ((await projectRow.getAttribute('aria-expanded')) === 'false') await projectRow.click()
-    await page.locator('button[data-workspace-id]').first().click()
+    await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
     await page.getByRole('button', { name: /^New Agent tab/ }).click()
     await page.getByRole('combobox', { name: 'Access mode' }).selectOption('edit')
     await page.getByRole('textbox', { name: 'Message agent' }).fill('approval')
