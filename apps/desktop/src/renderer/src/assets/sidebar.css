@@ -309,10 +309,21 @@
 .cerebro-sidebar .sidebar-root-group {
   padding: 4px;
   border-radius: 9px;
+  overflow: hidden;
   background-color: color-mix(in srgb, var(--sidebar-foreground) 4%, transparent);
   transition:
     background-color 120ms ease,
     box-shadow 120ms ease;
+}
+
+/* Nested repos are subrows of the multi-root. The selection is the row itself:
+   no inset padding, gap, or ring around the active workspace. */
+.cerebro-sidebar .sidebar-root-group .sidebar-nested-workspace,
+.cerebro-sidebar .sidebar-root-group .sidebar-nested-workspace:hover,
+.cerebro-sidebar .sidebar-root-group .sidebar-nested-workspace[data-active='true'],
+.cerebro-sidebar .sidebar-root-group .sidebar-nested-workspace[data-active='true']:hover {
+  border-radius: 0;
+  box-shadow: none;
 }
 
 /* Selecting the root workspace highlights the whole multi-root block,

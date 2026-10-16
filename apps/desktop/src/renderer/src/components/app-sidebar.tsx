@@ -865,7 +865,7 @@ function NestedRepoRow({
 }): React.JSX.Element {
   const active = match != null && match.id === activeWorkspaceId
   const rowClass =
-    'sidebar-nested-workspace flex w-full min-w-0 flex-col items-stretch rounded-md px-2 py-0 text-left text-xs font-medium text-sidebar-foreground/60'
+    'sidebar-nested-workspace flex w-full min-w-0 flex-col items-stretch rounded-none px-3 py-0 text-left text-xs font-medium text-sidebar-foreground/60'
   return (
     <li data-testid={`workspace-nested-repo-${repo.name}`}>
       <WorkspaceHoverCard workspace={match ?? undefined} showStatus={false}>
@@ -1113,7 +1113,7 @@ function NestedRepoList({
     <Collapsible open={open} onOpenChange={onOpenChange}>
       <CollapsibleContent>
         <ul
-          className="flex min-w-0 flex-col gap-1 px-2 pt-1 pb-1.5"
+          className="sidebar-nested-repos -mx-1 -mb-1 flex min-w-0 flex-col"
           aria-label={`Repositories in ${projectName}`}
           data-nested-repos=""
           data-testid={`workspace-nested-repos-${workspaceId}`}
