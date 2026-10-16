@@ -420,11 +420,12 @@ test('chat works through native adapters, survives reload, handles requests, and
     const surfaceBox = await composer.getByTestId('chat-composer-surface').boundingBox()
     expect(fadeBox!.height).toBeLessThanOrEqual(48)
     expect(fadeBox!.y).toBe(floatingTop)
-    // A wide pane floats tasks over the transcript. The fade still meets the composer surface.
+    // A wide pane floats tasks over the transcript, so the chip row no longer
+    // sits above the form. The fade meets the surface, and the form starts there.
     await expect(page.getByTestId('chat-session-panel')).toBeVisible()
     await expect(composer.getByTestId('chat-todo-chip')).toBeHidden()
     expect(fadeBox!.y + fadeBox!.height).toBeCloseTo(surfaceBox!.y, 0)
-    expect(formBox!.y).toBeGreaterThan(surfaceBox!.y)
+    expect(formBox!.y).toBeCloseTo(surfaceBox!.y, 0)
     expect(formBox!.y + formBox!.height).toBeLessThanOrEqual(surfaceBox!.y + surfaceBox!.height + 1)
     // The dock spans the whole transcript so no text peeks out beside the form.
     expect(fadeBox!.x).toBeLessThanOrEqual(transcriptBox!.x)
