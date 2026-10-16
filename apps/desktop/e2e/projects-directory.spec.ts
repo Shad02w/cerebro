@@ -69,7 +69,9 @@ test('adds a local git folder as a directory project', async ({ page, electronAp
     expect(listed.activeWorkspaceId).toBeNull()
     await expect(page.getByTestId('content-tab-bar')).toHaveCount(0)
 
-    await page.getByTestId(`workspace-row-${project?.workspaces[0]?.id}`).click()
+    const selected = page.getByTestId(`workspace-row-${project?.workspaces[0]?.id}`)
+    await selected.click()
+    await expect(selected).toHaveAttribute('aria-current', 'location')
     const afterSelect = await page.evaluate(async () => window.cerebro.listProjects())
     expect(afterSelect.activeWorkspaceId).toBe(project?.workspaces[0]?.id)
     await expect(page.getByTestId('content-tab-bar')).toBeVisible()
@@ -192,7 +194,9 @@ test('adds a folder even when it is not a git repository', async ({ page, electr
     expect(listed.activeWorkspaceId).toBeNull()
     await expect(page.getByTestId('content-tab-bar')).toHaveCount(0)
 
-    await page.getByTestId(`workspace-row-${project?.workspaces[0]?.id}`).click()
+    const selected = page.getByTestId(`workspace-row-${project?.workspaces[0]?.id}`)
+    await selected.click()
+    await expect(selected).toHaveAttribute('aria-current', 'location')
     const afterSelect = await page.evaluate(async () => window.cerebro.listProjects())
     expect(afterSelect.activeWorkspaceId).toBe(project?.workspaces[0]?.id)
     await expect(page.getByTestId('content-tab-bar')).toBeVisible()

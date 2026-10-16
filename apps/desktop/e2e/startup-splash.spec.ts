@@ -146,7 +146,11 @@ test('reveals all projects and restored panes together after startup barriers co
         tabId: tab.id
       })
       layout = await window.cerebro.getLayout()
-      return { layout, workspaceId, projectIds: [alpha.id, beta.id] }
+      return {
+        layout,
+        workspaceId,
+        workspaceIds: [alpha.workspaces[0].id, beta.workspaces[0].id]
+      }
     }, root)
     await expect(page.locator('[data-terminal-session-id]')).toHaveCount(2)
     await holdIpc(electronApp, [PROJECTS, LAYOUT, TERMINALS])
@@ -177,8 +181,8 @@ test('reveals all projects and restored panes together after startup barriers co
     await expect(page.getByTestId('startup-splash')).toHaveCount(0)
     await expect(shell).toHaveCSS('opacity', '1')
     await expect(shell).not.toHaveAttribute('inert')
-    for (const id of saved.projectIds)
-      await expect(page.getByTestId(`project-row-${id}`)).toBeVisible()
+    for (const id of saved.workspaceIds)
+      await expect(page.getByTestId(`workspace-row-${id}`)).toBeVisible()
     await expect(page.locator('[data-terminal-session-id]')).toHaveCount(2)
     await expect(page.locator('.xterm-helper-textarea:focus')).toHaveCount(1)
     const restored = await page.evaluate(() => window.cerebro.getLayout())
@@ -218,8 +222,8 @@ test('reveals all projects and restored panes together after startup barriers co
     )
     for (const [id, workspace] of Object.entries(restored.workspaces))
       expect(recovered.workspaces[id].tabs).toMatchObject(workspace.tabs)
-    for (const id of saved.projectIds)
-      await expect(page.getByTestId(`project-row-${id}`)).toBeVisible()
+    for (const id of saved.workspaceIds)
+      await expect(page.getByTestId(`workspace-row-${id}`)).toBeVisible()
   } finally {
     for (const channel of [PROJECTS, LAYOUT, TERMINALS])
       await releaseIpc(electronApp, channel).catch(() => {})

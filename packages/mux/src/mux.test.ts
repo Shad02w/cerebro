@@ -403,9 +403,12 @@ test(
     }
     let client: MuxClient | undefined
     try {
-      await repository('multi', 'a')
-      await repository('multi', 'b')
-      const multi = (await cli('project', 'create', '--directory', join(home, 'multi'))) as Project
+      const mainPath = await repository('repo')
+      const featurePath = join(home, 'repo-feature')
+      await exec('git', ['worktree', 'add', '-b', 'feature', featurePath], { cwd: mainPath })
+      const created = (await cli('project', 'create', '--directory', mainPath)) as Project
+      const multi = (await cli('project', 'create', '--directory', featurePath)) as Project
+      assert.equal(multi.id, created.id)
       assert.ok(multi.workspaces.length >= 2)
       for (const workspace of multi.workspaces)
         await cli('tab', 'create', '--workspace', String(workspace.id))
