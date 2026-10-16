@@ -676,8 +676,9 @@ function ProjectItem({
   const containsActive = listed.some((workspace) => workspace.id === activeWorkspaceId)
   const [open, setOpen] = useState(defaultOpen)
   const [trackedActive, setTrackedActive] = useState(containsActive)
-  // A collapse while this project is selected stays closed. Becoming selected
-  // from outside (CLI focus, another surface) opens it so the active row is visible.
+  // A manual collapse stays closed, including when selection arrives afterward
+  // (search). Leaving the project clears that, so the next outside selection
+  // (CLI focus) opens it and the active row is visible.
   const [userClosed, setUserClosed] = useState(false)
   if (containsActive !== trackedActive) {
     setTrackedActive(containsActive)
@@ -691,7 +692,7 @@ function ProjectItem({
     <Collapsible
       open={open}
       onOpenChange={(next): void => {
-        setUserClosed(!next && containsActive)
+        setUserClosed(!next)
         setOpen(next)
       }}
       className={cn('group/collapsible', projectGroupSpacingClass)}
