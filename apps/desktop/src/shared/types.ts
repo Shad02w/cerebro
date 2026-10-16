@@ -201,6 +201,10 @@ export type ChangedFile = {
   path: string
   oldPath: string | null
   status: ChangedFileStatus
+  /** Lines added versus HEAD. Untracked text files count as additions. */
+  additions?: number
+  /** Lines deleted versus HEAD. */
+  deletions?: number
 }
 
 export type RepoChangeGroup = {

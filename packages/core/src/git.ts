@@ -442,17 +442,83 @@ async function hasHeadCommit(repoPath: string): Promise<boolean> {
   }
 }
 
+/**
+ * `git diff --numstat -z` records. A rename is `added\tdeleted\t\\0old\\0new\\0`;
+ * every other path keeps its name on the stat line.
+ */
+export function parseNumstatZ(raw: string): Map<string, { additions: number; deletions: number }> {
+  const stats = new Map<string, { additions: number; deletions: number }>()
+  const tokens = splitNul(raw)
+  let index = 0
+  while (index < tokens.length) {
+    const header = tokens[index]
+    const match = header?.match(/^(\d+|-)\t(\d+|-)\t(.*)$/)
+    if (!header || !match) {
+      index += 1
+      continue
+    }
+    const additions = match[1] === '-' ? 0 : Number(match[1])
+    const deletions = match[2] === '-' ? 0 : Number(match[2])
+    const inlinePath = match[3]
+    if (inlinePath) {
+      stats.set(inlinePath, { additions, deletions })
+      index += 1
+      continue
+    }
+    const path = tokens[index + 2]
+    if (!path) break
+    stats.set(path, { additions, deletions })
+    index += 3
+  }
+  return stats
+}
+
+function countTextLines(text: string): number {
+  if (!text) return 0
+  let lines = 0
+  for (let index = 0; index < text.length; index += 1) {
+    if (text.charCodeAt(index) === 10) lines += 1
+  }
+  return text.endsWith('\n') ? lines : lines + 1
+}
+
+async function untrackedAdditions(repoPath: string, gitPath: string): Promise<number> {
+  try {
+    const buf = await readFile(repoFilePath(repoPath, gitPath))
+    if (buf.byteLength > MAX_TEXT_BYTES || buf.includes(0)) return 0
+    return countTextLines(buf.toString('utf8'))
+  } catch {
+    return 0
+  }
+}
+
 /** Working-tree changes versus HEAD, including untracked files. */
 export async function listChangedFiles(repoPath: string): Promise<ChangedFile[]> {
   const files: ChangedFile[] = []
+  let stats = new Map<string, { additions: number; deletions: number }>()
   if (await hasHeadCommit(repoPath)) {
     const nameStatus = await runGit(['diff', '--name-status', '-z', 'HEAD'], repoPath)
     files.push(...parseNameStatusZ(nameStatus))
+    stats = parseNumstatZ(await runGit(['diff', '--numstat', '-z', 'HEAD'], repoPath))
   }
 
   const others = await runGit(['ls-files', '--others', '--exclude-standard', '-z'], repoPath)
   for (const path of splitNul(others)) {
     files.push({ path, oldPath: null, status: 'untracked' })
+  }
+
+  for (const file of files) {
+    const stat = stats.get(file.path)
+    if (stat) {
+      file.additions = stat.additions
+      file.deletions = stat.deletions
+    } else if (file.status === 'untracked') {
+      file.additions = await untrackedAdditions(repoPath, file.path)
+      file.deletions = 0
+    } else {
+      file.additions = 0
+      file.deletions = 0
+    }
   }
 
   files.sort((left, right) => left.path.localeCompare(right.path))

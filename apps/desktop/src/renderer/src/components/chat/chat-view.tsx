@@ -43,6 +43,7 @@ import {
   isTranscriptAtEnd
 } from './chat-turns'
 import { ChatSessionChips } from './chat-session-chips'
+import { ChatSessionPanel } from './chat-session-panel'
 import { AttachmentStrip, DropOverlay } from './chat-composer-attachments'
 import { ComposerEditor, type ComposerEditorHandle } from './composer-editor'
 import { VimModeBadge } from './vim-mode-badge'
@@ -565,7 +566,7 @@ export function ChatView({
   return (
     <div
       ref={viewRef}
-      className="relative z-0 flex h-full min-w-0 flex-col bg-background text-foreground"
+      className="@container/chat relative z-0 flex h-full min-w-0 flex-col bg-background text-foreground"
       data-testid="chat-view"
       data-agent-background={agentBackground}
       data-loading={loading || undefined}
@@ -597,7 +598,7 @@ export function ChatView({
           Loading…
         </div>
       ) : (
-        <>
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
           <div
             ref={scrolling}
             onScroll={readScroll}
@@ -737,7 +738,12 @@ export function ChatView({
             >
               {session ? (
                 <div className={`mx-auto max-w-3xl ${visible ? 'pointer-events-auto' : ''}`}>
-                  <ChatSessionChips session={session} />
+                  <div
+                    className="@max-[56rem]/chat:hidden @min-[56rem]/chat:hidden"
+                    data-testid="chat-session-chips-slot"
+                  >
+                    <ChatSessionChips session={session} />
+                  </div>
                   <ChatQueue session={session} onSteer={steer} onDequeue={dequeue} />
                 </div>
               ) : null}
@@ -910,7 +916,8 @@ export function ChatView({
               ) : null}
             </div>
           </div>
-        </>
+          <ChatSessionPanel session={session ?? null} workspaceId={workspaceId} />
+        </div>
       )}
     </div>
   )

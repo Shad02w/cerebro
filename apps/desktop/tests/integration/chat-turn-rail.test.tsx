@@ -24,6 +24,10 @@ describe('ChatTurnRail', () => {
     const onSelect = vi.fn()
     render(<ChatTurnRail turns={turns} activeTurnId="t2" onSelect={onSelect} />)
     const rail = screen.getByRole('navigation', { name: 'Conversation turns' })
+    expect(rail.className).toContain('hidden')
+    expect(rail.className).toContain('@min-[56rem]/chat:block')
+    expect(rail.className).not.toMatch(/(?:^|\s)(?:sm|md|lg|xl|2xl):/)
+    expect(rail.className).not.toContain('max-[56rem]:')
     const markers = within(rail).getAllByTestId('chat-turn-marker')
     expect(markers.map((marker) => marker.getAttribute('aria-label'))).toEqual([
       'Go to turn 1: First question',

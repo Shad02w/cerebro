@@ -417,10 +417,12 @@ test('chat works through native adapters, survives reload, handles requests, and
     const surfaceBox = await composer.getByTestId('chat-composer-surface').boundingBox()
     expect(fadeBox!.height).toBeLessThanOrEqual(48)
     expect(fadeBox!.y).toBe(floatingTop)
-    // Session chips sit on the solid surface, so the fade meets that surface rather than the form.
-    await expect(composer.getByTestId('chat-todo-chip')).toBeVisible()
+    // A wide pane floats tasks over the transcript, so the chip row no longer
+    // sits above the form. The fade meets the surface, and the form starts there.
+    await expect(page.getByTestId('chat-session-panel')).toBeVisible()
+    await expect(composer.getByTestId('chat-todo-chip')).toBeHidden()
     expect(fadeBox!.y + fadeBox!.height).toBeCloseTo(surfaceBox!.y, 0)
-    expect(formBox!.y).toBeGreaterThan(surfaceBox!.y)
+    expect(formBox!.y).toBeCloseTo(surfaceBox!.y, 0)
     expect(formBox!.y + formBox!.height).toBeLessThanOrEqual(surfaceBox!.y + surfaceBox!.height + 1)
     // The dock spans the whole transcript so no text peeks out beside the form.
     expect(fadeBox!.x).toBeLessThanOrEqual(transcriptBox!.x)
@@ -1549,14 +1551,14 @@ test('agent replies render rich markdown, local images, and never load remote im
   }
 })
 
-test('Claude background jobs outlive their response, list under a chip, and report their outcomes', async ({
+test('Claude background jobs outlive their response, list in the session panel, and report their outcomes', async ({
   page,
   electronApp
 }) => {
   const directory = await mkdtemp(join(tmpdir(), 'cerebro-chat-background-e2e-'))
   try {
     await electronApp.evaluate(({ BrowserWindow }) =>
-      BrowserWindow.getAllWindows()[0].setSize(1250, 900)
+      BrowserWindow.getAllWindows()[0].setSize(1680, 900)
     )
     const project = await page.evaluate(
       (directory) => window.cerebro.createProjectFromDirectory(directory),
@@ -1580,25 +1582,19 @@ test('Claude background jobs outlive their response, list under a chip, and repo
     await message.fill('background-task 9000')
     await sendMessage.click()
     await expect(ended).toHaveCount(1)
-    await expect(page.getByRole('button', { name: '1 background job' })).toBeVisible()
+    const jobs = page.getByTestId('chat-session-panel-background')
+    await expect(jobs.getByTestId('chat-background-task')).toHaveText(['Delayed pwd'])
     await message.fill('background-task 9000')
     await sendMessage.click()
     await expect(ended).toHaveCount(2)
-    const chip = page.getByRole('button', { name: '2 background jobs' })
-    await expect(chip).toHaveText('Background2')
-    await mkdir(chatEvidenceDir, { recursive: true })
-    await screenshotChatEvidence(page, 'background-jobs-chip.png')
-    await chip.click()
-    const jobs = page.getByTestId('chat-background-tasks')
-    await expect(jobs).toBeVisible()
-    await expect(page.getByTestId('chat-background-task')).toHaveText([
+    await expect(jobs.getByTestId('chat-background-task')).toHaveText([
       'Delayed pwd',
       'Delayed pwd 2'
     ])
-    await expect(jobs).toHaveCSS('opacity', '1')
+    await expect(page.getByTestId('chat-background-chip')).toBeHidden()
+    await mkdir(chatEvidenceDir, { recursive: true })
+    await screenshotChatEvidence(page, 'background-jobs-chip.png')
     await screenshotChatEvidence(page, 'background-jobs-open.png')
-    await page.keyboard.press('Escape')
-    await expect(jobs).toBeHidden()
 
     const outcomes = page.getByTestId('chat-task-outcome')
     await expect(outcomes).toHaveCount(2, { timeout: 20_000 })
