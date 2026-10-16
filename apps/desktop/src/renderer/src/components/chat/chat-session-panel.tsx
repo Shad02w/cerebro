@@ -223,7 +223,7 @@ function SessionRail({
   return (
     <div
       data-testid="chat-session-panel-rail"
-      className="flex w-max flex-col gap-1 rounded-xl border bg-popover p-1 shadow-lg"
+      className="box-content flex w-8 flex-col items-center gap-1 overflow-visible rounded-xl border bg-popover p-1 shadow-lg"
     >
       <RailButton label="Expand session status" onClick={onExpand}>
         <PanelRightOpen />
@@ -232,7 +232,7 @@ function SessionRail({
         <RailButton key={item.label} label={item.label} onClick={onExpand}>
           {item.icon}
           {item.stat ? (
-            <DiffStatLine diff={item.stat} floating />
+            <ChangesRailMark diff={item.stat} />
           ) : (
             <CountBadge count={item.count} section={item.section} corner />
           )}
@@ -283,30 +283,38 @@ function CountBadge({
   )
 }
 
-function DiffStatLine({
-  diff,
-  floating = false
-}: {
-  diff: DiffStat
-  floating?: boolean
-}): React.JSX.Element | null {
+function DiffStatLine({ diff }: { diff: DiffStat }): React.JSX.Element | null {
   if (!hasDiffStat(diff)) return null
   return (
     <span
       data-testid="chat-diff-stat"
       data-additions={diff.additions}
       data-deletions={diff.deletions}
-      aria-hidden={floating ? true : undefined}
-      className={cn(
-        'font-medium whitespace-nowrap tabular-nums',
-        floating
-          ? 'pointer-events-none absolute -top-1 -right-1 z-10 h-4 rounded-full border bg-popover px-1 text-[10px] leading-4'
-          : 'text-xs'
-      )}
+      className="text-xs font-medium whitespace-nowrap tabular-nums"
     >
       <span className="text-green-500">+{diff.additions}</span>{' '}
       <span className="text-red-500">-{diff.deletions}</span>
     </span>
+  )
+}
+
+/**
+ * Presence pip on the changes icon. A full +N -M is wider than the icon and
+ * stretches the rail, so the number stays on the expanded row and in the tooltip.
+ */
+function ChangesRailMark({ diff }: { diff: DiffStat }): React.JSX.Element | null {
+  if (!hasDiffStat(diff)) return null
+  return (
+    <span
+      data-testid="chat-diff-stat"
+      data-additions={diff.additions}
+      data-deletions={diff.deletions}
+      aria-hidden="true"
+      className={cn(
+        'pointer-events-none absolute -top-1 -right-1 z-10 size-2 rounded-full',
+        diff.additions > 0 ? 'bg-green-500' : 'bg-red-500'
+      )}
+    />
   )
 }
 
@@ -330,7 +338,7 @@ function RailButton({
             size="icon-sm"
             variant="ghost"
             aria-label={label}
-            className={cn('relative', className)}
+            className={cn('relative size-8 max-w-8 min-w-8 shrink-0 overflow-visible', className)}
             onClick={onClick}
           />
         }
