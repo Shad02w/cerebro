@@ -21,8 +21,6 @@ async function openAgentThenBackground(page: Page, directory: string): Promise<v
     directory
   )
   await page.reload()
-  const projectRow = page.getByTestId(/project-row-/).first()
-  if ((await projectRow.getAttribute('aria-expanded')) === 'false') await projectRow.click()
   const workspaceId = project.workspaces[0].id
   await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
   await page.getByRole('button', { name: /^New Agent tab/ }).click()
@@ -65,8 +63,6 @@ test('a pane the user is looking at raises no card', async ({ page }) => {
       directory
     )
     await page.reload()
-    const projectRow = page.getByTestId(/project-row-/).first()
-    if ((await projectRow.getAttribute('aria-expanded')) === 'false') await projectRow.click()
     await page.locator('button[data-workspace-id]').first().click()
     await page.getByRole('button', { name: /^New Agent tab/ }).click()
     await page.getByRole('combobox', { name: 'Access mode' }).selectOption('edit')

@@ -759,7 +759,6 @@ test('worktrees of one repository share PR queries and a second repository stays
       mainPr({ repoFullName: 'octocat/second', state: 'MERGED' })
     ])
     await connectGitHub(page, githubMock)
-    const before = githubMock.requestCount()
     const project = await page.evaluate(
       (directory) => window.cerebro.createProjectFromDirectory(directory),
       repoA
@@ -774,7 +773,16 @@ test('worktrees of one repository share PR queries and a second repository stays
     )
     expect(withWorktree.id).toBe(project.id)
     expect(other.id).not.toBe(project.id)
-    await focusCerebro(electronApp)
+    const pullRequestCounts = (): { hello: number; second: number } => {
+      const repos = githubMock.pullRequestRepos()
+      return {
+        hello: repos.filter((repo) => repo === 'octocat/hello-world').length,
+        second: repos.filter((repo) => repo === 'octocat/second').length
+      }
+    }
+    // One query per repository, measured before row clicks can focus the window.
+    // The worktree shares repo-a's query instead of fetching it again.
+    await expect.poll(pullRequestCounts).toEqual({ hello: 1, second: 1 })
     await expect(page.getByTestId(`project-row-${project.id}`)).toBeVisible()
     await expect(page.getByTestId(`project-row-${other.id}`)).toBeVisible()
     for (const id of [project.id, other.id]) {
@@ -796,10 +804,19 @@ test('worktrees of one repository share PR queries and a second repository stays
       'data-pr-state',
       'merged'
     )
+    // Focus refetches every settled query. Both repositories stay in step.
+    await focusCerebro(electronApp)
+    await expect
+      .poll(() => {
+        const counts = pullRequestCounts()
+        return counts.hello === counts.second && counts.hello >= 2
+      })
+      .toBe(true)
+    const loaded = githubMock.requestCount()
     for (const workspace of [a, review, b]) {
       const row = page.getByTestId(`workspace-row-${workspace.id}`)
       const icon = page.getByTestId(`workspace-pr-icon-${workspace.id}`)
-      const branch = page.getByTestId(`workspace-branch-${workspace.id}`).locator('span').last()
+      const branch = row.locator('[data-row-label]')
       const iconBox = await icon.boundingBox()
       const branchBox = await branch.boundingBox()
       // The mark leads the branch name on the same line. Its hit target can
@@ -823,7 +840,7 @@ test('worktrees of one repository share PR queries and a second repository stays
       await page.mouse.move(1000, 700)
       await expect(card).toHaveCount(0)
     }
-    expect(githubMock.requestCount() - before).toBe(2)
+    expect(githubMock.requestCount()).toBe(loaded)
     // An external git checkout must update matching without reopening the project.
     await execFileAsync('git', ['checkout', 'feature/closed'], { cwd: worktree })
     await focusCerebro(electronApp)

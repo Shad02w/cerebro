@@ -24,9 +24,6 @@ async function openAgent(page: Page, directory: string): Promise<void> {
     directory
   )
   await page.reload()
-  const projectRow = page.getByTestId(/project-row-/).first()
-  await expect(projectRow).toBeVisible()
-  if ((await projectRow.getAttribute('aria-expanded')) === 'false') await projectRow.click()
   await page.locator(`button[data-workspace-id="${project.workspaces[0].id}"]`).click()
   await page.getByRole('button', { name: /^New Agent tab/ }).click()
   await expect(page.getByTestId('chat-composer-shell')).toBeVisible()

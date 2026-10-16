@@ -1,5 +1,13 @@
 import type { GitRemoteRunner } from './git'
-import { existsSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs'
+import {
+  existsSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  type Dirent
+} from 'node:fs'
 import { basename, isAbsolute, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import {
@@ -138,7 +146,7 @@ function isUsableGitWorkTree(dir: string): boolean {
 
 /** Current branch of each immediate child git checkout. The parent stays one workspace. */
 async function listNestedRepos(directory: string): Promise<NestedRepo[]> {
-  let entries: ReturnType<typeof readdirSync>
+  let entries: Dirent<string>[]
   try {
     entries = readdirSync(directory, { withFileTypes: true })
   } catch {
@@ -150,13 +158,19 @@ async function listNestedRepos(directory: string): Promise<NestedRepo[]> {
     if (!entry.isDirectory() || entry.name.startsWith('.')) continue
     const localPath = join(directory, entry.name)
     if (!isUsableGitWorkTree(localPath)) continue
+    let resolvedPath = localPath
+    try {
+      resolvedPath = realpathSync(localPath)
+    } catch {
+      resolvedPath = localPath
+    }
     let branch = ''
     try {
       branch = await readDefaultBranch(localPath)
     } catch {
       branch = ''
     }
-    nested.push({ name: entry.name, branch, localPath })
+    nested.push({ name: entry.name, branch, localPath: resolvedPath })
   }
   return nested.sort((left, right) => left.name.localeCompare(right.name))
 }

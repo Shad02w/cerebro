@@ -617,11 +617,21 @@ test('removing a project with several open workspaces leaves layout commands wor
 }) => {
   const dir = await mkdtemp(join(tmpdir(), 'cerebro-pane-remove-'))
   try {
-    await repo(join(dir, 'multi', 'one'))
-    await repo(join(dir, 'multi', 'two'))
+    const multiRoot = join(dir, 'multi')
+    await repo(multiRoot)
+    await exec('git', ['worktree', 'add', '-b', 'one', join(dir, 'multi-one')], { cwd: multiRoot })
+    await exec('git', ['worktree', 'add', '-b', 'two', join(dir, 'multi-two')], { cwd: multiRoot })
     await repo(join(dir, 'solo'))
     const home = await homeOf(electronApp)
-    const multi = await cli<Project>(home, 'project', 'create', '--directory', join(dir, 'multi'))
+    await cli<Project>(home, 'project', 'create', '--directory', multiRoot)
+    await cli<Project>(home, 'project', 'create', '--directory', join(dir, 'multi-one'))
+    const multi = await cli<Project>(
+      home,
+      'project',
+      'create',
+      '--directory',
+      join(dir, 'multi-two')
+    )
     expect(multi.workspaces.length).toBeGreaterThanOrEqual(3)
     for (const workspace of multi.workspaces)
       await cli(home, 'tab', 'create', '--workspace', String(workspace.id))

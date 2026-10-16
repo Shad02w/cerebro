@@ -63,6 +63,7 @@ import { WorkspaceStatusIcon, WorkspaceStatusMenu } from '@/components/workspace
 import {
   WORKSPACE_STATUS_PRESENTATION,
   isPlainDirectoryProject,
+  projectsBesidesNestedRepos,
   workspaceCarriesStatus,
   workspaceStatus
 } from '@/lib/workspace-status'
@@ -671,15 +672,29 @@ function ProjectItem({
   addTestId?: string
   muteWorkspaceRows?: boolean
 }): React.JSX.Element {
-  const [open, setOpen] = useState(defaultOpen)
-  const githubLinked = project.github != null
   const listed = workspaces ?? project.workspaces
+  const containsActive = listed.some((workspace) => workspace.id === activeWorkspaceId)
+  const [open, setOpen] = useState(defaultOpen)
+  const [trackedActive, setTrackedActive] = useState(containsActive)
+  // A manual collapse stays closed, including when selection arrives afterward
+  // (search). Leaving the project clears that, so the next outside selection
+  // (CLI focus) opens it and the active row is visible.
+  const [userClosed, setUserClosed] = useState(false)
+  if (containsActive !== trackedActive) {
+    setTrackedActive(containsActive)
+    if (!containsActive && userClosed) setUserClosed(false)
+    else if (containsActive && !userClosed) setOpen(true)
+  }
+  const githubLinked = project.github != null
   const summary = collapsedProjectAgents(listed, open, activity)
 
   return (
     <Collapsible
       open={open}
-      onOpenChange={setOpen}
+      onOpenChange={(next): void => {
+        setUserClosed(!next)
+        setOpen(next)
+      }}
       className={cn('group/collapsible', projectGroupSpacingClass)}
     >
       <SidebarMenuItem>
@@ -938,35 +953,36 @@ function PlainDirectoryRow({
             muted={muted && !active}
             onOpenAgent={onOpenAgent}
           />
+          {(project.nestedRepos?.length ?? 0) > 0 ? (
+            <ul
+              className="flex min-w-0 flex-col gap-1 px-2 pt-1 pb-1.5"
+              aria-label={`Repositories in ${workspaceRowLabel(project, workspace)}`}
+              data-nested-repos=""
+              data-testid={`workspace-nested-repos-${workspace.id}`}
+            >
+              {project.nestedRepos?.map((repo) => (
+                <li key={repo.localPath} data-testid={`workspace-nested-repo-${repo.name}`}>
+                  <span className="block truncate text-[13px] font-medium">{repo.name}</span>
+                  {repo.branch ? (
+                    <span
+                      className="text-[11px] leading-4 text-sidebar-foreground/65"
+                      data-branch-line=""
+                      data-testid={`workspace-nested-branch-${repo.name}`}
+                    >
+                      <span
+                        aria-hidden
+                        className="h-2.5 w-2 shrink-0 rounded-bl-[3px] border-b border-l border-current opacity-40"
+                      />
+                      <GitBranch className="size-3 shrink-0" />
+                      <span className="min-w-0 truncate">{repo.branch}</span>
+                    </span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </SidebarMenuRow>
       </WorkspaceHoverCard>
-      {(project.nestedRepos?.length ?? 0) > 0 ? (
-        <ul
-          className="flex min-w-0 flex-col gap-1 px-2 pt-1 pb-0.5"
-          aria-label={`Repositories in ${workspaceRowLabel(project, workspace)}`}
-          data-testid={`workspace-nested-repos-${workspace.id}`}
-        >
-          {project.nestedRepos?.map((repo) => (
-            <li key={repo.localPath} data-testid={`workspace-nested-repo-${repo.name}`}>
-              <span className="block truncate text-[13px] font-medium">{repo.name}</span>
-              {repo.branch ? (
-                <span
-                  className="text-[11px] leading-4 text-sidebar-foreground/65"
-                  data-branch-line=""
-                  data-testid={`workspace-nested-branch-${repo.name}`}
-                >
-                  <span
-                    aria-hidden
-                    className="h-2.5 w-2 shrink-0 rounded-bl-[3px] border-b border-l border-current opacity-40"
-                  />
-                  <GitBranch className="size-3 shrink-0" />
-                  <span className="min-w-0 truncate">{repo.branch}</span>
-                </span>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      ) : null}
     </SidebarMenuItem>
   )
 }
@@ -1455,7 +1471,8 @@ export function AppSidebar({
     })
   }
   const query = search.trim().toLowerCase()
-  const results = searchWorkspaces(projects, query)
+  const sidebarProjects = projectsBesidesNestedRepos(projects)
+  const results = searchWorkspaces(sidebarProjects, query)
   const activity = useAgentActivity()
   const [sessionSearch, setSessionSearch] = useState<SessionSearchRequest | null>(null)
   useKeybindHandler('searchSessions', () => {
@@ -1472,7 +1489,7 @@ export function AppSidebar({
     },
     [setSessionSearch]
   )
-  const statusLayout = !isSettings && !query && projects.length > 0 && groupBy === 'status'
+  const statusLayout = !isSettings && !query && sidebarProjects.length > 0 && groupBy === 'status'
 
   return (
     <OpenSessionSearchContext.Provider
@@ -1540,7 +1557,7 @@ export function AppSidebar({
                       onOpenAgent={openAgent}
                     />
                   ) : null}
-                  {projects.length === 0 ? (
+                  {sidebarProjects.length === 0 ? (
                     <p
                       className={cn(
                         'px-2 py-1.5 text-xs text-sidebar-foreground/60',
@@ -1552,7 +1569,7 @@ export function AppSidebar({
                   ) : groupBy === 'status' ? (
                     <div className={cn('flex min-h-0 flex-1 flex-col', query && 'hidden')}>
                       <StatusGroups
-                        projects={projects}
+                        projects={sidebarProjects}
                         activeWorkspaceId={activeWorkspaceId}
                         activity={activity}
                         onSelectWorkspace={onSelectWorkspace}
@@ -1566,7 +1583,7 @@ export function AppSidebar({
                     </div>
                   ) : (
                     <SidebarMenu className={query ? 'hidden' : 'gap-0'}>
-                      {projects.map((project) => {
+                      {sidebarProjects.map((project) => {
                         if (isPlainDirectoryProject(project)) {
                           return (
                             <PlainDirectoryRow
@@ -1593,7 +1610,7 @@ export function AppSidebar({
                             project={project}
                             activeWorkspaceId={activeWorkspaceId}
                             activity={activity}
-                            defaultOpen={containsActive || projects.length === 1}
+                            defaultOpen={containsActive || sidebarProjects.length === 1}
                             onSelectWorkspace={onSelectWorkspace}
                             onOpenAgent={openAgent}
                             onAddWorkspace={onAddWorkspace}
@@ -1649,7 +1666,7 @@ export function AppSidebar({
         ) : null}
         <SessionSearchDialog
           request={sessionSearch}
-          projects={projects}
+          projects={sidebarProjects}
           onOpen={(hit) => openAgentSession(hit, onSelectWorkspace)}
           onClose={(): void => setSessionSearch(null)}
         />
