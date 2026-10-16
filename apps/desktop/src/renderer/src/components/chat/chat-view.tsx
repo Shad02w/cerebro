@@ -52,7 +52,6 @@ import { ContextUsageRing } from './context-usage-ring'
 import { messageToResend } from './model-switch'
 import { agentSkillOptions, catalogOptions, harnessLabels } from './queries'
 import { observeChatLayout } from './chat-layout'
-import './chat-scrollbars.css'
 import './chat-status.css'
 
 const noSkills: readonly AgentSkill[] = []
@@ -555,7 +554,7 @@ export function ChatView({
   return (
     <div
       ref={viewRef}
-      className="chat-scrollbars relative z-0 flex h-full min-w-0 flex-col bg-background text-foreground"
+      className="relative z-0 flex h-full min-w-0 flex-col bg-background text-foreground"
       data-testid="chat-view"
       data-agent-background={agentBackground}
       data-loading={loading || undefined}
