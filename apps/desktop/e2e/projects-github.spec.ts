@@ -770,7 +770,6 @@ test('worktrees of one repository share PR queries and a second repository stays
       mainPr({ repoFullName: 'octocat/second', state: 'MERGED' })
     ])
     await connectGitHub(page, githubMock)
-    const before = githubMock.requestCount()
     const project = await page.evaluate(
       (directory) => window.cerebro.createProjectFromDirectory(directory),
       repoA
@@ -785,7 +784,16 @@ test('worktrees of one repository share PR queries and a second repository stays
     )
     expect(withWorktree.id).toBe(project.id)
     expect(other.id).not.toBe(project.id)
-    await focusCerebro(electronApp)
+    const pullRequestCounts = (): { hello: number; second: number } => {
+      const repos = githubMock.pullRequestRepos()
+      return {
+        hello: repos.filter((repo) => repo === 'octocat/hello-world').length,
+        second: repos.filter((repo) => repo === 'octocat/second').length
+      }
+    }
+    // One query per repository, measured before row clicks can focus the window.
+    // The worktree shares repo-a's query instead of fetching it again.
+    await expect.poll(pullRequestCounts).toEqual({ hello: 1, second: 1 })
     await expect(page.getByTestId(`project-row-${project.id}`)).toBeVisible()
     await expect(page.getByTestId(`project-row-${other.id}`)).toBeVisible()
     for (const id of [project.id, other.id]) {
@@ -807,15 +815,15 @@ test('worktrees of one repository share PR queries and a second repository stays
       'data-pr-state',
       'merged'
     )
-    // hello-world is shared by the main checkout and its worktree, then refreshed when the
-    // worktree joins. The other repository is fetched once.
-    const queried = githubMock.pullRequestRepos().slice(before)
-    const hello = queried.filter((repo) => repo === 'octocat/hello-world')
-    const second = queried.filter((repo) => repo === 'octocat/second')
-    expect(hello.length).toBeGreaterThanOrEqual(1)
-    expect(hello.length).toBeLessThanOrEqual(2)
-    expect(second).toEqual(['octocat/second'])
-    expect(queried).toHaveLength(hello.length + 1)
+    // Focus refetches every settled query. Both repositories stay in step.
+    await focusCerebro(electronApp)
+    await expect
+      .poll(() => {
+        const counts = pullRequestCounts()
+        return counts.hello === counts.second && counts.hello >= 2
+      })
+      .toBe(true)
+    const loaded = githubMock.requestCount()
     for (const workspace of [a, review, b]) {
       const row = page.getByTestId(`workspace-row-${workspace.id}`)
       const icon = page.getByTestId(`workspace-pr-icon-${workspace.id}`)
@@ -843,6 +851,7 @@ test('worktrees of one repository share PR queries and a second repository stays
       await page.mouse.move(1000, 700)
       await expect(card).toHaveCount(0)
     }
+    expect(githubMock.requestCount()).toBe(loaded)
     // An external git checkout must update matching without reopening the project.
     await execFileAsync('git', ['checkout', 'feature/closed'], { cwd: worktree })
     await focusCerebro(electronApp)

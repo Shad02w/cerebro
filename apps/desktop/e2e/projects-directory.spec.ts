@@ -69,7 +69,9 @@ test('adds a local git folder as a directory project', async ({ page, electronAp
     expect(listed.activeWorkspaceId).toBeNull()
     await expect(page.getByTestId('content-tab-bar')).toHaveCount(0)
 
-    await page.getByTestId(`workspace-row-${project?.workspaces[0]?.id}`).click()
+    const selected = page.getByTestId(`workspace-row-${project?.workspaces[0]?.id}`)
+    await selected.click()
+    await expect(selected).toHaveAttribute('aria-current', 'location')
     const afterSelect = await page.evaluate(async () => window.cerebro.listProjects())
     expect(afterSelect.activeWorkspaceId).toBe(project?.workspaces[0]?.id)
     await expect(page.getByTestId('content-tab-bar')).toBeVisible()
@@ -97,10 +99,11 @@ test('adds a folder of git repos as one workspace', async ({ page, electronApp }
     await expect(page.getByTestId(/project-row-/)).toHaveCount(0)
     await expect(page.getByTestId(/project-add-workspace-/)).toHaveCount(0)
     await expect(row.getByTestId(/workspace-multi-root-/)).toHaveText('multi-root')
-    await expect(page.getByTestId('workspace-nested-repo-frontend')).toBeVisible()
-    await expect(page.getByTestId('workspace-nested-branch-frontend')).toHaveText('main')
-    await expect(page.getByTestId('workspace-nested-repo-backend')).toBeVisible()
-    await expect(page.getByTestId('workspace-nested-branch-backend')).toHaveText('develop')
+    const card = page.locator('[data-sidebar="menu-row"]').filter({ has: row })
+    await expect(card.getByTestId('workspace-nested-repo-frontend')).toBeVisible()
+    await expect(card.getByTestId('workspace-nested-branch-frontend')).toHaveText('main')
+    await expect(card.getByTestId('workspace-nested-repo-backend')).toBeVisible()
+    await expect(card.getByTestId('workspace-nested-branch-backend')).toHaveText('develop')
 
     const listed = await page.evaluate(async () => window.cerebro.listProjects())
     expect(listed.projects).toHaveLength(1)
@@ -115,8 +118,14 @@ test('adds a folder of git repos as one workspace', async ({ page, electronApp }
     expect(listed.activeWorkspaceId).toBeNull()
     await expect(page.getByTestId('content-tab-bar')).toHaveCount(0)
 
+    await addDirectoryViaUi(page, electronApp, frontend)
+    await expect(page.getByTestId(/project-row-/)).toHaveCount(0)
+    await expect(page.getByTestId(/workspace-row-/)).toHaveCount(1)
+    await expect(card.getByTestId('workspace-nested-repo-frontend')).toBeVisible()
+
     const workspaceId = project?.workspaces[0]?.id
     await page.getByTestId(`workspace-row-${workspaceId}`).locator('[data-row-label]').click()
+    await expect(row).toHaveAttribute('aria-current', 'location')
     await expect
       .poll(async () => {
         const selected = await page.evaluate(async () => window.cerebro.listProjects())
@@ -190,7 +199,9 @@ test('adds a folder even when it is not a git repository', async ({ page, electr
     expect(listed.activeWorkspaceId).toBeNull()
     await expect(page.getByTestId('content-tab-bar')).toHaveCount(0)
 
-    await page.getByTestId(`workspace-row-${project?.workspaces[0]?.id}`).click()
+    const selected = page.getByTestId(`workspace-row-${project?.workspaces[0]?.id}`)
+    await selected.click()
+    await expect(selected).toHaveAttribute('aria-current', 'location')
     const afterSelect = await page.evaluate(async () => window.cerebro.listProjects())
     expect(afterSelect.activeWorkspaceId).toBe(project?.workspaces[0]?.id)
     await expect(page.getByTestId('content-tab-bar')).toBeVisible()
