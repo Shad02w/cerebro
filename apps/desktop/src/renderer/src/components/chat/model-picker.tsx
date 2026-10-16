@@ -22,7 +22,6 @@ import { harnessLabels, catalogOptions } from './queries'
 import claudeIcon from '@/assets/agents/claude.svg'
 import codexIcon from '@/assets/agents/codex.svg'
 import piIcon from '@/assets/agents/pi.svg'
-import './chat-scrollbars.css'
 
 const harnessIcons: Record<AgentHarness, string> = {
   claude: claudeIcon,
@@ -328,7 +327,7 @@ export function ModelPicker({
             initialFocus={inputRef}
             aria-label="Choose model"
             data-testid="model-picker"
-            className="chat-scrollbars z-50 w-[min(400px,calc(100vw-32px))] origin-(--transform-origin) overflow-hidden rounded-xl border bg-popover p-0 text-popover-foreground shadow-md outline-hidden transition-[opacity,transform] duration-150 data-ending-style:scale-95 data-ending-style:opacity-0 data-starting-style:scale-95 data-starting-style:opacity-0"
+            className="z-50 w-[min(400px,calc(100vw-32px))] origin-(--transform-origin) overflow-hidden rounded-xl border bg-popover p-0 text-popover-foreground shadow-md outline-hidden transition-[opacity,transform] duration-150 data-ending-style:scale-95 data-ending-style:opacity-0 data-starting-style:scale-95 data-starting-style:opacity-0"
           >
             <div className="flex max-h-[min(360px,60vh)]">
               <HarnessRail
