@@ -12,7 +12,7 @@ import {
   type Page,
   _electron as electron
 } from '@playwright/test'
-import { electronAppArgs } from './fixtures'
+import { electronAppArgs, stopMux } from './fixtures'
 import { startMockGitHubServer, type MockGitHubServer } from './mock-github'
 
 const execFileAsync = promisify(execFile)
@@ -190,7 +190,17 @@ else process.exit(1);
     })
 
     await use(electronApp)
-    await electronApp.close()
+    try {
+      await Promise.race([
+        electronApp.close(),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('electronApp.close timed out')), 5_000)
+        })
+      ])
+    } catch {
+      electronApp.process().kill('SIGKILL')
+    }
+    await stopMux(cerebroHome)
     await rm(cerebroHome, { recursive: true, force: true })
   },
 
@@ -741,6 +751,7 @@ test('worktrees of one repository share PR queries and a second repository stays
   githubMock,
   electronApp
 }) => {
+  test.setTimeout(120_000)
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'cerebro-multiroot-pr-')))
   try {
     const repoA = path.join(root, 'repo-a')

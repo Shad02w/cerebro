@@ -8,10 +8,11 @@ import { test, expect, stopMux } from './fixtures'
 const executable = resolve(__dirname, '../../../packages/mux/src/agents/fixtures/fake-harness.cjs')
 const chatEvidenceDir = '/tmp/cerebro-chat-evidence'
 
-async function openWorkspace(page: Page, workspaceId: number): Promise<void> {
+async function openWorkspace(page: Page, workspaceId: number): Promise<Locator> {
   const row = page.locator(`button[data-workspace-id="${workspaceId}"]`)
   await expect(row).toBeVisible()
   await row.click()
+  return row
 }
 
 async function expectPickerHarness(
@@ -263,12 +264,14 @@ test('chat works through native adapters, survives reload, handles requests, and
       0
     )
     await expect(page.getByTestId(/project-agent-status-/)).toHaveCount(0)
+    await expect(page.getByTestId(/project-row-/)).toHaveCount(0)
     await expect(page.getByTestId('chat-tab').first()).toHaveText(userText)
     await screenshotChatEvidence(page, 'agent-status-blocked.png')
     // A plain folder is one workspace row, so the waiting agent stays on that row.
     await page.getByTestId('new-content-tab').click()
     await page.getByTestId('open-terminal-tab').click()
     await expect(page.getByTestId('terminal-tab').last()).toHaveAttribute('data-active', 'true')
+    await expect(waitingRow).toBeVisible()
     await agentButton.click()
     await expect(page.getByTestId('chat-tab').first()).toHaveAttribute('data-active', 'true')
     await page.mouse.move(8, 8)
@@ -704,9 +707,7 @@ test('Mod+N opens independent Agent tabs from a workspace row, composer, and ter
     )
     const workspaceId = project.workspaces[0].id
     await page.reload()
-    const row = page.locator(`button[data-workspace-id="${workspaceId}"]`)
-    await expect(row).toBeVisible()
-    await row.click()
+    const row = await openWorkspace(page, workspaceId)
     await expect(
       page.getByTestId('workspace-empty-state').locator('[data-hotkey="Mod+N"]')
     ).toBeVisible()

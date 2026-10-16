@@ -592,6 +592,9 @@ test('CLI rejects invalid and cross-workspace targets without changing the layou
       'border-top-color',
       'rgb(120, 90, 220)'
     )
+    const secondProject = page.getByTestId(/project-row-/).filter({ hasText: /^two$/ })
+    await expect(secondProject).toBeVisible()
+    if ((await secondProject.getAttribute('aria-expanded')) !== 'true') await secondProject.click()
     const rowGlow = await page
       .locator(`button[data-workspace-id="${nested.id}"]`)
       .evaluate((el) => getComputedStyle(el).boxShadow)

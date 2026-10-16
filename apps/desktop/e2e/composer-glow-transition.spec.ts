@@ -29,6 +29,7 @@ test('empty glowing composer centers, then docks after send', async ({
     )
     const workspaceId = project.workspaces[0].id
     await page.reload()
+    await expect(page.locator(`button[data-workspace-id="${workspaceId}"]`)).toBeVisible()
     await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
     await page.getByRole('button', { name: /^New Agent tab/ }).click()
 
