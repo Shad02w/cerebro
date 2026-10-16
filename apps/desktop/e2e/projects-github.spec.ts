@@ -736,7 +736,7 @@ test('login refreshes existing workspaces and disconnect clears their cached PRs
   await expect(page.getByTestId(`workspace-default-icon-${id}`)).toBeVisible()
 })
 
-test('multi-root repositories and sibling worktrees share PR queries and track live branches', async ({
+test('worktrees of one repository share PR queries and a second repository stays separate', async ({
   page,
   githubMock,
   electronApp
@@ -762,13 +762,28 @@ test('multi-root repositories and sibling worktrees share PR queries and track l
     const before = githubMock.requestCount()
     const project = await page.evaluate(
       (directory) => window.cerebro.createProjectFromDirectory(directory),
-      root
+      repoA
     )
+    const withWorktree = await page.evaluate(
+      (directory) => window.cerebro.createProjectFromDirectory(directory),
+      worktree
+    )
+    const other = await page.evaluate(
+      (directory) => window.cerebro.createProjectFromDirectory(directory),
+      repoB
+    )
+    expect(withWorktree.id).toBe(project.id)
+    expect(other.id).not.toBe(project.id)
     await focusCerebro(electronApp)
     await expect(page.getByTestId(`project-row-${project.id}`)).toBeVisible()
-    const a = project.workspaces.find((workspace) => workspace.localPath === repoA)!
-    const review = project.workspaces.find((workspace) => workspace.localPath === worktree)!
-    const b = project.workspaces.find((workspace) => workspace.localPath === repoB)!
+    await expect(page.getByTestId(`project-row-${other.id}`)).toBeVisible()
+    for (const id of [project.id, other.id]) {
+      const projectRow = page.getByTestId(`project-row-${id}`)
+      if ((await projectRow.getAttribute('aria-expanded')) !== 'true') await projectRow.click()
+    }
+    const a = withWorktree.workspaces.find((workspace) => workspace.localPath === repoA)!
+    const review = withWorktree.workspaces.find((workspace) => workspace.localPath === worktree)!
+    const b = other.workspaces.find((workspace) => workspace.localPath === repoB)!
     await expect(page.getByTestId(`workspace-pr-icon-${a.id}`)).toHaveAttribute(
       'data-pr-state',
       'approved'

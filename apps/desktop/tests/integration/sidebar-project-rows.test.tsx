@@ -78,10 +78,10 @@ const notes: Project = {
   ]
 }
 
-const apps: Project = {
+const scratch: Project = {
   id: 2,
-  name: 'apps',
-  kind: 'multi-root',
+  name: 'scratch',
+  kind: 'directory',
   createdAt: '2024-01-01T00:00:00.000Z',
   updatedAt: '2024-01-01T00:00:00.000Z',
   github: null,
@@ -89,19 +89,10 @@ const apps: Project = {
     {
       id: 2,
       projectId: 2,
-      gitUrl: 'https://github.com/acme/web.git',
-      name: 'web',
-      localPath: '/tmp/apps/web',
-      defaultBranch: 'main',
-      createdAt: '2024-01-01T00:00:00.000Z'
-    },
-    {
-      id: 3,
-      projectId: 2,
-      gitUrl: 'https://github.com/acme/api.git',
-      name: 'api',
-      localPath: '/tmp/apps/api',
-      defaultBranch: 'main',
+      gitUrl: 'file:///tmp/scratch',
+      name: 'scratch',
+      localPath: '/tmp/scratch',
+      defaultBranch: '',
       createdAt: '2024-01-01T00:00:00.000Z'
     }
   ],
@@ -110,26 +101,10 @@ const apps: Project = {
       id: 21,
       projectId: 2,
       repositoryId: 2,
-      kind: 'root',
-      branch: '.',
-      localPath: '/tmp/apps',
+      kind: 'default',
+      branch: '',
+      localPath: '/tmp/scratch',
       status: 'in_progress'
-    }),
-    workspace({
-      id: 22,
-      projectId: 2,
-      repositoryId: 2,
-      kind: 'default',
-      branch: 'main',
-      localPath: '/tmp/apps/web'
-    }),
-    workspace({
-      id: 23,
-      projectId: 2,
-      repositoryId: 3,
-      kind: 'default',
-      branch: 'main',
-      localPath: '/tmp/apps/api'
     })
   ]
 }
@@ -171,7 +146,7 @@ function sidebarElement(
         <SidebarProvider>
           <AppSidebar
             mode="projects"
-            projects={[notes, apps]}
+            projects={[notes, scratch]}
             activeWorkspaceId={activeWorkspaceId}
             settingsSection="general"
             onSelectWorkspace={vi.fn()}
@@ -218,19 +193,21 @@ describe('sidebar project rows', () => {
     renderSidebar()
 
     const notesRow = screen.getByTestId('project-row-1')
-    const appsRow = screen.getByTestId('project-row-2')
+    const scratchRow = screen.getByTestId('workspace-row-21')
     expectSectionLabel(notesRow)
-    expectSectionLabel(appsRow)
+    expectItemRow(scratchRow, 'directory')
     expect(notesRow).toHaveAttribute('data-project-icon', 'avatar')
-    expect(appsRow).toHaveAttribute('data-project-icon', 'folders')
-    expect(appsRow.querySelector('svg')).not.toBeNull()
+    expect(scratchRow).toHaveAttribute('data-workspace-icon', 'folder')
+    expect(scratchRow).toHaveAttribute('data-project-kind', 'directory')
+    expect(screen.queryByTestId('project-row-2')).not.toBeInTheDocument()
     expect(screen.getByTestId('project-add-workspace-1')).toBeInTheDocument()
     expect(screen.getByTestId('project-menu-1')).toBeInTheDocument()
 
     const notesGroup = notesRow.closest('[data-slot="collapsible"]')
-    const appsGroup = appsRow.closest('[data-slot="collapsible"]')
     expect(notesGroup?.className).toContain('not-first:mt-2.5')
-    expect(appsGroup?.className).toContain('not-first:mt-2.5')
+    expect(scratchRow.closest('[data-sidebar="menu-item"]')?.className).toContain(
+      'not-first:mt-2.5'
+    )
     expect(notesRow.closest('[data-sidebar="menu"]')?.className).toContain('gap-0')
 
     const notesActions = notesRow
@@ -254,33 +231,21 @@ describe('sidebar project rows', () => {
       ).toHaveAttribute('data-overlay')
     }
 
-    await user.click(appsRow)
-    const rootRow = screen.getByTestId('project-root-2')
-    expectItemRow(rootRow, 'root')
-    expectSharedNameLine(rootRow)
-    expect(rootRow.querySelector('[data-row-icon]')).not.toBeNull()
-    expect(rootRow.querySelector('.align-baseline')).toBeNull()
-    expect(
-      rootRow.closest('[data-sidebar="menu-row"]')?.querySelector('.sidebar-row-actions')
-    ).not.toHaveAttribute('data-overlay')
-    const repoRow = screen.getByTestId('workspace-row-22')
-    expectItemRow(repoRow, 'repository')
-    expectItemRow(screen.getByTestId('workspace-row-23'), 'repository')
-    expectSharedNameLine(repoRow)
-    const branchLine = screen.getByTestId('workspace-branch-22')
-    expect(branchLine).toHaveAttribute('data-branch-line')
-    expect(branchLine.querySelector('.align-baseline')).toBeNull()
+    expectSharedNameLine(scratchRow)
+    expect(scratchRow.querySelector('[data-row-icon], svg')).not.toBeNull()
 
     cleanup()
     renderSidebar('status')
 
     const statusNotes = screen.getByTestId('status-project-in_progress-1')
-    const statusApps = screen.getByTestId('status-project-in_progress-2')
+    const statusScratch = screen.getByTestId('workspace-row-21')
     expectSectionLabel(statusNotes)
-    expectSectionLabel(statusApps)
+    expectItemRow(statusScratch, 'directory')
     expect(statusNotes).toHaveAttribute('data-project-icon', 'avatar')
-    expect(statusApps).toHaveAttribute('data-project-icon', 'folders')
-    expect(statusApps.closest('[data-slot="collapsible"]')?.className).toContain('not-first:mt-2.5')
+    expect(statusScratch).toHaveAttribute('data-workspace-icon', 'folder')
+    expect(statusScratch.closest('[data-sidebar="menu-item"]')?.className).toContain(
+      'not-first:mt-2.5'
+    )
     expect(statusNotes.closest('[data-sidebar="status-projects"]')?.className).toContain('gap-0')
 
     const header = screen.getByTestId('status-group-in_progress')
@@ -289,7 +254,7 @@ describe('sidebar project rows', () => {
     expect(header.className).not.toContain('text-sidebar-foreground/60')
 
     expectItemRow(screen.getByTestId('workspace-row-12'), 'branch')
-    expectItemRow(screen.getByTestId('project-root-2'), 'root')
+    expectItemRow(screen.getByTestId('workspace-row-21'), 'directory')
 
     const todoHeader = screen.getByTestId('status-group-todo')
     const doneHeader = screen.getByTestId('status-group-done')
@@ -335,8 +300,8 @@ describe('sidebar project rows', () => {
     )
     expect(screen.getByTestId('status-project-menu-in_progress-1')).toBeInTheDocument()
     expect(screen.getByTestId('status-project-add-in_progress-1')).toBeInTheDocument()
-    expect(screen.getByTestId('status-project-menu-in_progress-2')).toBeInTheDocument()
-    expect(screen.queryByTestId('status-project-add-in_progress-2')).not.toBeInTheDocument()
+    expect(screen.getByTestId('workspace-menu-21')).toBeInTheDocument()
+    expect(screen.queryByTestId('status-project-in_progress-2')).not.toBeInTheDocument()
 
     await user.click(screen.getByTestId('status-project-in_progress-1'))
     expect(screen.getByTestId('status-project-in_progress-1')).toHaveAttribute(
