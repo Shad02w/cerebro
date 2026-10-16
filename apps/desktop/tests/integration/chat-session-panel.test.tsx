@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   AgentCatalog,
@@ -71,6 +72,8 @@ describe('ChatSessionPanel', () => {
     render(<ChatSessionPanel session={filled} />)
     const panel = screen.getByRole('complementary', { name: 'Session status' })
     expect(panel).toHaveAttribute('data-testid', 'chat-session-panel')
+    expect(panel).toHaveAttribute('data-expanded', 'true')
+    expect(panel.className).toContain('absolute')
     expect(panel.className).toContain('hidden')
     expect(panel.className).toContain(`${wide}:flex`)
     expect(panel.className).not.toMatch(/(?:^|\s)(?:sm|md|lg|xl|2xl):/)
@@ -117,6 +120,27 @@ describe('ChatSessionPanel', () => {
     expect(screen.queryByTestId('chat-session-panel-tasks')).toBeNull()
     expect(screen.queryByTestId('chat-session-panel-agents')).toBeNull()
   })
+
+  it('collapses to a vertical icon list and expands back to every section', async () => {
+    const user = userEvent.setup()
+    render(<ChatSessionPanel session={filled} />)
+    await user.click(screen.getByRole('button', { name: 'Collapse session status' }))
+    const rail = screen.getByTestId('chat-session-panel-rail')
+    expect(rail.className).toContain('flex-col')
+    expect(screen.queryByTestId('chat-session-panel-tasks')).toBeNull()
+    expect(screen.queryByRole('tab')).toBeNull()
+    expect(
+      within(rail)
+        .getAllByRole('button')
+        .map((button) => button.getAttribute('aria-label'))
+    ).toEqual(['Expand session status', '2 tasks', '1 background job', '1 agent'])
+    await user.click(within(rail).getByRole('button', { name: 'Expand session status' }))
+    expect(screen.getByTestId('chat-session-panel')).toHaveAttribute('data-expanded', 'true')
+    expect(screen.getByTestId('chat-session-panel-tasks')).toBeInTheDocument()
+    expect(screen.getByTestId('chat-session-panel-background')).toBeInTheDocument()
+    expect(screen.getByTestId('chat-session-panel-agents')).toBeInTheDocument()
+    expect(screen.queryByTestId('chat-session-panel-rail')).toBeNull()
+  })
 })
 
 const catalog = {
@@ -154,7 +178,7 @@ describe('chat session layout', () => {
     Range.prototype.getBoundingClientRect = () => rect
   })
 
-  it('keeps the chips above the composer until the chat pane is wide enough for the side column', async () => {
+  it('floats the panel over a wide pane and hides the section bar when the pane is narrow', async () => {
     window.cerebro = {
       chatCommand: vi.fn(async (command: ChatCommand) => {
         if (command.action === 'get') return { session: filled, sessions: [] }
@@ -178,8 +202,10 @@ describe('chat session layout', () => {
     expect(view.className).not.toMatch(/(?:^|\s)(?:sm|md|lg|xl|2xl):/)
 
     const slot = await screen.findByTestId('chat-session-chips-slot')
+    expect(slot.className).toContain('@max-[56rem]/chat:hidden')
     expect(slot.className).toContain(`${wide}:hidden`)
     expect(slot.className).not.toContain('min-[56rem]:')
+    expect(slot.className).not.toContain('max-[56rem]:')
     const chips = within(slot).getByRole('toolbar', { name: 'Session status' })
     expect(
       within(chips)
@@ -189,8 +215,10 @@ describe('chat session layout', () => {
 
     const panel = screen.getByTestId('chat-session-panel')
     const composer = screen.getByTestId('chat-composer')
+    const transcript = screen.getByTestId('chat-transcript')
     expect(composer.contains(panel)).toBe(false)
-    expect(view.contains(panel)).toBe(true)
+    expect(panel.className).toContain('absolute')
+    expect(transcript.parentElement?.contains(panel)).toBe(true)
     expect(within(panel).getByTestId('chat-session-panel-tasks')).toBeInTheDocument()
     expect(within(panel).getByTestId('chat-session-panel-background')).toBeInTheDocument()
     expect(within(panel).getByTestId('chat-session-panel-agents')).toBeInTheDocument()

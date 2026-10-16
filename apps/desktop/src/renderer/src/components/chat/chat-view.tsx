@@ -598,321 +598,322 @@ export function ChatView({
           Loading…
         </div>
       ) : (
-        <div className="flex min-h-0 min-w-0 flex-1">
-          <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-            <div
-              ref={scrolling}
-              onScroll={readScroll}
-              className={cn('min-h-0 flex-1 overflow-y-auto px-5 pt-5', empty ? 'pb-5' : 'pb-40')}
-              data-testid="chat-transcript"
-              aria-label="Conversation"
-            >
-              <div className="mx-auto flex max-w-3xl flex-col gap-4">
-                <TurnClock active={busy} activeIds={watchedTurnIds} knownIds={knownTurnIds} />
-                {transcript
-                  ? entries.map((entry, index, listed) => {
-                      const first = entry.type === 'item' ? entry.item : entry.items[0]
-                      const last =
-                        entry.type === 'item' ? entry.item : entry.items[entry.items.length - 1]
-                      const next = listed[index + 1]
-                      const nextTurn = next
-                        ? next.type === 'item'
-                          ? next.item.turnId
-                          : next.items[0]?.turnId
-                        : undefined
-                      const showWorking = first?.id === workingAnchor
-                      const message =
-                        entry.type === 'item' ? (
-                          <ChatItem
-                            item={entry.item}
-                            onReply={reply}
-                            onRewind={
-                              entry.item.kind === 'user'
-                                ? (text) => {
-                                    void rewindTo(entry.item, text)
-                                  }
-                                : undefined
-                            }
-                            workspaceId={workspaceId}
-                            sessionId={transcript.id}
-                            skills={skillList}
-                            streaming={busy && entry.item.id === transcript.items.at(-1)?.id}
-                          />
-                        ) : (
-                          <WorkingGroup items={entry.items} live={entry.live} />
-                        )
-                      return (
-                        <Fragment key={first.id}>
-                          {showWorking ? <WorkingFor /> : null}
-                          {turnAnchors.has(first.id) ? (
-                            <div
-                              data-turn-anchor={first.turnId}
-                              data-testid="chat-turn"
-                              className="scroll-mt-3"
-                            >
-                              {message}
-                            </div>
-                          ) : (
-                            message
-                          )}
-                          {last.kind !== 'user' &&
-                          nextTurn !== last.turnId &&
-                          (last.turnId !== transcript.turnId || !busy) ? (
-                            <div
-                              role="separator"
-                              aria-label="End of response"
-                              className="flex items-center gap-3 py-2 text-xs text-muted-foreground"
-                            >
-                              <span className="h-px flex-1 bg-border" />
-                              <ChatTurnActions
-                                workspaceId={workspaceId}
-                                paneId={paneId}
-                                repositoryId={transcript.repositoryId}
-                                sessionId={transcript.id}
-                                turnId={last.turnId}
-                                text={turnTexts.get(last.turnId) ?? ''}
-                                forkCapability={
-                                  catalog.data?.capabilities[transcript.model.harness]?.fork
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+          <div
+            ref={scrolling}
+            onScroll={readScroll}
+            className={cn('min-h-0 flex-1 overflow-y-auto px-5 pt-5', empty ? 'pb-5' : 'pb-40')}
+            data-testid="chat-transcript"
+            aria-label="Conversation"
+          >
+            <div className="mx-auto flex max-w-3xl flex-col gap-4">
+              <TurnClock active={busy} activeIds={watchedTurnIds} knownIds={knownTurnIds} />
+              {transcript
+                ? entries.map((entry, index, listed) => {
+                    const first = entry.type === 'item' ? entry.item : entry.items[0]
+                    const last =
+                      entry.type === 'item' ? entry.item : entry.items[entry.items.length - 1]
+                    const next = listed[index + 1]
+                    const nextTurn = next
+                      ? next.type === 'item'
+                        ? next.item.turnId
+                        : next.items[0]?.turnId
+                      : undefined
+                    const showWorking = first?.id === workingAnchor
+                    const message =
+                      entry.type === 'item' ? (
+                        <ChatItem
+                          item={entry.item}
+                          onReply={reply}
+                          onRewind={
+                            entry.item.kind === 'user'
+                              ? (text) => {
+                                  void rewindTo(entry.item, text)
                                 }
-                              />
-                              <span>End of response</span>
-                              <span className="h-px flex-1 bg-border" />
-                            </div>
-                          ) : null}
-                        </Fragment>
+                              : undefined
+                          }
+                          workspaceId={workspaceId}
+                          sessionId={transcript.id}
+                          skills={skillList}
+                          streaming={busy && entry.item.id === transcript.items.at(-1)?.id}
+                        />
+                      ) : (
+                        <WorkingGroup items={entry.items} live={entry.live} />
                       )
-                    })
-                  : null}
-                {session?.rewind ? (
-                  <div
-                    data-testid="chat-rewind-notice"
-                    className="flex items-center gap-3 py-1 text-xs"
-                  >
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="xs"
-                      className="shrink-0 font-medium text-foreground"
-                      data-testid="chat-rewind-undo"
-                      onClick={() => {
-                        void undoRewind()
-                      }}
-                    >
-                      Undo
-                    </Button>
-                    <p className="text-muted-foreground">
-                      {session.items.length
-                        ? 'Rewound to this response. Changes were not restored.'
-                        : 'Rewound to the start. Changes were not restored.'}
-                    </p>
-                  </div>
-                ) : null}
-                {session?.status === 'running' && !workingAnchor ? <WorkingFor /> : null}
-                {!empty && alertText ? (
-                  <p
-                    role="alert"
-                    className="whitespace-pre-wrap break-words text-xs text-destructive"
-                  >
-                    {alertText}
-                  </p>
-                ) : null}
-              </div>
-            </div>
-            <ChatTurnRail turns={turns} activeTurnId={activeTurn} onSelect={scrollToTurn} />
-            <div
-              ref={composer}
-              data-testid="chat-composer"
-              data-dock={empty ? 'center' : 'bottom'}
-              className="chat-composer-dock pointer-events-none"
-            >
-              {!empty && !pinned ? <ChatScrollEndButton onClick={scrollToEnd} /> : null}
-              {!empty ? (
+                    return (
+                      <Fragment key={first.id}>
+                        {showWorking ? <WorkingFor /> : null}
+                        {turnAnchors.has(first.id) ? (
+                          <div
+                            data-turn-anchor={first.turnId}
+                            data-testid="chat-turn"
+                            className="scroll-mt-3"
+                          >
+                            {message}
+                          </div>
+                        ) : (
+                          message
+                        )}
+                        {last.kind !== 'user' &&
+                        nextTurn !== last.turnId &&
+                        (last.turnId !== transcript.turnId || !busy) ? (
+                          <div
+                            role="separator"
+                            aria-label="End of response"
+                            className="flex items-center gap-3 py-2 text-xs text-muted-foreground"
+                          >
+                            <span className="h-px flex-1 bg-border" />
+                            <ChatTurnActions
+                              workspaceId={workspaceId}
+                              paneId={paneId}
+                              repositoryId={transcript.repositoryId}
+                              sessionId={transcript.id}
+                              turnId={last.turnId}
+                              text={turnTexts.get(last.turnId) ?? ''}
+                              forkCapability={
+                                catalog.data?.capabilities[transcript.model.harness]?.fork
+                              }
+                            />
+                            <span>End of response</span>
+                            <span className="h-px flex-1 bg-border" />
+                          </div>
+                        ) : null}
+                      </Fragment>
+                    )
+                  })
+                : null}
+              {session?.rewind ? (
                 <div
-                  aria-hidden="true"
-                  data-testid="chat-list-fade"
-                  className="h-10 bg-gradient-to-t from-background via-background/80 to-transparent"
-                />
+                  data-testid="chat-rewind-notice"
+                  className="flex items-center gap-3 py-1 text-xs"
+                >
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="xs"
+                    className="shrink-0 font-medium text-foreground"
+                    data-testid="chat-rewind-undo"
+                    onClick={() => {
+                      void undoRewind()
+                    }}
+                  >
+                    Undo
+                  </Button>
+                  <p className="text-muted-foreground">
+                    {session.items.length
+                      ? 'Rewound to this response. Changes were not restored.'
+                      : 'Rewound to the start. Changes were not restored.'}
+                  </p>
+                </div>
+              ) : null}
+              {session?.status === 'running' && !workingAnchor ? <WorkingFor /> : null}
+              {!empty && alertText ? (
+                <p
+                  role="alert"
+                  className="whitespace-pre-wrap break-words text-xs text-destructive"
+                >
+                  {alertText}
+                </p>
+              ) : null}
+            </div>
+          </div>
+          <ChatTurnRail turns={turns} activeTurnId={activeTurn} onSelect={scrollToTurn} />
+          <div
+            ref={composer}
+            data-testid="chat-composer"
+            data-dock={empty ? 'center' : 'bottom'}
+            className="chat-composer-dock pointer-events-none"
+          >
+            {!empty && !pinned ? <ChatScrollEndButton onClick={scrollToEnd} /> : null}
+            {!empty ? (
+              <div
+                aria-hidden="true"
+                data-testid="chat-list-fade"
+                className="h-10 bg-gradient-to-t from-background via-background/80 to-transparent"
+              />
+            ) : null}
+            <div
+              data-testid="chat-composer-surface"
+              className={cn('relative px-5', empty ? 'pb-0' : 'bg-background pb-4')}
+            >
+              {session ? (
+                <div className={`mx-auto max-w-3xl ${visible ? 'pointer-events-auto' : ''}`}>
+                  <div
+                    className="@max-[56rem]/chat:hidden @min-[56rem]/chat:hidden"
+                    data-testid="chat-session-chips-slot"
+                  >
+                    <ChatSessionChips session={session} />
+                  </div>
+                  <ChatQueue session={session} onSteer={steer} onDequeue={dequeue} />
+                </div>
               ) : null}
               <div
-                data-testid="chat-composer-surface"
-                className={cn('relative px-5', empty ? 'pb-0' : 'bg-background pb-4')}
+                className={`chat-composer-glow-wrap relative mx-auto max-w-3xl ${visible ? 'pointer-events-auto' : ''}`}
+                data-testid="chat-composer-shell"
               >
-                {session ? (
-                  <div className={`mx-auto max-w-3xl ${visible ? 'pointer-events-auto' : ''}`}>
-                    <div className="@min-[56rem]/chat:hidden" data-testid="chat-session-chips-slot">
-                      <ChatSessionChips session={session} />
-                    </div>
-                    <ChatQueue session={session} onSteer={steer} onDequeue={dequeue} />
-                  </div>
-                ) : null}
                 <div
-                  className={`chat-composer-glow-wrap relative mx-auto max-w-3xl ${visible ? 'pointer-events-auto' : ''}`}
-                  data-testid="chat-composer-shell"
+                  className="chat-composer-empty"
+                  data-testid="chat-empty-hero"
+                  aria-hidden={empty ? undefined : true}
                 >
+                  <MessageSquare className="size-7 text-muted-foreground" />
+                  <h2 className="text-lg font-medium">What would you like to build?</h2>
+                  <p className="max-w-sm text-sm text-muted-foreground">
+                    Work with Claude Code, Codex, or Pi in this workspace.
+                  </p>
+                </div>
+                {agentBackground === 'glow' ? (
                   <div
-                    className="chat-composer-empty"
-                    data-testid="chat-empty-hero"
-                    aria-hidden={empty ? undefined : true}
-                  >
-                    <MessageSquare className="size-7 text-muted-foreground" />
-                    <h2 className="text-lg font-medium">What would you like to build?</h2>
-                    <p className="max-w-sm text-sm text-muted-foreground">
-                      Work with Claude Code, Codex, or Pi in this workspace.
-                    </p>
-                  </div>
-                  {agentBackground === 'glow' ? (
-                    <div
-                      className="chat-composer-glow"
-                      aria-hidden="true"
-                      data-testid="chat-composer-glow"
-                    />
-                  ) : null}
-                  <form
-                    className="chat-composer-shell relative rounded-2xl border bg-background p-2 shadow-lg"
-                    data-dragging={dragging || undefined}
-                    onSubmit={(e) => {
-                      e.preventDefault()
+                    className="chat-composer-glow"
+                    aria-hidden="true"
+                    data-testid="chat-composer-glow"
+                  />
+                ) : null}
+                <form
+                  className="chat-composer-shell relative rounded-2xl border bg-background p-2 shadow-lg"
+                  data-dragging={dragging || undefined}
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    void send()
+                  }}
+                  {...dropHandlers}
+                >
+                  <DropOverlay visible={dragging} />
+                  <AttachmentStrip attachments={draft.attachments} onRemove={remove} />
+                  <ComposerEditor
+                    key={selected?.harness ?? 'claude'}
+                    ref={editorRef}
+                    defaultText={draft.text}
+                    attachments={draft.attachments}
+                    skills={skillList}
+                    workspaceId={workspaceId}
+                    skillIssue={skillList.length ? '' : (skillQuery.data?.issue ?? '')}
+                    getAttachments={() => readDraft().attachments}
+                    onDocument={onDocument}
+                    vim={vimOptions}
+                    onVimMode={setVimMode}
+                    onAttachFiles={(files) => {
+                      void attachFiles(files)
+                    }}
+                    onSubmit={() => {
                       void send()
                     }}
-                    {...dropHandlers}
-                  >
-                    <DropOverlay visible={dragging} />
-                    <AttachmentStrip attachments={draft.attachments} onRemove={remove} />
-                    <ComposerEditor
-                      key={selected?.harness ?? 'claude'}
-                      ref={editorRef}
-                      defaultText={draft.text}
-                      attachments={draft.attachments}
-                      skills={skillList}
-                      workspaceId={workspaceId}
-                      skillIssue={skillList.length ? '' : (skillQuery.data?.issue ?? '')}
-                      getAttachments={() => readDraft().attachments}
-                      onDocument={onDocument}
-                      vim={vimOptions}
-                      onVimMode={setVimMode}
-                      onAttachFiles={(files) => {
-                        void attachFiles(files)
-                      }}
-                      onSubmit={() => {
-                        void send()
-                      }}
-                    />
-                    <input
-                      ref={fileInput}
-                      type="file"
-                      accept={chatImageAccept}
-                      multiple
-                      hidden
-                      data-testid="chat-image-input"
-                      onChange={(e) => {
-                        const files = [...(e.target.files ?? [])]
-                        e.target.value = ''
-                        void attachFiles(files)
-                      }}
-                    />
-                    <div className="flex flex-wrap items-center gap-1">
-                      <div className="min-w-0 flex-1">
-                        <ModelPicker
-                          selected={selected}
-                          sessionStarted={session != null}
-                          onSelect={(model) => {
-                            onRememberAgent?.(model)
-                            if (session && session.model.harness !== model.harness) {
-                              notify(
-                                `Open a new Agent tab or pane to use ${harnessLabels[model.harness]}.`
-                              )
-                              return
-                            }
-                            const draft = readDraft()
-                            const restored = messageToResend({
-                              composerText: draft.text,
-                              attachmentCount: draft.attachments.length,
-                              current: selected,
-                              next: model,
-                              items: session?.items ?? []
-                            })
-                            setSelection(model)
-                            setReasoning('')
-                            if (restored) editorRef.current?.replaceText(restored)
-                          }}
-                        />
-                      </div>
-                      {composerVim && vimMode ? <VimModeBadge mode={vimMode} /> : null}
-                      <ContextUsageRing
-                        usage={session?.contextUsage}
-                        harness={session?.model.harness}
-                        modelLabel={session?.model.label}
+                  />
+                  <input
+                    ref={fileInput}
+                    type="file"
+                    accept={chatImageAccept}
+                    multiple
+                    hidden
+                    data-testid="chat-image-input"
+                    onChange={(e) => {
+                      const files = [...(e.target.files ?? [])]
+                      e.target.value = ''
+                      void attachFiles(files)
+                    }}
+                  />
+                  <div className="flex flex-wrap items-center gap-1">
+                    <div className="min-w-0 flex-1">
+                      <ModelPicker
+                        selected={selected}
+                        sessionStarted={session != null}
+                        onSelect={(model) => {
+                          onRememberAgent?.(model)
+                          if (session && session.model.harness !== model.harness) {
+                            notify(
+                              `Open a new Agent tab or pane to use ${harnessLabels[model.harness]}.`
+                            )
+                            return
+                          }
+                          const draft = readDraft()
+                          const restored = messageToResend({
+                            composerText: draft.text,
+                            attachmentCount: draft.attachments.length,
+                            current: selected,
+                            next: model,
+                            items: session?.items ?? []
+                          })
+                          setSelection(model)
+                          setReasoning('')
+                          if (restored) editorRef.current?.replaceText(restored)
+                        }}
                       />
+                    </div>
+                    {composerVim && vimMode ? <VimModeBadge mode={vimMode} /> : null}
+                    <ContextUsageRing
+                      usage={session?.contextUsage}
+                      harness={session?.model.harness}
+                      modelLabel={session?.model.label}
+                    />
+                    <select
+                      aria-label="Access mode"
+                      title={
+                        selected?.harness === 'pi'
+                          ? 'Pi: Edit and Read-only limit tools and disable extensions; shell commands require Full access. Changes apply to the next message.'
+                          : 'Access for the next message. Edit allows file changes; Read-only uses the harness read or plan mode.'
+                      }
+                      value={accessMode}
+                      onChange={(event) =>
+                        setAccessSelection(event.target.value as AgentAccessMode)
+                      }
+                      className="max-w-36 rounded bg-transparent p-1 text-xs text-muted-foreground"
+                    >
+                      <option value="full">Full access (YOLO)</option>
+                      <option value="edit">Edit</option>
+                      <option value="read">Read-only</option>
+                    </select>
+                    {selected?.reasoning.length ? (
                       <select
-                        aria-label="Access mode"
-                        title={
-                          selected?.harness === 'pi'
-                            ? 'Pi: Edit and Read-only limit tools and disable extensions; shell commands require Full access. Changes apply to the next message.'
-                            : 'Access for the next message. Edit allows file changes; Read-only uses the harness read or plan mode.'
-                        }
-                        value={accessMode}
-                        onChange={(event) =>
-                          setAccessSelection(event.target.value as AgentAccessMode)
-                        }
-                        className="max-w-36 rounded bg-transparent p-1 text-xs text-muted-foreground"
+                        aria-label="Reasoning effort"
+                        value={reasoning}
+                        onChange={(e) => setReasoning(e.target.value)}
+                        className="max-w-28 rounded bg-transparent p-1 text-xs text-muted-foreground"
                       >
-                        <option value="full">Full access (YOLO)</option>
-                        <option value="edit">Edit</option>
-                        <option value="read">Read-only</option>
+                        <option value="">Default effort</option>
+                        {selected.reasoning.map((effort) => (
+                          <option key={effort} value={effort}>
+                            {effort}
+                          </option>
+                        ))}
                       </select>
-                      {selected?.reasoning.length ? (
-                        <select
-                          aria-label="Reasoning effort"
-                          value={reasoning}
-                          onChange={(e) => setReasoning(e.target.value)}
-                          className="max-w-28 rounded bg-transparent p-1 text-xs text-muted-foreground"
-                        >
-                          <option value="">Default effort</option>
-                          {selected.reasoning.map((effort) => (
-                            <option key={effort} value={effort}>
-                              {effort}
-                            </option>
-                          ))}
-                        </select>
-                      ) : null}
+                    ) : null}
+                    <Button
+                      type="button"
+                      size="icon-sm"
+                      variant="ghost"
+                      aria-label="Attach image"
+                      title="Attach image (or drop / paste one)"
+                      onClick={() => fileInput.current?.click()}
+                    >
+                      <ImagePlus className="size-4" />
+                    </Button>
+                    {busy ? (
                       <Button
                         type="button"
                         size="icon-sm"
-                        variant="ghost"
-                        aria-label="Attach image"
-                        title="Attach image (or drop / paste one)"
-                        onClick={() => fileInput.current?.click()}
+                        variant="outline"
+                        aria-label="Stop agent"
+                        onClick={() => {
+                          void execute({ action: 'stop', sessionId: session?.id })
+                        }}
                       >
-                        <ImagePlus className="size-4" />
+                        <Square className="size-3 fill-current" />
                       </Button>
-                      {busy ? (
-                        <Button
-                          type="button"
-                          size="icon-sm"
-                          variant="outline"
-                          aria-label="Stop agent"
-                          onClick={() => {
-                            void execute({ action: 'stop', sessionId: session?.id })
-                          }}
-                        >
-                          <Square className="size-3 fill-current" />
-                        </Button>
-                      ) : null}
-                      <Button type="submit" size="icon-sm" aria-label="Send message">
-                        <ArrowUp className="size-4" />
-                      </Button>
-                    </div>
-                  </form>
-                </div>
-                {empty && alertText ? (
-                  <p
-                    role="alert"
-                    className="mx-auto mt-3 max-w-3xl whitespace-pre-wrap break-words text-xs text-destructive"
-                  >
-                    {alertText}
-                  </p>
-                ) : null}
+                    ) : null}
+                    <Button type="submit" size="icon-sm" aria-label="Send message">
+                      <ArrowUp className="size-4" />
+                    </Button>
+                  </div>
+                </form>
               </div>
+              {empty && alertText ? (
+                <p
+                  role="alert"
+                  className="mx-auto mt-3 max-w-3xl whitespace-pre-wrap break-words text-xs text-destructive"
+                >
+                  {alertText}
+                </p>
+              ) : null}
             </div>
           </div>
           {session ? <ChatSessionPanel session={session} /> : null}
