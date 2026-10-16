@@ -1,10 +1,20 @@
 import { Fragment, useState } from 'react'
-import { Bot, ListTodo, LoaderCircle, PanelRightClose, PanelRightOpen } from 'lucide-react'
+import {
+  Bot,
+  FileDiff,
+  ListTodo,
+  LoaderCircle,
+  PanelRightClose,
+  PanelRightOpen
+} from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
 import type { AgentBackgroundTask, AgentSession, AgentSubagent, TodoSnapshot } from '@cerebro/core'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { changedFileRows, type ChangedFileRow } from '@/lib/changed-file-count'
+import { changesManifestOptions } from '@/lib/changes-query'
 import { cn } from '@/lib/utils'
 import { ChatBackgroundTaskList } from './chat-background-tasks'
 import { ChatSubagentStack } from './chat-subagents'
@@ -17,14 +27,26 @@ type SessionStatus = {
 }
 
 /**
- * Tasks, background jobs, and agents floating over the transcript.
+ * Tasks, background jobs, agents, and changed files floating over the transcript.
  * ChatView is the `@container/chat` element. At 56rem the card is shown; a narrower pane hides it.
  * It does not take a column in the layout. Collapse leaves a vertical icon list.
  */
-export function ChatSessionPanel({ session }: { session: AgentSession }): React.JSX.Element | null {
+export function ChatSessionPanel({
+  session,
+  workspaceId
+}: {
+  session: AgentSession | null
+  workspaceId: number
+}): React.JSX.Element | null {
+  const listed = useQuery({
+    ...changesManifestOptions(workspaceId),
+    enabled: true,
+    refetchInterval: 5_000
+  })
+  const files = changedFileRows(listed.data)
   const status = sessionStatus(session)
   const [expanded, setExpanded] = useState(true)
-  if (!status) return null
+  if (!status && files.length < 1) return null
   return (
     <TooltipProvider>
       <aside
@@ -34,16 +56,17 @@ export function ChatSessionPanel({ session }: { session: AgentSession }): React.
         className="pointer-events-auto absolute top-8 right-3 z-20 hidden max-h-[calc(100%-11rem)] flex-col @min-[56rem]/chat:flex"
       >
         {expanded ? (
-          <SessionCard status={status} onCollapse={() => setExpanded(false)} />
+          <SessionCard status={status} files={files} onCollapse={() => setExpanded(false)} />
         ) : (
-          <SessionRail status={status} onExpand={() => setExpanded(true)} />
+          <SessionRail status={status} files={files} onExpand={() => setExpanded(true)} />
         )}
       </aside>
     </TooltipProvider>
   )
 }
 
-function sessionStatus(session: AgentSession): SessionStatus | null {
+function sessionStatus(session: AgentSession | null): SessionStatus | null {
+  if (!session) return null
   const todo = session.todo?.items.length ? session.todo : undefined
   const tasks = session.background?.length ? session.background : undefined
   const agents = session.subagents?.length ? session.subagents : undefined
@@ -57,9 +80,11 @@ function countLabel(count: number, singular: string, plural: string): string {
 
 function SessionCard({
   status,
+  files,
   onCollapse
 }: {
-  status: SessionStatus
+  status: SessionStatus | null
+  files: ChangedFileRow[]
   onCollapse: () => void
 }): React.JSX.Element {
   return (
@@ -78,30 +103,52 @@ function SessionCard({
       </div>
       <Separator />
       <div className="min-h-0 overflow-y-auto">
-        <SessionSections status={status} />
+        <SessionSections status={status} files={files} />
       </div>
     </div>
   )
 }
 
-function SessionSections({ status }: { status: SessionStatus }): React.JSX.Element {
+function SessionSections({
+  status,
+  files
+}: {
+  status: SessionStatus | null
+  files: ChangedFileRow[]
+}): React.JSX.Element {
   const blocks = [
-    status.todo ? (
+    status?.todo ? (
       <section key="tasks" data-testid="chat-session-panel-tasks" className="px-1 py-2">
         <SectionHeading title="Tasks" count={status.todo.items.length} section="tasks" />
         <ChatTodoList todo={status.todo} showHeading={false} />
       </section>
     ) : null,
-    status.tasks ? (
+    status?.tasks ? (
       <section key="background" data-testid="chat-session-panel-background" className="px-1 py-2">
         <SectionHeading title="Background" count={status.tasks.length} section="background" />
         <ChatBackgroundTaskList tasks={status.tasks} />
       </section>
     ) : null,
-    status.agents ? (
+    status?.agents ? (
       <section key="agents" data-testid="chat-session-panel-agents" className="px-1 py-2">
         <SectionHeading title="Agents" count={status.agents.length} section="agents" />
         <ChatSubagentStack agents={status.agents} />
+      </section>
+    ) : null,
+    files.length > 0 ? (
+      <section key="changes" data-testid="chat-session-panel-changes" className="px-1 py-2">
+        <SectionHeading title="Changes" count={files.length} section="changes" />
+        <ul aria-label="Changed files" className="flex flex-col">
+          {files.map((file) => (
+            <li
+              key={file.id}
+              data-testid="chat-changed-file"
+              className="truncate px-2 py-1 text-xs"
+            >
+              {file.label}
+            </li>
+          ))}
+        </ul>
       </section>
     ) : null
   ].filter((block) => block != null)
@@ -119,13 +166,15 @@ function SessionSections({ status }: { status: SessionStatus }): React.JSX.Eleme
 
 function SessionRail({
   status,
+  files,
   onExpand
 }: {
-  status: SessionStatus
+  status: SessionStatus | null
+  files: ChangedFileRow[]
   onExpand: () => void
 }): React.JSX.Element {
   const icons = [
-    status.todo
+    status?.todo
       ? {
           section: 'tasks',
           count: status.todo.items.length,
@@ -133,7 +182,7 @@ function SessionRail({
           icon: <ListTodo />
         }
       : null,
-    status.tasks
+    status?.tasks
       ? {
           section: 'background',
           count: status.tasks.length,
@@ -141,12 +190,20 @@ function SessionRail({
           icon: <LoaderCircle className="animate-spin" />
         }
       : null,
-    status.agents
+    status?.agents
       ? {
           section: 'agents',
           count: status.agents.length,
           label: countLabel(status.agents.length, 'agent', 'agents'),
           icon: <Bot />
+        }
+      : null,
+    files.length > 0
+      ? {
+          section: 'changes',
+          count: files.length,
+          label: countLabel(files.length, 'changed file', 'changed files'),
+          icon: <FileDiff />
         }
       : null
   ].filter((item) => item != null)

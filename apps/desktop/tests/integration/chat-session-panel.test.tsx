@@ -7,7 +7,8 @@ import type {
   AgentModel,
   AgentSession,
   AgentSubagent,
-  ChatCommand
+  ChatCommand,
+  WorkspaceChanges
 } from '@cerebro/core'
 import { ChatSessionPanel } from '@/components/chat/chat-session-panel'
 import { ChatView } from '@/components/chat/chat-view'
@@ -73,9 +74,26 @@ const filled = session({
   ]
 })
 
+const emptyChanges = { workspaceId: 1, groups: [] } satisfies WorkspaceChanges
+
+function renderPanel(
+  session: AgentSession | null,
+  changes: WorkspaceChanges = emptyChanges
+): ReturnType<typeof render> {
+  window.cerebro = {
+    listWorkspaceChanges: vi.fn(async () => changes)
+  } as unknown as typeof window.cerebro
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(
+    <QueryClientProvider client={client}>
+      <ChatSessionPanel session={session} workspaceId={1} />
+    </QueryClientProvider>
+  )
+}
+
 describe('ChatSessionPanel', () => {
   it('stacks tasks, background jobs, and agents together', () => {
-    render(<ChatSessionPanel session={filled} />)
+    renderPanel(filled)
     const panel = screen.getByRole('complementary', { name: 'Session status' })
     expect(panel).toHaveAttribute('data-testid', 'chat-session-panel')
     expect(panel).toHaveAttribute('data-expanded', 'true')
@@ -122,24 +140,66 @@ describe('ChatSessionPanel', () => {
   })
 
   it('omits empty sections and renders nothing when the session has no status', () => {
-    const { container, rerender } = render(<ChatSessionPanel session={session()} />)
+    const { container, rerender } = renderPanel(session())
     expect(container).toBeEmptyDOMElement()
     rerender(
-      <ChatSessionPanel
-        session={session({
-          background: [{ id: 'server', title: 'nr dev', status: 'running', startedAt: 1 }]
-        })}
-      />
+      <QueryClientProvider
+        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
+        <ChatSessionPanel
+          session={session({
+            background: [{ id: 'server', title: 'nr dev', status: 'running', startedAt: 1 }]
+          })}
+          workspaceId={1}
+        />
+      </QueryClientProvider>
     )
     expect(screen.getByTestId('chat-session-panel-background')).toBeInTheDocument()
     expect(screen.queryByTestId('chat-session-panel-tasks')).toBeNull()
     expect(screen.queryByTestId('chat-session-panel-agents')).toBeNull()
     expect(badgeCounts(screen.getByTestId('chat-session-panel'))).toEqual([['background', '1']])
+    expect(screen.queryByTestId('chat-session-panel-changes')).toBeNull()
+  })
+
+  it('sums nested repositories into one Changes section', async () => {
+    renderPanel(filled, {
+      workspaceId: 1,
+      groups: [
+        {
+          repositoryId: 10,
+          repositoryName: 'api',
+          workspaceId: 2,
+          files: [
+            { path: 'src/a.ts', oldPath: null, status: 'modified' },
+            { path: 'src/b.ts', oldPath: null, status: 'added' }
+          ]
+        },
+        {
+          repositoryId: 11,
+          repositoryName: 'web',
+          workspaceId: 3,
+          files: [{ path: 'app.tsx', oldPath: null, status: 'untracked' }]
+        }
+      ]
+    })
+    const changes = await screen.findByTestId('chat-session-panel-changes')
+    expect(within(changes).getByRole('heading', { name: 'Changes' })).toBeInTheDocument()
+    expect(within(changes).getByTestId('chat-session-badge')).toHaveTextContent('3')
+    expect(within(changes).getByTestId('chat-session-badge').className).toContain(
+      'bg-[var(--sidebar-selected)]'
+    )
+    expect(
+      within(changes)
+        .getAllByTestId('chat-changed-file')
+        .map((row) => row.textContent)
+    ).toEqual(['api/src/a.ts', 'api/src/b.ts', 'web/app.tsx'])
+    expect(screen.getAllByRole('heading', { name: 'Changes' })).toHaveLength(1)
+    expect(screen.getByTestId('chat-session-panel-tasks')).toBeInTheDocument()
   })
 
   it('collapses to a vertical icon list and expands back to every section', async () => {
     const user = userEvent.setup()
-    render(<ChatSessionPanel session={filled} />)
+    renderPanel(filled)
     await user.click(screen.getByRole('button', { name: 'Collapse session status' }))
     const rail = screen.getByTestId('chat-session-panel-rail')
     expect(rail.className).toContain('flex-col')
@@ -213,6 +273,7 @@ describe('chat session layout', () => {
       agentCatalog: vi.fn(async () => catalog),
       agentSkills: vi.fn(async () => ({ skills: [] })),
       listWorkspaceFiles: vi.fn(async () => []),
+      listWorkspaceChanges: vi.fn(async () => emptyChanges),
       layoutCommand: vi.fn(async () => ({ state: null })),
       chatAttachment: vi.fn()
     } as unknown as typeof window.cerebro

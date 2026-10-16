@@ -916,7 +916,7 @@ export function ChatView({
               ) : null}
             </div>
           </div>
-          {session ? <ChatSessionPanel session={session} /> : null}
+          <ChatSessionPanel session={session ?? null} workspaceId={workspaceId} />
         </div>
       )}
     </div>
