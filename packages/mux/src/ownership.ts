@@ -1,7 +1,8 @@
 import { DatabaseSync } from 'node:sqlite'
-import { appendFileSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { connect } from 'node:net'
 import { join } from 'node:path'
+import { log } from './log'
 import { muxDirectory, socketPath } from './paths'
 
 /** A host that claimed ownership this recently may still be starting up before it listens. */
@@ -73,18 +74,43 @@ export async function claimServer(): Promise<boolean> {
   } finally {
     db.close()
   }
-  if (stale !== undefined) {
-    try {
-      appendFileSync(
-        join(muxDirectory(), 'server.log'),
-        `${new Date().toISOString()} Replaced stale mux owner PID ${stale}: its socket was unreachable.\n`,
-        { mode: 0o600 }
-      )
-    } catch {
-      /* Logging is best-effort. */
-    }
-  }
+  if (stale !== undefined)
+    log('warn', 'owner.replaced_stale', {
+      stalePid: stale,
+      message: `Replaced stale mux owner PID ${stale}: its socket was unreachable.`
+    })
   return true
+}
+
+export type OwnerStatus =
+  | { recorded: false }
+  | { recorded: true; pid: number; claimedAt?: number; alive: boolean; reachable: boolean }
+  | { error: string }
+/** Read-only view of who the ownership record names, for diagnostics. Never creates or edits it. */
+export async function ownerStatus(): Promise<OwnerStatus> {
+  const file = join(muxDirectory(), 'ownership.sqlite')
+  if (!existsSync(file)) return { recorded: false }
+  let db: DatabaseSync | undefined
+  try {
+    db = new DatabaseSync(file, { readOnly: true })
+    const owner = db
+      .prepare(
+        'SELECT owner.pid AS pid, claim.at AS at FROM owner LEFT JOIN claim ON claim.id=1 AND claim.pid=owner.pid WHERE owner.id=1'
+      )
+      .get() as { pid: number; at?: number } | undefined
+    if (!owner) return { recorded: false }
+    return {
+      recorded: true,
+      pid: owner.pid,
+      claimedAt: owner.at,
+      alive: alive(owner.pid),
+      reachable: await reachable(socketPath())
+    }
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) }
+  } finally {
+    db?.close()
+  }
 }
 
 export function releaseServer(): void {

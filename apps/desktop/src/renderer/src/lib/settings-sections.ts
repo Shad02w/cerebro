@@ -2,6 +2,7 @@ import {
   Blocks,
   Cpu,
   Keyboard,
+  LifeBuoy,
   Settings,
   SquareTerminal,
   Terminal,
@@ -52,5 +53,11 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     label: 'Integrations',
     description: 'Connect external services and tools.',
     icon: Blocks
+  },
+  {
+    id: 'diagnostics',
+    label: 'Diagnostics',
+    description: 'Export logs and system info to troubleshoot problems.',
+    icon: LifeBuoy
   }
 ]

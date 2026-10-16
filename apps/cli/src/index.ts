@@ -1,6 +1,7 @@
 #!/usr/bin/env node --no-warnings
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { diagnosticsCommand } from './commands/diagnostics'
 import { serverCommand } from './commands/server'
 /**
  * cerebro CLI — project and workspace management for humans and coding agents.
@@ -31,11 +32,12 @@ const USAGE = `
 Usage: cerebro <command> [options]
 
 Commands:
-  project    Manage projects (cloned git repositories or opened folders)
-  workspace  Manage workspaces (default branch + git worktrees) and their status
-  tab        Manage persistent workspace tabs
-  pane       Manage persistent BSP panes inside tabs
-  server     Manage the background terminal server
+  project      Manage projects (cloned git repositories or opened folders)
+  workspace    Manage workspaces (default branch + git worktrees) and their status
+  tab          Manage persistent workspace tabs
+  pane         Manage persistent BSP panes inside tabs
+  server       Manage the background terminal server
+  diagnostics  Export a support bundle (logs and counts, no content)
 
 Options:
   --version  Print version
@@ -69,6 +71,11 @@ async function main(): Promise<void> {
 
   if (command === 'server') {
     await serverCommand(rest)
+    return
+  }
+
+  if (command === 'diagnostics') {
+    await diagnosticsCommand(rest)
     return
   }
 

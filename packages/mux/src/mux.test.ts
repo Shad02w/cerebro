@@ -156,6 +156,30 @@ test(
       assert.ok(revived.data.includes('New shell session'))
       await cli('pane', 'close', '--workspace', String(workspaceId), '--pane', String(added.id))
       await cli('project', 'remove', String(project.id))
+
+      // The log must explain what happened, without recording what the user typed.
+      const text = await readFile(join(home, 'mux/server.log'), 'utf8')
+      const events = text.split('\n').flatMap((line) => {
+        try {
+          return [JSON.parse(line) as Record<string, unknown>]
+        } catch {
+          return []
+        }
+      })
+      const seen = (event: string, match: Record<string, unknown> = {}): boolean =>
+        events.some(
+          (entry) =>
+            entry.event === event && Object.entries(match).every(([k, v]) => entry[k] === v)
+        )
+      assert.ok(seen('server.listening'), text)
+      assert.equal(events.filter((entry) => entry.event === 'server.starting').length, 2, text)
+      assert.ok(seen('peer.authorized'), text)
+      assert.ok(seen('request.ok', { method: 'registry', action: 'project.createDirectory' }), text)
+      assert.ok(seen('request.ok', { method: 'registry', action: 'project.remove' }), text)
+      assert.ok(seen('terminal.spawned', { paneId }), text)
+      assert.ok(seen('request.failed', { code: 'conflict' }), text)
+      assert.ok(seen('client.spawn_daemon'), text)
+      assert.doesNotMatch(text, /MUX_READY|token:kept|MUX_TOKEN/)
     } catch (error) {
       console.error(
         await readFile(join(home, 'mux/server.log'), 'utf8').catch(() => 'No mux error log')

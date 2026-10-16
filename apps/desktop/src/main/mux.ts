@@ -1,6 +1,6 @@
 import { app, BrowserWindow } from 'electron'
 import { join, resolve } from 'node:path'
-import { connectMux, MuxError, type MuxClient, type TerminalEvent } from '@cerebro/mux'
+import { connectMux, log, MuxError, type MuxClient, type TerminalEvent } from '@cerebro/mux'
 import type { AgentStatusEvent, LayoutState, WorkspaceTabs } from '@cerebro/core'
 import { IPC } from '../shared/ipc'
 
@@ -8,6 +8,9 @@ let connection: Promise<MuxClient> | undefined
 let quitting = false
 let intentionallyStopped = false
 let reconnectTimer: ReturnType<typeof setTimeout> | undefined
+// Reconnect retries every second; only the first failure of a streak is recorded.
+let reconnectAttempts = 0
+let lostAt: number | undefined
 let cached: LayoutState = { revision: -1, workspaces: {} }
 const terminalListeners = new Set<(event: TerminalEvent & { attachmentId: string }) => void>()
 const statusListeners = new Set<(event: AgentStatusEvent) => void>()
@@ -97,6 +100,7 @@ export function getMux(): Promise<MuxClient> {
           const result = await repositoryService.git(args, cwd)
           await client.request('git.reply', { id, result })
         } catch (error) {
+          log('warn', 'desktop.git_provider_failed', { command: String(args?.[0]), error })
           await client
             .request('git.reply', {
               id,
@@ -107,15 +111,28 @@ export function getMux(): Promise<MuxClient> {
       })
       client.on('disconnected', () => {
         connection = undefined
+        if (!quitting) lostAt ??= Date.now()
+        log(intentionallyStopped || quitting ? 'info' : 'warn', 'desktop.mux_disconnected', {
+          intentionallyStopped,
+          quitting
+        })
         for (const listener of disconnectListeners) listener(intentionallyStopped)
         reconnectLater()
       })
       cached = await client.request<LayoutState>('subscribe')
+      if (lostAt !== undefined)
+        log('info', 'desktop.mux_reconnected', {
+          downMs: Date.now() - lostAt,
+          failedAttempts: reconnectAttempts
+        })
+      lostAt = undefined
+      reconnectAttempts = 0
       broadcast(IPC.layout.changed, cached)
       broadcast(IPC.chat.changed, {})
       return client
     })().catch((error) => {
       connection = undefined
+      if (++reconnectAttempts === 1) log('error', 'desktop.mux_connect_failed', { error })
       throw error
     })
   return connection

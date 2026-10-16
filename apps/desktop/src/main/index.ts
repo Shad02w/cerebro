@@ -5,13 +5,19 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { closeDb } from './db'
 import { registerSettingsIpc, registerWorkspaceIpc } from './ipc'
+import { log } from '@cerebro/mux'
 import { getMux, disconnectMux } from './mux'
 import { setAppMenu } from './menu'
 import { registerNativeCommandIpc } from './native-commands'
 import { ensureCerebroHome } from './paths'
 import { registerCliIpc } from './cli-install'
+import { registerDiagnosticsIpc } from './diagnostics'
 import { registerNotifications } from './notifications'
 import { IPC } from '../shared/ipc'
+
+process.on('uncaughtExceptionMonitor', (error, origin) =>
+  log('error', 'desktop.crash', { origin, error })
+)
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -84,6 +90,7 @@ app.whenReady().then(() => {
   registerWorkspaceIpc()
   registerSettingsIpc()
   registerCliIpc()
+  registerDiagnosticsIpc()
   registerNativeCommandIpc()
   registerNotifications()
   void getMux().catch((error) => console.error('[mux]', error.message))
@@ -93,6 +100,28 @@ app.whenReady().then(() => {
   })
 
   createWindow()
+
+  app.on('render-process-gone', (_event, contents, details) =>
+    log('error', 'desktop.render_process_gone', {
+      reason: details.reason,
+      exitCode: details.exitCode,
+      url: contents.getURL().split('?')[0].slice(-100)
+    })
+  )
+  app.on('child-process-gone', (_event, details) =>
+    log('error', 'desktop.child_process_gone', {
+      type: details.type,
+      reason: details.reason,
+      exitCode: details.exitCode
+    })
+  )
+  log('info', 'desktop.ready', {
+    version: app.getVersion(),
+    electron: process.versions.electron,
+    platform: process.platform,
+    arch: process.arch,
+    packaged: app.isPackaged
+  })
 
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

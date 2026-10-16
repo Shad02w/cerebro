@@ -1,6 +1,7 @@
 import { AgentModelSettings } from '@/components/agent-model-settings'
 import { TerminalThemeCombobox } from '@/components/terminal-theme-combobox'
 import { CliSettings } from '@/components/cli-settings'
+import { DiagnosticsSettings } from '@/components/diagnostics-settings'
 import type { TerminalThemeId } from '@shared/terminal-themes'
 import { useEffect, useRef, useState } from 'react'
 import type {
@@ -95,6 +96,8 @@ export function SettingsView({
             )
           ) : section === 'cli' ? (
             <CliSettings />
+          ) : section === 'diagnostics' ? (
+            <DiagnosticsSettings />
           ) : section === 'keyboard' ? (
             loading || !settings ? (
               <p className="text-sm text-muted-foreground">Loading settings…</p>

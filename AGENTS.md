@@ -187,6 +187,8 @@ cerebro pane focus --workspace <id> --pane <id>
 cerebro pane close --workspace <id> --pane <id>
 cerebro pane resize --workspace <id> --tab <id> --split <id> --ratio 0.6
 
+cerebro diagnostics export [--output <file.zip|directory>]
+
 cerebro --help
 cerebro project --help
 cerebro workspace --help

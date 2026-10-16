@@ -9,19 +9,27 @@ import {
   rename,
   rm,
   link,
-  open as openFile,
-  stat
+  open as openFile
 } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { join, resolve, dirname } from 'node:path'
 import { EventEmitter } from 'node:events'
 import { Wire, MuxError, VERSION, type Message } from './protocol'
 import { protectDirectory } from './permissions'
+import { log, rotateLog } from './log'
 import { muxDirectory, socketPath, databasePath } from './paths'
 import { readRuntimeManifest, runtimeOutdated, type RuntimeManifest } from './runtime-manifest'
 export * from './protocol'
 export { runtimeOutdated, type RuntimeManifest } from './runtime-manifest'
 export { socketPath } from './paths'
+export { log } from './log'
+export {
+  exportDiagnostics,
+  defaultDiagnosticsName,
+  redactDiagnostics,
+  type DiagnosticsOptions,
+  type DiagnosticsResult
+} from './diagnostics'
 
 export type ConnectOptions = { runtimeDir?: string; autoStart?: boolean }
 export class MuxClient extends EventEmitter {
@@ -33,6 +41,7 @@ export class MuxClient extends EventEmitter {
       timer: ReturnType<typeof setTimeout>
     }
   >()
+  private methods = new Map<string, string>()
   private constructor(readonly wire: Wire) {
     super()
     wire.on('message', (message: Message) => {
@@ -44,10 +53,16 @@ export class MuxClient extends EventEmitter {
       if (!request) return
       clearTimeout(request.timer)
       this.pending.delete(message.id!)
+      this.methods.delete(message.id!)
       if (message.error) request.reject(new MuxError(message.error.code, message.error.message))
       else request.resolve(message.result)
     })
     wire.on('close', () => {
+      log('warn', 'client.disconnected', {
+        pendingRequests: this.pending.size,
+        pendingMethods: [...this.methods.values()].slice(0, 10)
+      })
+      this.methods.clear()
       for (const request of this.pending.values()) {
         clearTimeout(request.timer)
         request.reject(
@@ -63,6 +78,7 @@ export class MuxClient extends EventEmitter {
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
         socket.destroy()
+        log('warn', 'client.connect_timeout', { timeoutMs: 1000 })
         reject(new MuxError('unavailable', 'Mux connection timed out.'))
       }, 1000)
       socket.once('connect', () => {
@@ -90,11 +106,14 @@ export class MuxClient extends EventEmitter {
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id)
+        this.methods.delete(id)
+        log('error', 'client.request_timeout', { method, timeoutMs: timeout })
         reject(
           new MuxError('unavailable', `Mux ${method} timed out; do not blindly repeat mutations.`)
         )
       }, timeout)
       this.pending.set(id, { resolve: (value) => resolve(value as T), reject, timer })
+      this.methods.set(id, method)
       this.wire.send({ id, method, params })
     })
   }
@@ -171,6 +190,10 @@ export async function connectMux(options: ConnectOptions = {}): Promise<MuxClien
   try {
     running = await open()
   } catch (error) {
+    const code = error instanceof MuxError ? error.code : (error as NodeJS.ErrnoException).code
+    // A missing socket is the normal "not started yet" case; anything else is worth a record.
+    if (code !== 'ENOENT' && code !== 'ECONNREFUSED')
+      log('warn', 'client.connect_failed', { error, autoStart: options.autoStart !== false })
     if (error instanceof MuxError && error.code !== 'unavailable') throw error
     if (options.autoStart === false) throw new MuxError('unavailable', 'Mux is not running.')
   }
@@ -186,6 +209,10 @@ export async function connectMux(options: ConnectOptions = {}): Promise<MuxClien
     const local =
       source && options.autoStart !== false ? await readRuntimeManifest(source) : undefined
     if (!runtimeOutdated(local, running.runtime)) return running.client
+    log('info', 'client.replace_outdated_host', {
+      running: running.runtime?.muxHash,
+      local: local?.muxHash
+    })
     // This build is newer than the host: stop it and start the staged runtime. Terminals keep
     // their output and start fresh shells on activation; other clients reconnect on their own.
     await running.client.request('server.stop', {}, 5000).catch(() => {})
@@ -199,28 +226,29 @@ export async function connectMux(options: ConnectOptions = {}): Promise<MuxClien
         stopped = true
       }
     }
-    if (!stopped)
+    if (!stopped) {
+      log('error', 'client.host_still_stopping', {})
       throw new MuxError('unavailable', 'The previous mux host is still stopping. Retry shortly.')
+    }
   }
-  if (!source)
+  if (!source) {
+    log('error', 'client.runtime_missing', {})
     throw new MuxError(
       'unavailable',
       'Mux runtime missing. Build Cerebro or repair the CLI installation.'
     )
+  }
   const runtime = await stageRuntime(source)
   const logPath = join(muxDirectory(), 'server.log')
-  try {
-    if ((await stat(logPath)).size > 1024 * 1024) await rm(logPath)
-  } catch {
-    /* New log. */
-  }
-  const log = await openFile(logPath, 'a', 0o600)
+  rotateLog()
+  const stderr = await openFile(logPath, 'a', 0o600)
+  log('info', 'client.spawn_daemon', { runtime: runtime.split(/[\\/]/).pop() })
   const child = spawn(
     join(runtime, process.platform === 'win32' ? 'node.exe' : 'node'),
     ['--no-warnings', join(runtime, 'mux.cjs')],
     {
       detached: true,
-      stdio: ['ignore', 'ignore', log.fd],
+      stdio: ['ignore', 'ignore', stderr.fd],
       windowsHide: true,
       env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined, CEREBRO_MUX_RUNTIME: runtime }
     }
@@ -228,9 +256,13 @@ export async function connectMux(options: ConnectOptions = {}): Promise<MuxClien
   let startupError: Error | undefined
   child.on('error', (error) => {
     startupError = error
+    log('error', 'client.spawn_failed', { error })
+  })
+  child.on('exit', (code, signal) => {
+    if (code !== 0) log('error', 'client.daemon_exited', { code, signal, daemonPid: child.pid })
   })
   child.unref()
-  await log.close()
+  await stderr.close()
   for (let attempt = 0; attempt < 100; attempt++) {
     await new Promise((resolve) => setTimeout(resolve, 50))
     if (startupError) throw startupError
@@ -240,6 +272,7 @@ export async function connectMux(options: ConnectOptions = {}): Promise<MuxClien
       if (error instanceof MuxError && error.code !== 'unavailable') throw error
     }
   }
+  log('error', 'client.start_timeout', { daemonPid: child.pid, waitedMs: 5000 })
   throw new MuxError('unavailable', 'Mux failed to start. Check mux/server.log in CEREBRO_HOME.')
 }
 export async function muxRequest<T>(method: string, params: unknown = {}): Promise<T> {

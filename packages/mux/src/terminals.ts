@@ -14,6 +14,7 @@ import {
   type TerminalContinuation
 } from '@cerebro/core'
 import { StorageWorker } from './worker-client'
+import { log } from './log'
 import { MuxError, type TerminalInfo, type TerminalSnapshot, type TerminalEvent } from './protocol'
 import { VtBoundary } from './vt-boundary'
 import { newShellSessionSequence } from './terminal-session'
@@ -79,6 +80,7 @@ export class Terminals {
     return this.sessions.has(paneId) && !this.initializing.has(paneId)
   }
   private maintenance = false
+  private flushFailing = false
   private initializing = new Map<number, Promise<Session>>()
   readonly scrollback = Math.min(
     100000,
@@ -251,6 +253,7 @@ export class Terminals {
         await this.checkpoint(session)
     } catch (error) {
       session.persistenceError = `Terminal persistence failed: ${String(error)}`
+      log('error', 'terminal.persistence_failed', { paneId: session.info.paneId, error })
       session.process?.pause()
       this.emit({ ...session.info, type: 'status', error: session.persistenceError })
     }
@@ -314,6 +317,12 @@ export class Terminals {
         name: 'xterm-256color'
       })
       session.process = child
+      log('info', 'terminal.spawned', {
+        paneId: session.info.paneId,
+        workspaceId: session.info.workspaceId,
+        shell: basename(session.shell),
+        sessionId: session.info.sessionId
+      })
       child.onData((data) => {
         const bytes = Buffer.byteLength(data)
         session.queued += bytes
@@ -348,6 +357,11 @@ export class Terminals {
           session.process = undefined
           session.info.status = 'exited'
           session.info.exitCode = exitCode
+          log(exitCode === 0 ? 'info' : 'warn', 'terminal.exited', {
+            paneId: session.info.paneId,
+            exitCode,
+            sessionId: session.info.sessionId
+          })
           session.info.sequence++
           const event: TerminalEvent = { ...session.info, type: 'status' }
           await this.record(session, event)
@@ -358,6 +372,11 @@ export class Terminals {
     } catch (error) {
       session.info.status = 'failed'
       session.info.error = String(error)
+      log('error', 'terminal.spawn_failed', {
+        paneId: session.info.paneId,
+        shell: basename(session.shell),
+        error
+      })
       await this.checkpoint(session)
     }
   }
@@ -476,10 +495,15 @@ export class Terminals {
         sequence: session.info.sequence
       }))
       await this.storage.call('files.flush')
+      if (this.flushFailing) log('info', 'terminal.flush_recovered', {})
+      this.flushFailing = false
       for (const { session, sequence } of watermarks)
         if (!session.persistenceError)
           session.info.durableSequence = Math.max(session.info.durableSequence ?? 0, sequence)
     } catch (error) {
+      // Flush runs every second; record only the first failure of a streak.
+      if (!this.flushFailing) log('error', 'terminal.flush_failed', { error })
+      this.flushFailing = true
       for (const session of this.sessions.values())
         this.emit({
           ...session.info,

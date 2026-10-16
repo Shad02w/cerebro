@@ -44,7 +44,7 @@ All clients must share `CEREBRO_HOME` (default `~/cerebro`) and the optional `CE
 | `mux/terminals/<paneId>/<number>.snapshot` | Checked VT screen/history, continuation state and shell launch metadata                                            |
 | `mux/terminals/<paneId>/<number>.journal`  | Checked, ordered output/resize/status records since that checkpoint                                                |
 | `mux/runtimes/<fingerprint>/`              | Staged Node, daemon, worker and native PTY assets that survive app replacement                                     |
-| `mux/server.log`                           | Bounded startup diagnostics                                                                                        |
+| `mux/server.log`, `mux/server.log.1`       | Bounded diagnostics: one JSON record per line from the daemon, desktop main and CLI (see below)                    |
 
 The SQLite storage worker handles metadata and terminal files. It keeps synchronous filesystem/SQLite work off the PTY event loop. Git registry jobs serialize separately from layout and selection; live terminal IO and capture remain available during Git. Removal takes a layout barrier while stopping and deleting owned panes. A separate SQLite ownership record avoids the race inherent in deleting stale PID lock files.
 
@@ -55,6 +55,36 @@ Dirty journals fsync on a one-second cadence. `durableSequence` in terminal capt
 After daemon death or reboot, capture can read interrupted output without launching anything. Activating that pane or explicitly restarting launches a **new shell**, appends a boundary and resets interactive modes. Previous commands and shell environment are never replayed. Interrupted alternate-screen contents remain available as a read-only text view. OSC 7 tracks CWD when supported; otherwise the saved launch directory is used, falling back to the workspace when missing.
 
 Completed mutation IDs deduplicate retries (last 1,024 completed responses). Workspace creation reserves its destination in the operation record and writes its new workspace ID in the same SQLite transaction as the registry insertion. Startup reconciles committed creations whose response was interrupted. If a crash occurred during Git before metadata committed, a retry reports the reserved path for inspection; it does not repeat Git or delete an ambiguous checkout. Terminal input is never automatically retried.
+
+## Diagnostics log
+
+`mux/server.log` is a JSON-lines log shared by the daemon (`proc: "daemon"`), the desktop main process and the CLI (`proc: "client"`). Each record has `ts`, `level`, `proc`, `pid` and `event`, plus IDs, codes and durations. It never contains terminal output, input, tokens, prompts, or file paths. At 1 MiB it rotates to `server.log.1`, so two generations are kept. Writing is best-effort and never fails a request. Anything the daemon prints to stderr also lands in this file as plain text.
+
+| Events                                                                                                                  | Meaning                                                      |
+| ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `server.starting`, `server.listening`, `server.stopping`, `server.stopped`, `server.start_failed`                       | Daemon lifecycle, with version, Node and runtime hash        |
+| `peer.connect`, `peer.authorized`, `peer.close`, `peer.dropped`                                                         | Client connections; `peer.dropped` carries the `reason`      |
+| `request.ok`                                                                                                            | Mutations only: registry, layout commands, restart, stop     |
+| `request.failed`, `request.slow`                                                                                        | Failed requests with `code`; any request over 2 s            |
+| `mutation.deduplicated`                                                                                                 | A retried mutation answered from the journal                 |
+| `terminal.spawned`, `terminal.exited`, `terminal.spawn_failed`, `terminal.persistence_failed`, `terminal.flush_failed`  | PTY and persistence health                                   |
+| `git.provider_timeout`, `git.provider_missing`, `desktop.git_provider_failed`                                           | Git callbacks to the desktop app                             |
+| `client.spawn_daemon`, `client.connect_failed`, `client.start_timeout`, `client.disconnected`, `client.request_timeout` | Why a client could not reach or lost the daemon              |
+| `desktop.ready`, `desktop.mux_connect_failed`, `desktop.mux_disconnected`, `desktop.mux_reconnected`                    | Desktop connection state; retries log the first failure only |
+| `desktop.crash`, `process.crash`, `desktop.render_process_gone`, `desktop.child_process_gone`                           | Crashes and unhandled rejections                             |
+
+### Exporting diagnostics
+
+Users can export a support bundle three ways: **Settings → Diagnostics**, **Help → Export Diagnostics…**, or `cerebro diagnostics export [--output <file.zip|directory>]` (default `~/Downloads`). The app asks where to save; nothing is created or uploaded unless the user exports.
+
+| Entry                 | Contents                                                                                                                                                                                                          |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `logs/server.log(.1)` | The diagnostics log above, scrubbed                                                                                                                                                                               |
+| `system.json`         | App/CLI version, OS, Node/Electron versions, daemon status (pid, epoch, runtime hash, memory), the ownership record (pid, alive, socket reachable), staged runtimes, free disk, database and terminal-store sizes |
+| `layout-summary.json` | Counts of projects, workspaces (by kind and status), tabs and panes (by kind), and checkouts missing on disk                                                                                                      |
+| `README.txt`          | What the bundle holds and omits                                                                                                                                                                                   |
+
+The export never starts the daemon. If it is down, `system.json` records why the connection failed and the ownership record, which is often the answer. It excludes terminal output and input, chat sessions, project/workspace/branch names, file contents, the mux token and GitHub credentials. Home paths are rewritten to `~` and `$CEREBRO_HOME`, and common token shapes, `Authorization` headers, `password=` values and URL credentials are scrubbed from log text. The zip is written by `packages/mux/src/zip.ts`, so there is no archive dependency.
 
 ## Performance and limits
 

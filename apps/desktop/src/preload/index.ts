@@ -59,6 +59,7 @@ const api: CerebroApi = {
       ipcRenderer.removeListener(IPC.native.fullScreen, handler)
     }
   },
+  exportDiagnostics: () => ipcRenderer.invoke(IPC.diagnostics.export),
   getCliStatus: () => ipcRenderer.invoke(IPC.cli.status),
   installCli: () => ipcRenderer.invoke(IPC.cli.install),
   removeCli: () => ipcRenderer.invoke(IPC.cli.remove),

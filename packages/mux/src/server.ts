@@ -1,7 +1,7 @@
 import { claimServer, releaseServer } from './ownership'
 import { createServer } from 'node:net'
 import { randomUUID, createHash } from 'node:crypto'
-import { mkdir, readFile, unlink, chmod, stat, appendFile } from 'node:fs/promises'
+import { mkdir, readFile, unlink, chmod } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { LayoutState, Pane, PaneNode, ProjectListResult } from '@cerebro/core'
 import {
@@ -13,6 +13,7 @@ import {
   type TerminalEvent
 } from './protocol'
 import { muxDirectory, socketPath, databasePath } from './paths'
+import { log, setLogProcess } from './log'
 import { readRuntimeManifest } from './runtime-manifest'
 import { StorageWorker } from './worker-client'
 import { AgentSessions } from './agents/service'
@@ -24,6 +25,8 @@ import type { LayoutChange } from './layout'
 const leaves = (node: PaneNode): Pane[] =>
   node.type === 'pane' ? [node] : [...leaves(node.first), ...leaves(node.second)]
 type Peer = {
+  id: number
+  connectedAt: number
   wire: Wire
   inFlight: number
   authorized: boolean
@@ -35,9 +38,31 @@ function positive(value: unknown): number {
     throw new MuxError('usage', 'A positive ID is required.')
   return Number(value)
 }
+// Methods whose success is worth a record: they change projects, layout or terminals.
+const quiet = new Set(['list', 'select', 'focus'])
+const recorded = (method: string, action: unknown): boolean =>
+  method === 'terminal.restart' ||
+  method === 'server.stop' ||
+  ((method === 'registry' || method === 'layout.command') &&
+    !(typeof action === 'string' && quiet.has(action)))
+const SLOW_MS = 2000
 export async function startServer(): Promise<void> {
+  setLogProcess('daemon')
+  // Fires for uncaught exceptions and unhandled rejections without changing Node's crash behaviour.
+  process.on('uncaughtExceptionMonitor', (error, origin) =>
+    log('error', 'process.crash', { origin, error })
+  )
   await mkdir(muxDirectory(), { recursive: true, mode: 0o700 })
-  if (!(await claimServer())) return
+  if (!(await claimServer())) {
+    log('info', 'server.not_started', { reason: 'another mux host owns this home' })
+    return
+  }
+  log('info', 'server.starting', {
+    version: VERSION,
+    node: process.version,
+    platform: process.platform,
+    arch: process.arch
+  })
   // GUI launches inherit launchd's minimal PATH; agents need what a terminal pane builds.
   const environment = loadShellEnv()
   const token = await readFile(join(muxDirectory(), 'token'), 'utf8')
@@ -64,6 +89,11 @@ export async function startServer(): Promise<void> {
       cached: { result?: T; error?: { code: string; message: string } }
     } | null>('operation.begin', { id, fingerprint })
     if (previous) {
+      log('info', 'mutation.deduplicated', {
+        method,
+        action: (params as { action?: unknown }).action,
+        failed: Boolean(previous.cached.error)
+      })
       if (previous.cached.error)
         throw new MuxError(previous.cached.error.code, previous.cached.error.message)
       return previous.cached.result as T
@@ -116,7 +146,14 @@ export async function startServer(): Promise<void> {
       if (attachment.ready)
         peer.wire.send({ event: 'terminal', data: { ...event, attachmentId: attachment.id } })
       else if (attachment.events.length < 128) attachment.events.push(event)
-      else peer.wire.socket.destroy()
+      else {
+        log('warn', 'peer.dropped', {
+          peer: peer.id,
+          reason: 'attach_backlog',
+          paneId: event.paneId
+        })
+        peer.wire.socket.destroy()
+      }
     }
   })
   const findPane = (workspaceId: number, paneId: number): { pane: Pane; tabId: number } => {
@@ -170,12 +207,14 @@ export async function startServer(): Promise<void> {
       }
       const peer = providers.get(operationId)
       if (!peer) {
+        log('warn', 'git.provider_missing', { operationId })
         reject(new MuxError('unavailable', 'Desktop Git provider disconnected.'))
         return
       }
       const id = randomUUID()
       const timer = setTimeout(() => {
         gitPending.delete(id)
+        log('error', 'git.provider_timeout', { peer: peer.id, command: String(args[0]) })
         reject(new Error('Git provider timed out.'))
       }, 120000)
       gitPending.set(id, { peer, resolve, reject, timer })
@@ -242,8 +281,11 @@ export async function startServer(): Promise<void> {
     }
   }
   let stopping = false
+  let peerCount = 0
   const server = createServer((socket) => {
     const peer: Peer = {
+      id: ++peerCount,
+      connectedAt: Date.now(),
       wire: new Wire(socket),
       inFlight: 0,
       authorized: false,
@@ -251,10 +293,21 @@ export async function startServer(): Promise<void> {
       attachments: new Map()
     }
     peers.add(peer)
-    const handshakeTimer = setTimeout(() => socket.destroy(), 5000)
+    const handshakeTimer = setTimeout(() => {
+      log('warn', 'peer.dropped', { peer: peer.id, reason: 'handshake_timeout' })
+      socket.destroy()
+    }, 5000)
     peer.wire.on('close', () => {
       clearTimeout(handshakeTimer)
       peers.delete(peer)
+      log('info', 'peer.close', {
+        peer: peer.id,
+        authorized: peer.authorized,
+        connectedMs: Date.now() - peer.connectedAt,
+        inFlight: peer.inFlight,
+        peers: peers.size,
+        stopping
+      })
       for (const [paneId, owner] of owners) if (owner === peer) owners.delete(paneId)
       for (const [id, request] of gitPending)
         if (request.peer === peer) {
@@ -265,8 +318,31 @@ export async function startServer(): Promise<void> {
     })
     peer.wire.on('message', (message: Message) => {
       if (++peer.inFlight > 256) {
+        log('warn', 'peer.dropped', { peer: peer.id, reason: 'too_many_requests' })
         socket.destroy()
         return
+      }
+      const startedAt = Date.now()
+      const label = (): Record<string, unknown> => {
+        const body = (
+          message.params && typeof message.params === 'object' ? message.params : {}
+        ) as {
+          action?: unknown
+          workspaceId?: unknown
+          projectId?: unknown
+          paneId?: unknown
+        }
+        const id = (value: unknown): number | undefined =>
+          typeof value === 'number' ? value : undefined
+        return {
+          peer: peer.id,
+          method: typeof message.method === 'string' ? message.method.slice(0, 64) : undefined,
+          action: typeof body.action === 'string' ? body.action.slice(0, 64) : undefined,
+          projectId: id(body.projectId),
+          workspaceId: id(body.workspaceId),
+          paneId: id(body.paneId),
+          durationMs: Date.now() - startedAt
+        }
       }
       void (async () => {
         const p = (message.params ?? {}) as RequestParams
@@ -291,6 +367,7 @@ export async function startServer(): Promise<void> {
             throw new MuxError('conflict', 'This CEREBRO_HOME already owns a different database.')
           peer.authorized = true
           clearTimeout(handshakeTimer)
+          log('info', 'peer.authorized', { peer: peer.id })
           return { epoch, version: VERSION, pid: process.pid, runtime }
         }
         if (stopping) throw new MuxError('unavailable', 'Mux is stopping.')
@@ -506,10 +583,19 @@ export async function startServer(): Promise<void> {
       })().then(
         (result) => {
           peer.inFlight--
+          const done = label()
+          if (recorded(String(message.method), done.action)) log('info', 'request.ok', done)
+          else if ((done.durationMs as number) > SLOW_MS) log('warn', 'request.slow', done)
           if (result !== SENT) peer.wire.send({ id: message.id, result })
         },
         (error) => {
           peer.inFlight--
+          const code = error?.code ?? 'internal'
+          log(code === 'internal' ? 'error' : 'warn', 'request.failed', {
+            ...label(),
+            code,
+            error: code === 'internal' ? error : error?.message
+          })
           peer.wire.send({
             id: message.id,
             error: { code: error.code ?? 'internal', message: error.message }
@@ -529,9 +615,16 @@ export async function startServer(): Promise<void> {
   })
   if (process.platform !== 'win32') await chmod(socketPath(), 0o600)
   const timer = setInterval(() => void terminals.flush(), 1000)
+  log('info', 'server.listening', {
+    epoch,
+    runtime: runtime?.muxHash,
+    runtimeVersion: runtime?.version,
+    builtAt: runtime?.builtAt
+  })
   async function shutdown(requested = false): Promise<void> {
     if (stopping) return
     stopping = true
+    log('info', 'server.stopping', { requested, peers: peers.size })
     for (const peer of peers)
       if (peer.authorized) peer.wire.send({ event: 'shutdown', data: { requested } })
     for (const [id, request] of gitPending) {
@@ -545,7 +638,11 @@ export async function startServer(): Promise<void> {
       await Promise.all([serial, registrySerial])
       await agents.shutdown()
       await terminals.shutdown()
+    } catch (error) {
+      log('error', 'server.shutdown_failed', { error })
+      throw error
     } finally {
+      log('info', 'server.stopped', { requested })
       await storage.worker.terminate()
       if (process.platform !== 'win32') await unlink(socketPath()).catch(() => {})
       releaseServer()
@@ -555,15 +652,7 @@ export async function startServer(): Promise<void> {
   process.on('SIGTERM', () => void shutdown())
   process.on('SIGINT', () => void shutdown())
 }
-startServer().catch(async (error) => {
-  const log = join(muxDirectory(), 'server.log')
-  try {
-    if ((await stat(log)).size > 1024 * 1024) await unlink(log)
-  } catch {
-    /* First startup. */
-  }
-  await appendFile(log, `${new Date().toISOString()} ${String(error)}\n`, { mode: 0o600 }).catch(
-    () => {}
-  )
+startServer().catch((error) => {
+  log('error', 'server.start_failed', { error })
   process.exit(1)
 })

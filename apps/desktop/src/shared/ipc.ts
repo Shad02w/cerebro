@@ -10,6 +10,9 @@ export const IPC = {
     image: 'cerebro:chat:image',
     changed: 'cerebro:chat:changed'
   },
+  diagnostics: {
+    export: 'cerebro:diagnostics:export'
+  },
   cli: {
     status: 'cerebro:cli:status',
     install: 'cerebro:cli:install',

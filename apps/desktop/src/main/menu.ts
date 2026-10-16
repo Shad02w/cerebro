@@ -9,6 +9,7 @@ import {
 import { IPC } from '../shared/ipc'
 import { runNativeCommand } from './native-commands'
 import { stopMuxForQuit } from './mux'
+import { exportDiagnosticsFromMenu } from './diagnostics'
 
 let quittingCompletely = false
 
@@ -102,7 +103,17 @@ export function setAppMenu(): void {
     },
     { role: 'editMenu' },
     { label: 'View', submenu: viewSubmenu },
-    { role: 'windowMenu' }
+    { role: 'windowMenu' },
+    {
+      role: 'help',
+      submenu: [
+        {
+          id: 'export-diagnostics',
+          label: 'Export Diagnostics…',
+          click: () => void exportDiagnosticsFromMenu()
+        }
+      ]
+    }
   ]
 
   const menu = Menu.buildFromTemplate(template)

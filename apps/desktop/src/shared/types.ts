@@ -312,6 +312,9 @@ export type CliInstallStatus = {
   message: string
 }
 
+export type DiagnosticsExportResult =
+  { state: 'saved'; path: string; bytes: number; muxRunning: boolean } | { state: 'canceled' }
+
 export type CerebroApi = {
   chatCommand: (command: ChatCommand) => Promise<ChatView>
   chatOverview: () => Promise<ChatActivityOverview>
@@ -343,6 +346,8 @@ export type CerebroApi = {
   onWindowFocus: (listener: (focused: boolean) => void) => () => void
   /** Calls back with the current state immediately, then on every change. */
   onFullScreenChange: (listener: (fullScreen: boolean) => void) => () => void
+  /** Asks where to save, then writes a support bundle (logs and counts, never content). */
+  exportDiagnostics: () => Promise<DiagnosticsExportResult>
   getCliStatus: () => Promise<CliInstallStatus>
   installCli: () => Promise<CliInstallStatus>
   removeCli: () => Promise<CliInstallStatus>
