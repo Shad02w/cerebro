@@ -46,7 +46,11 @@ import {
 import { searchFiles } from './file-search'
 import { ComposerFileMenu, type FileMenuHandle, type FileOption } from './composer-file-menu'
 import { useMenuHighlight } from './composer-menu-scroll'
-import { loadWorkspaceFiles } from './workspace-files'
+import {
+  createMentionFileListing,
+  loadWorkspaceFiles,
+  type WorkspaceFileIndex
+} from './workspace-files'
 import {
   composerVimKey,
   handleComposerVimKey,
@@ -64,9 +68,8 @@ const fileMentionKey = new PluginKey('fileMention')
 const skillHighlightKey = new PluginKey('skillHighlight')
 
 type SkillCatalog = { current: readonly AgentSkill[] }
-type FileIndex = { current: ReadonlySet<string> }
 
-const mentionHighlight = (catalog: SkillCatalog, files: FileIndex): Extension =>
+const mentionHighlight = (catalog: SkillCatalog, files: WorkspaceFileIndex): Extension =>
   Extension.create({
     name: 'skillHighlight',
     addProseMirrorPlugins() {
@@ -432,10 +435,11 @@ const extensionsFor = (
   interactive: boolean,
   menuRefresh?: { current: (() => void) | null },
   issue?: { current: string },
-  files?: FileIndex,
+  files?: WorkspaceFileIndex,
   workspaceId?: { current: number | null }
 ): Extensions => {
-  const fileIndex = files ?? { current: new Set<string>() }
+  const fileIndex = files ?? { current: new Set<string>(), generation: 0 }
+  const listing = createMentionFileListing(workspaceId ?? { current: null }, fileIndex)
   const CodeBlock = CodeBlockLowlight.extend({
     addNodeView() {
       return ReactNodeViewRenderer(CodeBlockView)
@@ -581,12 +585,10 @@ const extensionsFor = (
                 debounce: 40,
                 allow: ({ state, range }) => outsideCode(state, range),
                 items: async ({ query, signal }) => {
-                  const id = workspaceId?.current
-                  if (id == null) return []
+                  if (workspaceId?.current == null) return []
                   try {
-                    const listed = await loadWorkspaceFiles(id)
+                    const listed = await listing.files()
                     if (signal.aborted) return []
-                    fileIndex.current = new Set(listed)
                     await new Promise<void>((resolve) => {
                       setTimeout(resolve, 0)
                     })
@@ -619,6 +621,7 @@ const extensionsFor = (
                   let unmount: (() => void) | undefined
                   return {
                     onStart: (props) => {
+                      listing.begin()
                       menuOpen.current = true
                       component = new ReactRenderer(ComposerFileMenu, {
                         props: {
@@ -706,7 +709,7 @@ export function ComposerEditor({
   const catalogRef = useRef<SkillCatalog>({ current: skills })
   const issueRef = useRef(skillIssue)
   const menuRefreshRef = useRef<(() => void) | null>(null)
-  const filesRef = useRef<FileIndex>({ current: new Set() })
+  const filesRef = useRef<WorkspaceFileIndex>({ current: new Set(), generation: 0 })
   const workspaceIdRef = useRef<number | null>(workspaceId)
   useLayoutEffect(() => {
     catalogRef.current.current = skills
@@ -895,8 +898,9 @@ export function ComposerEditor({
   useEffect(() => {
     if (!editor || editor.isDestroyed || workspaceId == null) return
     let cancel = false
+    const generation = ++filesRef.current.generation
     void loadWorkspaceFiles(workspaceId).then((listed) => {
-      if (cancel || editor.isDestroyed) return
+      if (cancel || editor.isDestroyed || generation !== filesRef.current.generation) return
       filesRef.current.current = new Set(listed)
       editor.view.dispatch(editor.state.tr.setMeta('filesLoaded', true))
     })
