@@ -41,6 +41,7 @@ import { WorkspaceSessionList } from '@/components/workspace-sessions'
 import { useKeybindHandler } from '@/keybinds'
 import { sortAgentActivity, useAgentActivity } from '@/lib/agent-activity'
 import { openAgentSession } from '@/lib/open-agent-session'
+import { ensureWorkspaceForCheckout } from '@/lib/ensure-workspace-checkout'
 import { layoutOptions } from '@/lib/query-client'
 import { SETTINGS_SECTIONS } from '@/lib/settings-sections'
 import { Input } from '@/components/ui/input'
@@ -848,6 +849,26 @@ function NestedRepoBody({ repo }: { repo: NestedRepo }): React.JSX.Element {
   )
 }
 
+function selectNestedCheckout(
+  match: Workspace | null,
+  localPath: string,
+  onSelectWorkspace: (workspaceId: number) => void
+): void {
+  if (match) {
+    onSelectWorkspace(match.id)
+    return
+  }
+  void registerNestedCheckout(localPath, onSelectWorkspace)
+}
+
+async function registerNestedCheckout(
+  localPath: string,
+  onSelectWorkspace: (workspaceId: number) => void
+): Promise<void> {
+  const workspaceId = await ensureWorkspaceForCheckout(localPath)
+  if (workspaceId != null) onSelectWorkspace(workspaceId)
+}
+
 function NestedRepoRow({
   repo,
   match,
@@ -876,16 +897,17 @@ function NestedRepoRow({
               'app-no-drag',
               match && 'pr-14',
               rowClass,
-              'hover:bg-sidebar-accent hover:text-sidebar-foreground/60'
+              'hover:text-sidebar-foreground/60'
             )}
             data-testid={match ? `workspace-row-${match.id}` : undefined}
             data-workspace-id={match?.id}
+            data-nested-path={repo.localPath}
             data-workspace-role="repository"
             data-workspace-icon="directory-name"
             data-active={active ? 'true' : 'false'}
             aria-current={active ? 'location' : undefined}
             onClick={(): void => {
-              if (match) onSelectWorkspace(match.id)
+              selectNestedCheckout(match, repo.localPath, onSelectWorkspace)
             }}
           >
             <NestedRepoBody repo={repo} />
@@ -1164,7 +1186,6 @@ function PlainDirectoryRow({
   const nested = project.nestedRepos ?? []
   const grouped = nested.length > 0
   const [reposOpen, setReposOpen] = useState(true)
-  const [rootHovered, setRootHovered] = useState(false)
   if (!workspace) return null
   const active = workspace.id === activeWorkspaceId
   const agents = activity.get(workspace.id) ?? []
@@ -1175,14 +1196,9 @@ function PlainDirectoryRow({
         className={cn(grouped && 'sidebar-root-group')}
         data-testid={grouped ? `workspace-root-${workspace.id}` : undefined}
         data-active={grouped && active ? 'true' : 'false'}
-        data-hover={grouped && rootHovered ? 'true' : 'false'}
       >
         <WorkspaceHoverCard workspace={workspace}>
-          <SidebarMenuRow
-            data-workspace-id={workspace.id}
-            onPointerEnter={grouped ? (): void => setRootHovered(true) : undefined}
-            onPointerLeave={grouped ? (): void => setRootHovered(false) : undefined}
-          >
+          <SidebarMenuRow data-workspace-id={workspace.id}>
             <DirectoryNameLine
               project={project}
               workspace={workspace}

@@ -52,6 +52,17 @@ function focusTextblock(typeName: string): void {
   })
 }
 
+function typeIntoComposer(text: string): void {
+  for (const char of text) {
+    const view = composer().editor.view
+    const { from, to } = view.state.selection
+    act(() => {
+      const handled = view.someProp('handleTextInput', (handler) => handler(view, from, to, char))
+      if (!handled) view.dispatch(view.state.tr.insertText(char, from, to))
+    })
+  }
+}
+
 function press(key: string, init: KeyboardEventInit = {}): void {
   const target = composer()
   act(() => {
@@ -87,6 +98,25 @@ describe('composer Enter keys', () => {
     })
     expect(composer().querySelector('li')).toHaveTextContent('Ship it')
     expect(composer().getAttribute('data-composer-text')).toBe('- Ship it\nplain\n')
+  })
+
+  it('turns a fence at the start of a paragraph into a code block', () => {
+    renderComposer('')
+    focusTextblock('paragraph')
+    typeIntoComposer('``` ')
+    expect(composer().editor.isActive('codeBlock')).toBe(true)
+    expect(composer().getAttribute('data-composer-text')).toContain('```')
+  })
+
+  it('turns a fence on a new bullet into a code block', () => {
+    renderComposer('- Ship the notes')
+    focusTextblock('paragraph')
+    press('Enter', { shiftKey: true })
+    typeIntoComposer('``` ')
+    expect(composer().editor.isActive('codeBlock')).toBe(true)
+    expect(composer().querySelectorAll('li')).toHaveLength(1)
+    expect(composer().getAttribute('data-composer-text')).toContain('```')
+    expect(composer().getAttribute('data-composer-text')).toContain('- Ship the notes')
   })
 
   it('leaves a lone empty bullet on Shift+Enter without sending', () => {
