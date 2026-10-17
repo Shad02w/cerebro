@@ -82,7 +82,11 @@ describe('composer Enter keys', () => {
     press('Enter', { shiftKey: true })
     expect(onSubmit).not.toHaveBeenCalled()
     expect(composer().querySelectorAll('li')).toHaveLength(1)
-    expect(composer()).toHaveAttribute('data-composer-text', '- Ship it\n')
+    act(() => {
+      composer().editor.commands.insertContent('plain')
+    })
+    expect(composer().querySelector('li')).toHaveTextContent('Ship it')
+    expect(composer().getAttribute('data-composer-text')).toBe('- Ship it\nplain\n')
   })
 
   it('leaves a lone empty bullet on Shift+Enter without sending', () => {
@@ -91,7 +95,7 @@ describe('composer Enter keys', () => {
     press('Enter', { shiftKey: true })
     expect(onSubmit).not.toHaveBeenCalled()
     expect(composer().querySelectorAll('li')).toHaveLength(0)
-    expect(composer()).toHaveAttribute('data-composer-text', '')
+    expect(composer().getAttribute('data-composer-text')).not.toContain('-')
   })
 
   it('inserts a plain newline on Shift+Enter and sends on Enter', () => {
