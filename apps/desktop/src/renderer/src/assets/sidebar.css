@@ -317,8 +317,25 @@
   border-radius: 7px;
 }
 
-.cerebro-sidebar .sidebar-root-group .sidebar-nested-workspace[data-active='true'],
-.cerebro-sidebar .sidebar-root-group .sidebar-nested-workspace[data-active='true']:hover {
+/* Focus and selection stay on this row. A child checkout with no workspace of
+   its own is still a tab stop, and the highlight does not move up to the folder. */
+.cerebro-sidebar
+  .sidebar-root-group
+  [data-sidebar='menu-row']
+  button.sidebar-nested-workspace[data-workspace-role='repository'][data-workspace-icon='directory-name']:is(
+    :focus,
+    :focus-visible,
+    [data-active='true']
+  ),
+.cerebro-sidebar
+  .sidebar-root-group
+  [data-sidebar='menu-row']
+  button.sidebar-nested-workspace[data-workspace-role='repository'][data-workspace-icon='directory-name']:is(
+    :focus,
+    :focus-visible,
+    [data-active='true']
+  ):hover {
+  outline: none;
   background-color: color-mix(in srgb, var(--sidebar-selected) 16%, var(--sidebar));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sidebar-selected) 70%, transparent);
 }
