@@ -124,6 +124,18 @@ test('adds a folder of git repos as one workspace', async ({ page, electronApp }
     expect(listed.activeWorkspaceId).toBeNull()
     await expect(page.getByTestId('content-tab-bar')).toHaveCount(0)
 
+    const backendRow = group.locator(
+      '[data-testid="workspace-nested-repo-backend"] [data-workspace-role="repository"]'
+    )
+    await backendRow.focus()
+    await expect(backendRow).toBeFocused()
+    await expect
+      .poll(async () => {
+        const selected = await page.evaluate(async () => window.cerebro.listProjects())
+        return selected.activeWorkspaceId
+      })
+      .toBeNull()
+
     await addDirectoryViaUi(page, electronApp, frontend)
     await expect(page.getByTestId(/project-row-/)).toHaveCount(0)
     await expect(page.getByTestId(/workspace-row-/)).toHaveCount(2)
@@ -132,6 +144,7 @@ test('adds a folder of git repos as one workspace', async ({ page, electronApp }
       .getByTestId('workspace-nested-repo-frontend')
       .locator('[data-workspace-role="repository"]')
     await nestedFrontend.click()
+    await expect(nestedFrontend).toBeFocused()
     await expect(nestedFrontend).toHaveAttribute('aria-current', 'location')
     await group.getByTestId(/workspace-nested-toggle-/).click()
     await expect(group.getByTestId('workspace-nested-repo-frontend')).toBeHidden()

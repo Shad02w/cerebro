@@ -464,7 +464,12 @@ describe('sidebar project rows', () => {
     expect(frontendRow).toHaveAttribute('data-workspace-role', 'repository')
     expect(frontendRow.className).toContain('text-xs')
     expect(frontendRow.className).toContain('text-sidebar-foreground/60')
-    expect(screen.getByTestId('workspace-nested-repo-backend').querySelector('button')).toBeNull()
+    const backendRow = screen.getByTestId('workspace-nested-repo-backend').querySelector('button')
+    expect(backendRow).not.toBeNull()
+    expect(backendRow).not.toHaveAttribute('data-workspace-id')
+    await user.click(backendRow!)
+    expect(backendRow).toHaveFocus()
+    expect(onSelectWorkspace).not.toHaveBeenCalled()
     expect(
       screen
         .getByTestId('workspace-nested-repo-backend')

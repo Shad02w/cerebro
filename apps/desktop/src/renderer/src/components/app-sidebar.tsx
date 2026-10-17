@@ -870,33 +870,26 @@ function NestedRepoRow({
     <li data-testid={`workspace-nested-repo-${repo.name}`}>
       <WorkspaceHoverCard workspace={match ?? undefined} showStatus={false}>
         <SidebarMenuRow data-workspace-id={match?.id}>
-          {match ? (
-            <button
-              type="button"
-              className={cn(
-                'app-no-drag pr-14',
-                rowClass,
-                'hover:bg-sidebar-accent hover:text-sidebar-foreground/60'
-              )}
-              data-testid={`workspace-row-${match.id}`}
-              data-workspace-id={match.id}
-              data-workspace-role="repository"
-              data-workspace-icon="directory-name"
-              data-active={active ? 'true' : 'false'}
-              aria-current={active ? 'location' : undefined}
-              onClick={(): void => onSelectWorkspace(match.id)}
-            >
-              <NestedRepoBody repo={repo} />
-            </button>
-          ) : (
-            <div
-              className={rowClass}
-              data-workspace-role="repository"
-              data-workspace-icon="directory-name"
-            >
-              <NestedRepoBody repo={repo} />
-            </div>
-          )}
+          <button
+            type="button"
+            className={cn(
+              'app-no-drag',
+              match && 'pr-14',
+              rowClass,
+              'hover:bg-sidebar-accent hover:text-sidebar-foreground/60'
+            )}
+            data-testid={match ? `workspace-row-${match.id}` : undefined}
+            data-workspace-id={match?.id}
+            data-workspace-role="repository"
+            data-workspace-icon="directory-name"
+            data-active={active ? 'true' : 'false'}
+            aria-current={active ? 'location' : undefined}
+            onClick={(): void => {
+              if (match) onSelectWorkspace(match.id)
+            }}
+          >
+            <NestedRepoBody repo={repo} />
+          </button>
           {match ? (
             <RowActions overlay>
               <WorkspaceSessionHistory workspaceId={match.id} />
