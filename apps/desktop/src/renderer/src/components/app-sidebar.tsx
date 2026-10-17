@@ -41,6 +41,7 @@ import { WorkspaceSessionList } from '@/components/workspace-sessions'
 import { useKeybindHandler } from '@/keybinds'
 import { sortAgentActivity, useAgentActivity } from '@/lib/agent-activity'
 import { openAgentSession } from '@/lib/open-agent-session'
+import { ensureWorkspaceForCheckout } from '@/lib/ensure-workspace-checkout'
 import { layoutOptions } from '@/lib/query-client'
 import { SETTINGS_SECTIONS } from '@/lib/settings-sections'
 import { Input } from '@/components/ui/input'
@@ -848,6 +849,26 @@ function NestedRepoBody({ repo }: { repo: NestedRepo }): React.JSX.Element {
   )
 }
 
+function selectNestedCheckout(
+  match: Workspace | null,
+  localPath: string,
+  onSelectWorkspace: (workspaceId: number) => void
+): void {
+  if (match) {
+    onSelectWorkspace(match.id)
+    return
+  }
+  void registerNestedCheckout(localPath, onSelectWorkspace)
+}
+
+async function registerNestedCheckout(
+  localPath: string,
+  onSelectWorkspace: (workspaceId: number) => void
+): Promise<void> {
+  const workspaceId = await ensureWorkspaceForCheckout(localPath)
+  if (workspaceId != null) onSelectWorkspace(workspaceId)
+}
+
 function NestedRepoRow({
   repo,
   match,
@@ -880,12 +901,13 @@ function NestedRepoRow({
             )}
             data-testid={match ? `workspace-row-${match.id}` : undefined}
             data-workspace-id={match?.id}
+            data-nested-path={repo.localPath}
             data-workspace-role="repository"
             data-workspace-icon="directory-name"
             data-active={active ? 'true' : 'false'}
             aria-current={active ? 'location' : undefined}
             onClick={(): void => {
-              if (match) onSelectWorkspace(match.id)
+              selectNestedCheckout(match, repo.localPath, onSelectWorkspace)
             }}
           >
             <NestedRepoBody repo={repo} />

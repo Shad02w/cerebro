@@ -16,6 +16,7 @@ import { DEFAULT_TERMINAL_THEME, type TerminalThemeId } from '@shared/terminal-t
 import { TERMINAL_PALETTES } from '@/lib/terminal-themes'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { ensureWorkspaceForCheckout } from '@/lib/ensure-workspace-checkout'
 import { acceptLayout, layoutOptions } from '@/lib/query-client'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
@@ -579,6 +580,47 @@ function focusedWorkspaceId(): number | null {
   return Number.isInteger(id) && id > 0 ? id : null
 }
 
+/** Nested checkout focused before it has a workspace. An existing id uses the normal path. */
+function focusedNestedCheckoutPath(): string | null {
+  const el = document.activeElement
+  if (!(el instanceof Element)) return null
+  const row = el.closest('[data-nested-path]')
+  if (!row) return null
+  const ownId = Number(row.getAttribute('data-workspace-id'))
+  if (Number.isInteger(ownId) && ownId > 0) return null
+  const path = row.getAttribute('data-nested-path')?.trim() ?? ''
+  return path || null
+}
+
+async function openNestedCheckout(
+  localPath: string,
+  activeWorkspaceId: number | null,
+  onSelectWorkspace: (workspaceId: number) => void,
+  open: (workspaceId: number) => void
+): Promise<void> {
+  const workspaceId = await ensureWorkspaceForCheckout(localPath)
+  if (workspaceId == null) return
+  if (workspaceId !== activeWorkspaceId) onSelectWorkspace(workspaceId)
+  open(workspaceId)
+}
+
+function openFocusedWorkspace(
+  activeWorkspaceId: number | null,
+  onSelectWorkspace: (workspaceId: number) => void,
+  open: (workspaceId: number) => void
+): boolean {
+  const nestedPath = focusedNestedCheckoutPath()
+  if (nestedPath) {
+    void openNestedCheckout(nestedPath, activeWorkspaceId, onSelectWorkspace, open)
+    return true
+  }
+  const target = focusedWorkspaceId() ?? activeWorkspaceId
+  if (target == null) return false
+  if (target !== activeWorkspaceId) onSelectWorkspace(target)
+  open(target)
+  return true
+}
+
 type TerminalStackProps = {
   visible: boolean
   activeWorkspaceId: number | null
@@ -650,27 +692,19 @@ export function TerminalStack({
     command({ target: 'tab', action: 'open-changes', workspaceId, focus: true })
   useKeybindHandler('newTerminal', () => {
     if (!visible || onStartupReady) return false
-    const target = focusedWorkspaceId() ?? activeWorkspaceId
-    if (target == null) return false
-    if (target !== activeWorkspaceId) onSelectWorkspace(target)
-    addTab(target)
-    return true
+    return openFocusedWorkspace(activeWorkspaceId, onSelectWorkspace, (workspaceId) =>
+      addTab(workspaceId)
+    )
   })
   useKeybindHandler('newChat', () => {
     if (!visible || onStartupReady) return false
-    const target = focusedWorkspaceId() ?? activeWorkspaceId
-    if (target == null) return false
-    if (target !== activeWorkspaceId) onSelectWorkspace(target)
-    addTab(target, 'chat')
-    return true
+    return openFocusedWorkspace(activeWorkspaceId, onSelectWorkspace, (workspaceId) =>
+      addTab(workspaceId, 'chat')
+    )
   })
   useKeybindHandler('openChanges', () => {
     if (!visible || onStartupReady) return false
-    const target = focusedWorkspaceId() ?? activeWorkspaceId
-    if (target == null) return false
-    if (target !== activeWorkspaceId) onSelectWorkspace(target)
-    openChanges(target)
-    return true
+    return openFocusedWorkspace(activeWorkspaceId, onSelectWorkspace, openChanges)
   })
   useKeybindHandler('closeTab', () => {
     if (!visible || onStartupReady || activeWorkspaceId == null || activeTabId == null) return false
