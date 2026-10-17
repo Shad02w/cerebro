@@ -1,6 +1,7 @@
 import { useImperativeHandle, useState } from 'react'
 import { File } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useMenuHighlight } from './composer-menu-scroll'
 import { fileIconUrl } from './file-icon'
 
 export type FileOption = { id: string; label: string }
@@ -27,21 +28,18 @@ export function ComposerFileMenu({
   if (!loading && kept !== items) setKept(items)
   const rows = loading && items.length === 0 ? kept : items
   const rowsKey = rows.map((item) => item.id).join('\0')
-  const [selected, setSelected] = useState(0)
-  const [seenRows, setSeenRows] = useState(rowsKey)
-  if (seenRows !== rowsKey) {
-    setSeenRows(rowsKey)
-    setSelected(0)
-  }
-  const highlighted = rows.length ? selected % rows.length : 0
+  const { highlighted, move, highlightIndex, listRef, optionRef } = useMenuHighlight(
+    rowsKey,
+    rows.length
+  )
   useImperativeHandle(ref, () => ({
     onKeyDown: ({ event }) => {
       if (event.key === 'ArrowDown') {
-        setSelected((current) => (rows.length ? (current + 1) % rows.length : 0))
+        move(1)
         return true
       }
       if (event.key === 'ArrowUp') {
-        setSelected((current) => (rows.length ? (current - 1 + rows.length) % rows.length : 0))
+        move(-1)
         return true
       }
       if (event.key === 'Enter' || event.key === 'Tab') {
@@ -54,6 +52,7 @@ export function ComposerFileMenu({
   }))
   return (
     <div
+      ref={listRef}
       data-testid="composer-file-menu"
       data-loading={loading || undefined}
       role="listbox"
@@ -74,11 +73,12 @@ export function ComposerFileMenu({
               data-path={item.label}
               data-file-icon={icon ? 'brand' : 'file'}
               title={item.label}
+              ref={optionRef(index)}
               className={cn(
                 'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left',
                 index === highlighted && 'bg-accent text-accent-foreground'
               )}
-              onMouseEnter={() => setSelected(index)}
+              onMouseEnter={() => highlightIndex(index)}
               onMouseDown={(event) => {
                 event.preventDefault()
                 command(item)

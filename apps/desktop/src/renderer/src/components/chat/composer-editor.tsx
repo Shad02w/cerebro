@@ -37,6 +37,7 @@ import {
 } from './composer-document'
 import { searchFiles } from './file-search'
 import { ComposerFileMenu, type FileMenuHandle, type FileOption } from './composer-file-menu'
+import { useMenuHighlight } from './composer-menu-scroll'
 import { loadWorkspaceFiles } from './workspace-files'
 import {
   composerVimKey,
@@ -298,21 +299,18 @@ function SkillMenu({
   issue?: string
 }): React.JSX.Element {
   const itemsKey = items.map((item) => item.id).join('\0')
-  const [selected, setSelected] = useState(0)
-  const [seenItems, setSeenItems] = useState(itemsKey)
-  if (seenItems !== itemsKey) {
-    setSeenItems(itemsKey)
-    setSelected(0)
-  }
-  const highlighted = items.length ? selected % items.length : 0
+  const { highlighted, move, highlightIndex, listRef, optionRef } = useMenuHighlight(
+    itemsKey,
+    items.length
+  )
   useImperativeHandle(ref, () => ({
     onKeyDown: ({ event }) => {
       if (event.key === 'ArrowDown') {
-        setSelected((current) => (items.length ? (current + 1) % items.length : 0))
+        move(1)
         return true
       }
       if (event.key === 'ArrowUp') {
-        setSelected((current) => (items.length ? (current - 1 + items.length) % items.length : 0))
+        move(-1)
         return true
       }
       if (event.key === 'Enter' || event.key === 'Tab') {
@@ -325,6 +323,7 @@ function SkillMenu({
   }))
   return (
     <div
+      ref={listRef}
       data-testid="composer-skill-menu"
       role="listbox"
       aria-label="Skills"
@@ -339,11 +338,12 @@ function SkillMenu({
             role="option"
             aria-selected={index === highlighted}
             data-testid={`composer-skill-option-${item.name}`}
+            ref={optionRef(index)}
             className={cn(
               'flex w-full flex-col items-start rounded-sm px-2 py-1.5 text-left',
               index === highlighted && 'bg-accent text-accent-foreground'
             )}
-            onMouseEnter={() => setSelected(index)}
+            onMouseEnter={() => highlightIndex(index)}
             onMouseDown={(event) => {
               event.preventDefault()
               command(item)
