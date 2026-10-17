@@ -166,6 +166,78 @@ test('adds a folder of git repos as one workspace', async ({ page, electronApp }
   }
 })
 
+test('opens changes for a nested repository from that row', async ({ page, electronApp }) => {
+  const root = await mkdtemp(join(tmpdir(), 'cerebro-nested-changes-e2e-'))
+  const parent = join(root, 'apps-folder')
+  const frontend = join(parent, 'frontend')
+  const backend = join(parent, 'backend')
+
+  try {
+    await initGitRepo(frontend, 'main', 'frontend-app')
+    await initGitRepo(backend, 'develop', 'backend-app')
+    await writeFile(join(backend, 'dirty.txt'), 'changed\n')
+    await addDirectoryViaUi(page, electronApp, parent)
+
+    const group = page.getByTestId(/workspace-root-/)
+    const folder = page.getByTestId(/workspace-row-/).filter({ hasText: 'apps-folder' })
+    await expect(folder).toBeVisible({ timeout: 30_000 })
+    const backendRow = group.locator(
+      '[data-testid="workspace-nested-repo-backend"] [data-workspace-role="repository"]'
+    )
+    await expect(backendRow).toBeVisible()
+    await backendRow.focus()
+    await expect(backendRow).toBeFocused()
+
+    const chord = process.platform === 'darwin' ? 'Meta+Shift+g' : 'Control+Shift+g'
+    await page.keyboard.press(chord)
+
+    const backendPath = await realpath(backend)
+    let backendWorkspaceId = 0
+    await expect
+      .poll(async () => {
+        const selected = await page.evaluate(async () => window.cerebro.listProjects())
+        const workspace = selected.projects
+          .flatMap((project) => project.workspaces)
+          .find((item) => item.localPath === backendPath)
+        backendWorkspaceId =
+          workspace && selected.activeWorkspaceId === workspace.id ? workspace.id : 0
+        return backendWorkspaceId
+      })
+      .toBeGreaterThan(0)
+    await expect(backendRow).toHaveAttribute('aria-current', 'location')
+    await expect(folder).not.toHaveAttribute('aria-current', 'location')
+    await expect(page.getByTestId(/project-row-/)).toHaveCount(0)
+    const changes = page.locator(
+      `[data-testid="changes-view"][data-workspace-id="${backendWorkspaceId}"][data-active="true"]`
+    )
+    await expect(changes).toBeVisible()
+    await expect(changes.locator('[data-change-path="dirty.txt"]')).toBeVisible()
+
+    const frontendRow = group.locator(
+      '[data-testid="workspace-nested-repo-frontend"] [data-workspace-role="repository"]'
+    )
+    await frontendRow.click()
+    const frontendPath = await realpath(frontend)
+    await expect
+      .poll(async () => {
+        const selected = await page.evaluate(async () => window.cerebro.listProjects())
+        const workspace = selected.projects
+          .flatMap((project) => project.workspaces)
+          .find((item) => item.localPath === frontendPath)
+        return workspace && selected.activeWorkspaceId === workspace.id ? workspace.id : 0
+      })
+      .toBeGreaterThan(0)
+    await expect(frontendRow).toHaveAttribute('aria-current', 'location')
+    await expect(page.getByTestId('workspace-empty-state')).toBeVisible()
+    await page.getByRole('button', { name: 'New Changes tab' }).click()
+    const frontendChanges = page.locator('[data-testid="changes-view"][data-active="true"]')
+    await expect(frontendChanges.locator('[data-change-path="dirty.txt"]')).toHaveCount(0)
+    await expect(frontendChanges.getByTestId('changes-sidebar-empty')).toBeVisible()
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test('a plain directory copies its path and can be removed from its row', async ({
   page,
   electronApp

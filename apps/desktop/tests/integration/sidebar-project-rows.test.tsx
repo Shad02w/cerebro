@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen, type RenderResult } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, type RenderResult } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { SidebarGroupBy } from '@shared/types'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -467,9 +467,36 @@ describe('sidebar project rows', () => {
     const backendRow = screen.getByTestId('workspace-nested-repo-backend').querySelector('button')
     expect(backendRow).not.toBeNull()
     expect(backendRow).not.toHaveAttribute('data-workspace-id')
-    await user.click(backendRow!)
+    expect(backendRow).toHaveAttribute('data-nested-path', '/tmp/apps-folder/backend')
+    const createProjectFromDirectory = vi.fn(async () => ({
+      workspaces: [
+        workspace({
+          id: 61,
+          projectId: 6,
+          repositoryId: 6,
+          kind: 'default',
+          branch: 'develop',
+          localPath: '/tmp/apps-folder/backend'
+        })
+      ]
+    }))
+    window.cerebro = {
+      ...window.cerebro,
+      listProjects: async () => ({
+        projects: [apps, frontend, notes],
+        activeWorkspaceId: 41
+      }),
+      createProjectFromDirectory
+    } as unknown as typeof window.cerebro
+    backendRow!.focus()
     expect(backendRow).toHaveFocus()
     expect(onSelectWorkspace).not.toHaveBeenCalled()
+    expect(createProjectFromDirectory).not.toHaveBeenCalled()
+    await user.click(backendRow!)
+    await waitFor(() => {
+      expect(onSelectWorkspace).toHaveBeenCalledWith(61)
+    })
+    expect(createProjectFromDirectory).toHaveBeenCalledWith('/tmp/apps-folder/backend')
     expect(
       screen
         .getByTestId('workspace-nested-repo-backend')
@@ -480,6 +507,7 @@ describe('sidebar project rows', () => {
 
     await user.click(screen.getByTestId('workspace-nested-branch-frontend'))
     expect(onSelectWorkspace).toHaveBeenCalledWith(51)
+    expect(createProjectFromDirectory).toHaveBeenCalledTimes(1)
   })
 
   it('collapses nested repositories without hiding the root sessions', async () => {
