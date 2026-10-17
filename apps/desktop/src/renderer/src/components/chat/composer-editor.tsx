@@ -46,7 +46,11 @@ import {
 import { searchFiles } from './file-search'
 import { ComposerFileMenu, type FileMenuHandle, type FileOption } from './composer-file-menu'
 import { useMenuHighlight } from './composer-menu-scroll'
-import { loadWorkspaceFiles } from './workspace-files'
+import {
+  createMentionFileListing,
+  loadWorkspaceFiles,
+  type WorkspaceFileIndex
+} from './workspace-files'
 import {
   composerVimKey,
   handleComposerVimKey,
@@ -64,9 +68,8 @@ const fileMentionKey = new PluginKey('fileMention')
 const skillHighlightKey = new PluginKey('skillHighlight')
 
 type SkillCatalog = { current: readonly AgentSkill[] }
-type FileIndex = { current: ReadonlySet<string> }
 
-const mentionHighlight = (catalog: SkillCatalog, files: FileIndex): Extension =>
+const mentionHighlight = (catalog: SkillCatalog, files: WorkspaceFileIndex): Extension =>
   Extension.create({
     name: 'skillHighlight',
     addProseMirrorPlugins() {
@@ -121,6 +124,189 @@ export type ComposerEditorHandle = {
   clear: () => void
   replaceText: (text: string) => void
   focus: () => void
+}
+
+type ComposerKeyState = {
+  lineBreak: { current: boolean }
+  vim: { current: ComposerVimOptions }
+  vimPlugin: { current: Plugin | null }
+  message: { current: boolean }
+  menuOpen: { current: boolean }
+  editor: { current: Editor | null }
+  onCancel: { current: (() => void) | undefined }
+  onSubmit: { current: () => void }
+}
+
+/** Enter sends, Shift+Enter inserts a markdown line, and vim owns keys outside insert mode. */
+function handleComposerKeyDown(
+  view: EditorView,
+  event: KeyboardEvent,
+  keys: ComposerKeyState
+): boolean {
+  if (keys.lineBreak.current) return false
+  // Outside vim insert mode the vim plugin owns every key, so Enter never sends
+  // and the caret, delete and arrow handling below is left to its motions.
+  if (keys.vim.current.enabled) {
+    const handled = handleComposerVimKey(keys.vimPlugin.current, view, event)
+    if (handled !== null) return handled
+  }
+  if (
+    (event.key === 'Home' || event.key === 'End') &&
+    !event.shiftKey &&
+    !event.altKey &&
+    !event.ctrlKey &&
+    !event.metaKey
+  ) {
+    const pos =
+      event.key === 'Home' ? view.state.selection.$from.start() : view.state.selection.$from.end()
+    event.preventDefault()
+    view.dispatch(
+      view.state.tr.setSelection(TextSelection.create(view.state.doc, pos)).scrollIntoView()
+    )
+    return true
+  }
+  if (
+    (event.key === 'ArrowLeft' || event.key === 'ArrowRight') &&
+    !event.altKey &&
+    !event.ctrlKey &&
+    !event.metaKey
+  ) {
+    const direction = event.key === 'ArrowLeft' ? -1 : 1
+    const { selection } = view.state
+    const $head = view.state.doc.resolve(selection.head)
+    const next = Math.max($head.start(), Math.min($head.end(), selection.head + direction))
+    event.preventDefault()
+    if (next === selection.head && selection.empty) return true
+    const anchor = event.shiftKey ? selection.anchor : next
+    view.dispatch(
+      view.state.tr
+        .setSelection(TextSelection.create(view.state.doc, anchor, next))
+        .scrollIntoView()
+    )
+    return true
+  }
+  if (event.key === 'Backspace' || event.key === 'Delete') {
+    const { selection } = view.state
+    if (selection instanceof NodeSelection && selection.node.type.name === 'imageChip') {
+      event.preventDefault()
+      deleteChip(view, String(selection.node.attrs.attachmentId))
+      return true
+    }
+    if (selection.empty) {
+      const target =
+        event.key === 'Backspace' ? selection.$from.nodeBefore : selection.$from.nodeAfter
+      if (target?.type.name === 'imageChip') {
+        event.preventDefault()
+        deleteChip(view, String(target.attrs.attachmentId))
+        return true
+      }
+    }
+  }
+  if (keys.message.current && event.key === 'Escape' && !event.isComposing) {
+    event.preventDefault()
+    keys.onCancel.current?.()
+    return true
+  }
+  // Enter sends. Shift+Enter replays the editor's Enter, which is the markdown
+  // newline: another bullet, then leaving an empty bullet, or a new line.
+  const chord = event.altKey || event.ctrlKey || event.metaKey
+  if (event.key === 'Enter' && event.shiftKey && !chord && !event.isComposing) {
+    if (keys.menuOpen.current || !keys.editor.current) return false
+    event.preventDefault()
+    keys.lineBreak.current = true
+    try {
+      return keys.editor.current.commands.enter()
+    } finally {
+      keys.lineBreak.current = false
+    }
+  }
+  if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return false
+  if (keys.message.current) return false
+  if (keys.menuOpen.current) return false
+  if (chord && view.state.selection.$from.parent.type.spec.code) return false
+  event.preventDefault()
+  keys.onSubmit.current()
+  return true
+}
+
+function composerEditorHandle(
+  editor: Editor | null,
+  getAttachments: { current: () => ChatAttachmentUpload[] },
+  vim: { current: ComposerVimOptions },
+  catalog: SkillCatalog,
+  files: WorkspaceFileIndex
+): ComposerEditorHandle {
+  return {
+    insertAttachment: (attachmentId) => {
+      if (!editor) return
+      const index = Math.max(
+        0,
+        getAttachments.current().findIndex((item) => item.id === attachmentId)
+      )
+      const at = editor.isFocused
+        ? editor.state.selection.from
+        : Math.max(1, editor.state.doc.content.size - 1)
+      const $at = editor.state.doc.resolve(at)
+      const size = editor.state.doc.content.size
+      const before = editor.state.doc.textBetween(Math.max(0, at - 1), at)
+      const after = editor.state.doc.textBetween(at, Math.min(size, at + 1))
+      const solid = (
+        nodeName: string | undefined,
+        text: string,
+        edge: 'before' | 'after'
+      ): boolean =>
+        nodeName === 'imageChip' ||
+        nodeName === 'mention' ||
+        (text !== '' && (edge === 'before' ? !/\s$/.test(text) : !/^\s/.test(text)))
+      const lead = solid($at.nodeBefore?.type.name, before, 'before') ? ' ' : ''
+      const trail =
+        !$at.nodeAfter && after === ''
+          ? ' '
+          : solid($at.nodeAfter?.type.name, after, 'after')
+            ? ' '
+            : ''
+      const content = [
+        ...(lead ? [{ type: 'text', text: lead }] : []),
+        {
+          type: 'imageChip',
+          attrs: { attachmentId, label: chatImageMarker(index + 1) }
+        },
+        ...(trail ? [{ type: 'text', text: trail }] : [])
+      ]
+      const chain = editor.chain()
+      if (!editor.isFocused) chain.focus()
+      chain.insertContentAt(at, content).run()
+    },
+    removeAttachment: (attachmentId) => {
+      if (editor) deleteChip(editor.view, attachmentId)
+    },
+    replace: (text) => {
+      if (!editor) return
+      editor.commands.setContent(textToContent(text, { attachments: getAttachments.current() }), {
+        emitUpdate: true
+      })
+      editor.commands.focus('end')
+    },
+    clear: () => {
+      editor?.commands.clearContent(true)
+      if (editor && vim.current.enabled) setComposerVimMode(editor, vim.current.initialMode)
+    },
+    replaceText: (text: string) => {
+      if (!editor) return
+      editor.commands.setContent(
+        textToContent(text, {
+          skills: catalog.current,
+          files: [...files.current]
+        }),
+        { emitUpdate: true }
+      )
+      editor.commands.focus('end')
+    },
+    focus: () => {
+      // A freshly loaded draft has its caret at the start; resume typing after it instead.
+      if (editor) editor.commands.focus(editor.state.selection.from <= 1 ? 'end' : null)
+    }
+  }
 }
 
 type TagMenuHandle = {
@@ -432,10 +618,11 @@ const extensionsFor = (
   interactive: boolean,
   menuRefresh?: { current: (() => void) | null },
   issue?: { current: string },
-  files?: FileIndex,
+  files?: WorkspaceFileIndex,
   workspaceId?: { current: number | null }
 ): Extensions => {
-  const fileIndex = files ?? { current: new Set<string>() }
+  const fileIndex = files ?? { current: new Set<string>(), generation: 0 }
+  const listing = createMentionFileListing(workspaceId ?? { current: null }, fileIndex)
   const CodeBlock = CodeBlockLowlight.extend({
     addNodeView() {
       return ReactNodeViewRenderer(CodeBlockView)
@@ -581,12 +768,10 @@ const extensionsFor = (
                 debounce: 40,
                 allow: ({ state, range }) => outsideCode(state, range),
                 items: async ({ query, signal }) => {
-                  const id = workspaceId?.current
-                  if (id == null) return []
+                  if (workspaceId?.current == null) return []
                   try {
-                    const listed = await loadWorkspaceFiles(id)
+                    const listed = await listing.files()
                     if (signal.aborted) return []
-                    fileIndex.current = new Set(listed)
                     await new Promise<void>((resolve) => {
                       setTimeout(resolve, 0)
                     })
@@ -619,6 +804,7 @@ const extensionsFor = (
                   let unmount: (() => void) | undefined
                   return {
                     onStart: (props) => {
+                      listing.begin()
                       menuOpen.current = true
                       component = new ReactRenderer(ComposerFileMenu, {
                         props: {
@@ -669,7 +855,7 @@ export function ComposerEditor({
   onCancel,
   variant = 'composer',
   vim = { enabled: false, initialMode: 'insert' },
-  onVimMode
+  toolbar
 }: {
   ref?: React.Ref<ComposerEditorHandle>
   defaultText: string
@@ -688,8 +874,8 @@ export function ComposerEditor({
   /** `message` edits a sent prompt. Enter inserts a newline instead of sending. */
   variant?: 'composer' | 'message'
   vim?: ComposerVimOptions
-  /** Current vim mode while vim is on, otherwise null. */
-  onVimMode?: (mode: Mode | null) => void
+  /** Toolbar under the field. It receives the live vim mode, or null when vim is off. */
+  toolbar?: (mode: Mode | null) => React.ReactNode
 }): React.JSX.Element {
   const vimRef = useRef(vim)
   const vimPlugin = useRef<Plugin | null>(null)
@@ -706,7 +892,7 @@ export function ComposerEditor({
   const catalogRef = useRef<SkillCatalog>({ current: skills })
   const issueRef = useRef(skillIssue)
   const menuRefreshRef = useRef<(() => void) | null>(null)
-  const filesRef = useRef<FileIndex>({ current: new Set() })
+  const filesRef = useRef<WorkspaceFileIndex>({ current: new Set(), generation: 0 })
   const workspaceIdRef = useRef<number | null>(workspaceId)
   useLayoutEffect(() => {
     catalogRef.current.current = skills
@@ -766,94 +952,17 @@ export function ComposerEditor({
         onAttachFilesRef.current(files)
         return true
       },
-      handleKeyDown: (view, event) => {
-        if (lineBreak.current) return false
-        // Outside vim insert mode the vim plugin owns every key, so Enter never sends
-        // and the caret, delete and arrow handling below is left to its motions.
-        if (vimRef.current.enabled) {
-          const handled = handleComposerVimKey(vimPlugin.current, view, event)
-          if (handled !== null) return handled
-        }
-        if (
-          (event.key === 'Home' || event.key === 'End') &&
-          !event.shiftKey &&
-          !event.altKey &&
-          !event.ctrlKey &&
-          !event.metaKey
-        ) {
-          const pos =
-            event.key === 'Home'
-              ? view.state.selection.$from.start()
-              : view.state.selection.$from.end()
-          event.preventDefault()
-          view.dispatch(
-            view.state.tr.setSelection(TextSelection.create(view.state.doc, pos)).scrollIntoView()
-          )
-          return true
-        }
-        if (
-          (event.key === 'ArrowLeft' || event.key === 'ArrowRight') &&
-          !event.altKey &&
-          !event.ctrlKey &&
-          !event.metaKey
-        ) {
-          const direction = event.key === 'ArrowLeft' ? -1 : 1
-          const { selection } = view.state
-          const $head = view.state.doc.resolve(selection.head)
-          const next = Math.max($head.start(), Math.min($head.end(), selection.head + direction))
-          event.preventDefault()
-          if (next === selection.head && selection.empty) return true
-          const anchor = event.shiftKey ? selection.anchor : next
-          view.dispatch(
-            view.state.tr
-              .setSelection(TextSelection.create(view.state.doc, anchor, next))
-              .scrollIntoView()
-          )
-          return true
-        }
-        if (event.key === 'Backspace' || event.key === 'Delete') {
-          const { selection } = view.state
-          if (selection instanceof NodeSelection && selection.node.type.name === 'imageChip') {
-            event.preventDefault()
-            deleteChip(view, String(selection.node.attrs.attachmentId))
-            return true
-          }
-          if (selection.empty) {
-            const target =
-              event.key === 'Backspace' ? selection.$from.nodeBefore : selection.$from.nodeAfter
-            if (target?.type.name === 'imageChip') {
-              event.preventDefault()
-              deleteChip(view, String(target.attrs.attachmentId))
-              return true
-            }
-          }
-        }
-        if (messageRef.current && event.key === 'Escape' && !event.isComposing) {
-          event.preventDefault()
-          onCancelRef.current?.()
-          return true
-        }
-        // Enter sends. Shift+Enter replays the editor's Enter, which is the markdown
-        // newline: another bullet, then leaving an empty bullet, or a new line.
-        const chord = event.altKey || event.ctrlKey || event.metaKey
-        if (event.key === 'Enter' && event.shiftKey && !chord && !event.isComposing) {
-          if (setup.menuOpen.current || !editorBox.current) return false
-          event.preventDefault()
-          lineBreak.current = true
-          try {
-            return editorBox.current.commands.enter()
-          } finally {
-            lineBreak.current = false
-          }
-        }
-        if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return false
-        if (messageRef.current) return false
-        if (setup.menuOpen.current) return false
-        if (chord && view.state.selection.$from.parent.type.spec.code) return false
-        event.preventDefault()
-        onSubmitRef.current()
-        return true
-      }
+      handleKeyDown: (view, event) =>
+        handleComposerKeyDown(view, event, {
+          lineBreak,
+          vim: vimRef,
+          vimPlugin,
+          message: messageRef,
+          menuOpen: setup.menuOpen,
+          editor: editorBox,
+          onCancel: onCancelRef,
+          onSubmit: onSubmitRef
+        })
     },
     onCreate: ({ editor: created }) => {
       mirror(created.view)
@@ -895,8 +1004,9 @@ export function ComposerEditor({
   useEffect(() => {
     if (!editor || editor.isDestroyed || workspaceId == null) return
     let cancel = false
+    const generation = ++filesRef.current.generation
     void loadWorkspaceFiles(workspaceId).then((listed) => {
-      if (cancel || editor.isDestroyed) return
+      if (cancel || editor.isDestroyed || generation !== filesRef.current.generation) return
       filesRef.current.current = new Set(listed)
       editor.view.dispatch(editor.state.tr.setMeta('filesLoaded', true))
     })
@@ -921,12 +1031,7 @@ export function ComposerEditor({
     selector: ({ editor: current }) =>
       current && vimEnabled ? { mode: composerVimMode(current) } : { mode: null }
   })
-  const onVimModeRef = useRef(onVimMode)
   const vimMode = vimState?.mode ?? null
-  useEffect(() => {
-    onVimModeRef.current = onVimMode
-    onVimModeRef.current?.(vimMode)
-  }, [onVimMode, vimMode])
   useEffect(() => {
     if (!editor) return
     let tr = editor.state.tr
@@ -944,81 +1049,16 @@ export function ComposerEditor({
   }, [attachments, editor])
   useImperativeHandle(
     ref,
-    () => ({
-      insertAttachment: (attachmentId) => {
-        if (!editor) return
-        const index = Math.max(
-          0,
-          getAttachmentsRef.current().findIndex((item) => item.id === attachmentId)
-        )
-        const at = editor.isFocused
-          ? editor.state.selection.from
-          : Math.max(1, editor.state.doc.content.size - 1)
-        const $at = editor.state.doc.resolve(at)
-        const size = editor.state.doc.content.size
-        const before = editor.state.doc.textBetween(Math.max(0, at - 1), at)
-        const after = editor.state.doc.textBetween(at, Math.min(size, at + 1))
-        const solid = (
-          nodeName: string | undefined,
-          text: string,
-          edge: 'before' | 'after'
-        ): boolean =>
-          nodeName === 'imageChip' ||
-          nodeName === 'mention' ||
-          (text !== '' && (edge === 'before' ? !/\s$/.test(text) : !/^\s/.test(text)))
-        const lead = solid($at.nodeBefore?.type.name, before, 'before') ? ' ' : ''
-        const trail =
-          !$at.nodeAfter && after === ''
-            ? ' '
-            : solid($at.nodeAfter?.type.name, after, 'after')
-              ? ' '
-              : ''
-        const content = [
-          ...(lead ? [{ type: 'text', text: lead }] : []),
-          {
-            type: 'imageChip',
-            attrs: { attachmentId, label: chatImageMarker(index + 1) }
-          },
-          ...(trail ? [{ type: 'text', text: trail }] : [])
-        ]
-        const chain = editor.chain()
-        if (!editor.isFocused) chain.focus()
-        chain.insertContentAt(at, content).run()
-      },
-      removeAttachment: (attachmentId) => {
-        if (editor) deleteChip(editor.view, attachmentId)
-      },
-      replace: (text) => {
-        if (!editor) return
-        editor.commands.setContent(
-          textToContent(text, { attachments: getAttachmentsRef.current() }),
-          { emitUpdate: true }
-        )
-        editor.commands.focus('end')
-      },
-      clear: () => {
-        editor?.commands.clearContent(true)
-        if (editor && vimRef.current.enabled) setComposerVimMode(editor, vimRef.current.initialMode)
-      },
-      replaceText: (text: string) => {
-        if (!editor) return
-        editor.commands.setContent(
-          textToContent(text, {
-            skills: catalogRef.current.current,
-            files: [...filesRef.current.current]
-          }),
-          { emitUpdate: true }
-        )
-        editor.commands.focus('end')
-      },
-      focus: () => {
-        // A freshly loaded draft has its caret at the start; resume typing after it instead.
-        if (editor) editor.commands.focus(editor.state.selection.from <= 1 ? 'end' : null)
-      }
-    }),
+    () =>
+      composerEditorHandle(editor, getAttachmentsRef, vimRef, catalogRef.current, filesRef.current),
     [editor]
   )
-  return <EditorContent editor={editor} />
+  return (
+    <>
+      <EditorContent editor={editor} />
+      {toolbar?.(vimMode)}
+    </>
+  )
 }
 
 const noMessageSkills: readonly AgentSkill[] = []

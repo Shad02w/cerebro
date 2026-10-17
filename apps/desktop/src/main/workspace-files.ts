@@ -46,15 +46,10 @@ export async function listRelativeFiles(root: string, limit = FILE_LIMIT): Promi
   return files
 }
 
-const cache = new Map<string, { expires: number; files: Promise<string[]> }>()
-const CACHE_MS = 5_000
-
-/** Cached file list for a workspace directory. The walk stays off the renderer. */
+/**
+ * Files currently under a workspace directory.
+ * Each call walks again so a file an agent just added is visible to the next `@` search.
+ */
 export function listWorkspaceFiles(localPath: string): Promise<string[]> {
-  const hit = cache.get(localPath)
-  if (hit && hit.expires > Date.now()) return hit.files
-  const files = listRelativeFiles(localPath)
-  cache.set(localPath, { expires: Date.now() + CACHE_MS, files })
-  void files.catch(() => cache.delete(localPath))
-  return files
+  return listRelativeFiles(localPath)
 }

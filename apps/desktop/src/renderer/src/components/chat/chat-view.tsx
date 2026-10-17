@@ -47,7 +47,6 @@ import { ChatSessionPanel } from './chat-session-panel'
 import { AttachmentStrip, DropOverlay } from './chat-composer-attachments'
 import { ComposerEditor, type ComposerEditorHandle } from './composer-editor'
 import { VimModeBadge } from './vim-mode-badge'
-import type { Mode as VimMode } from 'vim-prosemirror'
 import { chatImageAccept, useComposerDraft } from './use-composer-draft'
 import { ModelPicker } from './model-picker'
 import { ContextUsageRing } from './context-usage-ring'
@@ -108,7 +107,6 @@ export function ChatView({
   tabLabel?: string
 }): React.JSX.Element {
   const client = useQueryClient()
-  const [vimMode, setVimMode] = useState<VimMode | null>(null)
   const vimOptions = useMemo(
     () => ({ enabled: composerVim, initialMode: composerVimMode }),
     [composerVim, composerVimMode]
@@ -791,7 +789,100 @@ export function ChatView({
                     getAttachments={() => readDraft().attachments}
                     onDocument={onDocument}
                     vim={vimOptions}
-                    onVimMode={setVimMode}
+                    toolbar={(mode) => (
+                      <div className="flex flex-wrap items-center gap-1">
+                        <div className="min-w-0 flex-1">
+                          <ModelPicker
+                            selected={selected}
+                            sessionStarted={session != null}
+                            onSelect={(model) => {
+                              onRememberAgent?.(model)
+                              if (session && session.model.harness !== model.harness) {
+                                notify(
+                                  `Open a new Agent tab or pane to use ${harnessLabels[model.harness]}.`
+                                )
+                                return
+                              }
+                              const draft = readDraft()
+                              const restored = messageToResend({
+                                composerText: draft.text,
+                                attachmentCount: draft.attachments.length,
+                                current: selected,
+                                next: model,
+                                items: session?.items ?? []
+                              })
+                              setSelection(model)
+                              setReasoning('')
+                              if (restored) editorRef.current?.replaceText(restored)
+                            }}
+                          />
+                        </div>
+                        {composerVim && mode ? <VimModeBadge mode={mode} /> : null}
+                        <ContextUsageRing
+                          usage={session?.contextUsage}
+                          harness={session?.model.harness}
+                          modelLabel={session?.model.label}
+                        />
+                        <select
+                          aria-label="Access mode"
+                          title={
+                            selected?.harness === 'pi'
+                              ? 'Pi: Edit and Read-only limit tools and disable extensions; shell commands require Full access. Changes apply to the next message.'
+                              : 'Access for the next message. Edit allows file changes; Read-only uses the harness read or plan mode.'
+                          }
+                          value={accessMode}
+                          onChange={(event) =>
+                            setAccessSelection(event.target.value as AgentAccessMode)
+                          }
+                          className="max-w-36 rounded bg-transparent p-1 text-xs text-muted-foreground"
+                        >
+                          <option value="full">Full access (YOLO)</option>
+                          <option value="edit">Edit</option>
+                          <option value="read">Read-only</option>
+                        </select>
+                        {selected?.reasoning.length ? (
+                          <select
+                            aria-label="Reasoning effort"
+                            value={reasoning}
+                            onChange={(e) => setReasoning(e.target.value)}
+                            className="max-w-28 rounded bg-transparent p-1 text-xs text-muted-foreground"
+                          >
+                            <option value="">Default effort</option>
+                            {selected.reasoning.map((effort) => (
+                              <option key={effort} value={effort}>
+                                {effort}
+                              </option>
+                            ))}
+                          </select>
+                        ) : null}
+                        <Button
+                          type="button"
+                          size="icon-sm"
+                          variant="ghost"
+                          aria-label="Attach image"
+                          title="Attach image (or drop / paste one)"
+                          onClick={() => fileInput.current?.click()}
+                        >
+                          <ImagePlus className="size-4" />
+                        </Button>
+                        {busy ? (
+                          <Button
+                            type="button"
+                            size="icon-sm"
+                            variant="outline"
+                            aria-label="Stop agent"
+                            onClick={() => {
+                              void execute({ action: 'stop', sessionId: session?.id })
+                            }}
+                          >
+                            <Square className="size-3 fill-current" />
+                          </Button>
+                        ) : null}
+                        <Button type="submit" size="icon-sm" aria-label="Send message">
+                          <ArrowUp className="size-4" />
+                        </Button>
+                      </div>
+                    )}
                     onAttachFiles={(files) => {
                       void attachFiles(files)
                     }}
@@ -812,98 +903,6 @@ export function ChatView({
                       void attachFiles(files)
                     }}
                   />
-                  <div className="flex flex-wrap items-center gap-1">
-                    <div className="min-w-0 flex-1">
-                      <ModelPicker
-                        selected={selected}
-                        sessionStarted={session != null}
-                        onSelect={(model) => {
-                          onRememberAgent?.(model)
-                          if (session && session.model.harness !== model.harness) {
-                            notify(
-                              `Open a new Agent tab or pane to use ${harnessLabels[model.harness]}.`
-                            )
-                            return
-                          }
-                          const draft = readDraft()
-                          const restored = messageToResend({
-                            composerText: draft.text,
-                            attachmentCount: draft.attachments.length,
-                            current: selected,
-                            next: model,
-                            items: session?.items ?? []
-                          })
-                          setSelection(model)
-                          setReasoning('')
-                          if (restored) editorRef.current?.replaceText(restored)
-                        }}
-                      />
-                    </div>
-                    {composerVim && vimMode ? <VimModeBadge mode={vimMode} /> : null}
-                    <ContextUsageRing
-                      usage={session?.contextUsage}
-                      harness={session?.model.harness}
-                      modelLabel={session?.model.label}
-                    />
-                    <select
-                      aria-label="Access mode"
-                      title={
-                        selected?.harness === 'pi'
-                          ? 'Pi: Edit and Read-only limit tools and disable extensions; shell commands require Full access. Changes apply to the next message.'
-                          : 'Access for the next message. Edit allows file changes; Read-only uses the harness read or plan mode.'
-                      }
-                      value={accessMode}
-                      onChange={(event) =>
-                        setAccessSelection(event.target.value as AgentAccessMode)
-                      }
-                      className="max-w-36 rounded bg-transparent p-1 text-xs text-muted-foreground"
-                    >
-                      <option value="full">Full access (YOLO)</option>
-                      <option value="edit">Edit</option>
-                      <option value="read">Read-only</option>
-                    </select>
-                    {selected?.reasoning.length ? (
-                      <select
-                        aria-label="Reasoning effort"
-                        value={reasoning}
-                        onChange={(e) => setReasoning(e.target.value)}
-                        className="max-w-28 rounded bg-transparent p-1 text-xs text-muted-foreground"
-                      >
-                        <option value="">Default effort</option>
-                        {selected.reasoning.map((effort) => (
-                          <option key={effort} value={effort}>
-                            {effort}
-                          </option>
-                        ))}
-                      </select>
-                    ) : null}
-                    <Button
-                      type="button"
-                      size="icon-sm"
-                      variant="ghost"
-                      aria-label="Attach image"
-                      title="Attach image (or drop / paste one)"
-                      onClick={() => fileInput.current?.click()}
-                    >
-                      <ImagePlus className="size-4" />
-                    </Button>
-                    {busy ? (
-                      <Button
-                        type="button"
-                        size="icon-sm"
-                        variant="outline"
-                        aria-label="Stop agent"
-                        onClick={() => {
-                          void execute({ action: 'stop', sessionId: session?.id })
-                        }}
-                      >
-                        <Square className="size-3 fill-current" />
-                      </Button>
-                    ) : null}
-                    <Button type="submit" size="icon-sm" aria-label="Send message">
-                      <ArrowUp className="size-4" />
-                    </Button>
-                  </div>
                 </form>
               </div>
               {empty && alertText ? (
