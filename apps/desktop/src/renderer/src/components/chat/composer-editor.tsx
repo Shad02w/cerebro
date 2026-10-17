@@ -603,6 +603,75 @@ const extensionsFor = (
   ]
 }
 
+/**
+ * An empty top-level bullet is the "leave the list" step. Drop that item and continue in the
+ * paragraph after the list, instead of lifting a second blank line out beside the trailing one.
+ */
+function leaveEmptyListItem(state: EditorState, tr: EditorState['tr']): boolean {
+  const { selection } = state
+  if (!selection.empty) return false
+  const { $from } = selection
+  if (!$from.parent.isTextblock || $from.parent.content.size !== 0) return false
+  let itemDepth = -1
+  for (let depth = $from.depth; depth > 0; depth -= 1) {
+    if ($from.node(depth).type.name === 'listItem') {
+      itemDepth = depth
+      break
+    }
+  }
+  if (itemDepth < 1) return false
+  const item = $from.node(itemDepth)
+  if (item.childCount !== 1 || item.textContent.length > 0) return false
+  const listDepth = itemDepth - 1
+  if (listDepth !== 1) return false
+  const list = $from.node(listDepth)
+  if (list.type.name !== 'bulletList' && list.type.name !== 'orderedList') return false
+  if ($from.index(listDepth) !== list.childCount - 1) return false
+
+  const listPos = $from.before(listDepth)
+  const listEnd = listPos + list.nodeSize
+  const itemPos = $from.before(itemDepth)
+  if (list.childCount === 1) {
+    const followedByParagraph = state.doc.resolve(listEnd).nodeAfter?.type.name === 'paragraph'
+    if (followedByParagraph) tr.delete(listPos, listEnd)
+    else tr.replaceWith(listPos, listEnd, state.schema.nodes.paragraph.create())
+    tr.setSelection(TextSelection.create(tr.doc, listPos + 1))
+  } else {
+    const afterList = $from.after(listDepth)
+    tr.delete(itemPos, itemPos + item.nodeSize)
+    const at = tr.mapping.map(afterList)
+    const next = tr.doc.resolve(Math.min(at, tr.doc.content.size)).nodeAfter
+    if (next?.isTextblock) tr.setSelection(TextSelection.create(tr.doc, at + 1))
+    else {
+      tr.insert(at, state.schema.nodes.paragraph.create())
+      tr.setSelection(TextSelection.create(tr.doc, at + 1))
+    }
+  }
+  tr.scrollIntoView()
+  return true
+}
+
+/**
+ * Shift+Enter is the markdown Enter key. A bullet grows another bullet, an empty bullet
+ * leaves the list, a code block gains a line, and any other block splits into a new line.
+ */
+function insertComposerLineBreak(editor: Editor): boolean {
+  const { selection } = editor.state
+  const inEmptyTextblock =
+    selection.empty &&
+    selection.$from.parent.isTextblock &&
+    selection.$from.parent.content.size === 0
+  return editor.commands.first(({ commands, state, tr }) => [
+    () => commands.splitListItem('listItem'),
+    () => leaveEmptyListItem(state, tr),
+    () => (inEmptyTextblock ? commands.liftListItem('listItem') : false),
+    () => commands.newlineInCode(),
+    () => commands.createParagraphNear(),
+    () => commands.liftEmptyBlock(),
+    () => commands.splitBlock()
+  ])
+}
+
 export function ComposerEditor({
   ref,
   defaultText,
@@ -777,15 +846,22 @@ export function ComposerEditor({
           onCancelRef.current?.()
           return true
         }
-        if (event.key === 'Enter' && event.shiftKey && !event.isComposing) {
-          if (view.state.selection.$from.parent.type.spec.code) return false
+        // Enter always sends. Shift+Enter is the newline, including the markdown list
+        // Enter (another bullet, then leaving an empty bullet). Chords stay with the
+        // editor so Mod+Enter can still leave a code block.
+        const chord = event.altKey || event.ctrlKey || event.metaKey
+        if (event.key === 'Enter' && event.shiftKey && !chord && !event.isComposing) {
           event.preventDefault()
-          return editorBox.current?.commands.splitBlock() ?? false
+          return editorBox.current ? insertComposerLineBreak(editorBox.current) : false
         }
         if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return false
-        if (messageRef.current) return false
-        if (setup.menuOpen.current) return false
-        if (view.state.selection.$from.parent.type.spec.code) return false
+        if (!chord && setup.menuOpen.current) return false
+        if (messageRef.current) {
+          if (chord) return false
+          event.preventDefault()
+          return editorBox.current ? insertComposerLineBreak(editorBox.current) : false
+        }
+        if (chord && view.state.selection.$from.parent.type.spec.code) return false
         event.preventDefault()
         onSubmitRef.current()
         return true
