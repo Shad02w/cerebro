@@ -29,7 +29,7 @@ type SessionStatus = {
 /**
  * Tasks, background jobs, agents, and changed files floating over the transcript.
  * ChatView is the `@container/chat` element. At 56rem the card is shown; a narrower pane hides it.
- * It does not take a column in the layout. Collapse leaves a vertical icon list.
+ * It does not take a column in the layout. It starts as a vertical icon list.
  */
 export function ChatSessionPanel({
   session,
@@ -45,7 +45,7 @@ export function ChatSessionPanel({
   })
   const diff = workspaceDiffStat(listed.data)
   const status = sessionStatus(session)
-  const [expanded, setExpanded] = useState(true)
+  const [expanded, setExpanded] = useState(false)
   if (!status && !hasDiffStat(diff)) return null
   return (
     <TooltipProvider>

@@ -92,10 +92,13 @@ function renderPanel(
 }
 
 describe('ChatSessionPanel', () => {
-  it('stacks tasks, background jobs, and agents together', () => {
+  it('stacks tasks, background jobs, and agents together', async () => {
+    const user = userEvent.setup()
     renderPanel(filled)
     const panel = screen.getByRole('complementary', { name: 'Session status' })
     expect(panel).toHaveAttribute('data-testid', 'chat-session-panel')
+    expect(panel).toHaveAttribute('data-expanded', 'false')
+    await user.click(screen.getByRole('button', { name: 'Expand session status' }))
     expect(panel).toHaveAttribute('data-expanded', 'true')
     expect(panel.className).toContain('absolute')
     expect(panel.className).toContain('hidden')
@@ -145,7 +148,8 @@ describe('ChatSessionPanel', () => {
     expect(agent).toHaveTextContent('18.4k (12.1k in, 6.3k out)')
   })
 
-  it('omits empty sections and renders nothing when the session has no status', () => {
+  it('omits empty sections and renders nothing when the session has no status', async () => {
+    const user = userEvent.setup()
     const { container, rerender } = renderPanel(session())
     expect(container).toBeEmptyDOMElement()
     rerender(
@@ -160,6 +164,7 @@ describe('ChatSessionPanel', () => {
         />
       </QueryClientProvider>
     )
+    await user.click(screen.getByRole('button', { name: 'Expand session status' }))
     expect(screen.getByTestId('chat-session-panel-background')).toBeInTheDocument()
     expect(screen.queryByTestId('chat-session-panel-tasks')).toBeNull()
     expect(screen.queryByTestId('chat-session-panel-agents')).toBeNull()
@@ -197,6 +202,7 @@ describe('ChatSessionPanel', () => {
         }
       ]
     })
+    await user.click(screen.getByRole('button', { name: 'Expand session status' }))
     const changes = await screen.findByTestId('chat-session-panel-changes')
     expect(changes.className).not.toMatch(/(?:^|\s)px-/)
     const changesHeading = within(changes).getByRole('heading', { name: 'Changes' })
@@ -232,10 +238,9 @@ describe('ChatSessionPanel', () => {
     expect(mark.className).toContain('bg-green-500')
   })
 
-  it('collapses to a vertical icon list and expands back to every section', async () => {
+  it('starts collapsed and expands back to every section', async () => {
     const user = userEvent.setup()
     renderPanel(filled)
-    await user.click(screen.getByRole('button', { name: 'Collapse session status' }))
     const rail = screen.getByTestId('chat-session-panel-rail')
     expect(rail.className).toContain('flex-col')
     expect(screen.queryByTestId('chat-session-panel-tasks')).toBeNull()
@@ -341,9 +346,8 @@ describe('chat session layout', () => {
     expect(composer.contains(panel)).toBe(false)
     expect(panel.className).toContain('absolute')
     expect(transcript.parentElement?.contains(panel)).toBe(true)
-    expect(within(panel).getByTestId('chat-session-panel-tasks')).toBeInTheDocument()
-    expect(within(panel).getByTestId('chat-session-panel-background')).toBeInTheDocument()
-    expect(within(panel).getByTestId('chat-session-panel-agents')).toBeInTheDocument()
+    expect(panel).toHaveAttribute('data-expanded', 'false')
+    expect(within(panel).getByTestId('chat-session-panel-rail')).toBeInTheDocument()
     expect(within(panel).queryByRole('tab')).toBeNull()
   })
 })

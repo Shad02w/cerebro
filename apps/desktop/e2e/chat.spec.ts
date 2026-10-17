@@ -1562,6 +1562,7 @@ test('Claude background jobs outlive their response, list in the session panel, 
     await message.fill('background-task 9000')
     await sendMessage.click()
     await expect(ended).toHaveCount(1)
+    await page.getByRole('button', { name: 'Expand session status' }).click()
     const jobs = page.getByTestId('chat-session-panel-background')
     await expect(jobs.getByTestId('chat-background-task')).toHaveText(['Delayed pwd'])
     await message.fill('background-task 9000')
