@@ -672,3 +672,57 @@ test(
     }
   }
 )
+
+test(
+  'deleting the home accepts a new token and replaces a daemon whose database is gone',
+  { timeout: 60000 },
+  async () => {
+    const home = await mkdtemp(join(tmpdir(), 'cerebro-mux-reset-'))
+    const directory = join(home, 'project')
+    await mkdir(directory)
+    const previous = process.env.CEREBRO_HOME
+    process.env.CEREBRO_HOME = home
+    let client: MuxClient | undefined
+    const stop = async (): Promise<void> => {
+      if (!client) return
+      const gone = new Promise((resolve) => client!.once('disconnected', resolve))
+      await client.request('server.stop').catch(() => {})
+      await gone
+      client.close()
+      client = undefined
+    }
+    try {
+      client = await connectMux({ runtimeDir })
+      const started = await client.request<{ pid: number }>('server.status')
+      const created = await client.request<Project>('registry', {
+        action: 'project.createDirectory',
+        directory
+      })
+      assert.ok(created.id)
+      client.close()
+      client = undefined
+      await rm(join(home, 'mux', 'token'))
+      client = await connectMux({ runtimeDir })
+      const kept = await client.request<{ pid: number }>('server.status')
+      assert.equal(kept.pid, started.pid)
+      const listed = await client.request<ProjectListResult>('registry', { action: 'list' })
+      assert.equal(listed.projects.length, 1)
+      client.close()
+      client = undefined
+      await rm(join(home, 'cerebro.sqlite'), { force: true })
+      await rm(join(home, 'cerebro.sqlite-wal'), { force: true })
+      await rm(join(home, 'cerebro.sqlite-shm'), { force: true })
+      await rm(join(home, 'mux', 'token'), { force: true })
+      client = await connectMux({ runtimeDir })
+      const replaced = await client.request<{ pid: number }>('server.status')
+      assert.notEqual(replaced.pid, started.pid)
+      const empty = await client.request<ProjectListResult>('registry', { action: 'list' })
+      assert.deepEqual(empty.projects, [])
+    } finally {
+      await stop()
+      if (previous === undefined) delete process.env.CEREBRO_HOME
+      else process.env.CEREBRO_HOME = previous
+      await rm(home, { recursive: true, force: true })
+    }
+  }
+)

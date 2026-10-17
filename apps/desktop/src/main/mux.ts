@@ -120,7 +120,8 @@ export function getMux(): Promise<MuxClient> {
         reconnectLater()
       })
       cached = await client.request<LayoutState>('subscribe')
-      if (lostAt !== undefined)
+      const recovered = lostAt !== undefined
+      if (recovered)
         log('info', 'desktop.mux_reconnected', {
           downMs: Date.now() - lostAt,
           failedAttempts: reconnectAttempts
@@ -129,6 +130,9 @@ export function getMux(): Promise<MuxClient> {
       reconnectAttempts = 0
       broadcast(IPC.layout.changed, cached)
       broadcast(IPC.chat.changed, {})
+      // A restarted daemon does not replay registry events. The open window would keep
+      // showing workspaces from the database that just disappeared.
+      if (recovered) broadcast(IPC.projects.invalidate)
       return client
     })().catch((error) => {
       connection = undefined

@@ -97,7 +97,7 @@ client.workspaceCreate(projectId: number, branch: string, from?: string): Promis
 - Start on demand from desktop or CLI, detached from the parent with independent stdio and a readiness handshake. No login service is required for v1; after reboot the first client starts recovery.
 - Negotiate protocol and storage versions. Incompatible clients fail clearly and do not kill an active daemon. Compatible app upgrades reconnect; incompatible upgrades require explicit server restart, with saved output and fresh shells afterward.
 - Frame small JSON control messages separately from bounded terminal data frames. Include request IDs, session generation, output sequence, and daemon epoch. Chunk large snapshots; do not route history through the current one-line/4 MB CLI response parser.
-- Keep socket/pipe access local to the current user. Use owner-only local files and an installation token for the handshake, with the Windows token file protected by the user's ACL.
+- Keep socket/pipe access local to the current user. Use owner-only local files and an installation token for the handshake, with the Windows token file protected by the user's ACL. Re-read the token on every handshake, and exit a daemon whose database file has been removed so the next client can start clean.
 - Extend the existing CLI build/runtime check to bundle mux assets and a `node-pty` build for the shipped Node ABI. Do not reuse Electron's native addon binary. Preserve Node license/signing checks and test each target architecture.
 - Runtime assets needed by the daemon must survive app replacement and AppImage unmounting: stage a versioned runtime under the data directory, atomically validate it, and retain versions used by live daemons. Bound diagnostic logs.
 

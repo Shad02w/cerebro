@@ -39,12 +39,14 @@ All clients must share `CEREBRO_HOME` (default `~/cerebro`) and the optional `CE
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
 | `cerebro.sqlite`                           | Existing registry/settings, versioned workspace layout documents, ID allocator, bounded operation-response journal |
 | `mux/ownership.sqlite`                     | Small transactional PID ownership record for simultaneous startup/crash recovery                                   |
-| `mux/token`                                | Local authentication secret; owner-only access, with Windows ACL protection                                        |
+| `mux/token`                                | Local authentication secret, re-read on every handshake; owner-only access, with Windows ACL protection            |
 | `mux/terminals/<paneId>/manifest.json`     | Current and previous checkpoint numbers                                                                            |
 | `mux/terminals/<paneId>/<number>.snapshot` | Checked VT screen/history, continuation state and shell launch metadata                                            |
 | `mux/terminals/<paneId>/<number>.journal`  | Checked, ordered output/resize/status records since that checkpoint                                                |
 | `mux/runtimes/<fingerprint>/`              | Staged Node, daemon, worker and native PTY assets that survive app replacement                                     |
 | `mux/server.log`, `mux/server.log.1`       | Bounded diagnostics: one JSON record per line from the daemon, desktop main and CLI (see below)                    |
+
+The token file is the credential. A running daemon does not keep a private copy, so a client that finds `mux/token` missing writes a new one and the next handshake accepts it. A peer that does not present the current file is still rejected. If `cerebro.sqlite` disappears while the daemon is running, that process is holding a deleted file: it exits, and the next client starts a new daemon after the old listener and ownership record are gone. Clearing `~/cerebro` while Cerebro or the CLI is open therefore comes back as an empty home instead of a permanent authentication failure.
 
 The SQLite storage worker handles metadata and terminal files. It keeps synchronous filesystem/SQLite work off the PTY event loop. Git registry jobs serialize separately from layout and selection; live terminal IO and capture remain available during Git. Removal takes a layout barrier while stopping and deleting owned panes. A separate SQLite ownership record avoids the race inherent in deleting stale PID lock files.
 
@@ -63,6 +65,7 @@ Completed mutation IDs deduplicate retries (last 1,024 completed responses). Wor
 | Events                                                                                                                  | Meaning                                                      |
 | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
 | `server.starting`, `server.listening`, `server.stopping`, `server.stopped`, `server.start_failed`                       | Daemon lifecycle, with version, Node and runtime hash        |
+| `server.installation_removed`                                                                                           | Database file disappeared; this daemon is exiting            |
 | `peer.connect`, `peer.authorized`, `peer.close`, `peer.dropped`                                                         | Client connections; `peer.dropped` carries the `reason`      |
 | `request.ok`                                                                                                            | Mutations only: registry, layout commands, restart, stop     |
 | `request.failed`, `request.slow`                                                                                        | Failed requests with `code`; any request over 2 s            |
@@ -70,6 +73,7 @@ Completed mutation IDs deduplicate retries (last 1,024 completed responses). Wor
 | `terminal.spawned`, `terminal.exited`, `terminal.spawn_failed`, `terminal.persistence_failed`, `terminal.flush_failed`  | PTY and persistence health                                   |
 | `git.provider_timeout`, `git.provider_missing`, `desktop.git_provider_failed`                                           | Git callbacks to the desktop app                             |
 | `client.spawn_daemon`, `client.connect_failed`, `client.start_timeout`, `client.disconnected`, `client.request_timeout` | Why a client could not reach or lost the daemon              |
+| `client.wait_for_reset`                                                                                                 | Waiting for a daemon whose data directory was removed        |
 | `desktop.ready`, `desktop.mux_connect_failed`, `desktop.mux_disconnected`, `desktop.mux_reconnected`                    | Desktop connection state; retries log the first failure only |
 | `desktop.crash`, `process.crash`, `desktop.render_process_gone`, `desktop.child_process_gone`                           | Crashes and unhandled rejections                             |
 

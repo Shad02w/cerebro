@@ -18,6 +18,7 @@ import { Wire, MuxError, VERSION, type Message } from './protocol'
 import { protectDirectory } from './permissions'
 import { log, rotateLog } from './log'
 import { muxDirectory, socketPath, databasePath } from './paths'
+import { ownerStatus, type OwnerStatus } from './ownership'
 import { readRuntimeManifest, runtimeOutdated, type RuntimeManifest } from './runtime-manifest'
 export * from './protocol'
 export { runtimeOutdated, type RuntimeManifest } from './runtime-manifest'
@@ -153,6 +154,28 @@ async function stageRuntime(source: string): Promise<string> {
   }
   return target
 }
+function ownerReleased(status: OwnerStatus): boolean {
+  if ('error' in status) return false
+  return !status.recorded || !status.alive
+}
+async function socketListening(): Promise<boolean> {
+  try {
+    ;(await MuxClient.open()).close()
+    return true
+  } catch {
+    return false
+  }
+}
+/** server.close() refuses connections before shutdown releases ownership, so a socket
+ * refusal alone is too early to spawn a replacement. */
+async function waitForDaemonExit(): Promise<boolean> {
+  for (let attempt = 0; attempt < 1200; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    if ((await socketListening()) || !ownerReleased(await ownerStatus())) continue
+    return true
+  }
+  return false
+}
 export async function connectMux(options: ConnectOptions = {}): Promise<MuxClient> {
   const created = await mkdir(muxDirectory(), { recursive: true, mode: 0o700 })
   if (created) await protectDirectory(muxDirectory())
@@ -187,6 +210,7 @@ export async function connectMux(options: ConnectOptions = {}): Promise<MuxClien
     }
   }
   let running: { client: MuxClient; runtime?: RuntimeManifest } | undefined
+  let restarting = false
   try {
     running = await open()
   } catch (error) {
@@ -195,7 +219,15 @@ export async function connectMux(options: ConnectOptions = {}): Promise<MuxClien
     if (code !== 'ENOENT' && code !== 'ECONNREFUSED')
       log('warn', 'client.connect_failed', { error, autoStart: options.autoStart !== false })
     if (error instanceof MuxError && error.code !== 'unavailable') throw error
+    restarting = error instanceof MuxError && error.code === 'unavailable'
     if (options.autoStart === false) throw new MuxError('unavailable', 'Mux is not running.')
+  }
+  if (restarting) {
+    log('info', 'client.wait_for_reset', {})
+    if (!(await waitForDaemonExit())) {
+      log('error', 'client.host_still_stopping', {})
+      throw new MuxError('unavailable', 'The previous mux host is still stopping. Retry shortly.')
+    }
   }
   const source =
     options.runtimeDir ??
@@ -217,16 +249,7 @@ export async function connectMux(options: ConnectOptions = {}): Promise<MuxClien
     // their output and start fresh shells on activation; other clients reconnect on their own.
     await running.client.request('server.stop', {}, 5000).catch(() => {})
     running.client.close()
-    let stopped = false
-    for (let attempt = 0; attempt < 1200 && !stopped; attempt++) {
-      await new Promise((resolve) => setTimeout(resolve, 50))
-      try {
-        ;(await MuxClient.open()).close()
-      } catch {
-        stopped = true
-      }
-    }
-    if (!stopped) {
+    if (!(await waitForDaemonExit())) {
       log('error', 'client.host_still_stopping', {})
       throw new MuxError('unavailable', 'The previous mux host is still stopping. Retry shortly.')
     }

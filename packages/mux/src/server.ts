@@ -13,6 +13,7 @@ import {
   type TerminalEvent
 } from './protocol'
 import { muxDirectory, socketPath, databasePath } from './paths'
+import { decideHandshake, readInstallation } from './credentials'
 import { log, setLogProcess } from './log'
 import { readRuntimeManifest } from './runtime-manifest'
 import { StorageWorker } from './worker-client'
@@ -65,7 +66,8 @@ export async function startServer(): Promise<void> {
   })
   // GUI launches inherit launchd's minimal PATH; agents need what a terminal pane builds.
   const environment = loadShellEnv()
-  const token = await readFile(join(muxDirectory(), 'token'), 'utf8')
+  // Fail before listening when the credential was never created. Later hellos re-read the file.
+  await readFile(join(muxDirectory(), 'token'), 'utf8')
   const peers = new Set<Peer>()
   const owners = new Map<number, Peer>()
   const epoch = randomUUID()
@@ -362,7 +364,18 @@ export async function startServer(): Promise<void> {
               'conflict',
               'Mux protocol version differs; explicitly restart the server to upgrade.'
             )
-          if (p.token !== token) throw new MuxError('unauthorized', 'Mux authentication failed.')
+          const installation = await readInstallation()
+          const decision = decideHandshake(p.token, installation)
+          if (decision === 'reset') {
+            log('warn', 'server.installation_removed', {
+              tokenMissing: installation.token === null,
+              databaseMissing: !installation.database
+            })
+            setTimeout(() => void shutdown(false), 30)
+            throw new MuxError('unavailable', 'Mux data was removed; starting again.')
+          }
+          if (decision === 'reject')
+            throw new MuxError('unauthorized', 'Mux authentication failed.')
           if (p.database !== databasePath())
             throw new MuxError('conflict', 'This CEREBRO_HOME already owns a different database.')
           peer.authorized = true
@@ -614,7 +627,19 @@ export async function startServer(): Promise<void> {
     server.listen(socketPath(), resolve)
   })
   if (process.platform !== 'win32') await chmod(socketPath(), 0o600)
-  const timer = setInterval(() => void terminals.flush(), 1000)
+  const timer = setInterval(() => {
+    void terminals.flush()
+    void readInstallation()
+      .then((installation) => {
+        if (stopping || installation.database) return
+        log('warn', 'server.installation_removed', {
+          tokenMissing: installation.token === null,
+          databaseMissing: true
+        })
+        void shutdown(false)
+      })
+      .catch((error) => log('warn', 'server.installation_check_failed', { error }))
+  }, 1000)
   log('info', 'server.listening', {
     epoch,
     runtime: runtime?.muxHash,
