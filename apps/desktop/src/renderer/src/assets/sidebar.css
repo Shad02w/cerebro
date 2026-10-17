@@ -96,12 +96,6 @@
   text-align: left;
 }
 
-/* Keep the folder name beside the badge. A growing label pushes the badge
-   under the history button; sizing to the text leaves that button clear. */
-.cerebro-sidebar [data-directory-name-line] [data-row-label] {
-  flex: 0 1 auto;
-}
-
 /* Nested repos under a multi-root use the same quiet label as a project row:
    12px, medium, about 60% of the sidebar foreground, including when selected. */
 .cerebro-sidebar .sidebar-nested-workspace,
@@ -309,21 +303,24 @@
 .cerebro-sidebar .sidebar-root-group {
   padding: 4px;
   border-radius: 9px;
-  overflow: hidden;
   background-color: color-mix(in srgb, var(--sidebar-foreground) 4%, transparent);
   transition:
     background-color 120ms ease,
     box-shadow 120ms ease;
 }
 
-/* Nested repos are subrows of the multi-root. The selection is the row itself:
-   no inset padding, gap, or ring around the active workspace. */
+/* A selected nested repo is a whole rounded row, with a border on every corner. */
 .cerebro-sidebar .sidebar-root-group .sidebar-nested-workspace,
 .cerebro-sidebar .sidebar-root-group .sidebar-nested-workspace:hover,
 .cerebro-sidebar .sidebar-root-group .sidebar-nested-workspace[data-active='true'],
 .cerebro-sidebar .sidebar-root-group .sidebar-nested-workspace[data-active='true']:hover {
-  border-radius: 0;
-  box-shadow: none;
+  border-radius: 7px;
+}
+
+.cerebro-sidebar .sidebar-root-group .sidebar-nested-workspace[data-active='true'],
+.cerebro-sidebar .sidebar-root-group .sidebar-nested-workspace[data-active='true']:hover {
+  background-color: color-mix(in srgb, var(--sidebar-selected) 16%, var(--sidebar));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sidebar-selected) 70%, transparent);
 }
 
 /* Selecting the root workspace highlights the whole multi-root block,

@@ -865,7 +865,7 @@ function NestedRepoRow({
 }): React.JSX.Element {
   const active = match != null && match.id === activeWorkspaceId
   const rowClass =
-    'sidebar-nested-workspace flex w-full min-w-0 flex-col items-stretch rounded-none px-3 py-0 text-left text-xs font-medium text-sidebar-foreground/60'
+    'sidebar-nested-workspace flex w-full min-w-0 flex-col items-stretch rounded-md px-2 py-0.5 text-left text-xs font-medium text-sidebar-foreground/60'
   return (
     <li data-testid={`workspace-nested-repo-${repo.name}`}>
       <WorkspaceHoverCard workspace={match ?? undefined} showStatus={false}>
@@ -1011,77 +1011,83 @@ function DirectoryNameLine({
   onSetStatus: (workspaceId: number, status: WorkspaceStatus) => void
 }): React.JSX.Element {
   return (
-    <div className="relative z-10 w-full" data-directory-name-line="">
-      <SidebarMenuButton
-        isActive={!grouped && active}
-        className={cn(
-          'app-no-drag items-center gap-0 px-2 py-0',
-          grouped
-            ? projectSectionLabelClass
-            : cn('h-8! pr-14! text-xs font-medium', muted && !active && todoWorkspaceMuteClass)
-        )}
-        render={
-          <button
-            type="button"
-            data-testid={`workspace-row-${workspace.id}`}
-            data-workspace-id={workspace.id}
-            data-workspace-role="directory"
-            data-workspace-icon="folder"
-            data-project-kind="directory"
-            data-todo-muted={muted && !active ? 'true' : undefined}
-            data-workspace-status={workspaceStatus(workspace.status)}
-            aria-current={active ? 'location' : undefined}
-            onClick={(): void => onSelectWorkspace(workspace.id)}
-          />
-        }
-      >
-        <span data-row-line="">
-          <span data-row-icon="">
-            <Folder />
-          </span>
-          <span className="truncate font-medium" data-row-label="">
-            {workspaceRowLabel(project, workspace)}
-          </span>
-          {nestedCount > 1 ? (
-            <span
-              className="shrink-0 rounded-md bg-[color-mix(in_oklch,var(--sidebar-selected)_15%,transparent)] px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-[var(--sidebar-selected)] uppercase"
-              data-testid={`workspace-multi-root-${workspace.id}`}
-            >
-              multi-root
-            </span>
-          ) : null}
-        </span>
-      </SidebarMenuButton>
-      <RowActions overlay>
-        {grouped ? (
-          <SidebarMenuAction
-            className="app-no-drag"
-            data-testid={`workspace-nested-toggle-${workspace.id}`}
-            aria-expanded={reposOpen}
-            aria-label={reposOpen ? 'Collapse repositories' : 'Expand repositories'}
-            onClick={(event): void => {
-              event.stopPropagation()
-              onToggleRepos()
-            }}
-            onPointerDown={(event): void => event.stopPropagation()}
-          >
-            <ChevronRight
-              className={cn('size-3.5 shrink-0 transition-transform', reposOpen && 'rotate-90')}
+    <div
+      className={cn('w-full min-w-0', grouped ? 'flex flex-col gap-0.5' : 'relative z-10')}
+      data-directory-name-line=""
+      data-grouped={grouped ? '' : undefined}
+    >
+      <div className="relative w-full min-w-0">
+        <SidebarMenuButton
+          isActive={!grouped && active}
+          className={cn(
+            'app-no-drag min-w-0 items-center gap-0 px-2 py-0',
+            grouped
+              ? cn(projectSectionLabelClass, 'w-full! min-w-0 pr-20!')
+              : cn('h-8! pr-14! text-xs font-medium', muted && !active && todoWorkspaceMuteClass)
+          )}
+          render={
+            <button
+              type="button"
+              data-testid={`workspace-row-${workspace.id}`}
+              data-workspace-id={workspace.id}
+              data-workspace-role="directory"
+              data-workspace-icon="folder"
+              data-project-kind="directory"
+              data-todo-muted={muted && !active ? 'true' : undefined}
+              data-workspace-status={workspaceStatus(workspace.status)}
+              aria-current={active ? 'location' : undefined}
+              onClick={(): void => onSelectWorkspace(workspace.id)}
             />
-            <span className="sr-only">
-              {reposOpen ? 'Collapse repositories' : 'Expand repositories'}
+          }
+        >
+          <span data-row-line="">
+            <span data-row-icon="">
+              <Folder />
             </span>
-          </SidebarMenuAction>
-        ) : null}
-        <WorkspaceSessionHistory workspaceId={workspace.id} />
-        <DirectoryRowMenu
-          project={project}
-          workspace={workspace}
-          onRenameWorkspace={onRenameWorkspace}
-          onRemoveProject={onRemoveProject}
-          onSetStatus={onSetStatus}
-        />
-      </RowActions>
+            <span className="truncate font-medium" data-row-label="">
+              {workspaceRowLabel(project, workspace)}
+            </span>
+          </span>
+        </SidebarMenuButton>
+        <RowActions overlay>
+          {grouped ? (
+            <SidebarMenuAction
+              className="app-no-drag"
+              data-testid={`workspace-nested-toggle-${workspace.id}`}
+              aria-expanded={reposOpen}
+              aria-label={reposOpen ? 'Collapse repositories' : 'Expand repositories'}
+              onClick={(event): void => {
+                event.stopPropagation()
+                onToggleRepos()
+              }}
+              onPointerDown={(event): void => event.stopPropagation()}
+            >
+              <ChevronRight
+                className={cn('size-3.5 shrink-0 transition-transform', reposOpen && 'rotate-90')}
+              />
+              <span className="sr-only">
+                {reposOpen ? 'Collapse repositories' : 'Expand repositories'}
+              </span>
+            </SidebarMenuAction>
+          ) : null}
+          <WorkspaceSessionHistory workspaceId={workspace.id} />
+          <DirectoryRowMenu
+            project={project}
+            workspace={workspace}
+            onRenameWorkspace={onRenameWorkspace}
+            onRemoveProject={onRemoveProject}
+            onSetStatus={onSetStatus}
+          />
+        </RowActions>
+      </div>
+      {nestedCount > 1 ? (
+        <span
+          className="ml-[calc(0.5rem+1rem+0.375rem)] self-start rounded-md bg-[color-mix(in_oklch,var(--sidebar-selected)_15%,transparent)] px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-[var(--sidebar-selected)] uppercase"
+          data-testid={`workspace-multi-root-${workspace.id}`}
+        >
+          multi-root
+        </span>
+      ) : null}
     </div>
   )
 }
@@ -1113,7 +1119,7 @@ function NestedRepoList({
     <Collapsible open={open} onOpenChange={onOpenChange}>
       <CollapsibleContent>
         <ul
-          className="sidebar-nested-repos -mx-1 -mb-1 flex min-w-0 flex-col"
+          className="sidebar-nested-repos flex min-w-0 flex-col gap-1 px-1 pb-1"
           aria-label={`Repositories in ${projectName}`}
           data-nested-repos=""
           data-testid={`workspace-nested-repos-${workspaceId}`}

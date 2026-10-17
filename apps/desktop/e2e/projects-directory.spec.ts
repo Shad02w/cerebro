@@ -98,7 +98,7 @@ test('adds a folder of git repos as one workspace', async ({ page, electronApp }
     await expect(row).toHaveAttribute('data-project-kind', 'directory')
     await expect(page.getByTestId(/project-row-/)).toHaveCount(0)
     await expect(page.getByTestId(/project-add-workspace-/)).toHaveCount(0)
-    await expect(row.getByTestId(/workspace-multi-root-/)).toHaveText('multi-root')
+    await expect(page.getByTestId(/workspace-multi-root-/)).toHaveText('multi-root')
     await expect(row).toHaveClass(/sidebar-project-button/)
     await expect(row).toHaveClass(/text-xs/)
     await expect(row).toHaveClass(/text-sidebar-foreground\/60/)
