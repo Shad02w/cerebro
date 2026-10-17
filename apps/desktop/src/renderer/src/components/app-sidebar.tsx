@@ -897,7 +897,7 @@ function NestedRepoRow({
               'app-no-drag',
               match && 'pr-14',
               rowClass,
-              'hover:bg-sidebar-accent hover:text-sidebar-foreground/60'
+              'hover:text-sidebar-foreground/60'
             )}
             data-testid={match ? `workspace-row-${match.id}` : undefined}
             data-workspace-id={match?.id}
@@ -1186,7 +1186,6 @@ function PlainDirectoryRow({
   const nested = project.nestedRepos ?? []
   const grouped = nested.length > 0
   const [reposOpen, setReposOpen] = useState(true)
-  const [rootHovered, setRootHovered] = useState(false)
   if (!workspace) return null
   const active = workspace.id === activeWorkspaceId
   const agents = activity.get(workspace.id) ?? []
@@ -1197,14 +1196,9 @@ function PlainDirectoryRow({
         className={cn(grouped && 'sidebar-root-group')}
         data-testid={grouped ? `workspace-root-${workspace.id}` : undefined}
         data-active={grouped && active ? 'true' : 'false'}
-        data-hover={grouped && rootHovered ? 'true' : 'false'}
       >
         <WorkspaceHoverCard workspace={workspace}>
-          <SidebarMenuRow
-            data-workspace-id={workspace.id}
-            onPointerEnter={grouped ? (): void => setRootHovered(true) : undefined}
-            onPointerLeave={grouped ? (): void => setRootHovered(false) : undefined}
-          >
+          <SidebarMenuRow data-workspace-id={workspace.id}>
             <DirectoryNameLine
               project={project}
               workspace={workspace}

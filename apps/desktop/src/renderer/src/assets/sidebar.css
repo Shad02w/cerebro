@@ -340,22 +340,28 @@
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sidebar-selected) 70%, transparent);
 }
 
-/* Selecting the root workspace highlights the whole multi-root block,
-   including nested repositories (teal selected wash). Hovering the root uses
-   the normal sidebar row hover background instead of teal. A nested repo still
-   uses its own row highlight when hovered or selected. */
-.cerebro-sidebar .sidebar-root-group[data-active='true'] {
+/* Selecting the root workspace highlights the whole multi-root block.
+   Hover keeps that fill: the workspace hover card on the right is the hover
+   feedback, so the row does not pick up the grey sidebar accent. */
+.cerebro-sidebar .sidebar-root-group[data-active='true'],
+.cerebro-sidebar .sidebar-root-group[data-active='true']:hover {
   background-color: color-mix(in srgb, var(--sidebar-selected) 10%, var(--sidebar));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sidebar-selected) 24%, transparent);
 }
 
-.cerebro-sidebar .sidebar-root-group[data-active='true']:hover {
-  background-color: color-mix(in srgb, var(--sidebar-selected) 16%, var(--sidebar));
-}
-
-.cerebro-sidebar .sidebar-root-group[data-hover='true']:not([data-active='true']) {
-  background-color: var(--sidebar-accent);
-  box-shadow: none;
+.cerebro-sidebar
+  .sidebar-root-group
+  [data-sidebar='menu-row']:is(
+    :has([data-testid='workspace-sessions']),
+    :has([data-nested-repos])
+  ):hover,
+.cerebro-sidebar
+  .sidebar-root-group
+  [data-sidebar='menu-row']:is(
+    :has([data-testid='workspace-sessions']),
+    :has([data-nested-repos])
+  ):hover:has([data-active='true']) {
+  background-color: transparent;
 }
 
 .cerebro-sidebar
@@ -364,22 +370,15 @@
 .cerebro-sidebar
   .sidebar-root-group[data-active='true']
   [data-workspace-role='root'][data-active='true']:hover,
-.cerebro-sidebar .sidebar-root-group[data-hover='true'] [data-workspace-role='root'],
-.cerebro-sidebar .sidebar-root-group[data-hover='true'] [data-workspace-role='root']:hover,
 .cerebro-sidebar
   .sidebar-root-group[data-active='true']
   [data-workspace-role='directory'][data-active='true'],
 .cerebro-sidebar
   .sidebar-root-group[data-active='true']
   [data-workspace-role='directory'][data-active='true']:hover,
-.cerebro-sidebar .sidebar-root-group[data-hover='true'] [data-workspace-role='directory'],
-.cerebro-sidebar .sidebar-root-group[data-hover='true'] [data-workspace-role='directory']:hover {
+.cerebro-sidebar .sidebar-root-group [data-workspace-role='directory']:hover {
   background-color: transparent;
   box-shadow: none;
-}
-
-.cerebro-sidebar .sidebar-root-group[data-active='true'] [data-workspace-role='repository']:hover {
-  background-color: color-mix(in srgb, var(--sidebar-selected) 16%, var(--sidebar));
 }
 
 /* Comes after the workspace selection wash so a project row never picks it up.
