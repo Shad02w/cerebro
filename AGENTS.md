@@ -264,5 +264,5 @@ cerebro workspace list --project 3
 ### Architecture notes
 
 - The CLI and desktop coordinate layout and project/workspace mutations through the mux storage worker. SQLite holds metadata; bounded terminal snapshots/journals hold screen and scrollback.
-- Clients use an authenticated local socket (macOS/Linux) or named pipe (Windows). Mux events refresh connected views. `cerebro server status|start|stop` controls the daemon; `pane capture|send|restart` controls terminals without Electron.
+- Clients use a local socket (macOS/Linux) or named pipe (Windows), restricted to the current user. Mux events refresh connected views. `cerebro server status|start|stop` controls the daemon; `pane capture|send|restart` controls terminals without Electron.
 - GitHub tokens stored by the desktop app are encrypted by Electron `safeStorage` and are not accessible to the CLI. Private clones must use system git credentials (`gh auth`, SSH, or osxkeychain).

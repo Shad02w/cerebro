@@ -106,10 +106,9 @@ test('export bundles redacted logs and system info even when the mux is down', a
   process.env.CEREBRO_HOME = home
   try {
     await mkdir(join(home, 'mux'), { recursive: true })
-    await writeFile(join(home, 'mux', 'token'), 'super-secret-daemon-token')
     await writeFile(
       join(home, 'mux', 'server.log'),
-      `${JSON.stringify({ event: 'request.failed', error: `boom at ${homedir()}/dev/x.ts`, note: 'super-secret-daemon-token' })}\n`
+      `${JSON.stringify({ event: 'request.failed', error: `boom at ${homedir()}/dev/x.ts`, note: 'token ghp_abcdefghijklmnopqrstuvwxyz0123456789' })}\n`
     )
     await writeFile(join(home, 'mux', 'server.log.1'), '{"event":"older"}\n')
     // Terminal content must never be bundled, whatever it holds.
@@ -140,7 +139,7 @@ test('export bundles redacted logs and system info even when the mux is down', a
     assert.deepEqual(system.ownership, { recorded: false })
     assert.match(files.get('logs/server.log')!, /boom at ~\/dev\/x\.ts/)
     const everything = [...files.values()].join('\n')
-    assert.ok(!everything.includes('super-secret-daemon-token'))
+    assert.ok(!everything.includes('ghp_abcdefghijklmnopqrstuvwxyz0123456789'))
     assert.ok(!everything.includes('TOP-SECRET-TERMINAL-TEXT'))
     assert.ok(!everything.includes(home))
 

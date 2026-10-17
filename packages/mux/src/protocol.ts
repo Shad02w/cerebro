@@ -133,7 +133,8 @@ export type RequestParams = {
   displayName?: string | null
   deleteFiles: boolean
   version: number
-  token: string
+  /** Sent only when a previous installation left mux/token behind. Current daemons ignore it. */
+  token?: string
   database: string
   width: number
   height: number

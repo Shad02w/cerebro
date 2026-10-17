@@ -2,11 +2,13 @@ import { test } from 'node:test'
 import { DatabaseSync } from 'node:sqlite'
 import assert from 'node:assert/strict'
 import { cp, mkdtemp, mkdir, rm, readFile, writeFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { createConnection } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { execFile, spawn } from 'node:child_process'
 import { promisify } from 'node:util'
-import { connectMux, type TerminalSnapshot, type MuxClient } from './client'
+import { connectMux, socketPath, type TerminalSnapshot, type MuxClient } from './client'
 import type {
   LayoutState,
   Project,
@@ -581,6 +583,84 @@ test(
       else process.env.CEREBRO_HOME = previous.home
       if (previous.shell === undefined) delete process.env.SHELL
       else process.env.SHELL = previous.shell
+    }
+  }
+)
+
+test(
+  'an unreachable socket file is unlinked and a new daemon binds it',
+  { timeout: 60000, skip: process.platform === 'win32' },
+  async () => {
+    const home = await mkdtemp(join(tmpdir(), 'cerebro-mux-stale-sock-'))
+    const previous = process.env.CEREBRO_HOME
+    process.env.CEREBRO_HOME = home
+    const path = socketPath()
+    // SIGKILL skips the listen cleanup that would otherwise remove the socket file.
+    const holder = spawn(
+      process.execPath,
+      [
+        '-e',
+        `const {createServer}=require('node:net');const s=createServer();s.listen(${JSON.stringify(path)},()=>process.kill(process.pid,'SIGKILL'))`
+      ],
+      { stdio: 'ignore' }
+    )
+    await new Promise((resolve, reject) => {
+      holder.once('exit', resolve)
+      holder.once('error', reject)
+    })
+    assert.equal(existsSync(path), true)
+    await new Promise<void>((resolve, reject) => {
+      const socket = createConnection(path)
+      socket.once('connect', () => {
+        socket.destroy()
+        reject(new Error('The leftover socket still accepted a connection.'))
+      })
+      socket.once('error', () => resolve())
+    })
+    let client: MuxClient | undefined
+    try {
+      client = await connectMux({ runtimeDir })
+      const status = await client.request<{ pid: number }>('server.status')
+      assert.notEqual(status.pid, holder.pid)
+      assert.ok(status.pid > 0)
+    } finally {
+      if (client) {
+        const gone = new Promise((resolve) => client!.once('disconnected', resolve))
+        await client.request('server.stop').catch(() => {})
+        await gone
+        client.close()
+      }
+      if (previous === undefined) delete process.env.CEREBRO_HOME
+      else process.env.CEREBRO_HOME = previous
+      await rm(home, { recursive: true, force: true })
+    }
+  }
+)
+
+test(
+  'a leftover mux token does not block a new daemon',
+  { timeout: 60000, skip: process.platform === 'win32' },
+  async () => {
+    const home = await mkdtemp(join(tmpdir(), 'cerebro-mux-leftover-token-'))
+    const previous = process.env.CEREBRO_HOME
+    process.env.CEREBRO_HOME = home
+    await mkdir(join(home, 'mux'), { recursive: true })
+    await writeFile(join(home, 'mux', 'token'), 'leftover-token-from-an-older-daemon')
+    let client: MuxClient | undefined
+    try {
+      client = await connectMux({ runtimeDir })
+      const status = await client.request<{ pid: number }>('server.status')
+      assert.ok(status.pid > 0)
+    } finally {
+      if (client) {
+        const gone = new Promise((resolve) => client!.once('disconnected', resolve))
+        await client.request('server.stop').catch(() => {})
+        await gone
+        client.close()
+      }
+      if (previous === undefined) delete process.env.CEREBRO_HOME
+      else process.env.CEREBRO_HOME = previous
+      await rm(home, { recursive: true, force: true })
     }
   }
 )
