@@ -1,16 +1,7 @@
 import { createConnection } from 'node:net'
 import { spawn } from 'node:child_process'
 import { randomUUID, createHash } from 'node:crypto'
-import {
-  mkdir,
-  readFile,
-  writeFile,
-  cp,
-  rename,
-  rm,
-  link,
-  open as openFile
-} from 'node:fs/promises'
+import { mkdir, readFile, cp, rename, rm, open as openFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { join, resolve, dirname } from 'node:path'
 import { EventEmitter } from 'node:events'
@@ -153,31 +144,25 @@ async function stageRuntime(source: string): Promise<string> {
   }
   return target
 }
+/** A previous daemon still checks this file. A current daemon ignores it, and nothing creates it. */
+async function leftoverToken(): Promise<string | undefined> {
+  try {
+    const token = (await readFile(join(muxDirectory(), 'token'), 'utf8')).trim()
+    return token.length > 0 ? token : undefined
+  } catch {
+    return undefined
+  }
+}
 export async function connectMux(options: ConnectOptions = {}): Promise<MuxClient> {
   const created = await mkdir(muxDirectory(), { recursive: true, mode: 0o700 })
   if (created) await protectDirectory(muxDirectory())
-  const tokenPath = join(muxDirectory(), 'token')
-  if (!existsSync(tokenPath)) {
-    await protectDirectory(muxDirectory())
-    const temporary = `${tokenPath}-${randomUUID()}`
-    try {
-      await writeFile(temporary, randomUUID(), { flag: 'wx', mode: 0o600 })
-      try {
-        await link(temporary, tokenPath)
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
-      }
-    } finally {
-      await rm(temporary, { force: true })
-    }
-  }
-  const token = await readFile(tokenPath, 'utf8')
+  const token = await leftoverToken()
   const open = async (): Promise<{ client: MuxClient; runtime?: RuntimeManifest }> => {
     const client = await MuxClient.open()
     try {
       const reply = await client.request<{ runtime?: RuntimeManifest }>(
         'hello',
-        { version: VERSION, token, database: databasePath() },
+        { version: VERSION, ...(token ? { token } : {}), database: databasePath() },
         2000
       )
       return { client, runtime: reply?.runtime }

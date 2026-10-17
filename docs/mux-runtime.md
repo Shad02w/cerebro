@@ -39,7 +39,6 @@ All clients must share `CEREBRO_HOME` (default `~/cerebro`) and the optional `CE
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
 | `cerebro.sqlite`                           | Existing registry/settings, versioned workspace layout documents, ID allocator, bounded operation-response journal |
 | `mux/ownership.sqlite`                     | Small transactional PID ownership record for simultaneous startup/crash recovery                                   |
-| `mux/token`                                | Local authentication secret; owner-only access, with Windows ACL protection                                        |
 | `mux/terminals/<paneId>/manifest.json`     | Current and previous checkpoint numbers                                                                            |
 | `mux/terminals/<paneId>/<number>.snapshot` | Checked VT screen/history, continuation state and shell launch metadata                                            |
 | `mux/terminals/<paneId>/<number>.journal`  | Checked, ordered output/resize/status records since that checkpoint                                                |
@@ -47,6 +46,8 @@ All clients must share `CEREBRO_HOME` (default `~/cerebro`) and the optional `CE
 | `mux/server.log`, `mux/server.log.1`       | Bounded diagnostics: one JSON record per line from the daemon, desktop main and CLI (see below)                    |
 
 The SQLite storage worker handles metadata and terminal files. It keeps synchronous filesystem/SQLite work off the PTY event loop. Git registry jobs serialize separately from layout and selection; live terminal IO and capture remain available during Git. Removal takes a layout barrier while stopping and deleting owned panes. A separate SQLite ownership record avoids the race inherent in deleting stale PID lock files.
+
+The daemon listens on an owner-only Unix socket in the temp directory, or a per-user named pipe on Windows. That socket is the server. There is no handshake secret. Startup claims the home only when the recorded process is gone or its socket refuses connections, then unlinks a leftover socket file and binds. A socket that still accepts connections is left alone.
 
 Default retained history is 10,000 rows per terminal, plus the screen. Set `CEREBRO_SCROLLBACK` before starting the daemon to change retention (maximum 100,000). This is bounded terminal state, not a lifetime transcript. Journals checkpoint at roughly 4 MiB or after 30 seconds of further output; rotation retains two generations. Orphan pane directories are reclaimed on startup. Old staged runtime directories are retained; after stopping the mux, they may be removed if disk space is needed.
 
@@ -84,7 +85,7 @@ Users can export a support bundle three ways: **Settings → Diagnostics**, **He
 | `layout-summary.json` | Counts of projects, workspaces (by kind and status), tabs and panes (by kind), and checkouts missing on disk                                                                                                      |
 | `README.txt`          | What the bundle holds and omits                                                                                                                                                                                   |
 
-The export never starts the daemon. If it is down, `system.json` records why the connection failed and the ownership record, which is often the answer. It excludes terminal output and input, chat sessions, project/workspace/branch names, file contents, the mux token and GitHub credentials. Home paths are rewritten to `~` and `$CEREBRO_HOME`, and common token shapes, `Authorization` headers, `password=` values and URL credentials are scrubbed from log text. The zip is written by `packages/mux/src/zip.ts`, so there is no archive dependency.
+The export never starts the daemon. If it is down, `system.json` records why the connection failed and the ownership record, which is often the answer. It excludes terminal output and input, chat sessions, project/workspace/branch names, file contents, and GitHub credentials. Home paths are rewritten to `~` and `$CEREBRO_HOME`, and common token shapes, `Authorization` headers, `password=` values and URL credentials are scrubbed from log text. The zip is written by `packages/mux/src/zip.ts`, so there is no archive dependency.
 
 ## Performance and limits
 

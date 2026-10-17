@@ -1,7 +1,7 @@
 import { claimServer, releaseServer } from './ownership'
 import { createServer } from 'node:net'
 import { randomUUID, createHash } from 'node:crypto'
-import { mkdir, readFile, unlink, chmod } from 'node:fs/promises'
+import { mkdir, unlink, chmod } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { LayoutState, Pane, PaneNode, ProjectListResult } from '@cerebro/core'
 import {
@@ -65,7 +65,6 @@ export async function startServer(): Promise<void> {
   })
   // GUI launches inherit launchd's minimal PATH; agents need what a terminal pane builds.
   const environment = loadShellEnv()
-  const token = await readFile(join(muxDirectory(), 'token'), 'utf8')
   const peers = new Set<Peer>()
   const owners = new Map<number, Peer>()
   const epoch = randomUUID()
@@ -362,7 +361,6 @@ export async function startServer(): Promise<void> {
               'conflict',
               'Mux protocol version differs; explicitly restart the server to upgrade.'
             )
-          if (p.token !== token) throw new MuxError('unauthorized', 'Mux authentication failed.')
           if (p.database !== databasePath())
             throw new MuxError('conflict', 'This CEREBRO_HOME already owns a different database.')
           peer.authorized = true
@@ -608,6 +606,7 @@ export async function startServer(): Promise<void> {
   const SENT = Symbol('sent')
   // Reported in the handshake so a newer staged build can replace this host.
   const runtime = await readRuntimeManifest(__dirname)
+  // claimServer already refused a reachable socket. A leftover file is a dead server.
   if (process.platform !== 'win32') await unlink(socketPath()).catch(() => {})
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject)

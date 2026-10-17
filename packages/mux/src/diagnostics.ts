@@ -15,7 +15,7 @@ import { createZip, type ZipEntry } from './zip'
  *
  * Included: `server.log` (+ rotated copy), system/version info, mux and ownership state, and
  * aggregate counts of projects, workspaces, tabs and panes. Excluded by construction: terminal
- * output, chat sessions, project/workspace/branch names, file contents, the mux token, and
+ * output, chat sessions, project/workspace/branch names, file contents, and
  * GitHub credentials. Home directories are rewritten to `~` and known secret shapes are scrubbed
  * from the log text as a second line of defence.
  */
@@ -45,7 +45,7 @@ Created so a problem can be investigated without screen-sharing. Contents:
   layout-summary.json                 Counts of projects, workspaces, tabs and panes (no names)
 
 Not included: terminal output or input, chat sessions, project/workspace/branch names, file
-contents, the mux token, and GitHub credentials. Your home directory appears as "~".
+contents, and GitHub credentials. Your home directory appears as "~".
 Review the files before sharing; they are plain text and JSON.
 `
 
@@ -219,13 +219,7 @@ export async function exportDiagnostics(options: DiagnosticsOptions): Promise<Di
     target = join(target, defaultDiagnosticsName(now))
   else if (!target.toLowerCase().endsWith('.zip')) target += '.zip'
 
-  const secrets: string[] = []
-  try {
-    secrets.push((await readFile(join(muxDirectory(), 'token'), 'utf8')).trim())
-  } catch {
-    /* No token yet. */
-  }
-  const scrub = (text: string): string => redactDiagnostics(text, secrets)
+  const scrub = (text: string): string => redactDiagnostics(text)
 
   const snapshot = await muxSnapshot(Boolean(options.skipMux))
   const database = join(home(), 'cerebro.sqlite')
