@@ -136,7 +136,8 @@ function expectSharedNameLine(row: HTMLElement): void {
 function sidebarElement(
   sidebarGroupBy: SidebarGroupBy = 'project',
   activeWorkspaceId = 11,
-  projects: Project[] = [notes, scratch]
+  projects: Project[] = [notes, scratch],
+  onSelectWorkspace: (workspaceId: number) => void = vi.fn()
 ): React.JSX.Element {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } }
@@ -150,7 +151,7 @@ function sidebarElement(
             projects={projects}
             activeWorkspaceId={activeWorkspaceId}
             settingsSection="general"
-            onSelectWorkspace={vi.fn()}
+            onSelectWorkspace={onSelectWorkspace}
             onAddProject={vi.fn()}
             onAddWorkspace={vi.fn()}
             onRenameWorkspace={vi.fn(async () => {})}
@@ -374,7 +375,7 @@ describe('sidebar project rows', () => {
     expect(screen.getByTestId('workspace-row-14')).toHaveAttribute('aria-current', 'location')
   })
 
-  it('lists child repositories inside the directory row instead of as their own projects', () => {
+  it('lists child repositories inside the directory row instead of as their own projects', async () => {
     const apps: Project = {
       ...scratch,
       id: 4,
@@ -431,16 +432,115 @@ describe('sidebar project rows', () => {
       ]
     }
 
-    renderSidebar('project', 41, [apps, frontend, notes])
+    const user = userEvent.setup()
+    const onSelectWorkspace = vi.fn()
+    render(sidebarElement('project', 41, [apps, frontend, notes], onSelectWorkspace))
 
     const row = screen.getByTestId('workspace-row-41')
-    const card = row.closest('[data-sidebar="menu-row"]')
-    expect(card).toContainElement(screen.getByTestId('workspace-nested-repo-frontend'))
-    expect(card).toContainElement(screen.getByTestId('workspace-nested-branch-backend'))
+    expectSectionLabel(row)
+    expect(row).toHaveAttribute('data-workspace-role', 'directory')
+    const menuRow = row.closest('[data-sidebar="menu-row"]')
+    const nameLine = screen
+      .getByTestId('workspace-search-sessions-41')
+      .closest('[data-directory-name-line]')
+    const group = screen.getByTestId('workspace-root-41')
+    expect(menuRow).not.toContainElement(screen.getByTestId('workspace-nested-repo-frontend'))
+    expect(nameLine).not.toContainElement(screen.getByTestId('workspace-nested-repos-41'))
+    expect(menuRow).toContainElement(screen.getByTestId('workspace-search-sessions-41'))
+    expect(nameLine?.querySelector('.sidebar-row-actions')).toHaveAttribute('data-overlay', '')
+    expect(nameLine).toContainElement(screen.getByTestId('workspace-multi-root-41'))
+    expect(screen.getByTestId('workspace-row-41')).not.toContainElement(
+      screen.getByTestId('workspace-multi-root-41')
+    )
+    const nestedList = screen.getByTestId('workspace-nested-repos-41')
+    expect(nestedList.className).toContain('sidebar-nested-repos')
+    expect(nestedList.className).not.toContain('-mx-1')
+    expect(group).toContainElement(screen.getByTestId('workspace-nested-repo-frontend'))
+    expect(group).toContainElement(screen.getByTestId('workspace-nested-branch-backend'))
     expect(screen.getByTestId('workspace-nested-branch-backend')).toHaveTextContent('develop')
+    const frontendRow = screen.getByTestId('workspace-row-51')
+    expect(frontendRow.className).toContain('rounded-md')
+    expect(frontendRow.className).not.toContain('rounded-none')
+    expect(frontendRow).toHaveAttribute('data-workspace-role', 'repository')
+    expect(frontendRow.className).toContain('text-xs')
+    expect(frontendRow.className).toContain('text-sidebar-foreground/60')
+    expect(screen.getByTestId('workspace-nested-repo-backend').querySelector('button')).toBeNull()
+    expect(
+      screen
+        .getByTestId('workspace-nested-repo-backend')
+        .querySelector('[data-workspace-role="repository"]')?.className
+    ).toContain('text-sidebar-foreground/60')
     expect(screen.queryByTestId('project-row-5')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('workspace-row-51')).not.toBeInTheDocument()
     expect(screen.getByTestId('project-row-1')).toBeInTheDocument()
+
+    await user.click(screen.getByTestId('workspace-nested-branch-frontend'))
+    expect(onSelectWorkspace).toHaveBeenCalledWith(51)
+  })
+
+  it('collapses nested repositories without hiding the root sessions', async () => {
+    const user = userEvent.setup()
+    window.cerebro = {
+      chatOverview: async () => ({
+        workspaces: [
+          {
+            workspaceId: 41,
+            agents: [
+              {
+                sessionId: 'session-1',
+                workspaceId: 41,
+                repositoryId: null,
+                harness: 'claude',
+                status: 'running',
+                title: 'Extracting TDD',
+                modelLabel: 'Opus',
+                preview: '',
+                paneId: 1,
+                paneIds: [1]
+              }
+            ]
+          }
+        ]
+      }),
+      getLayout: async () => ({ workspaces: {} }),
+      onMenuClose: () => () => {}
+    } as unknown as typeof window.cerebro
+    const apps: Project = {
+      ...scratch,
+      id: 4,
+      name: 'apps-folder',
+      nestedRepos: [{ name: 'frontend', branch: 'main', localPath: '/tmp/apps-folder/frontend' }],
+      repositories: [
+        {
+          ...scratch.repositories[0]!,
+          id: 4,
+          projectId: 4,
+          name: 'apps-folder',
+          localPath: '/tmp/apps-folder'
+        }
+      ],
+      workspaces: [
+        workspace({
+          id: 41,
+          projectId: 4,
+          repositoryId: 4,
+          kind: 'default',
+          branch: '',
+          localPath: '/tmp/apps-folder'
+        })
+      ]
+    }
+    renderSidebar('project', 41, [apps])
+    expect(await screen.findByText('Extracting TDD')).toBeInTheDocument()
+    const sessions = screen.getByTestId('workspace-sessions')
+
+    await user.click(screen.getByTestId('workspace-nested-toggle-41'))
+    expect(screen.getByTestId('workspace-nested-toggle-41')).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    )
+    expect(screen.queryByTestId('workspace-nested-repo-frontend')).not.toBeInTheDocument()
+    expect(sessions).toBeInTheDocument()
+    expect(screen.getByText('Extracting TDD')).toBeInTheDocument()
   })
 
   it('opens a project when selection moves to it and keeps a manual collapse', async () => {
