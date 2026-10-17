@@ -14,7 +14,15 @@ import StarterKit from '@tiptap/starter-kit'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 import Mention from '@tiptap/extension-mention'
 import Placeholder from '@tiptap/extension-placeholder'
-import { Extension, Node, mergeAttributes, type Editor, type Extensions } from '@tiptap/core'
+import {
+  Extension,
+  InputRule,
+  Node,
+  mergeAttributes,
+  type Editor,
+  type Extensions
+} from '@tiptap/core'
+import type { NodeType } from '@tiptap/pm/model'
 import { Plugin, PluginKey, NodeSelection, TextSelection, type EditorState } from '@tiptap/pm/state'
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view'
 import { common, createLowlight } from 'lowlight'
@@ -141,6 +149,47 @@ function deleteChip(view: EditorView, attachmentId: string): void {
     tr = tr.delete(from, to)
   }
   if (tr.docChanged) view.dispatch(tr)
+}
+
+const fencePattern = /^```([a-z]+)?[\s\n]$/
+
+/**
+ * A list item must start with a paragraph, so the stock fence rule cannot turn
+ * that paragraph into a code block. A fence that is the whole item becomes a
+ * code block after the list instead.
+ */
+function listItemFenceRule(type: NodeType): InputRule {
+  return new InputRule({
+    find: fencePattern,
+    handler: ({ state, match }) => {
+      const $from = state.doc.resolve(state.selection.from)
+      const listItem = $from.node(-1)
+      const list = $from.node(-2)
+      if (listItem?.type.name !== 'listItem') return null
+      if (list?.type.name !== 'bulletList' && list?.type.name !== 'orderedList') return null
+      if (listItem.childCount !== 1 || listItem.firstChild?.type.name !== 'paragraph') return null
+      const language = match[1] ?? ''
+      if (listItem.textContent.replace(/\s+$/, '') !== `\`\`\`${language}`) return null
+
+      const code = type.create({ language: language || null })
+      const listFrom = $from.before(-2)
+      const listTo = $from.after(-2)
+      if (list.childCount === 1) {
+        state.tr.replaceWith(listFrom, listTo, code)
+        state.tr.setSelection(TextSelection.create(state.tr.doc, listFrom + 1))
+        return
+      }
+      const itemFrom = $from.before(-1)
+      const itemTo = $from.after(-1)
+      state.tr.delete(itemFrom, itemTo)
+      const mappedList = state.tr.mapping.map(listFrom)
+      const remaining = state.tr.doc.nodeAt(mappedList)
+      if (!remaining) return
+      const insertAt = mappedList + remaining.nodeSize
+      state.tr.insert(insertAt, code)
+      state.tr.setSelection(TextSelection.create(state.tr.doc, insertAt + 1))
+    }
+  })
 }
 
 function CodeBlockView({ node, updateAttributes, editor }: ReactNodeViewProps): React.JSX.Element {
@@ -390,6 +439,9 @@ const extensionsFor = (
   const CodeBlock = CodeBlockLowlight.extend({
     addNodeView() {
       return ReactNodeViewRenderer(CodeBlockView)
+    },
+    addInputRules() {
+      return [listItemFenceRule(this.type), ...(this.parent?.() ?? [])]
     }
   }).configure({ lowlight, defaultLanguage: null })
   return [
