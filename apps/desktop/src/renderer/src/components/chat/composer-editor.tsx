@@ -648,6 +648,9 @@ export function ComposerEditor({
   const getAttachmentsRef = useRef(getAttachments)
   const onAttachFilesRef = useRef(onAttachFiles)
   const editorBox = useRef<Editor | null>(null)
+  // Shift+Enter runs the editor's own Enter handling. This flag lets that replayed Enter
+  // through, so it inserts the markdown newline instead of sending.
+  const lineBreak = useRef(false)
   const catalogRef = useRef<SkillCatalog>({ current: skills })
   const issueRef = useRef(skillIssue)
   const menuRefreshRef = useRef<(() => void) | null>(null)
@@ -712,6 +715,7 @@ export function ComposerEditor({
         return true
       },
       handleKeyDown: (view, event) => {
+        if (lineBreak.current) return false
         // Outside vim insert mode the vim plugin owns every key, so Enter never sends
         // and the caret, delete and arrow handling below is left to its motions.
         if (vimRef.current.enabled) {
@@ -777,15 +781,23 @@ export function ComposerEditor({
           onCancelRef.current?.()
           return true
         }
-        if (event.key === 'Enter' && event.shiftKey && !event.isComposing) {
-          if (view.state.selection.$from.parent.type.spec.code) return false
+        // Enter sends. Shift+Enter replays the editor's Enter, which is the markdown
+        // newline: another bullet, then leaving an empty bullet, or a new line.
+        const chord = event.altKey || event.ctrlKey || event.metaKey
+        if (event.key === 'Enter' && event.shiftKey && !chord && !event.isComposing) {
+          if (setup.menuOpen.current || !editorBox.current) return false
           event.preventDefault()
-          return editorBox.current?.commands.splitBlock() ?? false
+          lineBreak.current = true
+          try {
+            return editorBox.current.commands.enter()
+          } finally {
+            lineBreak.current = false
+          }
         }
         if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return false
         if (messageRef.current) return false
         if (setup.menuOpen.current) return false
-        if (view.state.selection.$from.parent.type.spec.code) return false
+        if (chord && view.state.selection.$from.parent.type.spec.code) return false
         event.preventDefault()
         onSubmitRef.current()
         return true
