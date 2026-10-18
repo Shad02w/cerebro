@@ -163,7 +163,7 @@ async function leftoverToken(): Promise<string | undefined> {
  * token, so this never runs against one and can be dropped once those daemons are gone.
  * Stop that process.
  */
-async function replaceUnauthorizedDaemon(): Promise<boolean> {
+export async function replaceUnauthorizedDaemon(): Promise<boolean> {
   const result = await stopMuxDaemon(socketPath(), join(muxDirectory(), 'runtimes'))
   if (!result.stopped) {
     log('warn', 'client.replace_unauthorized_skipped', {

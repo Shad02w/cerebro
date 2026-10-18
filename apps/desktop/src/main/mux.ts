@@ -1,6 +1,13 @@
 import { app, BrowserWindow } from 'electron'
 import { join, resolve } from 'node:path'
-import { connectMux, log, MuxError, type MuxClient, type TerminalEvent } from '@cerebro/mux'
+import {
+  connectMux,
+  log,
+  MuxError,
+  replaceUnauthorizedDaemon,
+  type MuxClient,
+  type TerminalEvent
+} from '@cerebro/mux'
 import type { AgentStatusEvent, LayoutState, WorkspaceTabs } from '@cerebro/core'
 import { IPC } from '../shared/ipc'
 
@@ -165,6 +172,10 @@ export async function stopMuxForQuit(): Promise<void> {
       client = await connectMux({ autoStart: false })
     } catch (error) {
       if (error instanceof MuxError && error.code === 'unavailable') return
+      // A daemon from before the handshake token was removed cannot be asked to stop. Quitting
+      // completely means it should be gone, so stop that process instead of failing the quit.
+      if (error instanceof MuxError && error.code === 'unauthorized')
+        if (await replaceUnauthorizedDaemon()) return
       throw error
     }
     const stoppingClient = client
