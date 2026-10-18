@@ -82,8 +82,10 @@ test('redaction rewrites home paths and scrubs credential shapes', () => {
       'daemon token 11111111-2222-3333-4444-555555555555'
     ].join('\n')
     const result = redactDiagnostics(text, ['11111111-2222-3333-4444-555555555555'])
-    assert.ok(result.includes('$CEREBRO_HOME/mux/server.log'), result)
-    assert.ok(result.includes('~/dev/secret-project/index.ts'), result)
+    // Windows keeps the `\` that follows the rewritten prefix.
+    const portable = result.replaceAll('\\', '/')
+    assert.ok(portable.includes('$CEREBRO_HOME/mux/server.log'), result)
+    assert.ok(portable.includes('~/dev/secret-project/index.ts'), result)
     assert.ok(!result.includes(homedir()), result)
     for (const secret of ['ghp_abc', 'abcdefghijklmnop1234', 'hunter2', 's3cretpass', '1111-'])
       assert.ok(!result.includes(secret), `${secret} leaked: ${result}`)
