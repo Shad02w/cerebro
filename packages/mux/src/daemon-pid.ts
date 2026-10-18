@@ -12,6 +12,21 @@ export function isMuxDaemonCommand(cmdline: string): boolean {
   return /(^|[\s\0\\/])mux\.cjs($|[\s\0])/.test(cmdline)
 }
 
+function asText(value: unknown): string {
+  if (typeof value === 'string') return value
+  if (Buffer.isBuffer(value)) return value.toString('utf8')
+  return ''
+}
+
+async function execText(file: string, args: string[]): Promise<string> {
+  try {
+    const { stdout } = await exec(file, args, { encoding: 'utf8', timeout: 5000 })
+    return asText(stdout)
+  } catch (error) {
+    return asText((error as { stdout?: unknown }).stdout)
+  }
+}
+
 async function commandLine(pid: number): Promise<string | undefined> {
   if (process.platform === 'linux') {
     try {
@@ -21,12 +36,8 @@ async function commandLine(pid: number): Promise<string | undefined> {
     }
   }
   if (process.platform === 'darwin') {
-    try {
-      const { stdout } = await exec('/bin/ps', ['-p', String(pid), '-ww', '-o', 'command='])
-      return stdout
-    } catch {
-      return undefined
-    }
+    const text = (await execText('/bin/ps', ['-p', String(pid), '-ww', '-o', 'command='])).trim()
+    return text || undefined
   }
   return undefined
 }
@@ -34,6 +45,19 @@ async function commandLine(pid: number): Promise<string | undefined> {
 function sameSocket(candidate: string, sock: string): boolean {
   const path = candidate.replace(/^->/, '').split(' ')[0] ?? ''
   return path === sock || basename(path) === basename(sock)
+}
+
+/** PIDs from `ps -o pid=,command=` whose command is the mux daemon. */
+export function muxDaemonPidsFromPs(output: string): number[] {
+  const pids: number[] = []
+  for (const line of output.split('\n')) {
+    const match = /^(\d+)\s+(.*)$/.exec(line.trim())
+    if (!match) continue
+    const pid = Number(match[1])
+    if (!Number.isInteger(pid) || pid <= 1) continue
+    if (isMuxDaemonCommand(match[2] ?? '')) pids.push(pid)
+  }
+  return pids
 }
 
 /** PIDs lsof reports as holding `sock`. The name field may include a ` type=` suffix. */
@@ -107,14 +131,20 @@ async function linuxListenerPids(sock: string): Promise<number[]> {
 }
 
 async function darwinHolderPids(sock: string): Promise<number[]> {
-  let stdout = ''
-  try {
-    stdout = (await exec('/usr/sbin/lsof', ['-b', '-n', '-P', '-F', 'pn', sock])).stdout
-  } catch (error) {
-    stdout = (error as { stdout?: string }).stdout ?? ''
+  // Passing the socket path with `-b` makes macOS lsof skip it: `-b` will not
+  // stat the argument, so the command reports nobody and exits. Start from
+  // mux.cjs processes and ask lsof which of those has this socket open.
+  const listing = await execText('/bin/ps', ['-axww', '-o', 'pid=,command='])
+  const candidates = muxDaemonPidsFromPs(listing).filter((pid) => pid !== process.pid)
+  const holders: number[] = []
+  for (const pid of candidates) {
+    const names = await execText('/usr/sbin/lsof', ['-n', '-P', '-F', 'n', '-p', String(pid)])
+    if (socketPidsFromLsof(`p${pid}\n${names}`, sock).length > 0) holders.push(pid)
   }
-  if (!stdout) return []
-  return socketPidsFromLsof(stdout, sock)
+  if (holders.length > 0 || (candidates.length === 0 && listing.trim())) return holders
+  // A per-process listing can omit the socket name. Scanning unix sockets
+  // still prints the path. The caller keeps a pid only when its command is mux.cjs.
+  return socketPidsFromLsof(await execText('/usr/sbin/lsof', ['-n', '-P', '-F', 'pn', '-U']), sock)
 }
 
 async function holderPids(sock: string): Promise<number[]> {
