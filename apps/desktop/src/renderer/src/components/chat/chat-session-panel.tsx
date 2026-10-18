@@ -78,6 +78,16 @@ function countLabel(count: number, singular: string, plural: string): string {
   return `${count} ${count === 1 ? singular : plural}`
 }
 
+function liveAgentCount(agents: AgentSubagent[]): number {
+  return agents.filter((agent) => agent.status === 'created' || agent.status === 'running').length
+}
+
+function agentCountLabel(agents: AgentSubagent[]): string {
+  const running = liveAgentCount(agents)
+  if (running > 0) return `${running} running`
+  return countLabel(agents.length, 'agent', 'agents')
+}
+
 function hasDiffStat(diff: DiffStat): boolean {
   return diff.additions > 0 || diff.deletions > 0
 }
@@ -147,7 +157,7 @@ function SessionSections({
       <section key="agents" data-testid="chat-session-panel-agents" className="py-2">
         <SectionHeading
           title="Agents"
-          trailing={<CountBadge count={status.agents.length} section="agents" />}
+          trailing={<CountBadge count={liveAgentCount(status.agents)} section="agents" />}
         />
         <ChatSubagentStack agents={status.agents} />
       </section>
@@ -205,8 +215,8 @@ function SessionRail({
     status?.agents
       ? {
           section: 'agents',
-          count: status.agents.length,
-          label: countLabel(status.agents.length, 'agent', 'agents'),
+          count: liveAgentCount(status.agents),
+          label: agentCountLabel(status.agents),
           icon: <Bot />
         }
       : null,

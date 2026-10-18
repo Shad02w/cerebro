@@ -1301,6 +1301,10 @@ describe('agent adapters', { concurrency: 1 }, () => {
         ),
         false
       )
+      assert.equal(
+        events.some((event) => event.type === 'item' && event.item.text?.includes('reviewed')),
+        false
+      )
       assert.ok(replies(events).includes('Review finished.'))
       const ignored: SubagentUpdate[] = []
       await runTurn(
@@ -1473,13 +1477,14 @@ describe('agent adapters', { concurrency: 1 }, () => {
       process.env.CEREBRO_CLAUDE_PATH = fixture
       const model = (await adapters.claude.models('/tmp'))[0]
       const running: SubagentUpdate[] = []
+      const events: AgentDelta[] = []
       await runTurn(
         adapters.claude,
         {
           session: liveSession(model, 'agents-still-running'),
           text: 'agents-still-running',
           signal: new AbortController().signal,
-          emit: () => {},
+          emit: (event) => events.push(event),
           ask: async () => ({ allow: false, answers: {} })
         },
         { subagent: (update) => running.push(update) }
@@ -1493,10 +1498,23 @@ describe('agent adapters', { concurrency: 1 }, () => {
         'agent-community',
         'agent-github'
       ])
-      const blogs = [...running].reverse().find((update) => update.id === 'agent-blogs')
-      assert.equal(blogs?.durationMs, 16000)
-      assert.equal(blogs?.model, 'sonnet')
-      assert.equal(blogs?.effort, 'medium')
+      const blogs = running.filter((update) => update.id === 'agent-blogs')
+      assert.equal(
+        blogs.some((update) => update.durationMs === 16000),
+        true
+      )
+      assert.equal(
+        blogs.some((update) => update.model === 'sonnet' && update.effort === 'medium'),
+        true
+      )
+      assert.equal(
+        events.some(
+          (event) =>
+            event.type === 'item' &&
+            event.item.text?.includes('Blogs report that must stay off the transcript.')
+        ),
+        false
+      )
       const finished: SubagentUpdate[] = []
       await runTurn(
         adapters.claude,

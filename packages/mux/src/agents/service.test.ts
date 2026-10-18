@@ -13,6 +13,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { AgentSessions } from './service'
 import {
+  agentActivityStatus,
   agentFinishedLine,
   type AgentModel,
   type AgentSession,
@@ -1234,6 +1235,78 @@ test('a running agent starts a local clock, and a later duration or start replac
     assert.equal(other?.durationMs, undefined)
     assert.equal(other?.startedAt, 10)
     assert.equal(other?.finishedAt, 40_000)
+    await service.shutdown()
+  } finally {
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
+
+test('a finished parent stays idle while live work keeps the displayed status running', async () => {
+  const f = liveFixture()
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    await service.command(scope, { ...send, commandId: 'idle-child' })
+    await waitFor(() => !service['running'].size)
+    let session = (await service.command(scope, get)).session!
+    assert.equal(session.status, 'idle')
+    assert.equal(session.attention?.kind, 'finished')
+    assert.equal(agentActivityStatus(session), 'finished')
+
+    f.opened[0].host.subagent({ id: 'child', status: 'running', title: 'Search blogs' })
+    session = (await service.command(scope, get)).session!
+    assert.equal(session.status, 'idle')
+    assert.equal(agentActivityStatus(session), 'running')
+    const listed = service.overview(new Set([1])).workspaces[0]?.agents[0]
+    assert.equal(listed?.status, 'running')
+    assert.equal(listed?.subagents?.[0]?.title, 'Search blogs')
+    assert.equal(listed?.subagents?.[0]?.status, 'running')
+
+    f.opened[0].host.subagent({
+      id: 'child',
+      status: 'completed',
+      title: 'Search blogs',
+      announce: true
+    })
+    session = (await service.command(scope, get)).session!
+    assert.equal(session.status, 'idle')
+    assert.equal(agentActivityStatus(session), 'finished')
+    assert.equal(service.overview(new Set([1])).workspaces[0]?.agents[0]?.status, 'finished')
+
+    f.opened[0].host.task({ id: 'shell', title: 'npm test', status: 'running' })
+    session = (await service.command(scope, get)).session!
+    assert.equal(session.status, 'idle')
+    assert.equal(agentActivityStatus(session), 'running')
+    await service.shutdown()
+  } finally {
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
+
+test('a tool id and a task id collapse into one child, and a later running update stays finished', async () => {
+  const f = liveFixture()
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    await service.command(scope, { ...send, commandId: 'merge' })
+    await waitFor(() => !service['running'].size)
+    const { host } = f.opened[0]
+    host.subagent({ id: 'tool-blogs', status: 'completed', title: 'Search blogs', announce: true })
+    host.subagent({
+      id: 'agent-blogs',
+      status: 'running',
+      title: 'Search blogs',
+      replaces: 'tool-blogs'
+    })
+    let session = (await service.command(scope, get)).session!
+    assert.equal(session.subagents?.length, 1)
+    assert.equal(session.subagents?.[0]?.id, 'agent-blogs')
+    assert.equal(session.subagents?.[0]?.status, 'completed')
+    assert.equal(session.subagents?.[0]?.title, 'Search blogs')
+    assert.equal(session.items.find((item) => item.agent)?.agent?.id, 'agent-blogs')
+
+    host.subagent({ id: 'agent-blogs', status: 'running', replaces: 'tool-blogs' })
+    session = (await service.command(scope, get)).session!
+    assert.equal(session.subagents?.length, 1)
+    assert.equal(session.subagents?.[0]?.status, 'completed')
     await service.shutdown()
   } finally {
     rmSync(f.dir, { recursive: true, force: true })
