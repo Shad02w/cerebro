@@ -44,37 +44,16 @@ function childLive(status: ChatAgentChild['status']): boolean {
   return status === 'created' || status === 'running'
 }
 
-function childMark(
-  status: ChatAgentChild['status']
-): 'running' | 'finished' | 'failed' | 'interrupted' {
-  if (status === 'failed') return 'failed'
-  if (status === 'stopped') return 'interrupted'
-  if (status === 'completed') return 'finished'
-  return 'running'
-}
-
-function childWord(status: ChatAgentChild['status']): string {
-  if (status === 'failed') return 'Failed'
-  if (status === 'stopped') return 'Stopped'
-  if (status === 'completed') return 'Done'
-  return 'Running'
-}
-
 function childElapsed(child: ChatAgentChild, now: number): string {
   if (child.status === 'created') return ''
   if (child.durationMs !== undefined) return formatAgentElapsed(child.durationMs)
-  if (!childLive(child.status)) {
-    if (child.startedAt === undefined || child.finishedAt === undefined) return ''
-    return formatAgentElapsed(child.finishedAt - child.startedAt)
-  }
   if (child.startedAt === undefined) return ''
   return formatAgentElapsed(now - child.startedAt)
 }
 
-/** Live children first. Settled rows keep their recorded order after them. */
-function shownChildren(agent: ChatAgentActivity, showSettled: boolean): ChatAgentChild[] {
-  const children = (agent.subagents ?? []).filter((child) => showSettled || childLive(child.status))
-  return children.toSorted((a, b) => Number(childLive(b.status)) - Number(childLive(a.status)))
+/** The sidebar follows active work only; settled children stay in the chat subagent list. */
+function liveChildren(agent: ChatAgentActivity): ChatAgentChild[] {
+  return (agent.subagents ?? []).filter((child) => childLive(child.status))
 }
 
 function containsPane(node: PaneNode, paneId: number): boolean {
@@ -120,48 +99,37 @@ function closeSession(agent: ChatAgentActivity, layout: LayoutState | undefined)
 function SessionChildren({
   agent,
   now,
-  showSettled,
   onOpen
 }: {
   agent: ChatAgentActivity
   now: number
-  showSettled: boolean
   onOpen: (agent: ChatAgentActivity) => void
 }): React.JSX.Element | null {
-  const children = shownChildren(agent, showSettled)
+  const children = liveChildren(agent)
   if (!children.length) return null
   return (
     <div className="mt-0.5 flex flex-col">
       {children.map((child) => {
-        const live = childLive(child.status)
         const title = child.title.trim() || child.id
         const elapsed = childElapsed(child, now)
-        const word = childWord(child.status)
         return (
           <button
             key={child.id}
             type="button"
             data-testid="workspace-subagent"
             data-status={child.status}
-            aria-label={`${title}, ${word}`}
+            aria-label={`${title}, Running`}
             className="flex min-w-0 items-center gap-1.5 rounded-sm py-0.5 pl-5 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sidebar-selected"
             onClick={(): void => onOpen(agent)}
           >
-            <AgentStatusIcon status={childMark(child.status)} className="size-3.5" />
+            <AgentStatusIcon status="running" className="size-3.5" />
             <span className="min-w-0 flex-1 truncate text-[12px]">{title}</span>
             {elapsed ? (
               <span className="shrink-0 text-[11px] text-sidebar-foreground/45 tabular-nums">
                 {elapsed}
               </span>
             ) : null}
-            <span
-              className={cn(
-                'shrink-0 text-[11px]',
-                live ? 'text-sidebar-foreground/70' : 'text-sidebar-foreground/40'
-              )}
-            >
-              {word}
-            </span>
+            <span className="shrink-0 text-[11px] text-sidebar-foreground/70">Running</span>
           </button>
         )
       })}
@@ -172,18 +140,15 @@ function SessionChildren({
 export function WorkspaceSessionList({
   agents,
   muted = false,
-  showSettled = false,
   onOpenAgent
 }: {
   agents: ChatAgentActivity[]
   muted?: boolean
-  /** Selected workspace also lists finished children. Other workspaces list only live ones. */
-  showSettled?: boolean
   onOpenAgent: (agent: ChatAgentActivity) => void
 }): React.JSX.Element | null {
   const now = useMinuteClock()
   const ticking = agents.some((agent) =>
-    shownChildren(agent, showSettled).some(
+    liveChildren(agent).some(
       (child) =>
         child.status === 'running' &&
         child.durationMs === undefined &&
@@ -267,12 +232,7 @@ export function WorkspaceSessionList({
                 <X className="size-3" />
               </button>
             ) : null}
-            <SessionChildren
-              agent={agent}
-              now={childNow}
-              showSettled={showSettled}
-              onOpen={onOpenAgent}
-            />
+            <SessionChildren agent={agent} now={childNow} onOpen={onOpenAgent} />
           </div>
         )
       })}
