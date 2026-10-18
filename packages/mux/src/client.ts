@@ -157,7 +157,12 @@ async function leftoverToken(): Promise<string | undefined> {
     return undefined
   }
 }
-/** A pre-token daemon rejects hello when the file is gone or no longer matches. Stop that process. */
+/**
+ * Only a daemon from before the handshake token was removed answers hello with unauthorized,
+ * when mux/token is gone or no longer matches the secret it loaded. A current daemon has no
+ * token, so this never runs against one and can be dropped once those daemons are gone.
+ * Stop that process.
+ */
 async function replaceUnauthorizedDaemon(): Promise<boolean> {
   const result = await stopMuxDaemon(socketPath(), join(muxDirectory(), 'runtimes'))
   if (!result.stopped) {

@@ -157,7 +157,8 @@ async function processCommands(): Promise<Array<{ pid: number; command: string }
 /**
  * Daemons started from a staged runtime of this home: `<runtimesDir>/<fingerprint>/mux.cjs`.
  * Used when the socket's holder cannot be read, for example when lsof is blocked or returns
- * nothing. A path inside this home's own runtimes directory is specific enough to be ours.
+ * nothing. Like the rest of this recovery it exists only for daemons that still require the
+ * removed handshake token; a current daemon never reaches it. A path inside this home's own runtimes directory is specific enough to be ours.
  */
 async function stagedDaemonPids(runtimesDir: string): Promise<number[]> {
   const prefix = runtimesDir.replace(/[\\/]+$/, '')
