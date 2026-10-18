@@ -7,11 +7,12 @@ import type {
   AgentSession,
   AgentSkill,
   AgentSubagent,
+  AttachmentPolicy,
   ChatAttachment,
   ChatSkillMention
 } from '@cerebro/core'
 
-/** A host-owned image file sent with the prompt. Bytes are read only when a harness needs them inline. */
+/** A host-owned file or image sent with the prompt. Bytes are read only when a harness needs them inline. */
 export type RunAttachment = ChatAttachment & { path: string }
 export type RunContext = {
   session: AgentSession
@@ -70,6 +71,8 @@ export interface AgentConnection {
   switchSession?(sessionPath: string): Promise<{ cancelled: boolean }>
 }
 export interface AgentAdapter {
+  /** What this harness accepts with a prompt. Omitted means images within the core defaults. */
+  attachments?: AttachmentPolicy
   models(cwd: string): Promise<AgentModel[]>
   /** Skills available in `cwd` for this harness. Optional so test doubles can omit it. */
   skills?(cwd: string): Promise<AgentSkill[]>

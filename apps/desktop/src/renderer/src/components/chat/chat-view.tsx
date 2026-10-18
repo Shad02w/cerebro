@@ -1,11 +1,13 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowUp, ImagePlus, MessageSquare, Square } from 'lucide-react'
+import { ArrowUp, MessageSquare, Paperclip, Square } from 'lucide-react'
 import {
   resolveNewAgentModel,
   type AgentAccessMode,
   type AgentAnswer,
   type AgentModel,
+  checkAttachments,
+  defaultAttachmentPolicy,
   type AgentSkill,
   type ChatAttachment,
   type ChatAttachmentUpload,
@@ -47,7 +49,8 @@ import { ChatSessionPanel } from './chat-session-panel'
 import { AttachmentStrip, DropOverlay } from './chat-composer-attachments'
 import { ComposerEditor, type ComposerEditorHandle } from './composer-editor'
 import { VimModeBadge } from './vim-mode-badge'
-import { chatImageAccept, useComposerDraft } from './use-composer-draft'
+import { useComposerDraft } from './use-composer-draft'
+import { attachmentAccept } from './chat-attachments'
 import { ModelPicker } from './model-picker'
 import { ContextUsageRing } from './context-usage-ring'
 import { messageToResend } from './model-switch'
@@ -205,6 +208,10 @@ export function ChatView({
         : null,
     [selected]
   )
+  const agentName = selected ? harnessLabels[selected.harness] : 'This agent'
+  const attachmentPolicy =
+    (selected && catalog.data?.capabilities[selected.harness]?.attachments) ||
+    defaultAttachmentPolicy
   const {
     draft,
     dragging,
@@ -218,7 +225,9 @@ export function ChatView({
   } = useComposerDraft({
     storageKey: draftKey,
     editorRef,
-    canAttach: imageRejection,
+    canAttachImage: imageRejection,
+    policy: attachmentPolicy,
+    agent: agentName,
     onError: notify
   })
   const stick = useRef(true)
@@ -474,7 +483,9 @@ export function ChatView({
       notify('Write a message first.')
       return
     }
-    const rejection = message.attachments.length ? imageRejection() : null
+    const rejection =
+      (message.attachments.some((a) => a.kind === 'image') ? imageRejection() : null) ??
+      checkAttachments(attachmentPolicy, agentName, message.attachments)
     if (rejection) {
       notify(rejection)
       return
@@ -859,11 +870,11 @@ export function ChatView({
                           type="button"
                           size="icon-sm"
                           variant="ghost"
-                          aria-label="Attach image"
-                          title="Attach image (or drop / paste one)"
+                          aria-label="Attach file"
+                          title="Attach a file or image (or drop / paste one)"
                           onClick={() => fileInput.current?.click()}
                         >
-                          <ImagePlus className="size-4" />
+                          <Paperclip className="size-4" />
                         </Button>
                         {busy ? (
                           <Button
@@ -893,7 +904,7 @@ export function ChatView({
                   <input
                     ref={fileInput}
                     type="file"
-                    accept={chatImageAccept}
+                    accept={attachmentAccept(attachmentPolicy)}
                     multiple
                     hidden
                     data-testid="chat-image-input"

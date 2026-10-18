@@ -427,6 +427,76 @@ test('a legacy per-session attachment layout is migrated into the flat store on 
     rmSync(f.dir, { recursive: true, force: true })
   }
 })
+test('file attachments follow the harness policy: stored by extension, passed to the adapter, and rejected with a readable error', async () => {
+  const received: RunContext['attachments'][] = []
+  const adapter: AgentAdapter = {
+    attachments: {
+      maxCount: 2,
+      maxTotalBytes: 30,
+      image: { maxBytes: 10, maxEdge: 100 },
+      file: { maxBytes: 20, extensions: ['.pdf', '.txt'], description: 'PDF and text files' }
+    },
+    models: async () => [model],
+    connect: () => ({
+      run: async (context) => {
+        received.push(context.attachments)
+      },
+      close: () => {}
+    })
+  }
+  const dir = mkdtempSync(join(tmpdir(), 'cerebro-agents-files-'))
+  const service = new AgentSessions(dir, () => {}, { claude: adapter, codex: adapter, pi: adapter })
+  const file = (id: string, name: string, text: string) => ({
+    id,
+    kind: 'file' as const,
+    name,
+    mimeType: 'text/plain',
+    bytes: text.length,
+    data: Buffer.from(text).toString('base64')
+  })
+  try {
+    await assert.rejects(
+      service.command(scope, { ...send, attachments: [file('f-1', 'run.exe', 'x')] }),
+      /cannot take run\.exe\. It accepts PDF and text files/
+    )
+    await assert.rejects(
+      service.command(scope, { ...send, attachments: [file('f-1', 'big.txt', 'x'.repeat(21))] }),
+      /big\.txt is over .*file limit/
+    )
+    await assert.rejects(
+      service.command(scope, {
+        ...send,
+        attachments: [
+          file('f-1', 'a.txt', 'a'),
+          file('f-2', 'b.txt', 'b'),
+          file('f-3', 'c.txt', 'c')
+        ]
+      }),
+      /at most 2 attachments/
+    )
+    await assert.rejects(
+      service.command(scope, {
+        ...send,
+        attachments: [file('f-1', 'a.txt', 'x'.repeat(20)), file('f-2', 'b.txt', 'y'.repeat(20))]
+      }),
+      /total at most/
+    )
+    const view = await service.command(scope, {
+      ...send,
+      commandId: 'ok',
+      attachments: [file('f-ok', 'notes.txt', 'hello')]
+    })
+    const stored = join(dir, 'attachments', 'f-ok.txt')
+    assert.equal(readFileSync(stored, 'utf8'), 'hello')
+    const user = view.session!.items.find((item) => item.kind === 'user')!
+    assert.equal(user.attachments![0].kind, 'file')
+    assert.deepEqual(received, [[{ ...user.attachments![0], path: stored }]])
+    assert.equal(service.attachment(1, view.session!.id, 'f-ok').data, 'aGVsbG8=')
+  } finally {
+    await service.shutdown()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
 test('image attachments are validated, stored outside the snapshot, passed to the adapter, and readable per workspace', async () => {
   const png =
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
@@ -455,7 +525,7 @@ test('image attachments are validated, stored outside the snapshot, passed to th
         ...send,
         attachments: [{ ...upload, mimeType: 'text/plain' as 'image/png' }]
       }),
-      /Invalid image attachment/
+      /Invalid attachment/
     )
     const textOnly: AgentAdapter = {
       models: async () => [{ ...model, modalities: ['text'] }],
@@ -503,7 +573,7 @@ test('image attachments are validated, stored outside the snapshot, passed to th
       data: png
     })
     assert.throws(() => service.attachment(2, session.id, 'img-1'), /not found in this workspace/)
-    assert.throws(() => service.attachment(1, session.id, 'missing'), /Image not found/)
+    assert.throws(() => service.attachment(1, session.id, 'missing'), /Attachment not found/)
     await service.shutdown()
     const restored = new AgentSessions(f.dir, () => {}, f.drivers)
     assert.equal(restored.attachment(1, session.id, 'img-1').data, png)

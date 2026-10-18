@@ -1,12 +1,12 @@
 import { useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Copy, Undo2 } from 'lucide-react'
+import { Copy, FileText, Undo2 } from 'lucide-react'
 import type { AgentSkill, ChatAttachment } from '@cerebro/core'
 import { Button } from '@/components/ui/button'
 import { ImagePreviewDialog } from '@/components/image-preview-dialog'
 import { SuccessToast } from '@/components/success-toast'
 import { useClipboard } from '@/hooks/use-clipboard'
-import { dataUrl } from './chat-attachments'
+import { dataUrl, formatBytes } from './chat-attachments'
 import { ComposerEditor, ComposerMessage } from './composer-editor'
 import { loadWorkspaceFiles } from './workspace-files'
 
@@ -105,25 +105,42 @@ export function ChatUserMessage({
         }}
       >
         {attachments.length ? (
-          <ul className="mb-2 flex flex-wrap gap-2" aria-label="Attached images">
+          <ul className="mb-2 flex flex-wrap gap-2" aria-label="Attachments">
             {attachments.map((attachment, index) => (
               <li key={attachment.id}>
-                <button
-                  type="button"
-                  className="relative block overflow-hidden rounded-lg border bg-background"
-                  aria-label={`Open image ${index + 1}: ${attachment.name}`}
-                  onClick={() => setPreview(attachment)}
-                >
-                  <AttachmentImage
-                    workspaceId={workspaceId}
-                    sessionId={sessionId}
-                    attachment={attachment}
-                    className="block size-20 object-cover"
-                  />
-                  <span className="absolute top-0.5 left-0.5 rounded bg-background/90 px-1 font-mono text-[10px] leading-4">
-                    #{index + 1}
+                {attachment.kind === 'file' ? (
+                  <span
+                    className="flex h-20 w-40 items-center gap-2 rounded-lg border bg-background px-2 text-xs"
+                    data-testid="chat-file-attachment"
+                    title={attachment.name}
+                  >
+                    <FileText
+                      className="size-5 shrink-0 text-muted-foreground"
+                      aria-hidden="true"
+                    />
+                    <span className="flex min-w-0 flex-col">
+                      <span className="truncate">{attachment.name}</span>
+                      <span className="text-muted-foreground">{formatBytes(attachment.bytes)}</span>
+                    </span>
                   </span>
-                </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="relative block overflow-hidden rounded-lg border bg-background"
+                    aria-label={`Open image ${index + 1}: ${attachment.name}`}
+                    onClick={() => setPreview(attachment)}
+                  >
+                    <AttachmentImage
+                      workspaceId={workspaceId}
+                      sessionId={sessionId}
+                      attachment={attachment}
+                      className="block size-20 object-cover"
+                    />
+                    <span className="absolute top-0.5 left-0.5 rounded bg-background/90 px-1 font-mono text-[10px] leading-4">
+                      #{index + 1}
+                    </span>
+                  </button>
+                )}
               </li>
             ))}
           </ul>
@@ -151,7 +168,7 @@ export function ChatUserMessage({
             skills={skills}
             onImageChip={(attachmentId) => {
               const attachment = attachments.find((item) => item.id === attachmentId)
-              if (attachment) setPreview(attachment)
+              if (attachment?.kind === 'image') setPreview(attachment)
             }}
           />
         ) : null}

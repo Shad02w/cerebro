@@ -23,27 +23,134 @@ export type AgentModel = {
 }
 export const chatImageTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'] as const
 export type ChatImageType = (typeof chatImageTypes)[number]
-/** Bounds shared by the composer and the host. Images are stored by the host; snapshots keep metadata only. */
+/** Default image bounds. Each adapter declares its own `AttachmentPolicy`; this is the fallback. */
 export const chatAttachmentLimits = {
   maxBytes: 5 * 1024 * 1024,
   maxCount: 20,
   maxTotalBytes: 20 * 1024 * 1024,
   maxEdge: 2000
 } as const
+export type ChatAttachmentKind = 'image' | 'file'
 export type ChatAttachment = {
   id: string
-  kind: 'image'
+  kind: ChatAttachmentKind
   name: string
-  mimeType: ChatImageType
+  /** One of `chatImageTypes` for images. The browser-reported type, or empty, for files. */
+  mimeType: string
   bytes: number
   width?: number
   height?: number
 }
 /** Base64 payload sent with a `send` command. Never stored in a session snapshot. */
 export type ChatAttachmentUpload = ChatAttachment & { data: string }
+/**
+ * What one harness accepts with a prompt. Declared by its adapter and enforced by the host before
+ * anything is written; the composer reads the same policy to reject early.
+ */
+export type AttachmentPolicy = {
+  maxCount: number
+  /** Raw bytes of every attachment in one message. */
+  maxTotalBytes: number
+  image: { maxBytes: number; maxEdge: number }
+  /** Absent when the harness takes images only. `extensions` is lowercase with the dot; `'any'` accepts all. */
+  file?: { maxBytes: number; extensions: readonly string[] | 'any'; description: string }
+}
+export const defaultAttachmentPolicy: AttachmentPolicy = {
+  maxCount: chatAttachmentLimits.maxCount,
+  maxTotalBytes: chatAttachmentLimits.maxTotalBytes,
+  image: { maxBytes: chatAttachmentLimits.maxBytes, maxEdge: chatAttachmentLimits.maxEdge }
+}
+/** Extensions every harness can read as plain text. */
+export const textFileExtensions = [
+  '.txt',
+  '.md',
+  '.markdown',
+  '.json',
+  '.jsonl',
+  '.yaml',
+  '.yml',
+  '.toml',
+  '.xml',
+  '.csv',
+  '.tsv',
+  '.log',
+  '.ini',
+  '.env',
+  '.html',
+  '.css',
+  '.scss',
+  '.js',
+  '.jsx',
+  '.mjs',
+  '.cjs',
+  '.ts',
+  '.tsx',
+  '.py',
+  '.rb',
+  '.go',
+  '.rs',
+  '.java',
+  '.kt',
+  '.swift',
+  '.c',
+  '.h',
+  '.cc',
+  '.cpp',
+  '.hpp',
+  '.cs',
+  '.php',
+  '.sh',
+  '.bash',
+  '.zsh',
+  '.sql',
+  '.diff',
+  '.patch',
+  '.vue',
+  '.svelte',
+  '.graphql'
+] as const
+export const fileExtension = (name: string): string => {
+  const match = /\.[A-Za-z0-9]{1,10}$/.exec(name)
+  return match ? match[0].toLowerCase() : ''
+}
+export const attachmentAccepts = (policy: AttachmentPolicy, name: string): boolean =>
+  !!policy.file &&
+  (policy.file.extensions === 'any' || policy.file.extensions.includes(fileExtension(name)))
+const megabytes = (bytes: number): string => `${Math.round((bytes / 1024 / 1024) * 10) / 10} MB`
+/**
+ * First reason `items` cannot go to `agent` under `policy`, as a sentence for a toast, or null.
+ * Images are sized after the composer downscales them, so `bytes` is the final payload size.
+ */
+export function checkAttachments(
+  policy: AttachmentPolicy,
+  agent: string,
+  items: ReadonlyArray<Pick<ChatAttachment, 'kind' | 'name' | 'bytes'>>
+): string | null {
+  if (items.length > policy.maxCount)
+    return `${agent} accepts at most ${policy.maxCount} attachments per message.`
+  let total = 0
+  for (const item of items) {
+    const label = item.name || (item.kind === 'image' ? 'Image' : 'File')
+    if (item.kind === 'image') {
+      if (item.bytes > policy.image.maxBytes)
+        return `${label} is over ${agent}'s ${megabytes(policy.image.maxBytes)} image limit.`
+    } else if (!policy.file) {
+      return `${agent} only accepts images. Remove ${label} or choose another agent.`
+    } else if (!attachmentAccepts(policy, item.name)) {
+      return `${agent} cannot take ${label}. It accepts ${policy.file.description}.`
+    } else if (item.bytes > policy.file.maxBytes) {
+      return `${label} is over ${agent}'s ${megabytes(policy.file.maxBytes)} file limit.`
+    }
+    total += item.bytes
+  }
+  if (total > policy.maxTotalBytes)
+    return `Attachments in one message must total at most ${megabytes(policy.maxTotalBytes)} for ${agent}.`
+  return null
+}
 /** Marker text for the Nth attachment (1-based), as used by Claude Code and Codex. */
-export const chatImageMarker = (index: number): string => `[Image #${index}]`
-export const chatImageMarkerPattern = /\[Image #(\d+)\]/g
+export const chatImageMarker = (index: number, kind: ChatAttachmentKind = 'image'): string =>
+  `[${kind === 'image' ? 'Image' : 'File'} #${index}]`
+export const chatImageMarkerPattern = /\[(?:Image|File) #(\d+)\]/g
 export type AgentCapabilities = {
   resume: boolean
   cancel: boolean
@@ -51,6 +158,8 @@ export type AgentCapabilities = {
   questions: boolean
   modelSelection: 'between-turns'
   imageInput: boolean
+  /** What the harness accepts with a prompt, declared by its adapter. Absent means images within the defaults. */
+  attachments?: AttachmentPolicy
   steering: boolean
   /** 'native' forks preserve the harness's own conversational memory; 'emulated' forks only replay visible items. */
   fork: 'native' | 'emulated'
@@ -451,7 +560,7 @@ export type ChatWorkspaceActivity = {
 export type ChatActivityOverview = {
   workspaces: ChatWorkspaceActivity[]
 }
-export type ChatAttachmentContent = { mimeType: ChatImageType; data: string }
+export type ChatAttachmentContent = { mimeType: string; data: string }
 export type ChatCommand = {
   action:
     | 'get'
