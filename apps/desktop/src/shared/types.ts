@@ -2,10 +2,12 @@ import type {
   AgentCatalog,
   AgentHarness,
   AgentModelDefaults,
+  AgentSession,
   AgentSkillList,
   ChatActivityOverview,
   ChatAttachmentContent,
   ChatCommand,
+  ChatImageType,
   ChatSearchQuery,
   ChatSearchResult,
   ChatView,
@@ -315,6 +317,26 @@ export type CliInstallStatus = {
 export type DiagnosticsExportResult =
   { state: 'saved'; path: string; bytes: number; muxRunning: boolean } | { state: 'canceled' }
 
+export type SessionReportScore = 'helpful' | 'problem'
+/** An image the user is sending with a session report. Bytes are base64. */
+export type SessionReportImagePayload = {
+  id: string
+  name: string
+  mimeType: ChatImageType
+  data: string
+  source: 'attached' | 'session'
+}
+/** One conversation, plus any images the user chose to send with it. */
+export type SessionReportRequest = {
+  session: AgentSession
+  score: SessionReportScore
+  comment: string
+  includeTranscript: boolean
+  images: SessionReportImagePayload[]
+}
+export type SessionReportExportResult =
+  { state: 'saved'; path: string; bytes: number; images: number } | { state: 'canceled' }
+
 export type CerebroApi = {
   chatCommand: (command: ChatCommand) => Promise<ChatView>
   chatOverview: () => Promise<ChatActivityOverview>
@@ -348,6 +370,8 @@ export type CerebroApi = {
   onFullScreenChange: (listener: (fullScreen: boolean) => void) => () => void
   /** Asks where to save, then writes a support bundle (logs and counts, never content). */
   exportDiagnostics: () => Promise<DiagnosticsExportResult>
+  /** Asks where to save a report of one conversation, including any images on it. */
+  exportSessionReport: (request: SessionReportRequest) => Promise<SessionReportExportResult>
   getCliStatus: () => Promise<CliInstallStatus>
   installCli: () => Promise<CliInstallStatus>
   removeCli: () => Promise<CliInstallStatus>

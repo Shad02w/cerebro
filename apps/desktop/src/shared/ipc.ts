@@ -13,6 +13,9 @@ export const IPC = {
   diagnostics: {
     export: 'cerebro:diagnostics:export'
   },
+  feedback: {
+    export: 'cerebro:feedback:export'
+  },
   cli: {
     status: 'cerebro:cli:status',
     install: 'cerebro:cli:install',
