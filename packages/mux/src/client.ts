@@ -166,7 +166,11 @@ async function leftoverToken(): Promise<string | undefined> {
 async function replaceUnauthorizedDaemon(): Promise<boolean> {
   const result = await stopMuxDaemon(socketPath(), join(muxDirectory(), 'runtimes'))
   if (!result.stopped) {
-    log('warn', 'client.replace_unauthorized_skipped', { reason: result.reason })
+    log('warn', 'client.replace_unauthorized_skipped', {
+      reason: result.reason,
+      holders: result.holders,
+      staged: result.staged
+    })
     return false
   }
   log('warn', 'client.replace_unauthorized_host', { daemonPid: result.pid, forced: result.forced })

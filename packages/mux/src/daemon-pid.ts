@@ -175,7 +175,13 @@ async function stagedDaemonPids(runtimesDir: string): Promise<number[]> {
 
 export type StopMuxDaemonResult =
   | { stopped: true; pid: number; forced: boolean }
-  | { stopped: false; reason: 'not_found' | 'ambiguous' | 'kill_failed' }
+  | {
+      stopped: false
+      reason: 'not_found' | 'ambiguous' | 'kill_failed'
+      /** Processes seen holding the socket, and daemons staged under the runtimes directory. */
+      holders?: number
+      staged?: number
+    }
 
 const gone = (pid: number): boolean => {
   try {
@@ -202,8 +208,14 @@ export async function stopMuxDaemon(
     const command = await commandLine(pid)
     if (command && isMuxDaemonCommand(command)) daemons.push(pid)
   }
-  if (daemons.length === 0 && runtimesDir) daemons.push(...(await stagedDaemonPids(runtimesDir)))
-  if (daemons.length === 0) return { stopped: false, reason: 'not_found' }
+  let staged = 0
+  if (daemons.length === 0 && runtimesDir) {
+    const found = await stagedDaemonPids(runtimesDir)
+    staged = found.length
+    daemons.push(...found)
+  }
+  if (daemons.length === 0)
+    return { stopped: false, reason: 'not_found', holders: holders.length, staged }
   if (daemons.length > 1) return { stopped: false, reason: 'ambiguous' }
   const pid = daemons[0]!
   const command = await commandLine(pid)
