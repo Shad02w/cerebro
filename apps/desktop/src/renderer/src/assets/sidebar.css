@@ -434,3 +434,70 @@
 .cerebro-sidebar .sidebar-project-button [data-row-icon] {
   color: color-mix(in oklch, var(--sidebar-foreground) 60%, transparent);
 }
+
+/* Expand/collapse chevron takes the leading icon's slot on row hover or keyboard focus.
+   It follows the row's text color, and the slot keeps its size so nothing shifts. */
+.cerebro-sidebar [data-row-toggle] {
+  position: relative;
+}
+
+.cerebro-sidebar [data-row-toggle] > * {
+  position: absolute;
+  inset: 0;
+}
+
+.cerebro-sidebar [data-row-toggle] > [data-row-toggle-chevron] {
+  width: 0.875rem;
+  height: 0.875rem;
+  margin: auto;
+}
+
+.cerebro-sidebar [data-row-toggle-icon] {
+  display: flex;
+  width: 100%;
+  height: 100%;
+}
+
+.cerebro-sidebar [data-row-toggle-icon] > svg,
+.cerebro-sidebar [data-row-toggle-icon] > span {
+  width: 100%;
+  height: 100%;
+}
+
+.cerebro-sidebar [data-row-toggle-icon],
+.cerebro-sidebar [data-row-toggle-chevron] {
+  transition: opacity 120ms ease;
+}
+
+.cerebro-sidebar [data-row-toggle-chevron] {
+  opacity: 0;
+}
+
+.cerebro-sidebar .sidebar-row-toggle {
+  position: absolute;
+  top: 0;
+  left: 0.5rem;
+  z-index: 2;
+  display: flex;
+  width: 1rem;
+  height: var(--sidebar-row-line);
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  outline: none;
+}
+
+.cerebro-sidebar .sidebar-row-toggle > [data-row-toggle-chevron] {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.cerebro-sidebar [data-sidebar='menu-row']:is(:hover, :has(:focus-visible)) [data-row-toggle-icon] {
+  opacity: 0;
+}
+
+.cerebro-sidebar
+  [data-sidebar='menu-row']:is(:hover, :has(:focus-visible))
+  [data-row-toggle-chevron] {
+  opacity: 1;
+}
