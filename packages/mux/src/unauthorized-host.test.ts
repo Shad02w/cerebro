@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { connectMux, socketPath, type MuxClient } from './client'
-import { isMuxDaemonCommand, socketPidsFromLsof } from './daemon-pid'
+import { isMuxDaemonCommand, muxDaemonPidsFromPs, socketPidsFromLsof } from './daemon-pid'
 
 const legacyDaemon = `
 const { createServer } = require('node:net')
@@ -236,6 +236,18 @@ test('isMuxDaemonCommand matches only the daemon entry', () => {
   assert.equal(isMuxDaemonCommand('/opt/cerebro/mux-worker.cjs'), false)
   assert.equal(isMuxDaemonCommand('/opt/cerebro/holder.cjs'), false)
   assert.equal(isMuxDaemonCommand('notmux.cjs'), false)
+})
+
+test('ps listing selects only mux.cjs processes', () => {
+  const output = [
+    '  10 /usr/local/bin/node /var/folders/ab/T/mux.cjs',
+    '11 /usr/local/bin/node /var/folders/ab/T/holder.cjs',
+    '12 /usr/local/bin/node --no-warnings /opt/runtimes/ab/mux.cjs',
+    '13 /usr/local/bin/node /opt/cerebro/mux-worker.cjs',
+    'not a pid line',
+    ''
+  ].join('\n')
+  assert.deepEqual(muxDaemonPidsFromPs(output), [10, 12])
 })
 
 test('lsof field output identifies the process holding the socket', () => {
