@@ -8,6 +8,7 @@ import { EventEmitter } from 'node:events'
 import { Wire, MuxError, VERSION, type Message } from './protocol'
 import { protectDirectory } from './permissions'
 import { log, rotateLog } from './log'
+import { stopMuxDaemon } from './daemon-pid'
 import { muxDirectory, socketPath, databasePath } from './paths'
 import { readRuntimeManifest, runtimeOutdated, type RuntimeManifest } from './runtime-manifest'
 export * from './protocol'
@@ -144,14 +145,27 @@ async function stageRuntime(source: string): Promise<string> {
   }
   return target
 }
-/** A previous daemon still checks this file. A current daemon ignores it, and nothing creates it. */
+/**
+ * A previous daemon compares this file byte for byte, including a trailing newline.
+ * A current daemon ignores it, and nothing creates it.
+ */
 async function leftoverToken(): Promise<string | undefined> {
   try {
-    const token = (await readFile(join(muxDirectory(), 'token'), 'utf8')).trim()
-    return token.length > 0 ? token : undefined
+    const token = await readFile(join(muxDirectory(), 'token'), 'utf8')
+    return token.trim().length > 0 ? token : undefined
   } catch {
     return undefined
   }
+}
+/** A pre-token daemon rejects hello when the file is gone or no longer matches. Stop that process. */
+async function replaceUnauthorizedDaemon(): Promise<boolean> {
+  const result = await stopMuxDaemon(socketPath())
+  if (!result.stopped) {
+    log('warn', 'client.replace_unauthorized_skipped', { reason: result.reason })
+    return false
+  }
+  log('warn', 'client.replace_unauthorized_host', { daemonPid: result.pid, forced: result.forced })
+  return true
 }
 export async function connectMux(options: ConnectOptions = {}): Promise<MuxClient> {
   const created = await mkdir(muxDirectory(), { recursive: true, mode: 0o700 })
@@ -179,8 +193,14 @@ export async function connectMux(options: ConnectOptions = {}): Promise<MuxClien
     // A missing socket is the normal "not started yet" case; anything else is worth a record.
     if (code !== 'ENOENT' && code !== 'ECONNREFUSED')
       log('warn', 'client.connect_failed', { error, autoStart: options.autoStart !== false })
-    if (error instanceof MuxError && error.code !== 'unavailable') throw error
-    if (options.autoStart === false) throw new MuxError('unavailable', 'Mux is not running.')
+    // Build 17 stopped sending a secret. A daemon from the previous release still requires
+    // mux/token and answers hello with unauthorized, which used to trap the app on the splash.
+    const replace =
+      error instanceof MuxError && error.code === 'unauthorized' && options.autoStart !== false
+    if (replace) {
+      if (!(await replaceUnauthorizedDaemon())) throw error
+    } else if (error instanceof MuxError && error.code !== 'unavailable') throw error
+    else if (options.autoStart === false) throw new MuxError('unavailable', 'Mux is not running.')
   }
   const source =
     options.runtimeDir ??
