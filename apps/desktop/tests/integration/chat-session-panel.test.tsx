@@ -133,8 +133,7 @@ describe('ChatSessionPanel', () => {
     expect(within(agents).getByRole('heading', { name: 'Agents' })).toBeInTheDocument()
     expect(badgeCounts(panel)).toEqual([
       ['tasks', '2'],
-      ['background', '1'],
-      ['agents', '1']
+      ['background', '1']
     ])
     for (const badge of within(panel).getAllByTestId('chat-session-badge')) {
       expect(badge.className).toContain('bg-[var(--sidebar-selected)]')
@@ -146,6 +145,7 @@ describe('ChatSessionPanel', () => {
     expect(agent).toHaveTextContent('sonnet · high')
     expect(agent).toHaveTextContent('5s')
     expect(agent).toHaveTextContent('18.4k (12.1k in, 6.3k out)')
+    expect(agent).toHaveTextContent('Done')
   })
 
   it('omits empty sections and renders nothing when the session has no status', async () => {
@@ -252,8 +252,7 @@ describe('ChatSessionPanel', () => {
     ).toEqual(['Expand session status', '2 tasks', '1 background job', '1 agent'])
     expect(badgeCounts(rail)).toEqual([
       ['tasks', '2'],
-      ['background', '1'],
-      ['agents', '1']
+      ['background', '1']
     ])
     expect(
       within(rail)

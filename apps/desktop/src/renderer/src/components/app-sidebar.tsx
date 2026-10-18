@@ -808,6 +808,7 @@ function ProjectItem({
                         <WorkspaceSessionList
                           agents={agents}
                           muted={muted}
+                          showSettled={workspace.id === activeWorkspaceId}
                           onOpenAgent={onOpenAgent}
                         />
                       </SidebarMenuRow>
@@ -917,7 +918,7 @@ function NestedRepoRow({
               <WorkspaceSessionHistory workspaceId={match.id} />
             </RowActions>
           ) : null}
-          <WorkspaceSessionList agents={agents} onOpenAgent={onOpenAgent} />
+          <WorkspaceSessionList agents={agents} showSettled={active} onOpenAgent={onOpenAgent} />
         </SidebarMenuRow>
       </WorkspaceHoverCard>
     </li>
@@ -1216,6 +1217,7 @@ function PlainDirectoryRow({
             <WorkspaceSessionList
               agents={agents}
               muted={muted && !active}
+              showSettled={active}
               onOpenAgent={onOpenAgent}
             />
           </SidebarMenuRow>
@@ -1445,6 +1447,7 @@ function WorkspaceSearchResults({
                 </RowActions>
                 <WorkspaceSessionList
                   agents={activity.get(workspace.id) ?? []}
+                  showSettled={workspace.id === activeWorkspaceId}
                   onOpenAgent={onOpenAgent}
                 />
               </SidebarMenuRow>

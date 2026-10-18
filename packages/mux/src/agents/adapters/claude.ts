@@ -207,9 +207,6 @@ export const claudeAdapter: AgentAdapter = {
     // Running shell jobs by id. Foreground tasks also get notifications and are never listed.
     // Agent tasks (local_agent, remote_agent) are not stored here.
     const background = new Map<string, ReturnType<typeof setTimeout> | undefined>()
-    // Agent task ids currently in the live set, and the timer that settles one that disappeared.
-    const listedAgents = new Set<string>()
-    const agentTimers = new Map<string, ReturnType<typeof setTimeout> | undefined>()
     const finish = (error?: Error): void => {
       const turn = current
       current = undefined
@@ -219,7 +216,6 @@ export const claudeAdapter: AgentAdapter = {
       if (closed) return
       closed = true
       for (const timer of background.values()) clearTimeout(timer)
-      for (const timer of agentTimers.values()) clearTimeout(timer)
       prompt.end()
       q?.close()
       finish(new Error('Agent stopped.'))
@@ -281,6 +277,8 @@ export const claudeAdapter: AgentAdapter = {
     const toolIdentity = new Map<string, { model?: string; effort?: string }>()
     // Child ids already reported, and the title last sent for each.
     const children = new Map<string, string | undefined>()
+    // Tool-use ids whose tool was Task or Agent, so the result handed back to the parent is a child.
+    const agentTools = new Set<string>()
     const settled = new Set<string>()
     // tool-use id and task id both point at the one sub-agent id already reported.
     const alias = new Map<string, string>()
@@ -297,20 +295,35 @@ export const claudeAdapter: AgentAdapter = {
       taskType === 'local_agent' || taskType === 'remote_agent'
     const linkChild = (taskId: string, toolUseId?: unknown): string => {
       const tool = toolUseId == null || toolUseId === '' ? undefined : String(toolUseId)
-      const known =
-        alias.get(taskId) ||
-        (tool ? alias.get(tool) : undefined) ||
+      const id =
         (tool && children.has(tool) ? tool : undefined) ||
         (children.has(taskId) ? taskId : undefined) ||
+        alias.get(taskId) ||
+        (tool ? alias.get(tool) : undefined) ||
         taskId
-      alias.set(taskId, known)
+      const replaces = [tool, taskId].find(
+        (candidate): candidate is string =>
+          Boolean(candidate) && candidate !== id && children.has(candidate)
+      )
+      alias.set(taskId, id)
       agentIds.add(taskId)
-      agentIds.add(known)
+      agentIds.add(id)
       if (tool) {
-        alias.set(tool, known)
+        alias.set(tool, id)
         agentIds.add(tool)
       }
-      return known
+      if (replaces) {
+        if (settled.has(replaces)) {
+          settled.add(id)
+          settled.delete(replaces)
+        }
+        const title = children.get(replaces)
+        if (title !== undefined && !children.has(id)) children.set(id, title)
+        children.delete(replaces)
+        // A running patch must not reopen a child that already ended. The service keeps that status.
+        host.subagent({ id, status: 'running', replaces })
+      }
+      return id
     }
     const taskUsage = (usage: unknown): { total?: number; durationMs?: number } | undefined => {
       if (!usage || typeof usage !== 'object') return undefined
@@ -361,6 +374,7 @@ export const claudeAdapter: AgentAdapter = {
       const key = String(id)
       const title = titleFrom(name, input)
       if (isAgentTool(name)) {
+        agentTools.add(key)
         let parsed = input
         if (typeof input === 'string' && input.trim().startsWith('{')) {
           try {
@@ -421,7 +435,10 @@ export const claudeAdapter: AgentAdapter = {
       if (block.tool_use_id == null) return
       const raw = String(block.tool_use_id)
       const id = alias.get(raw) ?? raw
-      if (!children.has(id)) return
+      const known =
+        children.has(id) || children.has(raw) || agentTools.has(raw) || agentTools.has(id)
+      if (!known) return
+      if (!children.has(id)) children.set(id, toolTitles.get(raw) ?? toolTitles.get(id))
       const result =
         toolUseResult && typeof toolUseResult === 'object' ? (toolUseResult as Frame) : undefined
       const resultStatus = typeof result?.status === 'string' ? result.status : undefined
@@ -432,17 +449,28 @@ export const claudeAdapter: AgentAdapter = {
         resultStatus === 'async_launched' ||
         resultStatus === 'remote_launched' ||
         /running in the background/i.test(describe(block.content))
-      const stillRunning =
-        resultStatus !== 'completed' &&
-        (launched ||
-          backgrounded.has(id) ||
-          backgrounded.has(raw) ||
-          toolBackground.has(raw) ||
-          toolBackground.has(id))
-      if (stillRunning || durationMs === 0) {
+      // A background child's tool_result is the placeholder handed back to the parent, even when
+      // its status says completed. The task_notification is the finish.
+      const backgroundLaunch =
+        launched ||
+        backgrounded.has(id) ||
+        backgrounded.has(raw) ||
+        toolBackground.has(raw) ||
+        toolBackground.has(id)
+      if (backgroundLaunch || durationMs === 0) {
         const launchedId = textField(result?.agentId) ?? textField(result?.taskId)
-        if (launchedId) markBackground(linkChild(launchedId, raw))
-        else markBackground(id)
+        const childId = launchedId ? linkChild(launchedId, raw) : id
+        markBackground(childId)
+        if (!children.has(childId))
+          children.set(childId, toolTitles.get(raw) ?? toolTitles.get(childId))
+        const title = children.get(childId) ?? toolTitles.get(raw)
+        if (!settled.has(childId))
+          host.subagent({
+            id: childId,
+            status: 'running',
+            ...(title ? { title } : {}),
+            ...childIdentity(result)
+          })
         return
       }
       settled.add(id)
@@ -598,10 +626,19 @@ export const claudeAdapter: AgentAdapter = {
         if (!turn) return
         const results = blocks.filter((block: Frame) => block.type === 'tool_result')
         for (const block of results) {
-          item(turn.context, block.tool_use_id, 'tool', describe(block.content), {
-            status: block.is_error ? 'failed' : 'completed'
-          })
+          const raw = block.tool_use_id == null ? '' : String(block.tool_use_id)
+          const linked = alias.get(raw) ?? raw
+          const child =
+            agentTools.has(raw) ||
+            agentTools.has(linked) ||
+            children.has(raw) ||
+            children.has(linked)
           finishChild(block, results.length === 1 ? frame.tool_use_result : undefined)
+          const open = child && !settled.has(linked) && !settled.has(raw)
+          // The body is the child's report returned to the parent. Keep it off the transcript.
+          item(turn.context, block.tool_use_id, 'tool', child ? '' : describe(block.content), {
+            status: open ? 'running' : block.is_error ? 'failed' : 'completed'
+          })
         }
         // The assigned task id lives on tool_use_result, not in the tool input.
         const known = results.filter((block: Frame) => todos.known(String(block.tool_use_id)))
@@ -641,7 +678,6 @@ export const claudeAdapter: AgentAdapter = {
         // ended. Ambient watchers are housekeeping, not activity. Shell jobs stay background
         // tasks. local_agent and remote_agent are sub-agents and never enter that list.
         const liveShells = new Set<string>()
-        const liveAgents = new Set<string>()
         for (const task of Array.isArray(frame.tasks) ? (frame.tasks as Frame[]) : []) {
           if (task.ambient) continue
           const taskId = String(task.task_id)
@@ -649,7 +685,6 @@ export const claudeAdapter: AgentAdapter = {
           if (isAgentTask(task.task_type)) {
             const id = linkChild(taskId, task.tool_use_id)
             markBackground(id)
-            liveAgents.add(id)
             reportAgent(id, {
               status: 'running',
               ...(title ? { title } : {}),
@@ -663,6 +698,8 @@ export const claudeAdapter: AgentAdapter = {
           host.task({ id: taskId, title, status: 'running' })
         }
         // A shell can leave the set without its notification (a missed edge). Do not list it forever.
+        // A missing agent in one snapshot is not a finish. Background agents outlive the parent
+        // turn, and the level signal can arrive without the task_notification that ends them.
         for (const [id, timer] of background)
           if (!liveShells.has(id) && !timer)
             background.set(
@@ -672,27 +709,6 @@ export const claudeAdapter: AgentAdapter = {
                 host.task({ id, status: 'stopped', summary: 'Claude stopped reporting this task.' })
               }, 5000)
             )
-        for (const id of listedAgents)
-          if (!liveAgents.has(id) && !agentTimers.has(id))
-            agentTimers.set(
-              id,
-              setTimeout(() => {
-                if (!agentTimers.delete(id)) return
-                listedAgents.delete(id)
-                reportAgent(id, {
-                  status: 'stopped',
-                  summary: 'Claude stopped reporting this agent.'
-                })
-              }, 5000)
-            )
-        for (const id of liveAgents) {
-          const timer = agentTimers.get(id)
-          if (timer) {
-            clearTimeout(timer)
-            agentTimers.delete(id)
-          }
-          listedAgents.add(id)
-        }
       } else if (frame.type === 'system' && frame.subtype === 'task_started') {
         if (frame.ambient) return
         if (isAgentTask(frame.task_type)) {
@@ -748,10 +764,6 @@ export const claudeAdapter: AgentAdapter = {
             })
             return
           }
-          const timer = agentTimers.get(id)
-          if (timer) clearTimeout(timer)
-          agentTimers.delete(id)
-          listedAgents.delete(id)
           const finishedAt = Date.now()
           // The summary and the child's response stay off the transcript.
           reportAgent(id, {

@@ -250,7 +250,19 @@ function toActivity(session: AgentSession, paneIds: number[]): ChatAgentActivity
       ? { createdAt: session.createdAt }
       : {}),
     paneId: paneIds[0] ?? null,
-    paneIds
+    paneIds,
+    ...(session.subagents?.length
+      ? {
+          subagents: session.subagents.map((child) => ({
+            id: child.id,
+            title: child.title,
+            status: child.status,
+            ...(child.startedAt !== undefined ? { startedAt: child.startedAt } : {}),
+            ...(child.finishedAt !== undefined ? { finishedAt: child.finishedAt } : {}),
+            ...(child.durationMs !== undefined ? { durationMs: child.durationMs } : {})
+          }))
+        }
+      : {})
   }
 }
 
@@ -750,13 +762,47 @@ export class AgentSessions {
    */
   private updateSubagent(session: AgentSession, update: SubagentUpdate): void {
     const now = Date.now()
-    const terminal = update.status !== 'created' && update.status !== 'running'
     const list = session.subagents ?? []
+    const { tokens, announce, replaces, ...rest } = update
+    let status = update.status
+    let title = update.title
+    let announceFinish = announce === true
+    // One child can arrive once as a tool-use id and again as a task id. Keep one row.
+    if (replaces && replaces !== update.id) {
+      const other = list.findIndex((child) => child.id === replaces)
+      if (other !== -1) {
+        const dropped = list.splice(other, 1)[0]
+        if (dropped) {
+          const notice = session.items.find((item) => item.agent?.id === dropped.id)
+          if (notice?.agent) notice.agent = { ...notice.agent, id: update.id }
+          if (title === undefined && dropped.title) title = dropped.title
+          const droppedTerminal =
+            dropped.status === 'completed' ||
+            dropped.status === 'failed' ||
+            dropped.status === 'stopped'
+          if (droppedTerminal && status === 'running') {
+            status = dropped.status
+            announceFinish = false
+          }
+        }
+      }
+    }
+    const kept = list.find((child) => child.id === update.id)
+    if (
+      kept &&
+      (kept.status === 'completed' || kept.status === 'failed' || kept.status === 'stopped') &&
+      status === 'running'
+    ) {
+      status = kept.status
+      announceFinish = false
+    }
+    const terminal = status !== 'created' && status !== 'running'
     const index = list.findIndex((child) => child.id === update.id)
-    const { tokens, announce, ...rest } = update
     const fields = Object.fromEntries(
       Object.entries(rest).filter(([, value]) => value !== undefined)
     ) as Partial<SubagentUpdate>
+    fields.status = status
+    if (title !== undefined) fields.title = title
     const dropDuration =
       update.durationMs === undefined &&
       (update.startedAt !== undefined || update.finishedAt !== undefined)
@@ -788,12 +834,12 @@ export class AgentSessions {
       }
       const merged = merge(undefined)
       if (merged) child.tokens = merged
-      if (update.status === 'running' && child.startedAt === undefined) child.startedAt = now
+      if (status === 'running' && child.startedAt === undefined) child.startedAt = now
       if (terminal && child.finishedAt === undefined) child.finishedAt = now
       if (dropDuration) delete child.durationMs
       list.push(child)
       session.subagents = list
-      this.noteAgentFinish(session, child, announce === true)
+      this.noteAgentFinish(session, child, announceFinish)
       return
     }
     const existing = list[index]
@@ -801,12 +847,12 @@ export class AgentSessions {
     const merged = merge(existing.tokens)
     if (merged) next.tokens = merged
     else delete next.tokens
-    if (update.status === 'running' && next.startedAt === undefined) next.startedAt = now
+    if (status === 'running' && next.startedAt === undefined) next.startedAt = now
     if (terminal && next.finishedAt === undefined) next.finishedAt = now
     if (dropDuration) delete next.durationMs
     list[index] = next
     session.subagents = list
-    this.noteAgentFinish(session, next, announce === true)
+    this.noteAgentFinish(session, next, announceFinish)
   }
   /**
    * Writes the one finish line when the harness reported this child's end on the stream.

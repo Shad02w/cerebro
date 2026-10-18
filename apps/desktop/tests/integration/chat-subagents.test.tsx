@@ -94,7 +94,7 @@ describe('ChatSubagents', () => {
         ])}
       />
     )
-    const chip = screen.getByRole('button', { name: '9 agents' })
+    const chip = screen.getByRole('button', { name: '3 running' })
     expect(chip).toHaveTextContent('Agents')
     expect(chip).not.toHaveTextContent(/sub-?agent/i)
     expect(screen.queryByTestId('chat-subagents')).toBeNull()
@@ -114,32 +114,32 @@ describe('ChatSubagents', () => {
       'running',
       'completed',
       'completed',
-      'stopped',
       'completed',
       'completed',
-      'completed'
+      'completed',
+      'stopped'
     ])
-    expect(cells(rows[0])).toEqual(['', 'explore-auth', '', '', ''])
-    expect(cells(rows[1])).toEqual(['', 'review-diff', '', '5s', ''])
-    expect(cells(rows[2])).toEqual(['', 'duration-clock', '', '2m 0s', ''])
+    expect(cells(rows[0])).toEqual(['', 'explore-auth', '', '', 'Running'])
+    expect(cells(rows[1])).toEqual(['', 'review-diff', '', '5s', 'Running'])
+    expect(cells(rows[2])).toEqual(['', 'duration-clock', '', '2m 0s', 'Running'])
     expect(cells(rows[3])).toEqual([
       '',
       'write-tests',
       'sonnet · high',
       '2m 33s',
-      '18.4k (12.1k in, 6.3k out)'
+      'Done · 18.4k (12.1k in, 6.3k out)'
     ])
-    expect(cells(rows[4])).toEqual(['', 'lint-pass', 'opus', '18s', 'no tokens'])
-    expect(cells(rows[5])).toEqual(['', 'nameless', '', '1h 1m', 'no tokens'])
-    expect(cells(rows[6])).toEqual(['', 'small-count', 'low', '1s', '420'])
-    expect(cells(rows[7])).toEqual(['', 'round-thousand', '', '1s', '1k'])
-    expect(cells(rows[8])).toEqual(['', 'million-tokens', '', '1s', '1.2m'])
+    expect(cells(rows[4])).toEqual(['', 'lint-pass', 'opus', '18s', 'Done'])
+    expect(cells(rows[5])).toEqual(['', 'small-count', 'low', '1s', 'Done · 420'])
+    expect(cells(rows[6])).toEqual(['', 'round-thousand', '', '1s', 'Done · 1k'])
+    expect(cells(rows[7])).toEqual(['', 'million-tokens', '', '1s', 'Done · 1.2m'])
+    expect(cells(rows[8])).toEqual(['', 'nameless', '', '1h 1m', 'Stopped'])
     expect(rows[0].querySelector('.agent-status-dots')).not.toBeNull()
     expect(rows[1].querySelector('[aria-label="Agent running"]')).not.toBeNull()
     expect(rows[1].querySelector('.animate-spin')).toBeNull()
     expect(rows[3].querySelector('.agent-status-dot')).not.toBeNull()
     expect(rows[3].querySelector('[aria-label="Agent finished"]')).toHaveClass('text-emerald-500')
-    expect(rows[5].querySelector('.agent-status-dots')).toBeNull()
+    expect(rows[8].querySelector('.agent-status-dots')).toBeNull()
   })
 
   it('sits to the right of Todo and Background', () => {
@@ -160,7 +160,7 @@ describe('ChatSubagents', () => {
     expect(buttons.map((button) => button.getAttribute('aria-label'))).toEqual([
       '1 task',
       '1 background job',
-      '1 agent'
+      '1 running'
     ])
   })
 

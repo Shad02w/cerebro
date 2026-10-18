@@ -780,6 +780,46 @@ function claudePrompt(prompt, content) {
         effort: 'high',
         session_id: 'claude-test'
       })
+    else {
+      // A completed tool_result is the placeholder handed back to the parent, not the finish.
+      send({
+        type: 'user',
+        session_id: 'claude-test',
+        parent_tool_use_id: null,
+        message: {
+          role: 'user',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 'tool-blogs',
+              content: 'Blogs report that must stay off the transcript.'
+            }
+          ]
+        },
+        tool_use_result: {
+          status: 'completed',
+          agentId: 'agent-blogs',
+          totalDurationMs: 16000,
+          description: 'Search blogs and talks',
+          model: 'sonnet',
+          effort: 'medium'
+        }
+      })
+      // Dropping an agent from one snapshot is not a finish.
+      send({
+        type: 'system',
+        subtype: 'background_tasks_changed',
+        tasks: agents
+          .filter((agent) => agent.task_id !== 'agent-blogs')
+          .map((agent) => ({
+            task_id: agent.task_id,
+            task_type: 'local_agent',
+            description: agent.description,
+            tool_use_id: agent.tool_use_id
+          })),
+        session_id: 'claude-test'
+      })
+    }
     claudeFinish(
       'The research agents are running in parallel. I will consolidate when they report back.'
     )
