@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { connectMux, socketPath, type MuxClient } from './client'
-import { isMuxDaemonCommand, socketPidsFromLsof } from './daemon-pid'
+import { isMuxDaemonCommand, socketPidsFromLsof, stopMuxDaemon } from './daemon-pid'
 
 const legacyDaemon = `
 const { createServer } = require('node:net')
@@ -341,6 +341,37 @@ test(
         assert.equal(alive(holder.pid), true)
       } finally {
         await stopChild(holder)
+      }
+    })
+  }
+)
+
+test(
+  'a staged daemon is found by its runtime path when the socket holder cannot be read',
+  { timeout: 30000, skip: process.platform === 'win32' },
+  async () => {
+    await withHome(async (home) => {
+      await mkdir(join(home, 'mux', 'runtimes', 'abc'), { recursive: true })
+      const staged = await startDaemon(
+        await writeLegacy(join(home, 'mux', 'runtimes', 'abc'), 'mux.cjs')
+      )
+      const elsewhere = await startDaemon(await writeLegacy(home, 'mux.cjs'))
+      try {
+        const missingSocket = join(home, 'missing.sock')
+        // Without a runtimes directory nothing identifies either process.
+        assert.deepEqual(await stopMuxDaemon(missingSocket), {
+          stopped: false,
+          reason: 'not_found'
+        })
+        assert.equal(alive(staged.pid), true)
+        const result = await stopMuxDaemon(missingSocket, join(home, 'mux', 'runtimes'))
+        assert.equal(result.stopped, true)
+        assert.equal(alive(staged.pid), false)
+        // A mux.cjs outside this home's runtimes is never taken by path alone.
+        assert.equal(alive(elsewhere.pid), true)
+      } finally {
+        await stopChild(staged)
+        await stopChild(elsewhere)
       }
     })
   }

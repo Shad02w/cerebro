@@ -159,7 +159,7 @@ async function leftoverToken(): Promise<string | undefined> {
 }
 /** A pre-token daemon rejects hello when the file is gone or no longer matches. Stop that process. */
 async function replaceUnauthorizedDaemon(): Promise<boolean> {
-  const result = await stopMuxDaemon(socketPath())
+  const result = await stopMuxDaemon(socketPath(), join(muxDirectory(), 'runtimes'))
   if (!result.stopped) {
     log('warn', 'client.replace_unauthorized_skipped', { reason: result.reason })
     return false

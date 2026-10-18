@@ -123,6 +123,55 @@ async function holderPids(sock: string): Promise<number[]> {
   return []
 }
 
+/** Every process and its command line, or nothing when the platform has no way to list them. */
+async function processCommands(): Promise<Array<{ pid: number; command: string }>> {
+  const processes: Array<{ pid: number; command: string }> = []
+  if (process.platform === 'linux') {
+    let entries: string[]
+    try {
+      entries = await readdir('/proc')
+    } catch {
+      return processes
+    }
+    for (const name of entries) {
+      if (!/^\d+$/.test(name)) continue
+      const command = await commandLine(Number(name))
+      if (command) processes.push({ pid: Number(name), command })
+    }
+  } else if (process.platform === 'darwin') {
+    try {
+      const { stdout } = await exec('/bin/ps', ['-axww', '-o', 'pid=,command='], {
+        maxBuffer: 16 * 1024 * 1024
+      })
+      for (const line of stdout.split('\n')) {
+        const match = /^\s*(\d+)\s+(.*)$/.exec(line)
+        if (match) processes.push({ pid: Number(match[1]), command: match[2]! })
+      }
+    } catch {
+      /* No process list: the caller treats that as no daemon found. */
+    }
+  }
+  return processes
+}
+
+/**
+ * Daemons started from a staged runtime of this home: `<runtimesDir>/<fingerprint>/mux.cjs`.
+ * Used when the socket's holder cannot be read, for example when lsof is blocked or returns
+ * nothing. A path inside this home's own runtimes directory is specific enough to be ours.
+ */
+async function stagedDaemonPids(runtimesDir: string): Promise<number[]> {
+  const prefix = runtimesDir.replace(/[\\/]+$/, '')
+  const separators = /[\\/]/
+  const pids: number[] = []
+  for (const { pid, command } of await processCommands()) {
+    if (pid === process.pid || !isMuxDaemonCommand(command)) continue
+    const index = command.indexOf(prefix)
+    if (index < 0 || !separators.test(command.charAt(index + prefix.length))) continue
+    pids.push(pid)
+  }
+  return pids
+}
+
 export type StopMuxDaemonResult =
   | { stopped: true; pid: number; forced: boolean }
   | { stopped: false; reason: 'not_found' | 'ambiguous' | 'kill_failed' }
@@ -138,9 +187,13 @@ const gone = (pid: number): boolean => {
 
 /**
  * Stops the mux daemon listening on `sock`. Only a process whose command line is `mux.cjs`
- * is signaled, and only when exactly one such process holds the socket.
+ * is signaled, and only when exactly one such process holds the socket. When the holder
+ * cannot be read from the socket, `runtimesDir` lets a single daemon staged under it stand in.
  */
-export async function stopMuxDaemon(sock: string): Promise<StopMuxDaemonResult> {
+export async function stopMuxDaemon(
+  sock: string,
+  runtimesDir?: string
+): Promise<StopMuxDaemonResult> {
   const holders = await holderPids(sock)
   const daemons: number[] = []
   for (const pid of holders) {
@@ -148,6 +201,7 @@ export async function stopMuxDaemon(sock: string): Promise<StopMuxDaemonResult> 
     const command = await commandLine(pid)
     if (command && isMuxDaemonCommand(command)) daemons.push(pid)
   }
+  if (daemons.length === 0 && runtimesDir) daemons.push(...(await stagedDaemonPids(runtimesDir)))
   if (daemons.length === 0) return { stopped: false, reason: 'not_found' }
   if (daemons.length > 1) return { stopped: false, reason: 'ambiguous' }
   const pid = daemons[0]!
