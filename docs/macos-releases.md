@@ -29,6 +29,12 @@ launcher uses its app's home. Existing `~/cerebro` data is not moved or deleted.
 The GitHub repository is public. Published releases and installer downloads are
 available to users without repository membership.
 
+Packaging and product changes land on `main` like any other commit. The `release`
+branch should match `main` when cutting a build — fast-forward or reset
+`release` to the `main` tip, then push. Do not keep a release-only packaging
+commit that is rebased onto `main` for every cut, and do not add empty rebuild
+commits to trigger the workflow.
+
 `.github/workflows/release-mac.yml` runs on pushes to `release`, including merges.
 It always builds production. Protect that branch in GitHub if releases should
 only come from reviewed pull requests. Manual workflow runs also build production.
