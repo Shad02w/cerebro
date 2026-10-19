@@ -350,7 +350,7 @@ export const claudeAdapter: AgentAdapter = {
         taskId
       const replaces = [tool, taskId].find(
         (candidate): candidate is string =>
-          Boolean(candidate) && candidate !== id && children.has(candidate)
+          !!candidate && candidate !== id && children.has(candidate)
       )
       alias.set(taskId, id)
       agentIds.add(taskId)
