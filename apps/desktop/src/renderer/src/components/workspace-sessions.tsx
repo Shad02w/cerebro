@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { X } from 'lucide-react'
-import type { ChatAgentActivity, LayoutState, PaneNode } from '@cerebro/core'
+import {
+  formatAgentElapsed,
+  type ChatAgentActivity,
+  type ChatAgentChild,
+  type LayoutState,
+  type PaneNode
+} from '@cerebro/core'
 import { AgentStatusIcon } from '@/components/agent-status-icon'
 import { HarnessIcon } from '@/components/harness-icon'
 import { harnessLabels } from '@/components/chat/queries'
@@ -20,6 +26,34 @@ function useMinuteClock(): number {
     return () => window.clearInterval(id)
   }, [])
   return now
+}
+
+function useSecondClock(active: boolean): number {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!active) return
+    const refresh = (): void => setNow(Date.now())
+    refresh()
+    const id = window.setInterval(refresh, 1000)
+    return () => window.clearInterval(id)
+  }, [active])
+  return now
+}
+
+function childLive(status: ChatAgentChild['status']): boolean {
+  return status === 'created' || status === 'running'
+}
+
+function childElapsed(child: ChatAgentChild, now: number): string {
+  if (child.status === 'created') return ''
+  if (child.durationMs !== undefined) return formatAgentElapsed(child.durationMs)
+  if (child.startedAt === undefined) return ''
+  return formatAgentElapsed(now - child.startedAt)
+}
+
+/** The sidebar follows active work only; settled children stay in the chat subagent list. */
+function liveChildren(agent: ChatAgentActivity): ChatAgentChild[] {
+  return (agent.subagents ?? []).filter((child) => childLive(child.status))
 }
 
 function containsPane(node: PaneNode, paneId: number): boolean {
@@ -62,6 +96,47 @@ function closeSession(agent: ChatAgentActivity, layout: LayoutState | undefined)
     .then((reply) => acceptLayout(reply.state))
 }
 
+function SessionChildren({
+  agent,
+  now,
+  onOpen
+}: {
+  agent: ChatAgentActivity
+  now: number
+  onOpen: (agent: ChatAgentActivity) => void
+}): React.JSX.Element | null {
+  const children = liveChildren(agent)
+  if (!children.length) return null
+  return (
+    <div className="mt-0.5 flex flex-col">
+      {children.map((child) => {
+        const title = child.title.trim() || child.id
+        const elapsed = childElapsed(child, now)
+        return (
+          <button
+            key={child.id}
+            type="button"
+            data-testid="workspace-subagent"
+            data-status={child.status}
+            aria-label={`${title}, Running`}
+            className="flex min-w-0 items-center gap-1.5 rounded-sm py-0.5 pl-5 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sidebar-selected"
+            onClick={(): void => onOpen(agent)}
+          >
+            <AgentStatusIcon status="running" className="size-3.5" />
+            <span className="min-w-0 flex-1 truncate text-[12px]">{title}</span>
+            {elapsed ? (
+              <span className="shrink-0 text-[11px] text-sidebar-foreground/45 tabular-nums">
+                {elapsed}
+              </span>
+            ) : null}
+            <span className="shrink-0 text-[11px] text-sidebar-foreground/70">Running</span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 export function WorkspaceSessionList({
   agents,
   muted = false,
@@ -72,6 +147,15 @@ export function WorkspaceSessionList({
   onOpenAgent: (agent: ChatAgentActivity) => void
 }): React.JSX.Element | null {
   const now = useMinuteClock()
+  const ticking = agents.some((agent) =>
+    liveChildren(agent).some(
+      (child) =>
+        child.status === 'running' &&
+        child.durationMs === undefined &&
+        child.startedAt !== undefined
+    )
+  )
+  const childNow = useSecondClock(ticking)
   const layout = useQuery(layoutOptions).data
   const [expanded, setExpanded] = useState(false)
   if (!agents.length) return null
@@ -148,6 +232,7 @@ export function WorkspaceSessionList({
                 <X className="size-3" />
               </button>
             ) : null}
+            <SessionChildren agent={agent} now={childNow} onOpen={onOpenAgent} />
           </div>
         )
       })}

@@ -630,6 +630,26 @@ function ProjectIcon({ project }: { project: Project }): React.JSX.Element {
   )
 }
 
+/** Leading icon that gives way to an expand/collapse chevron while the row is hovered or focused. */
+function RowToggleIcon({
+  icon,
+  open
+}: {
+  icon: React.ReactNode
+  open: boolean
+}): React.JSX.Element {
+  return (
+    <span data-row-icon="" data-row-toggle="">
+      <span data-row-toggle-icon="">{icon}</span>
+      <ChevronRight
+        aria-hidden
+        data-row-toggle-chevron=""
+        className={cn('transition-transform', open && 'rotate-90')}
+      />
+    </span>
+  )
+}
+
 function collapsedProjectAgents(
   workspaces: Workspace[],
   open: boolean,
@@ -718,9 +738,7 @@ function ProjectItem({
             }
           >
             <span data-row-line="">
-              <span data-row-icon="">
-                <ProjectIcon project={project} />
-              </span>
+              <RowToggleIcon icon={<ProjectIcon project={project} />} open={open} />
               <span className="font-medium" data-row-label="">
                 {project.name}
               </span>
@@ -1057,34 +1075,36 @@ function DirectoryNameLine({
         >
           <span data-row-line="">
             <span data-row-icon="">
-              <Folder />
+              <span data-row-toggle-icon={grouped ? '' : undefined}>
+                <Folder />
+              </span>
             </span>
             <span className="truncate font-medium" data-row-label="">
               {workspaceRowLabel(project, workspace)}
             </span>
           </span>
         </SidebarMenuButton>
+        {grouped ? (
+          <button
+            type="button"
+            className="sidebar-row-toggle app-no-drag text-sidebar-foreground/60"
+            data-testid={`workspace-nested-toggle-${workspace.id}`}
+            aria-expanded={reposOpen}
+            aria-label={reposOpen ? 'Collapse repositories' : 'Expand repositories'}
+            onClick={(event): void => {
+              event.stopPropagation()
+              onToggleRepos()
+            }}
+            onPointerDown={(event): void => event.stopPropagation()}
+          >
+            <ChevronRight
+              aria-hidden
+              data-row-toggle-chevron=""
+              className={cn('transition-transform', reposOpen && 'rotate-90')}
+            />
+          </button>
+        ) : null}
         <RowActions overlay>
-          {grouped ? (
-            <SidebarMenuAction
-              className="app-no-drag"
-              data-testid={`workspace-nested-toggle-${workspace.id}`}
-              aria-expanded={reposOpen}
-              aria-label={reposOpen ? 'Collapse repositories' : 'Expand repositories'}
-              onClick={(event): void => {
-                event.stopPropagation()
-                onToggleRepos()
-              }}
-              onPointerDown={(event): void => event.stopPropagation()}
-            >
-              <ChevronRight
-                className={cn('size-3.5 shrink-0 transition-transform', reposOpen && 'rotate-90')}
-              />
-              <span className="sr-only">
-                {reposOpen ? 'Collapse repositories' : 'Expand repositories'}
-              </span>
-            </SidebarMenuAction>
-          ) : null}
           <WorkspaceSessionHistory workspaceId={workspace.id} />
           <DirectoryRowMenu
             project={project}

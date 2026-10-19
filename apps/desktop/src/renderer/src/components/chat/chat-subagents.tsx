@@ -12,6 +12,36 @@ import { ChatSessionChip } from './chat-session-chip'
 const finished = (status: AgentSubagent['status']): boolean =>
   status === 'completed' || status === 'failed' || status === 'stopped'
 
+const liveStatus = (status: AgentSubagent['status']): boolean =>
+  status === 'created' || status === 'running'
+
+/** Running and not-yet-started children. The session badge counts these, not finished runs. */
+function liveAgentCount(agents: AgentSubagent[]): number {
+  return agents.filter((agent) => liveStatus(agent.status)).length
+}
+
+function statusMark(
+  status: AgentSubagent['status']
+): 'running' | 'finished' | 'failed' | 'interrupted' {
+  if (status === 'failed') return 'failed'
+  if (status === 'stopped') return 'interrupted'
+  if (status === 'completed') return 'finished'
+  return 'running'
+}
+
+function statusWord(status: AgentSubagent['status']): string {
+  if (status === 'failed') return 'Failed'
+  if (status === 'stopped') return 'Stopped'
+  if (status === 'completed') return 'Done'
+  return 'Running'
+}
+
+function byStatus(agents: AgentSubagent[]): AgentSubagent[] {
+  const rank = (status: AgentSubagent['status']): number =>
+    liveStatus(status) ? 0 : status === 'completed' ? 1 : status === 'failed' ? 2 : 3
+  return agents.toSorted((a, b) => rank(a.status) - rank(b.status))
+}
+
 /** Token cell. Absent counts say so. Zero is a real count. */
 function formatSubagentTokens(tokens: AgentSubagentTokens | undefined): string {
   if (!tokens) return 'no tokens'
@@ -70,6 +100,13 @@ function useSubagentNow(agents: AgentSubagent[]): number {
 }
 
 /** Child agents in the popover grid. */
+function settledLabel(agent: AgentSubagent): string {
+  const tokens = formatSubagentTokens(agent.tokens)
+  return tokens === 'no tokens'
+    ? statusWord(agent.status)
+    : `${statusWord(agent.status)} · ${tokens}`
+}
+
 export function ChatSubagentList({ agents }: { agents: AgentSubagent[] }): React.JSX.Element {
   const now = useSubagentNow(agents)
   return (
@@ -77,7 +114,7 @@ export function ChatSubagentList({ agents }: { agents: AgentSubagent[] }): React
       aria-label="Agents"
       className="grid grid-cols-[0.875rem_minmax(0,12rem)_auto_auto_auto] items-center gap-x-3 gap-y-1 px-2 py-1"
     >
-      {agents.map((agent) => {
+      {byStatus(agents).map((agent) => {
         const live = !finished(agent.status)
         return (
           <div
@@ -87,7 +124,7 @@ export function ChatSubagentList({ agents }: { agents: AgentSubagent[] }): React
             data-status={agent.status}
           >
             <span data-cell="" className="flex size-3.5 items-center justify-center">
-              <AgentStatusIcon status={live ? 'running' : 'finished'} />
+              <AgentStatusIcon status={statusMark(agent.status)} />
             </span>
             <span data-cell="" className="min-w-0 truncate text-xs" title={agent.title || agent.id}>
               {agent.title || agent.id}
@@ -99,7 +136,7 @@ export function ChatSubagentList({ agents }: { agents: AgentSubagent[] }): React
               {elapsed(agent, now)}
             </span>
             <span data-cell="" className="text-right text-xs text-muted-foreground tabular-nums">
-              {live ? '' : formatSubagentTokens(agent.tokens)}
+              {live ? statusWord(agent.status) : settledLabel(agent)}
             </span>
           </div>
         )
@@ -109,10 +146,19 @@ export function ChatSubagentList({ agents }: { agents: AgentSubagent[] }): React
 }
 
 /** Child agents stacked for the side column, where the popover grid is too wide. */
-export function ChatSubagentStack({ agents }: { agents: AgentSubagent[] }): React.JSX.Element {
-  const now = useSubagentNow(agents)
+function SubagentStackGroup({
+  label,
+  agents,
+  now
+}: {
+  label: string
+  agents: AgentSubagent[]
+  now: number
+}): React.JSX.Element | null {
+  if (!agents.length) return null
   return (
-    <ul aria-label="Agents" className="flex flex-col">
+    <>
+      <li className="px-2 pt-1 text-[11px] text-muted-foreground">{label}</li>
       {agents.map((agent) => {
         const live = !finished(agent.status)
         const identity = reportedIdentity(agent)
@@ -125,7 +171,7 @@ export function ChatSubagentStack({ agents }: { agents: AgentSubagent[] }): Reac
             className="flex items-start gap-2 rounded-sm px-2 py-1.5 text-xs"
           >
             <span className="mt-0.5 flex size-3.5 shrink-0 items-center justify-center">
-              <AgentStatusIcon status={live ? 'running' : 'finished'} />
+              <AgentStatusIcon status={statusMark(agent.status)} />
             </span>
             <span className="min-w-0 flex-1">
               <span className="block truncate" title={agent.title || agent.id}>
@@ -137,11 +183,25 @@ export function ChatSubagentStack({ agents }: { agents: AgentSubagent[] }): Reac
             </span>
             <span className="shrink-0 text-right text-muted-foreground tabular-nums">
               {time ? <span className="block">{time}</span> : null}
+              <span className="block">{statusWord(agent.status)}</span>
               {live ? null : <span className="block">{formatSubagentTokens(agent.tokens)}</span>}
             </span>
           </li>
         )
       })}
+    </>
+  )
+}
+
+export function ChatSubagentStack({ agents }: { agents: AgentSubagent[] }): React.JSX.Element {
+  const ordered = byStatus(agents)
+  const now = useSubagentNow(ordered)
+  const running = ordered.filter((agent) => !finished(agent.status))
+  const settled = ordered.filter((agent) => finished(agent.status))
+  return (
+    <ul aria-label="Agents" className="flex flex-col">
+      <SubagentStackGroup label="Running" agents={running} now={now} />
+      <SubagentStackGroup label="Done" agents={settled} now={now} />
     </ul>
   )
 }
@@ -153,15 +213,16 @@ export function ChatSubagents({
 }): React.JSX.Element | null {
   const listed = agents ?? []
   if (!listed.length) return null
+  const running = liveAgentCount(listed)
+  const ariaLabel =
+    running > 0
+      ? `${running} running`
+      : `${listed.length} ${listed.length === 1 ? 'agent' : 'agents'}`
   return (
     <Popover>
       <PopoverTrigger
         render={
-          <ChatSessionChip
-            label="Agents"
-            aria-label={`${listed.length} ${listed.length === 1 ? 'agent' : 'agents'}`}
-            data-testid="chat-subagent-chip"
-          />
+          <ChatSessionChip label="Agents" aria-label={ariaLabel} data-testid="chat-subagent-chip" />
         }
       />
       <PopoverContent

@@ -265,7 +265,19 @@ function toActivity(session: AgentSession, paneIds: number[]): ChatAgentActivity
       ? { createdAt: session.createdAt }
       : {}),
     paneId: paneIds[0] ?? null,
-    paneIds
+    paneIds,
+    ...(session.subagents?.length
+      ? {
+          subagents: session.subagents.map((child) => ({
+            id: child.id,
+            title: child.title,
+            status: child.status,
+            ...(child.startedAt !== undefined ? { startedAt: child.startedAt } : {}),
+            ...(child.finishedAt !== undefined ? { finishedAt: child.finishedAt } : {}),
+            ...(child.durationMs !== undefined ? { durationMs: child.durationMs } : {})
+          }))
+        }
+      : {})
   }
 }
 
@@ -772,16 +784,64 @@ export class AgentSessions {
    * A harness duration replaces a locally guessed elapsed time. A later start or finish
    * without a duration drops that duration so the row follows the new clock.
    * `announce` records one chat line. A later patch on that child refreshes the line.
+   * A running patch never reopens an ended child unless it is a `reopen`, which starts a new run
+   * with its own clock and its own finish line.
    */
   private updateSubagent(session: AgentSession, update: SubagentUpdate): void {
     const now = Date.now()
-    const terminal = update.status !== 'created' && update.status !== 'running'
     const list = session.subagents ?? []
+    const { tokens, announce, replaces, reopen, ...rest } = update
+    let status = update.status
+    let title = update.title
+    let announceFinish = announce === true
+    let ended: AgentSubagent | undefined
+    // One child can arrive once as a tool-use id and again as a task id. Keep one row.
+    if (replaces && replaces !== update.id) {
+      const other = list.findIndex((child) => child.id === replaces)
+      if (other !== -1) {
+        const dropped = list.splice(other, 1)[0]
+        if (dropped) {
+          const notice = session.items.find((item) => item.agent?.id === dropped.id)
+          if (notice?.agent) notice.agent = { ...notice.agent, id: update.id }
+          if (title === undefined && dropped.title) title = dropped.title
+          const droppedTerminal =
+            dropped.status === 'completed' ||
+            dropped.status === 'failed' ||
+            dropped.status === 'stopped'
+          if (droppedTerminal && status === 'running') {
+            if (reopen) ended = dropped
+            else {
+              status = dropped.status
+              announceFinish = false
+            }
+          }
+        }
+      }
+    }
+    const kept = list.find((child) => child.id === update.id)
+    if (
+      kept &&
+      (kept.status === 'completed' || kept.status === 'failed' || kept.status === 'stopped') &&
+      status === 'running'
+    ) {
+      if (reopen) ended = kept
+      else {
+        status = kept.status
+        announceFinish = false
+      }
+    }
+    const terminal = status !== 'created' && status !== 'running'
     const index = list.findIndex((child) => child.id === update.id)
-    const { tokens, announce, ...rest } = update
     const fields = Object.fromEntries(
       Object.entries(rest).filter(([, value]) => value !== undefined)
     ) as Partial<SubagentUpdate>
+    fields.status = status
+    if (title !== undefined) fields.title = title
+    const runTurn = busy(session) ? session.turnId : undefined
+    if (ended) {
+      fields.run = (ended.run ?? 0) + 1
+      if (runTurn) fields.turnId = runTurn
+    }
     const dropDuration =
       update.durationMs === undefined &&
       (update.startedAt !== undefined || update.finishedAt !== undefined)
@@ -813,25 +873,34 @@ export class AgentSessions {
       }
       const merged = merge(undefined)
       if (merged) child.tokens = merged
-      if (update.status === 'running' && child.startedAt === undefined) child.startedAt = now
+      if (!terminal && !ended && runTurn && child.turnId === undefined) child.turnId = runTurn
+      if (status === 'running' && child.startedAt === undefined) child.startedAt = now
       if (terminal && child.finishedAt === undefined) child.finishedAt = now
       if (dropDuration) delete child.durationMs
       list.push(child)
       session.subagents = list
-      this.noteAgentFinish(session, child, announce === true)
+      this.noteAgentFinish(session, child, announceFinish)
       return
     }
     const existing = list[index]
     const next: AgentSubagent = { ...existing, ...fields, id: existing.id }
-    const merged = merge(existing.tokens)
+    if (ended) {
+      // The new run reports its own clock, tokens, and outcome.
+      if (update.startedAt === undefined) next.startedAt = now
+      if (update.durationMs === undefined) delete next.durationMs
+      if (update.summary === undefined) delete next.summary
+      delete next.finishedAt
+      delete next.tokens
+    }
+    const merged = merge(ended ? undefined : existing.tokens)
     if (merged) next.tokens = merged
     else delete next.tokens
-    if (update.status === 'running' && next.startedAt === undefined) next.startedAt = now
+    if (status === 'running' && next.startedAt === undefined) next.startedAt = now
     if (terminal && next.finishedAt === undefined) next.finishedAt = now
     if (dropDuration) delete next.durationMs
     list[index] = next
     session.subagents = list
-    this.noteAgentFinish(session, next, announce === true)
+    this.noteAgentFinish(session, next, announceFinish)
   }
   /**
    * Writes the one finish line when the harness reported this child's end on the stream.
@@ -841,7 +910,10 @@ export class AgentSessions {
     const terminal =
       child.status === 'completed' || child.status === 'failed' || child.status === 'stopped'
     if (!terminal) return
-    const index = session.items.findIndex((item) => item.agent?.id === child.id)
+    const run = child.run ?? 0
+    const index = session.items.findIndex(
+      (item) => item.agent?.id === child.id && (item.agent.run ?? 0) === run
+    )
     const snapshot: AgentSubagent = {
       ...child,
       ...(child.tokens ? { tokens: { ...child.tokens } } : {})
@@ -850,7 +922,7 @@ export class AgentSessions {
       if (!announce) return
       const turnId = busy(session) && session.turnId ? session.turnId : this.eventTurn(session)
       session.items.push({
-        id: `${turnId}:agent:${child.id}`,
+        id: `${turnId}:agent:${child.id}${run ? `:${run}` : ''}`,
         turnId,
         kind: 'notice',
         text: agentFinishedLine(snapshot),

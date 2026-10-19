@@ -1,4 +1,4 @@
-import type { ChatItem } from '@cerebro/core'
+import type { AgentBackgroundTask, AgentSubagent, ChatItem } from '@cerebro/core'
 
 export type TranscriptEntry =
   { type: 'item'; item: ChatItem } | { type: 'tools'; items: ChatItem[]; live: boolean }
@@ -84,4 +84,49 @@ export function workingAnchorId(
     return item.id
   }
   return null
+}
+
+/**
+ * Turns that hold back End of response while the session still has a child agent or background
+ * task running: the turn that started the earliest of that work and every turn after it. When
+ * no running work names its turn, only the latest turn waits.
+ */
+export function heldTurnIds(
+  items: readonly Pick<ChatItem, 'id' | 'turnId'>[],
+  work: {
+    subagents?: ReadonlyArray<Pick<AgentSubagent, 'status' | 'turnId'>>
+    background?: ReadonlyArray<Pick<AgentBackgroundTask, 'status' | 'itemId'>>
+  }
+): Set<string> {
+  const children = (work.subagents ?? []).filter(
+    (child) => child.status === 'created' || child.status === 'running'
+  )
+  const tasks = (work.background ?? []).filter((task) => task.status === 'running')
+  if (!children.length && !tasks.length) return new Set()
+  const order = [...new Set(items.map((item) => item.turnId))]
+  // Session item ids are `${turnId}:${native id}`. A task names its item by the native id.
+  const turnOfNative = new Map<string, string>()
+  for (const item of items)
+    if (item.id.startsWith(`${item.turnId}:`))
+      turnOfNative.set(item.id.slice(item.turnId.length + 1), item.turnId)
+  const launched = new Set<string>()
+  for (const child of children) if (child.turnId) launched.add(child.turnId)
+  for (const task of tasks) {
+    const origin = task.itemId ? turnOfNative.get(task.itemId) : undefined
+    if (origin) launched.add(origin)
+  }
+  const first = order.findIndex((turnId) => launched.has(turnId))
+  return new Set(first === -1 ? order.slice(-1) : order.slice(first))
+}
+
+/** Turns made only of agent or background-task outcome lines. They are not a response to end. */
+export function outcomeTurnIds(
+  items: readonly Pick<ChatItem, 'kind' | 'turnId' | 'agent' | 'task'>[]
+): Set<string> {
+  const outcome = new Set<string>()
+  const other = new Set<string>()
+  for (const item of items)
+    (item.kind === 'notice' && (item.agent || item.task) ? outcome : other).add(item.turnId)
+  for (const turnId of other) outcome.delete(turnId)
+  return outcome
 }

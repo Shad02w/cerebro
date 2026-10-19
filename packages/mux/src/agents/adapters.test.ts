@@ -1301,6 +1301,10 @@ describe('agent adapters', { concurrency: 1 }, () => {
         ),
         false
       )
+      assert.equal(
+        events.some((event) => event.type === 'item' && event.item.text?.includes('reviewed')),
+        false
+      )
       assert.ok(replies(events).includes('Review finished.'))
       const ignored: SubagentUpdate[] = []
       await runTurn(
@@ -1467,19 +1471,69 @@ describe('agent adapters', { concurrency: 1 }, () => {
   })
 
   test(
+    'Claude: SendMessage reopens an ended child, and its shells stay off the session',
+    { timeout: 15_000 },
+    async () => {
+      process.env.CEREBRO_CLAUDE_PATH = fixture
+      const model = (await adapters.claude.models('/tmp'))[0]
+      const updates: SubagentUpdate[] = []
+      const tasks: BackgroundTaskUpdate[] = []
+      const events: AgentDelta[] = []
+      await runTurn(
+        adapters.claude,
+        {
+          session: liveSession(model, 'agent-resume'),
+          text: 'agent-resume',
+          signal: new AbortController().signal,
+          emit: (event) => events.push(event),
+          ask: async () => ({ allow: false, answers: {} })
+        },
+        { subagent: (update) => updates.push(update), task: (update) => tasks.push(update) }
+      )
+      assert.deepEqual([...new Set(updates.map((update) => update.id))], ['agent-plan'])
+      const edges = updates
+        .filter((update) => update.announce || update.reopen)
+        .map((update) => ({
+          status: update.status,
+          durationMs: update.durationMs,
+          reopen: update.reopen
+        }))
+      assert.deepEqual(edges, [
+        { status: 'completed', durationMs: 180000, reopen: undefined },
+        { status: 'running', durationMs: undefined, reopen: true },
+        { status: 'completed', durationMs: 3518000, reopen: undefined }
+      ])
+      const reopened = updates.findIndex((update) => update.reopen)
+      const finished = updates.findLastIndex((update) => update.status === 'completed')
+      assert.equal(
+        updates
+          .slice(reopened, finished)
+          .every((update) => update.status === 'running' && !update.announce),
+        true
+      )
+      assert.deepEqual(tasks, [])
+      const sent = events.find(
+        (event) => event.type === 'item' && event.item.id === 'tool-send' && event.item.text
+      )
+      assert.equal(sent?.type === 'item' && sent.item.text, 'Resuming agent agent-plan')
+    }
+  )
+
+  test(
     'Claude: a background launch, a progress update, and a 0s duration are not a finish',
     { timeout: 15_000 },
     async () => {
       process.env.CEREBRO_CLAUDE_PATH = fixture
       const model = (await adapters.claude.models('/tmp'))[0]
       const running: SubagentUpdate[] = []
+      const events: AgentDelta[] = []
       await runTurn(
         adapters.claude,
         {
           session: liveSession(model, 'agents-still-running'),
           text: 'agents-still-running',
           signal: new AbortController().signal,
-          emit: () => {},
+          emit: (event) => events.push(event),
           ask: async () => ({ allow: false, answers: {} })
         },
         { subagent: (update) => running.push(update) }
@@ -1493,10 +1547,23 @@ describe('agent adapters', { concurrency: 1 }, () => {
         'agent-community',
         'agent-github'
       ])
-      const blogs = [...running].reverse().find((update) => update.id === 'agent-blogs')
-      assert.equal(blogs?.durationMs, 16000)
-      assert.equal(blogs?.model, 'sonnet')
-      assert.equal(blogs?.effort, 'medium')
+      const blogs = running.filter((update) => update.id === 'agent-blogs')
+      assert.equal(
+        blogs.some((update) => update.durationMs === 16000),
+        true
+      )
+      assert.equal(
+        blogs.some((update) => update.model === 'sonnet' && update.effort === 'medium'),
+        true
+      )
+      assert.equal(
+        events.some(
+          (event) =>
+            event.type === 'item' &&
+            event.item.text?.includes('Blogs report that must stay off the transcript.')
+        ),
+        false
+      )
       const finished: SubagentUpdate[] = []
       await runTurn(
         adapters.claude,

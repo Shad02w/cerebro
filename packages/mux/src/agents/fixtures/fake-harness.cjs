@@ -642,6 +642,147 @@ function claudePrompt(prompt, content) {
     )
     return
   }
+  const resume = /^agent-resume(?: (\d+))?$/.exec(prompt)
+  if (resume) {
+    // A foreground child ends, SendMessage resumes it in the background, and it starts a shell.
+    // With a delay, the resumed child is still running when the turn ends and finishes while idle.
+    const tool = (id, name, input) => ({
+      type: 'assistant',
+      session_id: 'claude-test',
+      parent_tool_use_id: null,
+      message: {
+        id: `msg-${id}`,
+        role: 'assistant',
+        content: [{ type: 'tool_use', id, name, input }]
+      }
+    })
+    const result = (id, content, toolUseResult) => ({
+      type: 'user',
+      session_id: 'claude-test',
+      parent_tool_use_id: null,
+      message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content }] },
+      tool_use_result: toolUseResult
+    })
+    const childTool = (parent, id) => ({
+      type: 'assistant',
+      session_id: 'claude-test',
+      parent_tool_use_id: parent,
+      message: {
+        id: `msg-${id}`,
+        role: 'assistant',
+        content: [{ type: 'tool_use', id, name: 'Bash', input: { command: 'sleep 120' } }]
+      }
+    })
+    send({ type: 'system', subtype: 'init', session_id: 'claude-test', tools: [], model: 'test' })
+    send(tool('tool-plan', 'Agent', { description: 'Find feature path', prompt: 'plan' }))
+    send({
+      type: 'system',
+      subtype: 'task_started',
+      task_id: 'agent-plan',
+      tool_use_id: 'tool-plan',
+      description: 'Find feature path',
+      task_type: 'local_agent',
+      is_backgrounded: false,
+      session_id: 'claude-test'
+    })
+    send(childTool('tool-plan', 'child-read'))
+    send(
+      result('tool-plan', 'Plan ready.', {
+        status: 'completed',
+        agentId: 'agent-plan',
+        totalDurationMs: 180000,
+        totalTokens: 115000
+      })
+    )
+    send(tool('tool-send', 'SendMessage', { to: 'agent-plan', message: 'Plan confirmed.' }))
+    send(
+      result('tool-send', 'Resuming agent agent-plan', {
+        success: true,
+        message: 'Resuming agent agent-plan',
+        resumedAgentId: 'agent-plan'
+      })
+    )
+    send({
+      type: 'system',
+      subtype: 'task_started',
+      task_id: 'agent-plan',
+      tool_use_id: 'tool-send',
+      description: 'Find feature path',
+      task_type: 'local_agent',
+      is_backgrounded: true,
+      session_id: 'claude-test'
+    })
+    // The session's own shell call. A frame naming it as parent is not a child agent.
+    send(tool('tool-own', 'Bash', { command: 'docker ps' }))
+    send({
+      type: 'tool_progress',
+      tool_use_id: 'child-progress',
+      tool_name: 'Bash',
+      parent_tool_use_id: 'tool-own',
+      elapsed_time_seconds: 15,
+      session_id: 'claude-test'
+    })
+    send(result('tool-own', 'containers up', { stdout: 'containers up' }))
+    // The resumed child's shell moves to the background. The live set lists it with the session's.
+    send(childTool('tool-send', 'child-bash'))
+    send({
+      type: 'system',
+      subtype: 'background_tasks_changed',
+      tasks: [
+        { task_id: 'agent-plan', task_type: 'local_agent', description: 'Find feature path' },
+        { task_id: 'shell-child', task_type: 'local_bash', description: 'sleep 120' }
+      ],
+      session_id: 'claude-test'
+    })
+    send({
+      type: 'system',
+      subtype: 'task_started',
+      task_id: 'shell-child',
+      tool_use_id: 'child-bash',
+      description: 'sleep 120',
+      task_type: 'local_bash',
+      is_backgrounded: true,
+      session_id: 'claude-test'
+    })
+    send({
+      type: 'system',
+      subtype: 'task_notification',
+      task_id: 'agent-plan',
+      tool_use_id: 'tool-send',
+      status: 'completed',
+      summary: 'Agent "Find feature path" is waiting on its own background work',
+      usage: { total_tokens: 200000, tool_uses: 30, duration_ms: 3400000 },
+      session_id: 'claude-test'
+    })
+    send({
+      type: 'system',
+      subtype: 'task_notification',
+      task_id: 'shell-child',
+      tool_use_id: 'child-bash',
+      status: 'completed',
+      summary: 'Background command "sleep 120" completed (exit code 0)',
+      session_id: 'claude-test'
+    })
+    const finished = () =>
+      send({
+        type: 'system',
+        subtype: 'task_notification',
+        task_id: 'agent-plan',
+        tool_use_id: 'tool-send',
+        status: 'completed',
+        summary: 'Agent "Find feature path" finished',
+        usage: { total_tokens: 235800, tool_uses: 40, duration_ms: 3518000 },
+        session_id: 'claude-test'
+      })
+    if (!resume[1]) {
+      finished()
+      claudeFinish('The resumed agent finished.')
+      return
+    }
+    claudeFinish('The agent is running again.')
+    setTimeout(finished, Number(resume[1]))
+    return
+  }
   if (prompt === 'agents-still-running' || prompt === 'agents-then-finish') {
     const finish = prompt === 'agents-then-finish'
     const agents = [
@@ -780,6 +921,46 @@ function claudePrompt(prompt, content) {
         effort: 'high',
         session_id: 'claude-test'
       })
+    else {
+      // A completed tool_result is the placeholder handed back to the parent, not the finish.
+      send({
+        type: 'user',
+        session_id: 'claude-test',
+        parent_tool_use_id: null,
+        message: {
+          role: 'user',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 'tool-blogs',
+              content: 'Blogs report that must stay off the transcript.'
+            }
+          ]
+        },
+        tool_use_result: {
+          status: 'completed',
+          agentId: 'agent-blogs',
+          totalDurationMs: 16000,
+          description: 'Search blogs and talks',
+          model: 'sonnet',
+          effort: 'medium'
+        }
+      })
+      // Dropping an agent from one snapshot is not a finish.
+      send({
+        type: 'system',
+        subtype: 'background_tasks_changed',
+        tasks: agents
+          .filter((agent) => agent.task_id !== 'agent-blogs')
+          .map((agent) => ({
+            task_id: agent.task_id,
+            task_type: 'local_agent',
+            description: agent.description,
+            tool_use_id: agent.tool_use_id
+          })),
+        session_id: 'claude-test'
+      })
+    }
     claudeFinish(
       'The research agents are running in parallel. I will consolidate when they report back.'
     )

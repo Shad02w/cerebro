@@ -122,7 +122,9 @@ test('shows the more action only on the hovered sidebar tree row', async ({
     await projectRow.hover()
     await expect(parentMore).toHaveCSS('opacity', '1')
     await expect(childMore).toHaveCSS('opacity', '0')
-    await expect(projectRow.locator('.lucide-chevron-right')).toHaveCount(0)
+    // The chevron takes the leading icon's slot on hover instead of sitting on the right.
+    await expect(projectRow.locator('[data-row-toggle-chevron]')).toHaveCSS('opacity', '1')
+    await expect(projectRow.locator('[data-row-toggle-icon]')).toHaveCSS('opacity', '0')
 
     await childRow.hover()
     await expect(childMore).toHaveCSS('opacity', '1')

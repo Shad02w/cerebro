@@ -314,6 +314,10 @@ export type AgentSubagent = {
   model?: string
   /** Effort the harness reported for this child. Absent when that child sent none. */
   effort?: string
+  /** Turn that was running when this run of the child started. Absent when it started while idle. */
+  turnId?: string
+  /** Times the child was resumed after it ended. Each run writes its own finish line. Absent means 0. */
+  run?: number
 }
 export type AgentBackgroundTaskStatus = 'running' | 'completed' | 'failed' | 'stopped'
 /**
@@ -499,11 +503,42 @@ export type AgentSessionSummary = Pick<
 export type ChatView = { session: AgentSession | null; sessions: AgentSessionSummary[] }
 /** Session status drawn on sidebar rows and agent tabs for an open pane. */
 export type AgentActivityStatus = AgentSession['status'] | 'finished'
-/** Map persisted session fields onto the status mark shown in the UI. */
+/**
+ * A child or background job the sidebar can nest under its parent thread.
+ * Elapsed fields match `AgentSubagent` so a row can show a live clock or a frozen duration.
+ */
+export type ChatAgentChild = Pick<
+  AgentSubagent,
+  'id' | 'title' | 'status' | 'startedAt' | 'finishedAt' | 'durationMs'
+>
+/** True while a child agent or a background task is still in progress. */
+export function sessionHasLiveWork(session: {
+  subagents?: ReadonlyArray<Pick<AgentSubagent, 'status'>>
+  background?: ReadonlyArray<Pick<AgentBackgroundTask, 'status'>>
+}): boolean {
+  return (
+    session.subagents?.some((child) => child.status === 'created' || child.status === 'running') ===
+      true || session.background?.some((task) => task.status === 'running') === true
+  )
+}
+/**
+ * Map persisted session fields onto the status mark shown in the UI.
+ * A parent turn can finish while background agents or shell jobs are still running.
+ * Those keep the loading mark. Waiting, failed, and interrupted stay as they are.
+ */
 export function agentActivityStatus(session: {
   status: AgentSession['status']
   attention?: AgentSession['attention']
+  subagents?: ReadonlyArray<Pick<AgentSubagent, 'status'>>
+  background?: ReadonlyArray<Pick<AgentBackgroundTask, 'status'>>
 }): AgentActivityStatus {
+  if (
+    session.status === 'waiting' ||
+    session.status === 'failed' ||
+    session.status === 'interrupted'
+  )
+    return session.status
+  if (session.status === 'running' || sessionHasLiveWork(session)) return 'running'
   if (session.status === 'idle' && session.attention?.kind === 'finished') return 'finished'
   return session.status
 }
@@ -535,6 +570,8 @@ export type ChatAgentActivity = {
   paneId: number | null
   /** Every live pane bound to this session, highest id first. Empty when unbound. */
   paneIds: number[]
+  /** Child agents of this thread. The sidebar indents them under the parent row. */
+  subagents?: ChatAgentChild[]
 }
 export type ChatSearchHit = ChatAgentActivity & {
   updatedAt: number
