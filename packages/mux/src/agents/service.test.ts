@@ -411,6 +411,45 @@ test('an image attachment stays readable from both the source session and a fork
     rmSync(f.dir, { recursive: true, force: true })
   }
 })
+test('a file attachment stays readable from both the source session and a fork of it', async () => {
+  const adapter: AgentAdapter = {
+    attachments: {
+      maxCount: 5,
+      maxTotalBytes: 1024,
+      image: { maxBytes: 1024, maxEdge: 100 },
+      file: { maxBytes: 1024, extensions: 'any', description: 'any file' }
+    },
+    models: async () => [model],
+    connect: () => ({ run: async () => {}, close: () => {} })
+  }
+  const dir = mkdtempSync(join(tmpdir(), 'cerebro-agents-file-fork-'))
+  const service = new AgentSessions(dir, () => {}, { claude: adapter, codex: adapter, pi: adapter })
+  try {
+    const data = Buffer.from('fork me').toString('base64')
+    const first = await service.command(scope, {
+      ...send,
+      attachments: [
+        { id: 'file-fork', kind: 'file', name: 'notes.txt', mimeType: 'text/plain', bytes: 7, data }
+      ]
+    })
+    const sourceId = first.session!.id
+    const forked = await service.command(scope, {
+      ...send,
+      action: 'fork',
+      sessionId: sourceId,
+      turnId: first.session!.turnId!
+    })
+    assert.equal(service.attachment(1, sourceId, 'file-fork').data, data)
+    assert.equal(service.attachment(1, forked.session!.id, 'file-fork').data, data)
+    assert.equal(
+      readdirSync(join(dir, 'attachments')).filter((name) => name.startsWith('file-fork')).length,
+      1
+    )
+  } finally {
+    await service.shutdown()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
 test('a legacy per-session attachment layout is migrated into the flat store on startup', async () => {
   const png =
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
