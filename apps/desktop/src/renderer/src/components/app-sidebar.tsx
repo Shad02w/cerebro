@@ -93,14 +93,20 @@ import {
 const DEFAULT_WORKSPACE_TOOLTIP =
   "Default workspace — can't be deleted. Remove the project instead."
 
-/** Project rows read as section labels. Workspace and worktree rows stay items. */
-const projectSectionLabelClass = cn(
-  'sidebar-project-button h-auto! bg-transparent text-xs font-medium text-sidebar-foreground/60 shadow-none',
+/** Quiet section-label look shared by project rows and directory roots. */
+const sectionLabelClass = cn(
+  'bg-transparent text-xs font-medium text-sidebar-foreground/60 shadow-none',
   'hover:bg-transparent hover:text-sidebar-foreground/60 hover:shadow-none',
   'active:bg-transparent active:text-sidebar-foreground/60',
   'data-popup-open:bg-transparent data-popup-open:hover:bg-transparent data-popup-open:hover:text-sidebar-foreground/60',
   '[&>svg]:text-sidebar-foreground/60'
 )
+
+/** Project rows read as section labels. Workspace and worktree rows stay items. */
+const projectSectionLabelClass = cn('sidebar-project-button h-auto!', sectionLabelClass)
+
+/** A plain directory root is a section label too, but stays a selectable workspace row. */
+const directoryRootLabelClass = cn('h-auto!', sectionLabelClass)
 
 /** About 10px above a project row, separating it from the previous group's last workspace. */
 const projectGroupSpacingClass = 'not-first:mt-2.5'
@@ -1056,7 +1062,11 @@ function DirectoryNameLine({
             'app-no-drag min-w-0 items-center gap-0 px-2 py-0',
             grouped
               ? cn(projectSectionLabelClass, 'w-full! min-w-0 pr-20!')
-              : cn('h-8! pr-14! text-xs font-medium', muted && !active && todoWorkspaceMuteClass)
+              : cn(
+                  directoryRootLabelClass,
+                  'w-full! min-w-0 pr-14!',
+                  muted && !active && todoWorkspaceMuteClass
+                )
           )}
           render={
             <button

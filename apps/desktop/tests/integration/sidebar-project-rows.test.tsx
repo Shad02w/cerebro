@@ -198,7 +198,7 @@ describe('sidebar project rows', () => {
     const notesRow = screen.getByTestId('project-row-1')
     const scratchRow = screen.getByTestId('workspace-row-21')
     expectSectionLabel(notesRow)
-    expectItemRow(scratchRow, 'directory')
+    expect(scratchRow).toHaveAttribute('data-workspace-role', 'directory')
     expect(notesRow).toHaveAttribute('data-project-icon', 'avatar')
     expect(scratchRow).toHaveAttribute('data-workspace-icon', 'folder')
     expect(scratchRow).toHaveAttribute('data-project-kind', 'directory')
@@ -243,7 +243,7 @@ describe('sidebar project rows', () => {
     const statusNotes = screen.getByTestId('status-project-in_progress-1')
     const statusScratch = screen.getByTestId('workspace-row-21')
     expectSectionLabel(statusNotes)
-    expectItemRow(statusScratch, 'directory')
+    expect(statusScratch).toHaveAttribute('data-workspace-role', 'directory')
     expect(statusNotes).toHaveAttribute('data-project-icon', 'avatar')
     expect(statusScratch).toHaveAttribute('data-workspace-icon', 'folder')
     expect(statusScratch.closest('[data-sidebar="menu-item"]')?.className).toContain(
@@ -257,7 +257,6 @@ describe('sidebar project rows', () => {
     expect(header.className).not.toContain('text-sidebar-foreground/60')
 
     expectItemRow(screen.getByTestId('workspace-row-12'), 'branch')
-    expectItemRow(screen.getByTestId('workspace-row-21'), 'directory')
 
     const todoHeader = screen.getByTestId('status-group-todo')
     const doneHeader = screen.getByTestId('status-group-done')
