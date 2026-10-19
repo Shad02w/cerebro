@@ -1075,9 +1075,13 @@ function DirectoryNameLine({
         >
           <span data-row-line="">
             <span data-row-icon="">
-              <span data-row-toggle-icon={grouped ? '' : undefined}>
+              {grouped ? (
+                <span data-row-toggle-icon="">
+                  <Folder />
+                </span>
+              ) : (
                 <Folder />
-              </span>
+              )}
             </span>
             <span className="truncate font-medium" data-row-label="">
               {workspaceRowLabel(project, workspace)}
