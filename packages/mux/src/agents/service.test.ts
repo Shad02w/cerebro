@@ -412,6 +412,45 @@ test('an image attachment stays readable from both the source session and a fork
     rmSync(f.dir, { recursive: true, force: true })
   }
 })
+test('a file attachment stays readable from both the source session and a fork of it', async () => {
+  const adapter: AgentAdapter = {
+    attachments: {
+      maxCount: 5,
+      maxTotalBytes: 1024,
+      image: { maxBytes: 1024, maxEdge: 100 },
+      file: { maxBytes: 1024, extensions: 'any', description: 'any file' }
+    },
+    models: async () => [model],
+    connect: () => ({ run: async () => {}, close: () => {} })
+  }
+  const dir = mkdtempSync(join(tmpdir(), 'cerebro-agents-file-fork-'))
+  const service = new AgentSessions(dir, () => {}, { claude: adapter, codex: adapter, pi: adapter })
+  try {
+    const data = Buffer.from('fork me').toString('base64')
+    const first = await service.command(scope, {
+      ...send,
+      attachments: [
+        { id: 'file-fork', kind: 'file', name: 'notes.txt', mimeType: 'text/plain', bytes: 7, data }
+      ]
+    })
+    const sourceId = first.session!.id
+    const forked = await service.command(scope, {
+      ...send,
+      action: 'fork',
+      sessionId: sourceId,
+      turnId: first.session!.turnId!
+    })
+    assert.equal(service.attachment(1, sourceId, 'file-fork').data, data)
+    assert.equal(service.attachment(1, forked.session!.id, 'file-fork').data, data)
+    assert.equal(
+      readdirSync(join(dir, 'attachments')).filter((name) => name.startsWith('file-fork')).length,
+      1
+    )
+  } finally {
+    await service.shutdown()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
 test('a legacy per-session attachment layout is migrated into the flat store on startup', async () => {
   const png =
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
@@ -426,6 +465,76 @@ test('a legacy per-session attachment layout is migrated into the flat store on 
   } finally {
     await service.shutdown()
     rmSync(f.dir, { recursive: true, force: true })
+  }
+})
+test('file attachments follow the harness policy: stored by extension, passed to the adapter, and rejected with a readable error', async () => {
+  const received: RunContext['attachments'][] = []
+  const adapter: AgentAdapter = {
+    attachments: {
+      maxCount: 2,
+      maxTotalBytes: 30,
+      image: { maxBytes: 10, maxEdge: 100 },
+      file: { maxBytes: 20, extensions: ['.pdf', '.txt'], description: 'PDF and text files' }
+    },
+    models: async () => [model],
+    connect: () => ({
+      run: async (context) => {
+        received.push(context.attachments)
+      },
+      close: () => {}
+    })
+  }
+  const dir = mkdtempSync(join(tmpdir(), 'cerebro-agents-files-'))
+  const service = new AgentSessions(dir, () => {}, { claude: adapter, codex: adapter, pi: adapter })
+  const file = (id: string, name: string, text: string) => ({
+    id,
+    kind: 'file' as const,
+    name,
+    mimeType: 'text/plain',
+    bytes: text.length,
+    data: Buffer.from(text).toString('base64')
+  })
+  try {
+    await assert.rejects(
+      service.command(scope, { ...send, attachments: [file('f-1', 'run.exe', 'x')] }),
+      /cannot take run\.exe\. It accepts PDF and text files/
+    )
+    await assert.rejects(
+      service.command(scope, { ...send, attachments: [file('f-1', 'big.txt', 'x'.repeat(21))] }),
+      /big\.txt is over .*file limit/
+    )
+    await assert.rejects(
+      service.command(scope, {
+        ...send,
+        attachments: [
+          file('f-1', 'a.txt', 'a'),
+          file('f-2', 'b.txt', 'b'),
+          file('f-3', 'c.txt', 'c')
+        ]
+      }),
+      /at most 2 attachments/
+    )
+    await assert.rejects(
+      service.command(scope, {
+        ...send,
+        attachments: [file('f-1', 'a.txt', 'x'.repeat(20)), file('f-2', 'b.txt', 'y'.repeat(20))]
+      }),
+      /total at most/
+    )
+    const view = await service.command(scope, {
+      ...send,
+      commandId: 'ok',
+      attachments: [file('f-ok', 'notes.txt', 'hello')]
+    })
+    const stored = join(dir, 'attachments', 'f-ok.txt')
+    assert.equal(readFileSync(stored, 'utf8'), 'hello')
+    const user = view.session!.items.find((item) => item.kind === 'user')!
+    assert.equal(user.attachments![0].kind, 'file')
+    assert.deepEqual(received, [[{ ...user.attachments![0], path: stored }]])
+    assert.equal(service.attachment(1, view.session!.id, 'f-ok').data, 'aGVsbG8=')
+  } finally {
+    await service.shutdown()
+    rmSync(dir, { recursive: true, force: true })
   }
 })
 test('image attachments are validated, stored outside the snapshot, passed to the adapter, and readable per workspace', async () => {
@@ -456,7 +565,7 @@ test('image attachments are validated, stored outside the snapshot, passed to th
         ...send,
         attachments: [{ ...upload, mimeType: 'text/plain' as 'image/png' }]
       }),
-      /Invalid image attachment/
+      /Invalid attachment/
     )
     const textOnly: AgentAdapter = {
       models: async () => [{ ...model, modalities: ['text'] }],
@@ -504,7 +613,7 @@ test('image attachments are validated, stored outside the snapshot, passed to th
       data: png
     })
     assert.throws(() => service.attachment(2, session.id, 'img-1'), /not found in this workspace/)
-    assert.throws(() => service.attachment(1, session.id, 'missing'), /Image not found/)
+    assert.throws(() => service.attachment(1, session.id, 'missing'), /Attachment not found/)
     await service.shutdown()
     const restored = new AgentSessions(f.dir, () => {}, f.drivers)
     assert.equal(restored.attachment(1, session.id, 'img-1').data, png)
@@ -1307,6 +1416,55 @@ test('a tool id and a task id collapse into one child, and a later running updat
     session = (await service.command(scope, get)).session!
     assert.equal(session.subagents?.length, 1)
     assert.equal(session.subagents?.[0]?.status, 'completed')
+    await service.shutdown()
+  } finally {
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
+
+test('a resumed child runs again on a new clock and writes a second finish line', async () => {
+  const f = liveFixture()
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    await service.command(scope, { ...send, commandId: 'resume' })
+    await waitFor(() => !service['running'].size)
+    const { host } = f.opened[0]
+    host.subagent({ id: 'child', status: 'running', title: 'Plan pass', startedAt: 1_000 })
+    host.subagent({
+      id: 'child',
+      status: 'completed',
+      durationMs: 180_000,
+      tokens: { total: 115_000 },
+      summary: 'Plan ready.',
+      announce: true
+    })
+    host.subagent({ id: 'child', status: 'running', reopen: true })
+    let session = (await service.command(scope, get)).session!
+    const reopened = session.subagents?.find((child) => child.id === 'child')
+    assert.equal(reopened?.status, 'running')
+    assert.equal(reopened?.run, 1)
+    assert.equal(reopened?.title, 'Plan pass')
+    assert.equal(reopened?.finishedAt, undefined)
+    assert.equal(reopened?.durationMs, undefined)
+    assert.equal(reopened?.tokens, undefined)
+    assert.equal(reopened?.summary, undefined)
+    assert.notEqual(reopened?.startedAt, 1_000)
+
+    host.subagent({
+      id: 'child',
+      status: 'completed',
+      durationMs: 3_518_000,
+      tokens: { total: 235_800 },
+      announce: true
+    })
+    session = (await service.command(scope, get)).session!
+    const lines = session.items
+      .filter((item) => item.agent?.id === 'child')
+      .map((item) => item.text)
+    assert.deepEqual(lines, [
+      'Agent "Plan pass" finished · 3m 0s · 115k',
+      'Agent "Plan pass" finished · 58m 38s · 235.8k'
+    ])
     await service.shutdown()
   } finally {
     rmSync(f.dir, { recursive: true, force: true })

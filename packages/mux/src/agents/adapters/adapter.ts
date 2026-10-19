@@ -7,11 +7,12 @@ import type {
   AgentSession,
   AgentSkill,
   AgentSubagent,
+  AttachmentPolicy,
   ChatAttachment,
   ChatSkillMention
 } from '@cerebro/core'
 
-/** A host-owned image file sent with the prompt. Bytes are read only when a harness needs them inline. */
+/** A host-owned file or image sent with the prompt. Bytes are read only when a harness needs them inline. */
 export type RunAttachment = ChatAttachment & { path: string }
 export type RunContext = {
   session: AgentSession
@@ -43,6 +44,8 @@ export type SubagentUpdate = Pick<AgentSubagent, 'id' | 'status'> &
     announce?: boolean
     /** Drop this other id. The same child was reported under two native ids. */
     replaces?: string
+    /** The harness resumed a child that already ended. This running patch starts a new run. */
+    reopen?: boolean
   }
 /** A turn the harness started without a user message, such as a background task waking the agent. */
 export type AutonomousTurn = { context: Omit<RunContext, 'text'>; settle: (error?: Error) => void }
@@ -74,6 +77,8 @@ export interface AgentConnection {
   switchSession?(sessionPath: string): Promise<{ cancelled: boolean }>
 }
 export interface AgentAdapter {
+  /** What this harness accepts with a prompt. Omitted means images within the core defaults. */
+  attachments?: AttachmentPolicy
   models(cwd: string): Promise<AgentModel[]>
   /** Skills available in `cwd` for this harness. Optional so test doubles can omit it. */
   skills?(cwd: string): Promise<AgentSkill[]>

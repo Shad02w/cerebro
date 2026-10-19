@@ -29,6 +29,7 @@ import { common, createLowlight } from 'lowlight'
 import {
   chatImageMarker,
   type AgentSkill,
+  type ChatAttachmentKind,
   type ChatAttachmentUpload,
   type ChatSkillRef
 } from '@cerebro/core'
@@ -269,7 +270,10 @@ function composerEditorHandle(
         ...(lead ? [{ type: 'text', text: lead }] : []),
         {
           type: 'imageChip',
-          attrs: { attachmentId, label: chatImageMarker(index + 1) }
+          attrs: {
+            attachmentId,
+            label: chatImageMarker(index + 1, getAttachments.current()[index]?.kind)
+          }
         },
         ...(trail ? [{ type: 'text', text: trail }] : [])
       ]
@@ -1040,7 +1044,7 @@ export function ComposerEditor({
       if (node.type.name !== 'imageChip') return
       const index = attachments.findIndex((item) => item.id === node.attrs.attachmentId)
       if (index < 0) return
-      const label = chatImageMarker(index + 1)
+      const label = chatImageMarker(index + 1, attachments[index].kind)
       if (node.attrs.label === label) return
       tr = tr.setNodeMarkup(pos, undefined, { ...node.attrs, label })
       changed = true
@@ -1073,7 +1077,7 @@ export function ComposerMessage({
   onImageChip
 }: {
   text: string
-  attachments: Array<{ id: string }>
+  attachments: Array<{ id: string; kind?: ChatAttachmentKind }>
   skills?: readonly AgentSkill[]
   /** Workspace-relative paths so `@path` in a sent message becomes a chip. */
   files?: readonly string[]

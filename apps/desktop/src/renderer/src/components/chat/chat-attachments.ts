@@ -1,7 +1,8 @@
 import {
-  chatAttachmentLimits,
+  checkAttachments,
   chatImageMarker,
   chatImageTypes,
+  type AttachmentPolicy,
   type ChatAttachmentUpload,
   type ChatImageType,
   type ChatSkillRef
@@ -32,7 +33,7 @@ function renumber(draft: ComposerDraft): ComposerDraft {
   for (const chip of chips) {
     const index = draft.attachments.findIndex((a) => a.id === chip.attachmentId)
     if (index === -1) continue
-    const marker = chatImageMarker(index + 1)
+    const marker = chatImageMarker(index + 1, draft.attachments[index].kind)
     text += draft.text.slice(cursor, chip.start)
     next.push({
       attachmentId: chip.attachmentId,
@@ -57,7 +58,7 @@ export function insertAttachment(
   const after = draft.text.slice(at)
   const lead = before && !/\s$/.test(before) ? ' ' : ''
   const trail = /^\s/.test(after) ? '' : ' '
-  const marker = chatImageMarker(draft.attachments.length + 1)
+  const marker = chatImageMarker(draft.attachments.length + 1, attachment.kind)
   const start = at + lead.length
   const inserted = lead.length + marker.length + trail.length
   return {
@@ -206,7 +207,7 @@ export const formatBytes = (bytes: number): string =>
 const encode = (blob: Blob): Promise<string> =>
   new Promise((resolve, reject) => {
     const reader = new FileReader()
-    reader.onerror = () => reject(reader.error ?? new Error('Could not read image.'))
+    reader.onerror = () => reject(reader.error ?? new Error('Could not read file.'))
     reader.onload = () => resolve(String(reader.result).split(',', 2)[1] ?? '')
     reader.readAsDataURL(blob)
   })
@@ -220,9 +221,10 @@ const toBlob = (canvas: HTMLCanvasElement, type: string, quality?: number): Prom
   )
 
 /** Validates, downscales when needed, and encodes an image file for upload. */
-export async function prepareImage(file: File): Promise<ChatAttachmentUpload> {
-  if (!(chatImageTypes as readonly string[]).includes(file.type))
-    throw new Error(`${file.name || 'This file'} is not a PNG, JPEG, GIF, or WebP image.`)
+export async function prepareImage(
+  file: File,
+  policy: AttachmentPolicy
+): Promise<ChatAttachmentUpload> {
   let mimeType = file.type as ChatImageType
   let bitmap: ImageBitmap
   try {
@@ -230,7 +232,7 @@ export async function prepareImage(file: File): Promise<ChatAttachmentUpload> {
   } catch {
     throw new Error(`${file.name || 'This file'} could not be decoded as an image.`)
   }
-  const { maxEdge, maxBytes } = chatAttachmentLimits
+  const { maxEdge, maxBytes } = policy.image
   const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height))
   let width = bitmap.width
   let height = bitmap.height
@@ -266,7 +268,41 @@ export async function prepareImage(file: File): Promise<ChatAttachmentUpload> {
   }
 }
 
-/** Image files from a drop or paste, in order. Non-image entries are ignored by the caller's validation. */
+const isImage = (file: File): boolean => (chatImageTypes as readonly string[]).includes(file.type)
+
+/**
+ * Turns a picked file into an upload under `agent`'s policy. Images are downscaled; anything else
+ * is checked against the policy as-is. Throws a sentence fit for a toast.
+ */
+export async function prepareAttachment(
+  file: File,
+  policy: AttachmentPolicy,
+  agent: string
+): Promise<ChatAttachmentUpload> {
+  if (isImage(file)) return prepareImage(file, policy)
+  const name = file.name || 'File'
+  const rejection = checkAttachments(policy, agent, [{ kind: 'file', name, bytes: file.size }])
+  if (rejection) throw new Error(rejection)
+  if (!file.size) throw new Error(`${name} is empty.`)
+  return {
+    id: crypto.randomUUID(),
+    kind: 'file',
+    name,
+    mimeType: file.type || 'application/octet-stream',
+    bytes: file.size,
+    data: await encode(file)
+  }
+}
+
+/** The `accept` attribute for the file picker under `policy`. */
+export function attachmentAccept(policy: AttachmentPolicy): string {
+  if (!policy.file) return chatImageTypes.join(',')
+  return policy.file.extensions === 'any'
+    ? ''
+    : [...chatImageTypes, ...policy.file.extensions].join(',')
+}
+
+/** Files from a drop or paste, in order. The caller validates each against the agent's policy. */
 export function imageFiles(transfer: DataTransfer | null): File[] {
   if (!transfer) return []
   const files = [...transfer.files]

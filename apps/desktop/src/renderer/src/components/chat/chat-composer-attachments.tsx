@@ -1,4 +1,4 @@
-import { X } from 'lucide-react'
+import { FileText, X } from 'lucide-react'
 import type { ChatAttachmentUpload } from '@cerebro/core'
 import { Button } from '@/components/ui/button'
 import { dataUrl, formatBytes } from './chat-attachments'
@@ -14,7 +14,7 @@ export function AttachmentStrip({
   return (
     <ul
       className="flex flex-wrap gap-2 px-2 pt-1 pb-2"
-      aria-label="Attached images"
+      aria-label="Attachments"
       data-testid="chat-attachments"
     >
       {attachments.map((attachment, index) => (
@@ -23,11 +23,17 @@ export function AttachmentStrip({
           className="relative flex items-center gap-2 rounded-lg border bg-muted/40 p-1 pr-2 text-xs"
           data-testid="chat-attachment"
         >
-          <img
-            src={dataUrl(attachment)}
-            alt={attachment.name}
-            className="size-12 rounded-md object-cover"
-          />
+          {attachment.kind === 'image' ? (
+            <img
+              src={dataUrl(attachment)}
+              alt={attachment.name}
+              className="size-12 rounded-md object-cover"
+            />
+          ) : (
+            <span className="flex size-12 items-center justify-center rounded-md bg-muted">
+              <FileText className="size-5 text-muted-foreground" aria-hidden="true" />
+            </span>
+          )}
           <span className="absolute top-0.5 left-0.5 rounded bg-background/90 px-1 font-mono text-[10px] leading-4">
             #{index + 1}
           </span>
@@ -41,8 +47,8 @@ export function AttachmentStrip({
             type="button"
             variant="ghost"
             size="icon-xs"
-            aria-label={`Remove image ${index + 1}`}
-            title={`Remove image ${index + 1}`}
+            aria-label={`Remove ${attachment.kind} ${index + 1}`}
+            title={`Remove ${attachment.kind} ${index + 1}`}
             onClick={() => onRemove(attachment.id)}
           >
             <X aria-hidden="true" />
@@ -60,7 +66,7 @@ export function DropOverlay({ visible }: { visible: boolean }): React.JSX.Elemen
       className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-2xl border-2 border-dashed border-ring bg-background/90 text-sm"
       data-testid="chat-drop-overlay"
     >
-      Drop images to attach
+      Drop files to attach
     </div>
   )
 }

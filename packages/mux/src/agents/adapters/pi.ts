@@ -1,15 +1,28 @@
-import { skillPromptText, type AgentDelta, type ChatSkillMention } from '@cerebro/core'
+import {
+  skillPromptText,
+  type AgentDelta,
+  type AttachmentPolicy,
+  type ChatSkillMention
+} from '@cerebro/core'
 import { randomUUID } from 'node:crypto'
 import { JsonProcess, executable, describe, type Frame } from '../transport'
 import type { AgentAdapter, AutonomousTurn } from './adapter'
 import { piContextUsage } from '../context-usage'
-import { activeTurn, inline, item, model, modalities } from './shared'
+import { activeTurn, imagesOf, inline, item, model, modalities, withFilePaths } from './shared'
 import { piSkills } from '../skills'
 
 const promptText = (text: string, skills?: ChatSkillMention[]): string =>
   skillPromptText(text, skills ?? [])
 
+/** Pi sends images inline to whichever provider is selected, so images stay at the strictest provider bound. Other files are read from disk by path. */
+const piAttachments: AttachmentPolicy = {
+  maxCount: 10,
+  maxTotalBytes: 20 * 1024 * 1024,
+  image: { maxBytes: 5 * 1024 * 1024, maxEdge: 2000 },
+  file: { maxBytes: 10 * 1024 * 1024, extensions: 'any', description: 'any file' }
+}
 export const piAdapter: AgentAdapter = {
+  attachments: piAttachments,
   async skills(cwd) {
     const rpc = new JsonProcess(
       executable('pi'),
@@ -215,10 +228,13 @@ export const piAdapter: AgentAdapter = {
           if (state.sessionFile) context.emit({ type: 'binding', nativeId: state.sessionFile })
           if (current !== turn) return await ended
           await rpc.request('prompt', {
-            message: promptText(context.text, context.skills),
-            ...(context.attachments?.length
+            message: withFilePaths(
+              promptText(context.text, context.skills),
+              context.attachments ?? []
+            ),
+            ...(context.attachments && imagesOf(context.attachments).length
               ? {
-                  images: context.attachments.map((attachment) => ({
+                  images: imagesOf(context.attachments).map((attachment) => ({
                     type: 'image',
                     data: inline(attachment),
                     mimeType: attachment.mimeType
@@ -228,11 +244,11 @@ export const piAdapter: AgentAdapter = {
           })
           context.registerSteer?.(async (text, steerAttachments, skills) => {
             await rpc.request('prompt', {
-              message: promptText(text, skills),
+              message: withFilePaths(promptText(text, skills), steerAttachments),
               streamingBehavior: 'steer',
-              ...(steerAttachments.length
+              ...(imagesOf(steerAttachments).length
                 ? {
-                    images: steerAttachments.map((attachment) => ({
+                    images: imagesOf(steerAttachments).map((attachment) => ({
                       type: 'image',
                       data: inline(attachment),
                       mimeType: attachment.mimeType

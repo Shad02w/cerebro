@@ -3,6 +3,7 @@ import {
   skillPromptText,
   type AgentDelta,
   type AgentModel,
+  type AttachmentPolicy,
   type ChatSkillMention
 } from '@cerebro/core'
 import { randomUUID } from 'node:crypto'
@@ -10,7 +11,7 @@ import { describe, type Frame } from '../transport'
 import { codexContextUsage } from '../context-usage'
 import { codexAppServer, interruptCodexTurn } from '../codex-server'
 import type { AgentAdapter, AutonomousTurn, RunAttachment } from './adapter'
-import { activeTurn, item, model, modalities } from './shared'
+import { activeTurn, imagesOf, item, model, modalities, withFilePaths } from './shared'
 import { codexTodoSnapshot } from '../todo'
 import { codexSkills } from '../skills'
 
@@ -20,12 +21,12 @@ const codexTurnInput = (
   attachments: RunAttachment[],
   skills: ChatSkillMention[] = []
 ): Array<Record<string, unknown>> => {
-  const outbound = skillPromptText(text, skills)
+  const outbound = withFilePaths(skillPromptText(text, skills), attachments)
   return [
     attachments.length
       ? { type: 'text', text: outbound, text_elements: textElements(outbound) }
       : { type: 'text', text: outbound },
-    ...attachments.map((attachment) => ({ type: 'localImage', path: attachment.path }))
+    ...imagesOf(attachments).map((attachment) => ({ type: 'localImage', path: attachment.path }))
   ]
 }
 
@@ -37,7 +38,15 @@ const textElements = (
     const start = Buffer.byteLength(text.slice(0, match.index))
     return { byteRange: { start, end: start + Buffer.byteLength(match[0]) }, placeholder: match[0] }
   })
+/** Codex takes images as `localImage` inputs. Other files are read from disk by path, so any type is allowed. */
+const codexAttachments: AttachmentPolicy = {
+  maxCount: 20,
+  maxTotalBytes: 40 * 1024 * 1024,
+  image: { maxBytes: 10 * 1024 * 1024, maxEdge: 2000 },
+  file: { maxBytes: 20 * 1024 * 1024, extensions: 'any', description: 'any file' }
+}
 export const codexAdapter: AgentAdapter = {
+  attachments: codexAttachments,
   async skills(cwd) {
     const server = codexAppServer()
     return codexSkills(await server.request('skills/list', { cwds: [cwd], forceReload: true }), cwd)

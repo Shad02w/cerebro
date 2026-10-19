@@ -1,7 +1,10 @@
 import {
+  fileExtension,
   skillPromptText,
+  textFileExtensions,
   type AgentDelta,
   type AgentSession,
+  type AttachmentPolicy,
   type ChatItem,
   type ChatSkillMention
 } from '@cerebro/core'
@@ -12,6 +15,7 @@ import { executable, describe, type Frame } from '../transport'
 import type { AgentAdapter, AutonomousTurn, RunAttachment } from './adapter'
 import { claudeContextUsage } from '../context-usage'
 import { activeTurn, inline, item, model } from './shared'
+import { readFileSync } from 'node:fs'
 import { ClaudeTodoList } from '../todo'
 import { claudeExposedSkills } from '../skills'
 
@@ -91,6 +95,50 @@ export const claudeModelLabel = (entry: {
   if (entry.displayName && !claudeCapabilityBlurb.test(entry.displayName)) return entry.displayName
   return wire || entry.displayName
 }
+/**
+ * Anthropic bounds: images are 5 MB each; PDFs and the whole request share a 32 MB payload, and
+ * base64 adds a third, so the raw total stays under 24 MB. PDFs and text go in as native document blocks.
+ */
+const claudeAttachments: AttachmentPolicy = {
+  maxCount: 20,
+  maxTotalBytes: 24 * 1024 * 1024,
+  image: { maxBytes: 5 * 1024 * 1024, maxEdge: 2000 },
+  file: {
+    maxBytes: 20 * 1024 * 1024,
+    extensions: ['.pdf', ...textFileExtensions],
+    description: 'PDF and text or code files'
+  }
+}
+const attachmentBlock = (attachment: RunAttachment) => {
+  if (attachment.kind === 'image')
+    return {
+      type: 'image' as const,
+      source: {
+        type: 'base64' as const,
+        media_type: attachment.mimeType as 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp',
+        data: inline(attachment)
+      }
+    }
+  if (fileExtension(attachment.name) === '.pdf')
+    return {
+      type: 'document' as const,
+      title: attachment.name,
+      source: {
+        type: 'base64' as const,
+        media_type: 'application/pdf' as const,
+        data: inline(attachment)
+      }
+    }
+  return {
+    type: 'document' as const,
+    title: attachment.name,
+    source: {
+      type: 'text' as const,
+      media_type: 'text/plain' as const,
+      data: readFileSync(attachment.path, 'utf8')
+    }
+  }
+}
 const userMessage = (text: string, attachments: RunAttachment[]): SDKUserMessage =>
   ({
     type: 'user',
@@ -98,17 +146,7 @@ const userMessage = (text: string, attachments: RunAttachment[]): SDKUserMessage
     message: {
       role: 'user',
       content: attachments.length
-        ? [
-            { type: 'text', text },
-            ...attachments.map((attachment) => ({
-              type: 'image' as const,
-              source: {
-                type: 'base64' as const,
-                media_type: attachment.mimeType,
-                data: inline(attachment)
-              }
-            }))
-          ]
+        ? [{ type: 'text', text }, ...attachments.map(attachmentBlock)]
         : text
     }
   }) satisfies SDKUserMessage
@@ -180,6 +218,7 @@ const askClaude = async <T>(cwd: string, read: (query: Query) => Promise<T>): Pr
 }
 
 export const claudeAdapter: AgentAdapter = {
+  attachments: claudeAttachments,
   async skills(cwd) {
     const listed = await askClaude(cwd, (q) => q.reloadSkills())
     return claudeExposedSkills(listed.skills ?? [])
@@ -286,6 +325,14 @@ export const claudeAdapter: AgentAdapter = {
     // A tool_result for one of these is the launch acknowledgement, not the agent's end.
     const backgrounded = new Set<string>()
     const toolBackground = new Set<string>()
+    // Tool-use ids a child agent made. A shell started by one of them belongs to that child.
+    const childTools = new Set<string>()
+    // Whose each shell is, from its task_started. The live set carries ids only.
+    const shellOwners = new Map<string, 'session' | 'child'>()
+    // Shells in the latest live set and their titles, listed once their owner is known.
+    const liveShellTitles = new Map<string, string>()
+    // SendMessage tool-use ids. Their result names the child agent the message resumed.
+    const resumeTools = new Set<string>()
     const markBackground = (id: string): void => {
       backgrounded.add(id)
       const linked = alias.get(id)
@@ -303,7 +350,7 @@ export const claudeAdapter: AgentAdapter = {
         taskId
       const replaces = [tool, taskId].find(
         (candidate): candidate is string =>
-          Boolean(candidate) && candidate !== id && children.has(candidate)
+          !!candidate && candidate !== id && children.has(candidate)
       )
       alias.set(taskId, id)
       agentIds.add(taskId)
@@ -388,6 +435,22 @@ export const claudeAdapter: AgentAdapter = {
         if (identity.model || identity.effort) toolIdentity.set(key, identity)
         if (record?.run_in_background === true || record?.isolation === 'remote')
           toolBackground.add(key)
+      }
+      if (name === 'SendMessage') {
+        resumeTools.add(key)
+        let parsed = input
+        if (typeof input === 'string' && input.trim().startsWith('{')) {
+          try {
+            parsed = JSON.parse(input)
+          } catch {
+            parsed = undefined
+          }
+        }
+        const to =
+          parsed && typeof parsed === 'object' ? textField((parsed as Frame).to) : undefined
+        const target = to ? (alias.get(to) ?? (children.has(to) ? to : undefined)) : undefined
+        // Frames of the resumed child can name this tool as their parent.
+        if (target) alias.set(key, target)
       }
       if (!title || toolTitles.get(key) === title) return
       toolTitles.set(key, title)
@@ -474,6 +537,12 @@ export const claudeAdapter: AgentAdapter = {
         return
       }
       settled.add(id)
+      // A later SendMessage or task frame names this child by its agent id.
+      const agentId = textField(result?.agentId)
+      if (agentId && agentId !== id && !alias.has(agentId)) {
+        alias.set(agentId, id)
+        agentIds.add(agentId)
+      }
       const tokens =
         childTokens(block.usage) ??
         (typeof result?.totalTokens === 'number' ? { total: result.totalTokens } : undefined)
@@ -502,9 +571,10 @@ export const claudeAdapter: AgentAdapter = {
         model?: string
         effort?: string
         announce?: boolean
+        reopen?: boolean
       }
     ): void => {
-      // A later live-set frame must not reopen an agent that already ended.
+      // A later live-set frame must not reopen an agent that already ended. Only a resume does.
       if (update.status === 'running' && settled.has(id)) return
       if (!children.has(id) || (update.title && children.get(id) !== update.title))
         children.set(id, update.title ?? children.get(id))
@@ -520,15 +590,41 @@ export const claudeAdapter: AgentAdapter = {
         ...(update.durationMs !== undefined ? { durationMs: update.durationMs } : {}),
         ...(update.model ? { model: update.model } : {}),
         ...(update.effort ? { effort: update.effort } : {}),
-        ...(update.announce ? { announce: true } : {})
+        ...(update.announce ? { announce: true } : {}),
+        ...(update.reopen ? { reopen: true } : {})
       })
+    }
+    /** A child that ended was sent another message. It runs again in the background. */
+    const resumeAgent = (
+      id: string,
+      update: { title?: string; model?: string; effort?: string } = {}
+    ): void => {
+      markBackground(id)
+      const reopen = settled.delete(id)
+      reportAgent(id, { status: 'running', ...update, ...(reopen ? { reopen: true } : {}) })
     }
     const handle = async (frame: Frame): Promise<void> => {
       // Child frames share the parent stream. They are status, not transcript rows.
       if (frame.parent_tool_use_id && frame.type !== 'result') {
+        const parent = String(frame.parent_tool_use_id)
+        const content =
+          frame.type === 'assistant' && Array.isArray(frame.message?.content)
+            ? (frame.message.content as Frame[])
+            : frame.type === 'stream_event' && frame.event?.type === 'content_block_start'
+              ? [frame.event.content_block as Frame]
+              : []
+        for (const block of content)
+          if (block?.type === 'tool_use' && block.id != null) childTools.add(String(block.id))
+        // A tool this session called that is not an agent never parents a child.
+        if (
+          toolTitles.has(parent) &&
+          !agentTools.has(parent) &&
+          !alias.has(parent) &&
+          !children.has(parent)
+        )
+          return
         noteChild(frame.parent_tool_use_id)
-        const childId =
-          alias.get(String(frame.parent_tool_use_id)) ?? String(frame.parent_tool_use_id)
+        const childId = alias.get(parent) ?? parent
         const message =
           frame.message && typeof frame.message === 'object' ? frame.message : undefined
         const identity = childIdentity({
@@ -627,6 +723,21 @@ export const claudeAdapter: AgentAdapter = {
         const results = blocks.filter((block: Frame) => block.type === 'tool_result')
         for (const block of results) {
           const raw = block.tool_use_id == null ? '' : String(block.tool_use_id)
+          if (resumeTools.has(raw)) {
+            resumeTools.delete(raw)
+            const result =
+              results.length === 1 &&
+              frame.tool_use_result &&
+              typeof frame.tool_use_result === 'object'
+                ? (frame.tool_use_result as Frame)
+                : undefined
+            const resumed = textField(result?.resumedAgentId) ?? textField(result?.revivedAgentId)
+            if (resumed && !block.is_error) resumeAgent(linkChild(resumed, raw))
+            item(turn.context, block.tool_use_id, 'tool', describe(block.content), {
+              status: block.is_error ? 'failed' : 'completed'
+            })
+            continue
+          }
           const linked = alias.get(raw) ?? raw
           const child =
             agentTools.has(raw) ||
@@ -693,10 +804,16 @@ export const claudeAdapter: AgentAdapter = {
             continue
           }
           liveShells.add(taskId)
+          // A child agent's shell is that child's work. An unknown owner waits for task_started.
+          if (shellOwners.get(taskId) !== 'session') continue
           if (background.has(taskId)) continue
           background.set(taskId, undefined)
           host.task({ id: taskId, title, status: 'running' })
         }
+        liveShellTitles.clear()
+        for (const task of Array.isArray(frame.tasks) ? (frame.tasks as Frame[]) : [])
+          if (!task.ambient && !isAgentTask(task.task_type))
+            liveShellTitles.set(String(task.task_id), String(task.description ?? ''))
         // A shell can leave the set without its notification (a missed edge). Do not list it forever.
         // A missing agent in one snapshot is not a finish. Background agents outlive the parent
         // turn, and the level signal can arrive without the task_notification that ends them.
@@ -713,21 +830,29 @@ export const claudeAdapter: AgentAdapter = {
         if (frame.ambient) return
         if (isAgentTask(frame.task_type)) {
           const id = linkChild(String(frame.task_id), frame.tool_use_id)
-          if (frame.is_backgrounded) markBackground(id)
           const title = String(frame.description ?? '')
-          reportAgent(id, {
-            status: 'running',
-            ...(title ? { title } : {}),
-            ...childIdentity(frame)
-          })
+          const update = { ...(title ? { title } : {}), ...childIdentity(frame) }
+          // A resumed child is always registered in the background.
+          if (frame.is_backgrounded && settled.has(id)) {
+            resumeAgent(id, update)
+            return
+          }
+          if (frame.is_backgrounded) markBackground(id)
+          reportAgent(id, { status: 'running', ...update })
           return
         }
-        if (frame.is_backgrounded && background.has(String(frame.task_id)))
-          host.task({
-            id: String(frame.task_id),
-            status: 'running',
-            ...(frame.tool_use_id ? { itemId: String(frame.tool_use_id) } : {})
-          })
+        const taskId = String(frame.task_id)
+        const tool = frame.tool_use_id ? String(frame.tool_use_id) : undefined
+        const owner = tool && childTools.has(tool) ? 'child' : 'session'
+        shellOwners.set(taskId, owner)
+        if (owner === 'child') return
+        const title = liveShellTitles.get(taskId)
+        if (title !== undefined && !background.has(taskId)) {
+          background.set(taskId, undefined)
+          host.task({ id: taskId, title, status: 'running' })
+        }
+        if (frame.is_backgrounded && background.has(taskId))
+          host.task({ id: taskId, status: 'running', ...(tool ? { itemId: tool } : {}) })
       } else if (frame.type === 'system' && frame.subtype === 'task_progress') {
         const taskId = String(frame.task_id)
         if (!agentIds.has(taskId) && !frame.subagent_type && !isAgentTask(frame.task_type)) return
@@ -754,8 +879,13 @@ export const claudeAdapter: AgentAdapter = {
           const id = linkChild(taskId, frame.tool_use_id)
           const usage = taskUsage(frame.usage)
           const title = String(frame.description ?? '')
+          // An agent waiting on its own background work stopped, but it has not finished.
+          const waiting = /waiting on its own background work/i.test(String(frame.summary ?? ''))
           const terminal =
-            frame.status === 'completed' || frame.status === 'failed' || frame.status === 'stopped'
+            !waiting &&
+            (frame.status === 'completed' ||
+              frame.status === 'failed' ||
+              frame.status === 'stopped')
           if (!terminal || usage?.durationMs === 0) {
             reportAgent(id, {
               status: 'running',
@@ -788,6 +918,7 @@ export const claudeAdapter: AgentAdapter = {
           })
           return
         }
+        shellOwners.delete(taskId)
         if (!background.has(taskId)) return
         clearTimeout(background.get(taskId))
         background.delete(taskId)
