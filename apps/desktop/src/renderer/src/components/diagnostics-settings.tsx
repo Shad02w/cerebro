@@ -44,7 +44,8 @@ export function DiagnosticsSettings(): React.JSX.Element {
         <h2 className="text-sm font-medium">Export diagnostics</h2>
         <p className="text-xs text-muted-foreground">
           Save a zip you can send when something goes wrong, such as the terminal server failing to
-          connect. It is created only when you export it and is never uploaded.
+          connect. It is created only when you export it and is never uploaded. To send one
+          conversation and images, use Report on that conversation.
         </p>
       </div>
       <dl className="space-y-2 text-xs">

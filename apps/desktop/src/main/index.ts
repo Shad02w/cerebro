@@ -12,6 +12,7 @@ import { registerNativeCommandIpc } from './native-commands'
 import { ensureCerebroHome } from './paths'
 import { registerCliIpc } from './cli-install'
 import { registerDiagnosticsIpc } from './diagnostics'
+import { registerFeedbackIpc } from './feedback'
 import { registerNotifications } from './notifications'
 import { IPC } from '../shared/ipc'
 
@@ -91,6 +92,7 @@ app.whenReady().then(() => {
   registerSettingsIpc()
   registerCliIpc()
   registerDiagnosticsIpc()
+  registerFeedbackIpc()
   registerNativeCommandIpc()
   registerNotifications()
   void getMux().catch((error) => console.error('[mux]', error.message))

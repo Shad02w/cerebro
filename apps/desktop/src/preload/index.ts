@@ -60,6 +60,7 @@ const api: CerebroApi = {
     }
   },
   exportDiagnostics: () => ipcRenderer.invoke(IPC.diagnostics.export),
+  exportSessionReport: (request) => ipcRenderer.invoke(IPC.feedback.export, request),
   getCliStatus: () => ipcRenderer.invoke(IPC.cli.status),
   installCli: () => ipcRenderer.invoke(IPC.cli.install),
   removeCli: () => ipcRenderer.invoke(IPC.cli.remove),

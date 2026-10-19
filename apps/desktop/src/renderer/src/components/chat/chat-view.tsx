@@ -52,6 +52,7 @@ import {
   isTranscriptAtEnd
 } from './chat-turns'
 import { ChatSessionChips } from './chat-session-chips'
+import { SessionReportDialog } from './session-report-dialog'
 import { ChatSessionPanel } from './chat-session-panel'
 import { AttachmentStrip, DropOverlay } from './chat-composer-attachments'
 import { ComposerEditor, type ComposerEditorHandle } from './composer-editor'
@@ -625,6 +626,11 @@ export function ChatView({
             aria-label="Conversation"
           >
             <div className="mx-auto flex max-w-3xl flex-col gap-4">
+              {session ? (
+                <div className="flex justify-end">
+                  <SessionReportDialog session={session} />
+                </div>
+              ) : null}
               <TurnClock active={busy} activeIds={watchedTurnIds} knownIds={knownTurnIds} />
               {transcript
                 ? entries.map((entry, index, listed) => {

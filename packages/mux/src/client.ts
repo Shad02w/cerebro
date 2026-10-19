@@ -22,6 +22,17 @@ export {
   type DiagnosticsOptions,
   type DiagnosticsResult
 } from './diagnostics'
+export {
+  collectSessionReport,
+  defaultSessionReportName,
+  exportSessionReport,
+  sessionReportLimits,
+  type SessionReport,
+  type SessionReportImage,
+  type SessionReportInput,
+  type SessionReportResult,
+  type SessionReportScore
+} from './session-report'
 
 export type ConnectOptions = { runtimeDir?: string; autoStart?: boolean }
 export class MuxClient extends EventEmitter {
