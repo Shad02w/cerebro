@@ -11,6 +11,7 @@ type JSONContent = {
 import {
   chatImageMarker,
   type AgentSkill,
+  type ChatAttachmentKind,
   type ChatAttachmentUpload,
   type ChatSkillRef
 } from '@cerebro/core'
@@ -285,7 +286,7 @@ const writeInline = (
     if (child.type.name === 'imageChip') {
       const index = attachments.findIndex((item) => item.id === child.attrs.attachmentId)
       if (index < 0) return
-      const marker = chatImageMarker(index + 1)
+      const marker = chatImageMarker(index + 1, attachments[index].kind)
       const start = writer.text.length
       push(writer, marker)
       writer.chips.push({
@@ -405,13 +406,13 @@ type InlineSpan = { start: number; end: number; part: JSONContent }
 
 const inlineFromText = (
   line: string,
-  attachments?: Array<{ id: string }>,
+  attachments?: Array<{ id: string; kind?: ChatAttachmentKind }>,
   skills: readonly AgentSkill[] = [],
   files: ReadonlySet<string> = emptyFiles
 ): JSONContent[] => {
   if (!line) return []
   const spans: InlineSpan[] = []
-  for (const match of line.matchAll(/`([^`]+)`|\[Image #(\d+)\]/g)) {
+  for (const match of line.matchAll(/`([^`]+)`|\[(?:Image|File) #(\d+)\]/g)) {
     const start = match.index ?? 0
     const end = start + match[0].length
     if (match[1])
@@ -425,7 +426,10 @@ const inlineFromText = (
         part: attachment
           ? {
               type: 'imageChip',
-              attrs: { attachmentId: attachment.id, label: chatImageMarker(imageIndex) }
+              attrs: {
+                attachmentId: attachment.id,
+                label: chatImageMarker(imageIndex, attachment.kind)
+              }
             }
           : { type: 'text', text: match[0] }
       })
@@ -480,7 +484,7 @@ const inlineFromText = (
 
 const paragraph = (
   line: string,
-  attachments?: Array<{ id: string }>,
+  attachments?: Array<{ id: string; kind?: ChatAttachmentKind }>,
   skills: readonly AgentSkill[] = [],
   files: ReadonlySet<string> = emptyFiles
 ): JSONContent => {
@@ -512,7 +516,7 @@ const readFence = (lines: string[], start: number): { node: JSONContent; next: n
 const parseBlocks = (
   lines: string[],
   start: number,
-  attachments?: Array<{ id: string }>,
+  attachments?: Array<{ id: string; kind?: ChatAttachmentKind }>,
   skills: readonly AgentSkill[] = [],
   files: ReadonlySet<string> = emptyFiles
 ): { nodes: JSONContent[]; next: number } => {
@@ -558,7 +562,7 @@ const parseBlocks = (
 export function textToContent(
   text: string,
   options?: {
-    attachments?: Array<{ id: string }>
+    attachments?: Array<{ id: string; kind?: ChatAttachmentKind }>
     skills?: readonly AgentSkill[]
     files?: readonly string[]
   }

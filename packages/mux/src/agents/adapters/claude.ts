@@ -1,7 +1,10 @@
 import {
+  fileExtension,
   skillPromptText,
+  textFileExtensions,
   type AgentDelta,
   type AgentSession,
+  type AttachmentPolicy,
   type ChatItem,
   type ChatSkillMention
 } from '@cerebro/core'
@@ -12,6 +15,7 @@ import { executable, describe, type Frame } from '../transport'
 import type { AgentAdapter, AutonomousTurn, RunAttachment } from './adapter'
 import { claudeContextUsage } from '../context-usage'
 import { activeTurn, inline, item, model } from './shared'
+import { readFileSync } from 'node:fs'
 import { ClaudeTodoList } from '../todo'
 import { claudeExposedSkills } from '../skills'
 
@@ -91,6 +95,50 @@ export const claudeModelLabel = (entry: {
   if (entry.displayName && !claudeCapabilityBlurb.test(entry.displayName)) return entry.displayName
   return wire || entry.displayName
 }
+/**
+ * Anthropic bounds: images are 5 MB each; PDFs and the whole request share a 32 MB payload, and
+ * base64 adds a third, so the raw total stays under 24 MB. PDFs and text go in as native document blocks.
+ */
+const claudeAttachments: AttachmentPolicy = {
+  maxCount: 20,
+  maxTotalBytes: 24 * 1024 * 1024,
+  image: { maxBytes: 5 * 1024 * 1024, maxEdge: 2000 },
+  file: {
+    maxBytes: 20 * 1024 * 1024,
+    extensions: ['.pdf', ...textFileExtensions],
+    description: 'PDF and text or code files'
+  }
+}
+const attachmentBlock = (attachment: RunAttachment) => {
+  if (attachment.kind === 'image')
+    return {
+      type: 'image' as const,
+      source: {
+        type: 'base64' as const,
+        media_type: attachment.mimeType as 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp',
+        data: inline(attachment)
+      }
+    }
+  if (fileExtension(attachment.name) === '.pdf')
+    return {
+      type: 'document' as const,
+      title: attachment.name,
+      source: {
+        type: 'base64' as const,
+        media_type: 'application/pdf' as const,
+        data: inline(attachment)
+      }
+    }
+  return {
+    type: 'document' as const,
+    title: attachment.name,
+    source: {
+      type: 'text' as const,
+      media_type: 'text/plain' as const,
+      data: readFileSync(attachment.path, 'utf8')
+    }
+  }
+}
 const userMessage = (text: string, attachments: RunAttachment[]): SDKUserMessage =>
   ({
     type: 'user',
@@ -98,17 +146,7 @@ const userMessage = (text: string, attachments: RunAttachment[]): SDKUserMessage
     message: {
       role: 'user',
       content: attachments.length
-        ? [
-            { type: 'text', text },
-            ...attachments.map((attachment) => ({
-              type: 'image' as const,
-              source: {
-                type: 'base64' as const,
-                media_type: attachment.mimeType,
-                data: inline(attachment)
-              }
-            }))
-          ]
+        ? [{ type: 'text', text }, ...attachments.map(attachmentBlock)]
         : text
     }
   }) satisfies SDKUserMessage
@@ -180,6 +218,7 @@ const askClaude = async <T>(cwd: string, read: (query: Query) => Promise<T>): Pr
 }
 
 export const claudeAdapter: AgentAdapter = {
+  attachments: claudeAttachments,
   async skills(cwd) {
     const listed = await askClaude(cwd, (q) => q.reloadSkills())
     return claudeExposedSkills(listed.skills ?? [])
@@ -311,7 +350,7 @@ export const claudeAdapter: AgentAdapter = {
         taskId
       const replaces = [tool, taskId].find(
         (candidate): candidate is string =>
-          Boolean(candidate) && candidate !== id && children.has(candidate)
+          !!candidate && candidate !== id && children.has(candidate)
       )
       alias.set(taskId, id)
       agentIds.add(taskId)

@@ -1559,15 +1559,20 @@ test('Claude background jobs outlive their response, list in the session panel, 
     const message = page.getByRole('textbox', { name: 'Message agent' })
     const sendMessage = page.getByRole('button', { name: 'Send message', exact: true })
     const ended = page.getByRole('separator', { name: 'End of response' })
+    const held = page.getByTestId('chat-turn-held')
     await message.fill('background-task 9000')
     await sendMessage.click()
-    await expect(ended).toHaveCount(1)
+    // The task is still running, so the turn holds back its End of response separator.
+    await expect(held).toHaveCount(1)
+    await expect(ended).toHaveCount(0)
     await page.getByRole('button', { name: 'Expand session status' }).click()
     const jobs = page.getByTestId('chat-session-panel-background')
     await expect(jobs.getByTestId('chat-background-task')).toHaveText(['Delayed pwd'])
     await message.fill('background-task 9000')
     await sendMessage.click()
-    await expect(ended).toHaveCount(2)
+    // No running task names its turn, so only the latest turn is held. The first one ends.
+    await expect(held).toHaveCount(1)
+    await expect(ended).toHaveCount(1)
     await expect(jobs.getByTestId('chat-background-task')).toHaveText([
       'Delayed pwd',
       'Delayed pwd 2'

@@ -17,7 +17,9 @@ import {
   agentFinishedLine,
   backgroundTaskOutcome,
   todoListId,
-  chatAttachmentLimits,
+  checkAttachments,
+  defaultAttachmentPolicy,
+  fileExtension,
   chatImageTypes,
   type AgentAccessMode,
   type AgentAnswer,
@@ -29,6 +31,7 @@ import {
   type AgentRequest,
   type AgentStatusEvent,
   type AgentSession,
+  type AttachmentPolicy,
   type ChatAttachment,
   type ChatAttachmentContent,
   type ChatCommand,
@@ -118,6 +121,7 @@ const capabilities: Record<AgentHarness, AgentCapabilities> = {
     rewind: 'native'
   }
 }
+const harnessLabels: Record<AgentHarness, string> = { claude: 'Claude', codex: 'Codex', pi: 'Pi' }
 const rewindMemoryNotice =
   'This agent cannot rewind its own memory. The next message starts a fresh session.'
 const attachmentId = /^[A-Za-z0-9-]{1,64}$/
@@ -136,42 +140,52 @@ const signature = (mimeType: ChatImageType, bytes: Buffer): boolean =>
         ? bytes.subarray(0, 4).toString('latin1') === 'GIF8'
         : bytes.subarray(0, 4).toString('latin1') === 'RIFF' &&
           bytes.subarray(8, 12).toString('latin1') === 'WEBP'
-/** Validates uploads before anything is written. Bytes are returned separately from the persisted metadata. */
+/**
+ * Validates uploads against the harness's policy before anything is written. Bytes are returned
+ * separately from the persisted metadata.
+ */
 function validateAttachments(
-  uploads: ChatCommand['attachments']
+  uploads: ChatCommand['attachments'],
+  policy: AttachmentPolicy,
+  agent: string
 ): Array<{ meta: ChatAttachment; bytes: Buffer }> {
   if (uploads === undefined) return []
   if (!Array.isArray(uploads)) throw new Error('Invalid attachments.')
-  if (uploads.length > chatAttachmentLimits.maxCount)
-    throw new Error(`Attach at most ${chatAttachmentLimits.maxCount} images per message.`)
+  if (uploads.length > policy.maxCount)
+    throw new Error(`${agent} accepts at most ${policy.maxCount} attachments per message.`)
   const seen = new Set<string>()
-  let total = 0
-  return uploads.map((upload) => {
+  const checked = uploads.map((upload) => {
     if (
       !upload ||
       typeof upload !== 'object' ||
-      upload.kind !== 'image' ||
+      (upload.kind !== 'image' && upload.kind !== 'file') ||
       typeof upload.id !== 'string' ||
       !attachmentId.test(upload.id) ||
       typeof upload.name !== 'string' ||
       typeof upload.data !== 'string' ||
-      !(chatImageTypes as readonly string[]).includes(upload.mimeType)
+      typeof upload.mimeType !== 'string' ||
+      (upload.kind === 'image' && !(chatImageTypes as readonly string[]).includes(upload.mimeType))
     )
-      throw new Error('Invalid image attachment.')
-    if (seen.has(upload.id)) throw new Error('Duplicate image attachment.')
+      throw new Error('Invalid attachment.')
+    if (seen.has(upload.id)) throw new Error('Duplicate attachment.')
     seen.add(upload.id)
     const bytes = Buffer.from(upload.data, 'base64')
-    if (!bytes.length || bytes.length > chatAttachmentLimits.maxBytes)
-      throw new Error(
-        `Each image must be at most ${Math.round(chatAttachmentLimits.maxBytes / 1024 / 1024)} MB.`
-      )
-    if (!signature(upload.mimeType, bytes))
+    if (!bytes.length) throw new Error(`${upload.name || 'Attachment'} is empty.`)
+    if (upload.kind === 'image' && !signature(upload.mimeType as ChatImageType, bytes))
       throw new Error(`${upload.name || 'Image'} is not a valid ${upload.mimeType} file.`)
-    total += bytes.length
-    if (total > chatAttachmentLimits.maxTotalBytes)
-      throw new Error(
-        `Images in one message must total at most ${Math.round(chatAttachmentLimits.maxTotalBytes / 1024 / 1024)} MB.`
-      )
+    return { upload, bytes }
+  })
+  const rejection = checkAttachments(
+    policy,
+    agent,
+    checked.map(({ upload, bytes }) => ({
+      kind: upload.kind,
+      name: upload.name.slice(0, 200),
+      bytes: bytes.length
+    }))
+  )
+  if (rejection) throw new Error(rejection)
+  return checked.map(({ upload, bytes }) => {
     const size = (value: unknown): number | undefined =>
       typeof value === 'number' && Number.isFinite(value) && value > 0
         ? Math.round(value)
@@ -180,12 +194,13 @@ function validateAttachments(
       bytes,
       meta: {
         id: upload.id,
-        kind: 'image',
-        name: upload.name.slice(0, 200) || 'Image',
-        mimeType: upload.mimeType,
+        kind: upload.kind,
+        name: upload.name.slice(0, 200) || (upload.kind === 'image' ? 'Image' : 'File'),
+        mimeType: upload.mimeType.slice(0, 100),
         bytes: bytes.length,
-        width: size(upload.width),
-        height: size(upload.height)
+        ...(upload.kind === 'image'
+          ? { width: size(upload.width), height: size(upload.height) }
+          : {})
       }
     }
   })
@@ -418,11 +433,16 @@ export class AgentSessions {
       }
     }
   }
+  private attachmentPolicy(harness: AgentHarness): AttachmentPolicy {
+    return this.drivers[harness].attachments ?? defaultAttachmentPolicy
+  }
   private attachmentPath(attachment: ChatAttachment): string {
     return join(
       this.directory,
       'attachments',
-      `${attachment.id}.${extensions[attachment.mimeType]}`
+      attachment.kind === 'image'
+        ? `${attachment.id}.${extensions[attachment.mimeType as ChatImageType]}`
+        : `${attachment.id}${fileExtension(attachment.name)}`
     )
   }
   /** Returns stored image bytes for a transcript item. Sessions are scoped by workspace. */
@@ -433,7 +453,7 @@ export class AgentSessions {
     const attachment = session.items
       .flatMap((item) => item.attachments ?? [])
       .find((entry) => entry.id === attachmentId)
-    if (!attachment) throw new Error('Image not found in this conversation.')
+    if (!attachment) throw new Error('Attachment not found in this conversation.')
     return {
       mimeType: attachment.mimeType,
       data: readFileSync(this.attachmentPath(attachment)).toString('base64')
@@ -511,7 +531,12 @@ export class AgentSessions {
     if (this.loadingCatalog) return this.loadingCatalog
     this.loadingCatalog = (async () => {
       const catalog: AgentCatalog = {
-        capabilities,
+        capabilities: Object.fromEntries(
+          harnesses.map((harness) => [
+            harness,
+            { ...capabilities[harness], attachments: this.attachmentPolicy(harness) }
+          ])
+        ) as Record<AgentHarness, AgentCapabilities>,
         models: [],
         favorites: this.favorites,
         issues: {}
@@ -1060,7 +1085,6 @@ export class AgentSessions {
     if (typeof command.text !== 'string' || !command.text.trim())
       throw new Error('Write a message first.')
     if (command.text.length > 100_000) throw new Error('Message exceeds 100,000 characters.')
-    const attachments = validateAttachments(command.attachments)
     const catalog = await this.models()
     const selection = command.model ?? session?.model ?? catalog.models.find((m) => m.available)
     const selected = catalog.models.find((m) => m.key === selection?.key)
@@ -1068,7 +1092,16 @@ export class AgentSessions {
       throw new Error('Selected model is unavailable. Refresh models or choose another model.')
     if (command.reasoning && !selected.reasoning.includes(command.reasoning))
       throw new Error('Unsupported reasoning setting for this model.')
-    if (attachments.length && selected.modalities && !selected.modalities.includes('image'))
+    const attachments = validateAttachments(
+      command.attachments,
+      this.attachmentPolicy(selected.harness),
+      harnessLabels[selected.harness]
+    )
+    if (
+      attachments.some((entry) => entry.meta.kind === 'image') &&
+      selected.modalities &&
+      !selected.modalities.includes('image')
+    )
       throw new Error(
         `${selected.label} does not accept images. Remove them or choose another model.`
       )

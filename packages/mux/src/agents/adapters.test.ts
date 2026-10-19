@@ -1504,7 +1504,7 @@ describe('agent adapters', { concurrency: 1 }, () => {
         { status: 'completed', durationMs: 3518000, reopen: undefined }
       ])
       const reopened = updates.findIndex((update) => update.reopen)
-      const finished = updates.findLastIndex((update) => update.status === 'completed')
+      const finished = updates.map((update) => update.status).lastIndexOf('completed')
       assert.equal(
         updates
           .slice(reopened, finished)

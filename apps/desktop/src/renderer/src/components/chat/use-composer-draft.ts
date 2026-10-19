@@ -1,16 +1,19 @@
 import { useEffect, useRef, useState, type DragEvent, type RefObject } from 'react'
-import { chatAttachmentLimits, type ChatAttachmentUpload, type ChatSkillRef } from '@cerebro/core'
+import {
+  checkAttachments,
+  type AttachmentPolicy,
+  type ChatAttachmentUpload,
+  type ChatSkillRef
+} from '@cerebro/core'
 import {
   emptyDraft,
   imageFiles,
-  prepareImage,
+  prepareAttachment,
   stripChips,
   type Chip,
   type ComposerDraft
 } from './chat-attachments'
 import type { ComposerEditorHandle } from './composer-editor'
-
-export const chatImageAccept = 'image/png,image/jpeg,image/gif,image/webp'
 
 const sameDraft = (left: ComposerDraft, right: ComposerDraft): boolean =>
   left.text === right.text &&
@@ -36,12 +39,18 @@ const sameDraft = (left: ComposerDraft, right: ComposerDraft): boolean =>
 export function useComposerDraft({
   storageKey,
   editorRef,
-  canAttach,
+  canAttachImage,
+  policy,
+  agent,
   onError
 }: {
   storageKey: string
   editorRef: RefObject<ComposerEditorHandle | null>
-  canAttach: () => string | null
+  /** Why images cannot be attached to the selected model, or null. Other files are unaffected. */
+  canAttachImage: () => string | null
+  /** What the selected agent accepts, and how to name it in errors. */
+  policy: AttachmentPolicy
+  agent: string
   onError: (message: string | null) => void
 }): {
   draft: ComposerDraft
@@ -82,20 +91,24 @@ export function useComposerDraft({
   }, [draft, storageKey])
   const attachFiles = async (files: File[]): Promise<void> => {
     if (!files.length) return
-    const rejection = canAttach()
-    if (rejection) {
-      onError(rejection)
-      return
-    }
-    if (current.current.attachments.length + files.length > chatAttachmentLimits.maxCount) {
-      onError(`Attach at most ${chatAttachmentLimits.maxCount} images per message.`)
+    if (current.current.attachments.length + files.length > policy.maxCount) {
+      onError(`${agent} accepts at most ${policy.maxCount} attachments per message.`)
       return
     }
     const prepared: ChatAttachmentUpload[] = []
     let failure: string | null = null
     for (const file of files) {
       try {
-        prepared.push(await prepareImage(file))
+        const blocked = file.type.startsWith('image/') ? canAttachImage() : null
+        if (blocked) throw new Error(blocked)
+        const next = await prepareAttachment(file, policy, agent)
+        const together = checkAttachments(policy, agent, [
+          ...current.current.attachments,
+          ...prepared,
+          next
+        ])
+        if (together) throw new Error(together)
+        prepared.push(next)
       } catch (error) {
         failure = error instanceof Error ? error.message : String(error)
         break

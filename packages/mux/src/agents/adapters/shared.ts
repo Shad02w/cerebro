@@ -70,3 +70,14 @@ export function activeTurn(
   else context.signal.addEventListener('abort', abort, { once: true })
   return turn
 }
+/**
+ * Prompt text for harnesses that read non-image files from disk. The original name is shown
+ * beside the host path, which is named by attachment id.
+ */
+export const withFilePaths = (text: string, attachments: RunAttachment[]): string => {
+  const files = attachments.filter((attachment) => attachment.kind === 'file')
+  if (!files.length) return text
+  return `${text}\n\nAttached files:\n${files.map((file) => `- ${file.name}: ${file.path}`).join('\n')}`
+}
+export const imagesOf = (attachments: RunAttachment[]): RunAttachment[] =>
+  attachments.filter((attachment) => attachment.kind === 'image')
