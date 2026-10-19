@@ -1313,6 +1313,55 @@ test('a tool id and a task id collapse into one child, and a later running updat
   }
 })
 
+test('a resumed child runs again on a new clock and writes a second finish line', async () => {
+  const f = liveFixture()
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    await service.command(scope, { ...send, commandId: 'resume' })
+    await waitFor(() => !service['running'].size)
+    const { host } = f.opened[0]
+    host.subagent({ id: 'child', status: 'running', title: 'Plan pass', startedAt: 1_000 })
+    host.subagent({
+      id: 'child',
+      status: 'completed',
+      durationMs: 180_000,
+      tokens: { total: 115_000 },
+      summary: 'Plan ready.',
+      announce: true
+    })
+    host.subagent({ id: 'child', status: 'running', reopen: true })
+    let session = (await service.command(scope, get)).session!
+    const reopened = session.subagents?.find((child) => child.id === 'child')
+    assert.equal(reopened?.status, 'running')
+    assert.equal(reopened?.run, 1)
+    assert.equal(reopened?.title, 'Plan pass')
+    assert.equal(reopened?.finishedAt, undefined)
+    assert.equal(reopened?.durationMs, undefined)
+    assert.equal(reopened?.tokens, undefined)
+    assert.equal(reopened?.summary, undefined)
+    assert.notEqual(reopened?.startedAt, 1_000)
+
+    host.subagent({
+      id: 'child',
+      status: 'completed',
+      durationMs: 3_518_000,
+      tokens: { total: 235_800 },
+      announce: true
+    })
+    session = (await service.command(scope, get)).session!
+    const lines = session.items
+      .filter((item) => item.agent?.id === 'child')
+      .map((item) => item.text)
+    assert.deepEqual(lines, [
+      'Agent "Plan pass" finished · 3m 0s · 115k',
+      'Agent "Plan pass" finished · 58m 38s · 235.8k'
+    ])
+    await service.shutdown()
+  } finally {
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
+
 test('a stream finish writes one chat line, and a later token count corrects it', async () => {
   const f = liveFixture(async (context) => {
     const { host } = f.opened[0]

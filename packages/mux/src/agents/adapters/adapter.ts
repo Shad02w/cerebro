@@ -43,6 +43,8 @@ export type SubagentUpdate = Pick<AgentSubagent, 'id' | 'status'> &
     announce?: boolean
     /** Drop this other id. The same child was reported under two native ids. */
     replaces?: string
+    /** The harness resumed a child that already ended. This running patch starts a new run. */
+    reopen?: boolean
   }
 /** A turn the harness started without a user message, such as a background task waking the agent. */
 export type AutonomousTurn = { context: Omit<RunContext, 'text'>; settle: (error?: Error) => void }

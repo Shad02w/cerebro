@@ -28,7 +28,14 @@ import { StarsBackground } from '@/lib/stars-background'
 import { defaultChatTabLabel, generatedTabLabel, promptTabLabel } from '@/lib/thread-tab-title'
 import { cn } from '@/lib/utils'
 import { ChatItem, WorkingGroup } from './chat-item'
-import { transcriptEntries, transcriptTurnIds, watchedTurns, workingAnchorId } from './tool-groups'
+import {
+  heldTurnIds,
+  outcomeTurnIds,
+  transcriptEntries,
+  transcriptTurnIds,
+  watchedTurns,
+  workingAnchorId
+} from './tool-groups'
 import { TurnClock } from './turn-clock'
 import { syncTurnClock } from './turn-durations'
 import { WorkingFor } from './working-for'
@@ -561,6 +568,8 @@ export function ChatView({
   const entries = transcript ? transcriptEntries(transcript.items, liveTurnId) : []
   const workingAnchor =
     transcript?.status === 'running' ? workingAnchorId(entries, liveTurnId) : null
+  const held = transcript ? heldTurnIds(transcript.items, transcript) : new Set<string>()
+  const outcomes = transcript ? outcomeTurnIds(transcript.items) : new Set<string>()
   return (
     <div
       ref={viewRef}
@@ -618,6 +627,8 @@ export function ChatView({
                         : next.items[0]?.turnId
                       : undefined
                     const showWorking = first?.id === workingAnchor
+                    // Child agents or background work still running: this turn has not ended.
+                    const waiting = held.has(last.turnId)
                     const message =
                       entry.type === 'item' ? (
                         <ChatItem
@@ -654,13 +665,17 @@ export function ChatView({
                         )}
                         {last.kind !== 'user' &&
                         nextTurn !== last.turnId &&
+                        !outcomes.has(last.turnId) &&
                         (last.turnId !== transcript.turnId || !busy) ? (
                           <div
-                            role="separator"
-                            aria-label="End of response"
+                            role={waiting ? undefined : 'separator'}
+                            aria-label={waiting ? undefined : 'End of response'}
+                            data-testid={waiting ? 'chat-turn-held' : undefined}
                             className="flex items-center gap-3 py-2 text-xs text-muted-foreground"
                           >
-                            <span className="h-px flex-1 bg-border" />
+                            <span
+                              className={cn('h-px flex-1 bg-border', waiting && 'bg-transparent')}
+                            />
                             <ChatTurnActions
                               workspaceId={workspaceId}
                               paneId={paneId}
@@ -672,8 +687,10 @@ export function ChatView({
                                 catalog.data?.capabilities[transcript.model.harness]?.fork
                               }
                             />
-                            <span>End of response</span>
-                            <span className="h-px flex-1 bg-border" />
+                            {waiting ? null : <span>End of response</span>}
+                            <span
+                              className={cn('h-px flex-1 bg-border', waiting && 'bg-transparent')}
+                            />
                           </div>
                         ) : null}
                       </Fragment>

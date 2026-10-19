@@ -205,6 +205,10 @@ export type AgentSubagent = {
   model?: string
   /** Effort the harness reported for this child. Absent when that child sent none. */
   effort?: string
+  /** Turn that was running when this run of the child started. Absent when it started while idle. */
+  turnId?: string
+  /** Times the child was resumed after it ended. Each run writes its own finish line. Absent means 0. */
+  run?: number
 }
 export type AgentBackgroundTaskStatus = 'running' | 'completed' | 'failed' | 'stopped'
 /**
