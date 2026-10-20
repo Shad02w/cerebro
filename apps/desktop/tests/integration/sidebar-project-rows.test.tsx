@@ -380,8 +380,8 @@ describe('sidebar project rows', () => {
       id: 4,
       name: 'apps-folder',
       nestedRepos: [
-        { name: 'frontend', branch: 'main', localPath: '/tmp/apps-folder/frontend' },
-        { name: 'backend', branch: 'develop', localPath: '/tmp/apps-folder/backend' }
+        { name: 'frontend', branch: 'main', localPath: '/tmp/apps-folder/frontend', github: null },
+        { name: 'backend', branch: 'develop', localPath: '/tmp/apps-folder/backend', github: null }
       ],
       repositories: [
         {
@@ -509,6 +509,75 @@ describe('sidebar project rows', () => {
     expect(createProjectFromDirectory).toHaveBeenCalledTimes(1)
   })
 
+  it('labels a multi-root directory hover card and shows nested repository pull requests', async () => {
+    const user = userEvent.setup()
+    const pr = {
+      number: 42,
+      title: 'Add frontend checkout',
+      url: 'https://github.com/acme/frontend/pull/42',
+      createdAt: '2024-01-01T00:00:00.000Z',
+      state: 'open' as const,
+      isDraft: false,
+      reviewDecision: 'approved' as const,
+      mergeable: true,
+      ciStatus: 'success' as const,
+      ciChecks: [],
+      ciCheckCount: 0,
+      repoFullName: 'acme/frontend'
+    }
+    const apps: Project = {
+      ...scratch,
+      id: 4,
+      name: 'apps-folder',
+      nestedRepos: [
+        {
+          name: 'frontend',
+          branch: 'feature/labels',
+          localPath: '/tmp/apps-folder/frontend',
+          github: { owner: 'acme', repo: 'frontend' },
+          pullRequest: pr,
+          prStatus: { state: 'ready', provider: 'github-app', checkedAt: null, message: null }
+        },
+        { name: 'backend', branch: 'develop', localPath: '/tmp/apps-folder/backend', github: null }
+      ],
+      repositories: [
+        {
+          ...scratch.repositories[0]!,
+          id: 4,
+          projectId: 4,
+          name: 'apps-folder',
+          localPath: '/tmp/apps-folder'
+        }
+      ],
+      workspaces: [
+        workspace({
+          id: 41,
+          projectId: 4,
+          repositoryId: 4,
+          kind: 'default',
+          branch: '',
+          localPath: '/tmp/apps-folder'
+        })
+      ]
+    }
+    renderSidebar('project', 41, [apps])
+
+    await user.hover(screen.getByTestId('workspace-row-41'))
+    const rootCard = await screen.findByTestId('workspace-hover-41')
+    expect(rootCard).toHaveTextContent('Multi-root workspace')
+
+    await user.hover(screen.getByTestId('workspace-nested-repo-frontend').querySelector('button')!)
+    const nestedCard = await screen.findByTestId('workspace-nested-hover-frontend')
+    expect(nestedCard).toHaveTextContent('feature/labels')
+    expect(nestedCard).toHaveTextContent('#42 · Add frontend checkout')
+    expect(screen.getByTestId('workspace-pr-status-nested-frontend')).toHaveAttribute(
+      'data-pr-state',
+      'open'
+    )
+    expect(nestedCard).toHaveTextContent('Approved')
+    expect(nestedCard).toHaveTextContent('Yes')
+  })
+
   it('collapses nested repositories without hiding the root sessions', async () => {
     const user = userEvent.setup()
     window.cerebro = {
@@ -540,7 +609,9 @@ describe('sidebar project rows', () => {
       ...scratch,
       id: 4,
       name: 'apps-folder',
-      nestedRepos: [{ name: 'frontend', branch: 'main', localPath: '/tmp/apps-folder/frontend' }],
+      nestedRepos: [
+        { name: 'frontend', branch: 'main', localPath: '/tmp/apps-folder/frontend', github: null }
+      ],
       repositories: [
         {
           ...scratch.repositories[0]!,

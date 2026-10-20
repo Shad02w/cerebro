@@ -164,13 +164,12 @@ async function listNestedRepos(directory: string): Promise<NestedRepo[]> {
     } catch {
       resolvedPath = localPath
     }
-    let branch = ''
-    try {
-      branch = await readDefaultBranch(localPath)
-    } catch {
-      branch = ''
-    }
-    nested.push({ name: entry.name, branch, localPath: resolvedPath })
+    const [branch, origin] = await Promise.all([
+      readDefaultBranch(localPath).catch(() => ''),
+      readOriginUrl(localPath).catch(() => null)
+    ])
+    const github = origin ? (tryParseGitUrl(origin)?.github ?? null) : null
+    nested.push({ name: entry.name, branch, localPath: resolvedPath, github })
   }
   return nested.sort((left, right) => left.name.localeCompare(right.name))
 }

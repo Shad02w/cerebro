@@ -103,6 +103,8 @@ export type NestedRepo = {
   name: string
   branch: string
   localPath: string
+  /** GitHub identity parsed from origin, when the checkout is a GitHub repository. */
+  github: ProjectGitHub | null
 }
 
 export type Project = {

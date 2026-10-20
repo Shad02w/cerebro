@@ -47,7 +47,7 @@ import { SETTINGS_SECTIONS } from '@/lib/settings-sections'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { RenameWorkspaceDialog } from '@/components/rename-workspace-dialog'
-import { WorkspaceHoverCard } from '@/components/workspace-hover-card'
+import { NestedRepoHoverCard, WorkspaceHoverCard } from '@/components/workspace-hover-card'
 import { WorkspacePrPopover } from '@/components/workspace-pr-popover'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
@@ -911,39 +911,46 @@ function NestedRepoRow({
   const active = match != null && match.id === activeWorkspaceId
   const rowClass =
     'sidebar-nested-workspace flex w-full min-w-0 flex-col items-stretch rounded-md px-2 py-0.5 text-left text-xs font-medium text-sidebar-foreground/60'
+  const row = (
+    <SidebarMenuRow data-workspace-id={match?.id}>
+      <button
+        type="button"
+        className={cn(
+          'app-no-drag',
+          match && 'pr-14',
+          rowClass,
+          'hover:text-sidebar-foreground/60'
+        )}
+        data-testid={match ? `workspace-row-${match.id}` : undefined}
+        data-workspace-id={match?.id}
+        data-nested-path={repo.localPath}
+        data-workspace-role="repository"
+        data-workspace-icon="directory-name"
+        data-active={active ? 'true' : 'false'}
+        aria-current={active ? 'location' : undefined}
+        onClick={(): void => {
+          selectNestedCheckout(match, repo.localPath, onSelectWorkspace)
+        }}
+      >
+        <NestedRepoBody repo={repo} />
+      </button>
+      {match ? (
+        <RowActions overlay>
+          <WorkspaceSessionHistory workspaceId={match.id} />
+        </RowActions>
+      ) : null}
+      <WorkspaceSessionList agents={agents} onOpenAgent={onOpenAgent} />
+    </SidebarMenuRow>
+  )
   return (
     <li data-testid={`workspace-nested-repo-${repo.name}`}>
-      <WorkspaceHoverCard workspace={match ?? undefined} showStatus={false}>
-        <SidebarMenuRow data-workspace-id={match?.id}>
-          <button
-            type="button"
-            className={cn(
-              'app-no-drag',
-              match && 'pr-14',
-              rowClass,
-              'hover:text-sidebar-foreground/60'
-            )}
-            data-testid={match ? `workspace-row-${match.id}` : undefined}
-            data-workspace-id={match?.id}
-            data-nested-path={repo.localPath}
-            data-workspace-role="repository"
-            data-workspace-icon="directory-name"
-            data-active={active ? 'true' : 'false'}
-            aria-current={active ? 'location' : undefined}
-            onClick={(): void => {
-              selectNestedCheckout(match, repo.localPath, onSelectWorkspace)
-            }}
-          >
-            <NestedRepoBody repo={repo} />
-          </button>
-          {match ? (
-            <RowActions overlay>
-              <WorkspaceSessionHistory workspaceId={match.id} />
-            </RowActions>
-          ) : null}
-          <WorkspaceSessionList agents={agents} onOpenAgent={onOpenAgent} />
-        </SidebarMenuRow>
-      </WorkspaceHoverCard>
+      {match ? (
+        <WorkspaceHoverCard workspace={match} showStatus={false}>
+          {row}
+        </WorkspaceHoverCard>
+      ) : (
+        <NestedRepoHoverCard repo={repo}>{row}</NestedRepoHoverCard>
+      )}
     </li>
   )
 }
@@ -1231,7 +1238,7 @@ function PlainDirectoryRow({
         data-testid={grouped ? `workspace-root-${workspace.id}` : undefined}
         data-active={grouped && active ? 'true' : 'false'}
       >
-        <WorkspaceHoverCard workspace={workspace}>
+        <WorkspaceHoverCard workspace={workspace} multiRoot={grouped}>
           <SidebarMenuRow data-workspace-id={workspace.id}>
             <DirectoryNameLine
               project={project}

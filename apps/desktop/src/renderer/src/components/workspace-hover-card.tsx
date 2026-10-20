@@ -1,7 +1,7 @@
-import { useRef, useState, type ReactElement } from 'react'
+import { useRef, useState, type ReactElement, type ReactNode } from 'react'
 import { GitMerge, GitPullRequest, GitPullRequestClosed, GitPullRequestDraft } from 'lucide-react'
 import { PreviewCard } from '@base-ui/react/preview-card'
-import type { Workspace, WorkspacePullRequest } from '@shared/types'
+import type { NestedRepo, Workspace, WorkspacePrStatus, WorkspacePullRequest } from '@shared/types'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { CiChecks, CiStatus } from './ci-status'
@@ -59,15 +59,15 @@ function reviewLabel(pr: WorkspacePullRequest): string {
 
 function PrStateBadge({
   pr,
-  workspaceId
+  identifier
 }: {
   pr: WorkspacePullRequest
-  workspaceId: number
+  identifier: number | string
 }): React.JSX.Element {
   const { label, state, Icon, className } = prStatePresentation(pr)
   return (
     <Badge
-      data-testid={`workspace-pr-status-${workspaceId}`}
+      data-testid={`workspace-pr-status-${identifier}`}
       data-pr-state={state}
       aria-label={`${label} pull request`}
       className={cn('font-semibold', className)}
@@ -77,6 +77,8 @@ function PrStateBadge({
     </Badge>
   )
 }
+
+const RELATIVE_TIME_FORMAT = new Intl.RelativeTimeFormat('en', { numeric: 'always' })
 
 function relativeCreatedAt(value: string): string {
   const date = new Date(value.includes('T') ? value : `${value.replace(' ', 'T')}Z`)
@@ -89,27 +91,25 @@ function relativeCreatedAt(value: string): string {
     [60, 'minute']
   ] as const
   const [size, unit] = units.find(([size]) => seconds >= size)!
-  return new Intl.RelativeTimeFormat('en', { numeric: 'always' }).format(
-    -Math.floor(seconds / size),
-    unit
-  )
+  return RELATIVE_TIME_FORMAT.format(-Math.floor(seconds / size), unit)
 }
 
-export function WorkspaceHoverCard({
-  workspace,
-  showStatus = true,
+/** Shared hover preview for workspace rows and nested repository rows. */
+function HoverCardPreview({
+  label,
+  testId,
+  trigger,
   children
 }: {
-  workspace?: Workspace
-  showStatus?: boolean
-  children: ReactElement
+  label: string
+  testId: string
+  trigger: ReactElement
+  children: ReactNode
 }): React.JSX.Element {
   const [open, setOpen] = useState(false)
-  const trigger = useRef<HTMLElement | null>(null)
+  const triggerRef = useRef<HTMLElement | null>(null)
   const dismissed = useRef(false)
   const focusFromPopupTrigger = useRef(false)
-  if (!workspace) return children
-  const pr = workspace.pullRequest
   return (
     <PreviewCard.Root
       open={open}
@@ -119,7 +119,7 @@ export function WorkspaceHoverCard({
           next &&
           (dismissed.current ||
             (eventDetails.reason === 'trigger-focus' && focusFromPopupTrigger.current) ||
-            trigger.current?.querySelector('[aria-expanded="true"][aria-haspopup]') ||
+            triggerRef.current?.querySelector('[aria-expanded="true"][aria-haspopup]') ||
             document.querySelector(
               '[data-slot="dialog-content"][data-open], [data-slot="dropdown-menu-content"][data-open], [data-slot="dropdown-menu-sub-content"][data-open], [data-slot="popover-content"][data-open]'
             ))
@@ -133,9 +133,9 @@ export function WorkspaceHoverCard({
       <PreviewCard.Trigger
         delay={350}
         closeDelay={150}
-        render={children}
+        render={trigger}
         ref={(node) => {
-          trigger.current = node
+          triggerRef.current = node
         }}
         onPointerEnter={() => {
           dismissed.current = false
@@ -169,63 +169,134 @@ export function WorkspaceHoverCard({
         >
           <PreviewCard.Popup
             role="dialog"
-            aria-label="Workspace details"
-            data-testid={`workspace-hover-${workspace.id}`}
+            aria-label={label}
+            data-testid={testId}
             className="app-no-drag z-50 grid w-96 max-w-[calc(100vw-24px)] grid-cols-1 gap-3 rounded-lg border bg-popover p-4 text-sm text-popover-foreground shadow-lg"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="space-y-1">
-              <p className="break-words font-medium">
-                {workspace.branch ||
-                  (workspace.kind === 'root' ? 'Root workspace' : 'Folder workspace')}
-              </p>
-              {showStatus ? (
-                <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <WorkspaceStatusIcon status={workspaceStatus(workspace.status)} />
-                  {WORKSPACE_STATUS_PRESENTATION[workspaceStatus(workspace.status)].label}
-                </p>
-              ) : null}
-              <p className="text-xs text-muted-foreground">
-                Workspace created {relativeCreatedAt(workspace.createdAt)}
-              </p>
-            </div>
-            {pr ? (
-              <div className="space-y-2 border-t pt-3">
-                <div className="flex items-start justify-between gap-2">
-                  <a
-                    href={pr.url}
-                    className="min-w-0 flex-1 break-words font-medium text-primary underline underline-offset-4"
-                    onClick={(event) => {
-                      event.preventDefault()
-                      void window.cerebro.openExternal(pr.url)
-                    }}
-                  >
-                    #{pr.number} · {pr.title}
-                  </a>
-                  <PrStateBadge pr={pr} workspaceId={workspace.id} />
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  PR created {relativeCreatedAt(pr.createdAt)}
-                </p>
-                <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
-                  <dt className="text-muted-foreground">Review</dt>
-                  <dd>{reviewLabel(pr)}</dd>
-                  <dt className="text-muted-foreground">Mergeable</dt>
-                  <dd>{pr.mergeable === null ? 'Unknown' : pr.mergeable ? 'Yes' : 'Conflicts'}</dd>
-                  <dt className="text-muted-foreground">CI</dt>
-                  <dd>
-                    <CiStatus state={pr.ciStatus ?? 'unavailable'} />
-                  </dd>
-                </dl>
-                <CiChecks pr={pr} />
-                {workspace.prStatus?.state === 'stale' ? (
-                  <p className="text-xs text-amber-500">Last known status · Refresh failed</p>
-                ) : null}
-              </div>
-            ) : null}
+            {children}
           </PreviewCard.Popup>
         </PreviewCard.Positioner>
       </PreviewCard.Portal>
     </PreviewCard.Root>
+  )
+}
+
+function PullRequestDetails({
+  pr,
+  prStatus,
+  identifier
+}: {
+  pr: WorkspacePullRequest
+  prStatus?: WorkspacePrStatus
+  identifier: number | string
+}): React.JSX.Element {
+  return (
+    <div className="space-y-2 border-t pt-3">
+      <div className="flex items-start justify-between gap-2">
+        <a
+          href={pr.url}
+          className="min-w-0 flex-1 break-words font-medium text-primary underline underline-offset-4"
+          onClick={(event) => {
+            event.preventDefault()
+            void window.cerebro.openExternal(pr.url)
+          }}
+        >
+          #{pr.number} · {pr.title}
+        </a>
+        <PrStateBadge pr={pr} identifier={identifier} />
+      </div>
+      <p className="text-xs text-muted-foreground">PR created {relativeCreatedAt(pr.createdAt)}</p>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+        <dt className="text-muted-foreground">Review</dt>
+        <dd>{reviewLabel(pr)}</dd>
+        <dt className="text-muted-foreground">Mergeable</dt>
+        <dd>{pr.mergeable === null ? 'Unknown' : pr.mergeable ? 'Yes' : 'Conflicts'}</dd>
+        <dt className="text-muted-foreground">CI</dt>
+        <dd>
+          <CiStatus state={pr.ciStatus ?? 'unavailable'} />
+        </dd>
+      </dl>
+      <CiChecks pr={pr} />
+      {prStatus?.state === 'stale' ? (
+        <p className="text-xs text-amber-500">Last known status · Refresh failed</p>
+      ) : null}
+    </div>
+  )
+}
+
+export function WorkspaceHoverCard({
+  workspace,
+  showStatus = true,
+  multiRoot = false,
+  children
+}: {
+  workspace?: Workspace
+  showStatus?: boolean
+  /** A directory workspace that contains multiple git checkouts. */
+  multiRoot?: boolean
+  children: ReactElement
+}): React.JSX.Element {
+  if (!workspace) return children
+  const pr = workspace.pullRequest
+  const fallbackLabel = multiRoot
+    ? 'Multi-root workspace'
+    : workspace.kind === 'root'
+      ? 'Root workspace'
+      : 'Folder workspace'
+  return (
+    <HoverCardPreview
+      label="Workspace details"
+      testId={`workspace-hover-${workspace.id}`}
+      trigger={children}
+    >
+      <div className="space-y-1">
+        <p className="break-words font-medium">{workspace.branch || fallbackLabel}</p>
+        {showStatus ? (
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <WorkspaceStatusIcon status={workspaceStatus(workspace.status)} />
+            {WORKSPACE_STATUS_PRESENTATION[workspaceStatus(workspace.status)].label}
+          </p>
+        ) : null}
+        <p className="text-xs text-muted-foreground">
+          Workspace created {relativeCreatedAt(workspace.createdAt)}
+        </p>
+      </div>
+      {pr ? (
+        <PullRequestDetails pr={pr} prStatus={workspace.prStatus} identifier={workspace.id} />
+      ) : null}
+    </HoverCardPreview>
+  )
+}
+
+export function NestedRepoHoverCard({
+  repo,
+  children
+}: {
+  repo: NestedRepo
+  children: ReactElement
+}): React.JSX.Element {
+  return (
+    <HoverCardPreview
+      label="Repository details"
+      testId={`workspace-nested-hover-${repo.name}`}
+      trigger={children}
+    >
+      <div className="space-y-1">
+        <p className="break-words font-medium">{repo.branch || repo.name}</p>
+        {repo.branch ? (
+          <p className="truncate text-xs text-muted-foreground" title={repo.localPath}>
+            {repo.name}
+          </p>
+        ) : null}
+      </div>
+      {repo.pullRequest ? (
+        <PullRequestDetails
+          pr={repo.pullRequest}
+          prStatus={repo.prStatus}
+          identifier={`nested-${repo.name}`}
+        />
+      ) : null}
+    </HoverCardPreview>
   )
 }

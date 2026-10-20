@@ -3,7 +3,9 @@ import type {
   Project,
   ProjectBranch,
   ProjectListResult,
+  RepositoryPullRequests,
   Workspace,
+  WorkspacePrStatus,
   WorkspaceStatus
 } from '@shared/types'
 import {
@@ -13,6 +15,28 @@ import {
   pullRequestOptions,
   queryClient
 } from '@/lib/query-client'
+
+function repositoryKey(repo: { owner: string; repo: string }): string {
+  return `${repo.owner.toLowerCase()}/${repo.repo.toLowerCase()}`
+}
+
+function pullRequestStatus(
+  query: { data?: RepositoryPullRequests; error: Error | null; isError: boolean } | undefined,
+  repositoryQuery: { error: Error | null; isError: boolean }
+): WorkspacePrStatus {
+  const failed = query?.isError || repositoryQuery.isError
+  return {
+    state: failed ? (query?.data ? 'stale' : 'unavailable') : query?.data ? 'ready' : 'loading',
+    provider: query?.data?.provider ?? null,
+    checkedAt: query?.data?.checkedAt ?? null,
+    message:
+      query?.error?.message ??
+      repositoryQuery.error?.message ??
+      (query?.data?.issues.length
+        ? query.data.issues.map((issue) => `${issue.provider}: ${issue.message}`).join('\n')
+        : null)
+  }
+}
 
 type ProjectsState = {
   projects: Project[]
@@ -42,19 +66,17 @@ export function useProjects(): ProjectsState {
     refetchInterval: PR_REFRESH_MS,
     refetchIntervalInBackground: true
   })
+  const projectData = projectQuery.data?.projects ?? []
+  const nestedRepos = projectData.flatMap((project) => project.nestedRepos ?? [])
   const repositories = [
-    ...new Map(
-      (repositoryQuery.data ?? []).flatMap((workspace) =>
-        workspace.github
-          ? [
-              [
-                `${workspace.github.owner.toLowerCase()}/${workspace.github.repo.toLowerCase()}`,
-                workspace.github
-              ] as const
-            ]
-          : []
+    ...new Map([
+      ...(repositoryQuery.data ?? []).flatMap((workspace) =>
+        workspace.github ? [[repositoryKey(workspace.github), workspace.github] as const] : []
+      ),
+      ...nestedRepos.flatMap((repo) =>
+        repo.github ? [[repositoryKey(repo.github), repo.github] as const] : []
       )
-    ).values()
+    ]).values()
   ]
   // This hook lives at App level, independent of expanded sidebar rows.
   const pullRequests = useQueries({
@@ -69,36 +91,26 @@ export function useProjects(): ProjectsState {
   const workspaceRepos = new Map(
     repositoryQuery.data?.map((workspace) => [workspace.workspaceId, workspace])
   )
-  const projects: Project[] = (projectQuery.data?.projects ?? []).map((project) => ({
+  const projects: Project[] = projectData.map((project) => ({
     ...project,
+    nestedRepos: project.nestedRepos?.map((repo) => {
+      if (!repo.github) return { ...repo, pullRequest: null }
+      const query = queriesByRepo.get(repositoryKey(repo.github))
+      return {
+        ...repo,
+        pullRequest: query?.data?.byBranch[repo.branch] ?? null,
+        prStatus: pullRequestStatus(query, repositoryQuery)
+      }
+    }),
     workspaces: project.workspaces.map((workspace): Workspace => {
       const identity = workspaceRepos.get(workspace.id)
       if (!identity?.github || !identity.branch) return { ...workspace, pullRequest: null }
-      const query = queriesByRepo.get(
-        `${identity.github.owner.toLowerCase()}/${identity.github.repo.toLowerCase()}`
-      )
-      const failed = query?.isError || repositoryQuery.isError
+      const query = queriesByRepo.get(repositoryKey(identity.github))
       return {
         ...workspace,
         branch: identity.branch,
         pullRequest: query?.data?.byBranch[identity.branch] ?? null,
-        prStatus: {
-          state: failed
-            ? query?.data
-              ? 'stale'
-              : 'unavailable'
-            : query?.data
-              ? 'ready'
-              : 'loading',
-          provider: query?.data?.provider ?? null,
-          checkedAt: query?.data?.checkedAt ?? null,
-          message:
-            query?.error?.message ??
-            repositoryQuery.error?.message ??
-            (query?.data?.issues.length
-              ? query.data.issues.map((issue) => `${issue.provider}: ${issue.message}`).join('\n')
-              : null)
-        }
+        prStatus: pullRequestStatus(query, repositoryQuery)
       }
     })
   }))

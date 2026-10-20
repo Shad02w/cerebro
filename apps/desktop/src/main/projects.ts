@@ -31,13 +31,25 @@ export const repositoryService = new RepositoryService({
 })
 const knownRepositories = new Set<string>()
 
+function trackRepository(github: { owner: string; repo: string } | null): void {
+  if (github) knownRepositories.add(`${github.owner}/${github.repo}`.toLowerCase())
+}
+
+function trackNestedRepositories(projects: Project[]): void {
+  for (const project of projects)
+    for (const repo of project.nestedRepos ?? []) trackRepository(repo.github)
+}
+
 export function isTrackedRepository(owner: string, repo: string): boolean {
   return knownRepositories.has(`${owner}/${repo}`.toLowerCase())
 }
 
 // Local project/selection mutations never wait for a GitHub request.
 export async function listProjects(): Promise<ProjectListResult> {
-  return muxCall('registry', { action: 'list' })
+  const listed = await muxCall<ProjectListResult>('registry', { action: 'list' })
+  // Nested checkouts have no workspace id, but their branches can still have PRs.
+  trackNestedRepositories(listed.projects)
+  return listed
 }
 export async function setActiveWorkspace(workspaceId: number): Promise<ProjectListResult> {
   return muxCall('registry', { action: 'select', workspaceId })
@@ -134,8 +146,7 @@ export async function listWorkspaceRepositories(): Promise<WorkspaceRepository[]
     })
   )
   knownRepositories.clear()
-  for (const workspace of result)
-    if (workspace.github)
-      knownRepositories.add(`${workspace.github.owner}/${workspace.github.repo}`.toLowerCase())
+  for (const workspace of result) trackRepository(workspace.github)
+  trackNestedRepositories(projects)
   return result.sort((a, b) => a.workspaceId - b.workspaceId)
 }

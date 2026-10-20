@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
-import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
@@ -11,7 +11,8 @@ import { createProjectFromDirectory, listProjects } from './projects'
 const execFileAsync = promisify(execFile)
 
 async function withHome(prefix: string, run: (home: string) => Promise<void>): Promise<void> {
-  const home = await mkdtemp(join(tmpdir(), prefix))
+  const created = await mkdtemp(join(tmpdir(), prefix))
+  const home = await realpath(created)
   const previousHome = process.env.CEREBRO_HOME
   const previousDb = process.env.CEREBRO_DB_PATH
   process.env.CEREBRO_HOME = home
@@ -25,7 +26,7 @@ async function withHome(prefix: string, run: (home: string) => Promise<void>): P
     else process.env.CEREBRO_HOME = previousHome
     if (previousDb == null) delete process.env.CEREBRO_DB_PATH
     else process.env.CEREBRO_DB_PATH = previousDb
-    await rm(home, { recursive: true, force: true })
+    await rm(created, { recursive: true, force: true })
   }
 }
 
@@ -42,6 +43,11 @@ test('a non-git directory stays one workspace and lists child repo branches', as
     const parent = join(home, 'apps')
     await initGitRepo(join(parent, 'frontend'), 'main')
     await initGitRepo(join(parent, 'backend'), 'develop')
+    await execFileAsync(
+      'git',
+      ['remote', 'add', 'origin', 'https://github.com/octocat/frontend.git'],
+      { cwd: join(parent, 'frontend') }
+    )
     await mkdir(join(parent, 'notes'), { recursive: true })
 
     const project = await createProjectFromDirectory(parent)
@@ -54,10 +60,14 @@ test('a non-git directory stays one workspace and lists child repo branches', as
     assert.equal(project.workspaces[0]?.branch, '')
     assert.equal(project.workspaces[0]?.localPath, parent)
     assert.deepEqual(
-      project.nestedRepos?.map((repo) => ({ name: repo.name, branch: repo.branch })),
+      project.nestedRepos?.map((repo) => ({
+        name: repo.name,
+        branch: repo.branch,
+        github: repo.github
+      })),
       [
-        { name: 'backend', branch: 'develop' },
-        { name: 'frontend', branch: 'main' }
+        { name: 'backend', branch: 'develop', github: null },
+        { name: 'frontend', branch: 'main', github: { owner: 'octocat', repo: 'frontend' } }
       ]
     )
 

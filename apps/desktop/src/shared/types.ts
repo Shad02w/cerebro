@@ -85,6 +85,13 @@ export function isWorkspaceStatus(value: unknown): value is WorkspaceStatus {
 
 export const WORKSPACE_NAME_MAX_LENGTH = 80
 
+export type WorkspacePrStatus = {
+  state: 'loading' | 'ready' | 'stale' | 'unavailable'
+  provider: RepositoryProvider | null
+  checkedAt: string | null
+  message: string | null
+}
+
 export type Workspace = {
   id: number
   projectId: number
@@ -97,12 +104,7 @@ export type Workspace = {
   displayName: string | null
   createdAt: string
   pullRequest: WorkspacePullRequest | null
-  prStatus?: {
-    state: 'loading' | 'ready' | 'stale' | 'unavailable'
-    provider: RepositoryProvider | null
-    checkedAt: string | null
-    message: string | null
-  }
+  prStatus?: WorkspacePrStatus
 }
 
 export type RepositoryProvider = 'github-app' | 'gh' | 'git'
@@ -133,6 +135,11 @@ export type NestedRepo = {
   name: string
   branch: string
   localPath: string
+  /** GitHub identity parsed from origin, when the checkout is a GitHub repository. */
+  github: ProjectGitHub | null
+  /** Pull request for the checkout's branch, resolved in the renderer. */
+  pullRequest?: WorkspacePullRequest | null
+  prStatus?: WorkspacePrStatus
 }
 
 export type Project = {
