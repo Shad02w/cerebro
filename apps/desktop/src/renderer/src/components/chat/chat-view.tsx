@@ -8,6 +8,7 @@ import {
   type AgentModel,
   checkAttachments,
   defaultAttachmentPolicy,
+  type AgentCommand,
   type AgentSkill,
   type ChatAttachment,
   type ChatAttachmentUpload,
@@ -61,11 +62,12 @@ import { attachmentAccept } from './chat-attachments'
 import { ModelPicker } from './model-picker'
 import { ContextUsageRing } from './context-usage-ring'
 import { messageToResend } from './model-switch'
-import { agentSkillOptions, catalogOptions, harnessLabels } from './queries'
+import { agentCommandOptions, agentSkillOptions, catalogOptions, harnessLabels } from './queries'
 import { observeChatLayout } from './chat-layout'
 import './chat-status.css'
 
 const noSkills: readonly AgentSkill[] = []
+const noCommands: readonly AgentCommand[] = []
 
 function chatScrollBehavior(): ScrollBehavior {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
@@ -196,6 +198,8 @@ export function ChatView({
   const selected = selection ?? session?.model ?? resolved
   const skillQuery = useQuery(agentSkillOptions(workspaceId, paneId, selected?.harness))
   const skillList = skillQuery.data?.skills ?? noSkills
+  const commandQuery = useQuery(agentCommandOptions(workspaceId, paneId, selected?.harness))
+  const commandList = commandQuery.data?.commands ?? noCommands
   const inFlight = useRef(false)
   const pendingSend = useRef<{ id: string; text: string; key?: string } | null>(null)
   const viewRef = useRef<HTMLDivElement>(null)
@@ -812,6 +816,7 @@ export function ChatView({
                     defaultText={draft.text}
                     attachments={draft.attachments}
                     skills={skillList}
+                    commands={commandList}
                     workspaceId={workspaceId}
                     skillIssue={skillList.length ? '' : (skillQuery.data?.issue ?? '')}
                     getAttachments={() => readDraft().attachments}

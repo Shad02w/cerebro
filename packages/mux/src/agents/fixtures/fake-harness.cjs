@@ -1637,6 +1637,22 @@ createInterface({ input: process.stdin }).on('line', (line) => {
           30
         )
         break
+      case 'thread/compact/start':
+        reply({})
+        notify('turn/started', { threadId: frame.params.threadId, turn: { id: 'turn-compact' } })
+        notify('item/agentMessage/delta', {
+          threadId: frame.params.threadId,
+          itemId: 'compact-test',
+          delta: 'compact-ran'
+        })
+        notify('turn/completed', {
+          threadId: frame.params.threadId,
+          turn: { id: 'turn-compact', status: 'completed' }
+        })
+        break
+      case 'thread/name/set':
+        reply({})
+        break
       case 'turn/interrupt':
         reply({})
         codexActive = frame.params.threadId
@@ -1695,7 +1711,11 @@ createInterface({ input: process.stdin }).on('line', (line) => {
         break
       case 'set_model':
       case 'set_thinking_level':
+      case 'set_session_name':
         reply({})
+        break
+      case 'compact':
+        reply({ summary: 'ok', tokensBefore: 12345 })
         break
       case 'abort':
         reply({})

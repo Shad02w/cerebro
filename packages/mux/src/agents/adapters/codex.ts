@@ -1,5 +1,6 @@
 import {
   chatImageMarkerPattern,
+  parseSlashCommand,
   skillPromptText,
   type AgentDelta,
   type AgentModel,
@@ -14,6 +15,7 @@ import type { AgentAdapter, AutonomousTurn, RunAttachment } from './adapter'
 import { activeTurn, imagesOf, item, model, modalities, withFilePaths } from './shared'
 import { codexTodoSnapshot } from '../todo'
 import { codexSkills } from '../skills'
+import { codexCommands } from '../commands'
 
 /** Text plus any images. A `/name` chip is rewritten to `$name`; Codex resolves that mention itself. */
 const codexTurnInput = (
@@ -39,6 +41,9 @@ const textElements = (
     return { byteRange: { start, end: start + Buffer.byteLength(match[0]) }, placeholder: match[0] }
   })
 /** Codex takes images as `localImage` inputs. Other files are read from disk by path, so any type is allowed. */
+/** What the Codex TUI sends for `/init`; `codex app-server` has no equivalent call. */
+const codexInitPrompt =
+  'Create an AGENTS.md file in the root of this repository. It should be a concise contributor guide for coding agents: project structure, how to build, lint and test, code style and conventions, and anything else an agent must know to work here. Base it on what you find in the repository.'
 const codexAttachments: AttachmentPolicy = {
   maxCount: 20,
   maxTotalBytes: 40 * 1024 * 1024,
@@ -50,6 +55,9 @@ export const codexAdapter: AgentAdapter = {
   async skills(cwd) {
     const server = codexAppServer()
     return codexSkills(await server.request('skills/list', { cwds: [cwd], forceReload: true }), cwd)
+  },
+  async commands() {
+    return [...codexCommands]
   },
   async models(_cwd) {
     const server = codexAppServer()
@@ -550,9 +558,35 @@ export const codexAdapter: AgentAdapter = {
           await ready
           if (closed || !threadId) throw new Error('Codex process is closed.')
           const attachments = context.attachments ?? []
+          // `codex app-server` does not read a leading `/`, so each command is mapped to its call.
+          const slash = parseSlashCommand(context.text)
+          const builtin = slash && codexCommands.some((entry) => entry.name === slash.name)
+          let text = context.text
+          if (builtin && slash.name === 'init') text = codexInitPrompt
+          else if (builtin) {
+            if (slash.name === 'compact') {
+              await server.request('thread/compact/start', { threadId })
+            } else if (slash.name === 'review') {
+              const review = await server.request('review/start', {
+                threadId,
+                delivery: 'inline',
+                target: { type: 'uncommittedChanges' }
+              })
+              if (typeof review.turn?.id === 'string') turnId = review.turn.id
+            } else if (slash.name === 'rename') {
+              if (!slash.args) throw new Error('Usage: /rename <name>')
+              await server.request('thread/name/set', { threadId, name: slash.args })
+              item(out, `command:${randomUUID()}`, 'notice', `Thread renamed to “${slash.args}”.`, {
+                title: '/rename'
+              })
+              finish()
+            }
+            if (context.signal.aborted) native.interrupt()
+            return done
+          }
           const started = await server.request('turn/start', {
             threadId,
-            input: codexTurnInput(context.text, attachments, context.skills),
+            input: codexTurnInput(text, attachments, context.skills),
             model: context.session.model.id || undefined,
             effort: context.session.reasoning
           })

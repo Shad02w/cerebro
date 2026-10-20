@@ -18,6 +18,7 @@ import { activeTurn, inline, item, model } from './shared'
 import { readFileSync } from 'node:fs'
 import { ClaudeTodoList } from '../todo'
 import { claudeExposedSkills } from '../skills'
+import { claudeCommands } from '../commands'
 
 const promptText = (text: string, skills?: ChatSkillMention[]): string =>
   skillPromptText(text, skills ?? [])
@@ -222,6 +223,10 @@ export const claudeAdapter: AgentAdapter = {
   async skills(cwd) {
     const listed = await askClaude(cwd, (q) => q.reloadSkills())
     return claudeExposedSkills(listed.skills ?? [])
+  },
+  async commands(cwd) {
+    // Claude parses a leading `/name args` from the prompt itself, so these need no host handling.
+    return claudeCommands(await askClaude(cwd, (q) => q.supportedCommands()))
   },
   async models(cwd) {
     const entries = await askClaude(cwd, (q) => q.supportedModels())

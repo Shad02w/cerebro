@@ -1,5 +1,6 @@
 import type {
   AgentAnswer,
+  AgentCommand,
   AgentBackgroundTask,
   AgentDelta,
   AgentModel,
@@ -82,5 +83,10 @@ export interface AgentAdapter {
   models(cwd: string): Promise<AgentModel[]>
   /** Skills available in `cwd` for this harness. Optional so test doubles can omit it. */
   skills?(cwd: string): Promise<AgentSkill[]>
+  /**
+   * Slash commands available in `cwd` for this harness. Choosing one inserts `/name args` as the
+   * message; the connection's `run` receives that text and carries the command out. Optional so test doubles can omit it.
+   */
+  commands?(cwd: string): Promise<AgentCommand[]>
   connect(session: AgentSession, host: ConnectionHost): AgentConnection
 }

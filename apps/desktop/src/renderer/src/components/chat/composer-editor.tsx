@@ -1,4 +1,12 @@
-import { useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import {
+  Fragment,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState
+} from 'react'
 import { createPortal } from 'react-dom'
 import {
   EditorContent,
@@ -28,6 +36,7 @@ import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view'
 import { common, createLowlight } from 'lowlight'
 import {
   chatImageMarker,
+  type AgentCommand,
   type AgentSkill,
   type ChatAttachmentKind,
   type ChatAttachmentUpload,
@@ -68,7 +77,9 @@ const skillMentionKey = new PluginKey('skillMention')
 const fileMentionKey = new PluginKey('fileMention')
 const skillHighlightKey = new PluginKey('skillHighlight')
 
-type SkillCatalog = { current: readonly AgentSkill[] }
+type SkillCatalog = { current: readonly AgentSkill[]; commands?: readonly AgentCommand[] }
+type MenuOption = AgentSkill | AgentCommand
+const isCommand = (option: MenuOption): option is AgentCommand => 'source' in option
 
 const mentionHighlight = (catalog: SkillCatalog, files: WorkspaceFileIndex): Extension =>
   Extension.create({
@@ -532,9 +543,9 @@ function SkillMenu({
   issue
 }: {
   ref?: React.Ref<TagMenuHandle>
-  items: AgentSkill[]
+  items: MenuOption[]
   query: string
-  command: (item: AgentSkill) => void
+  command: (item: MenuOption) => void
   issue?: string
 }): React.JSX.Element {
   const itemsKey = items.map((item) => item.id).join('\0')
@@ -565,50 +576,81 @@ function SkillMenu({
       ref={listRef}
       data-testid="composer-skill-menu"
       role="listbox"
-      aria-label="Skills"
+      aria-label="Commands and skills"
       className="max-h-64 w-72 overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
     >
-      <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Skills</p>
       {items.length ? (
         items.map((item, index) => (
-          <button
-            key={item.id}
-            type="button"
-            role="option"
-            aria-selected={index === highlighted}
-            data-testid={`composer-skill-option-${item.name}`}
-            ref={optionRef(index)}
-            className={cn(
-              'flex w-full flex-col items-start rounded-sm px-2 py-1.5 text-left',
-              index === highlighted && 'bg-accent text-accent-foreground'
-            )}
-            onMouseEnter={() => highlightIndex(index)}
-            onMouseDown={(event) => {
-              event.preventDefault()
-              command(item)
-            }}
-          >
-            <span className="text-sm">{item.name}</span>
-            {item.description ? (
-              <span className="w-full truncate text-xs text-muted-foreground">
-                {item.description}
-              </span>
+          <Fragment key={item.id}>
+            {index === 0 || isCommand(items[index - 1]) !== isCommand(item) ? (
+              <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+                {isCommand(item) ? 'Commands' : 'Skills'}
+              </p>
             ) : null}
-          </button>
+            <button
+              type="button"
+              role="option"
+              aria-selected={index === highlighted}
+              data-testid={
+                isCommand(item)
+                  ? `composer-command-option-${item.name}`
+                  : `composer-skill-option-${item.name}`
+              }
+              ref={optionRef(index)}
+              className={cn(
+                'flex w-full flex-col items-start rounded-sm px-2 py-1.5 text-left',
+                index === highlighted && 'bg-accent text-accent-foreground'
+              )}
+              onMouseEnter={() => highlightIndex(index)}
+              onMouseDown={(event) => {
+                event.preventDefault()
+                command(item)
+              }}
+            >
+              <span className="text-sm">
+                {item.name}
+                {isCommand(item) && item.argumentHint ? (
+                  <span className="ml-1.5 text-xs text-muted-foreground">{item.argumentHint}</span>
+                ) : null}
+              </span>
+              {item.description ? (
+                <span className="w-full truncate text-xs text-muted-foreground">
+                  {item.description}
+                </span>
+              ) : null}
+            </button>
+          </Fragment>
         ))
       ) : (
         <p className="px-2 py-3 text-center text-sm break-words text-muted-foreground">
-          {query ? 'No matches' : issue || 'No skills'}
+          {query ? 'No matches' : issue || 'No commands or skills'}
         </p>
       )}
     </div>
   )
 }
 
-const skillOptions = (catalog: SkillCatalog, query: string): AgentSkill[] =>
-  catalog.current
-    .filter((skill) => skill.name.toLowerCase().startsWith(query.toLowerCase()))
-    .slice(0, 50)
+/** A command only runs as the whole message, so it is offered only when `/` opens the document. */
+const atMessageStart = (state: EditorState, query: string): boolean => {
+  const { $from } = state.selection
+  return $from.index(0) === 0 && $from.parentOffset === query.length + 1
+}
+
+const skillOptions = (
+  catalog: SkillCatalog,
+  query: string,
+  commandsAllowed: boolean
+): MenuOption[] => {
+  const needle = query.toLowerCase()
+  const skills = catalog.current.filter((skill) => skill.name.toLowerCase().startsWith(needle))
+  const named = new Set(catalog.current.map((skill) => skill.name))
+  const commands = commandsAllowed
+    ? (catalog.commands ?? []).filter(
+        (entry) => !named.has(entry.name) && entry.name.toLowerCase().startsWith(needle)
+      )
+    : []
+  return [...commands, ...skills].slice(0, 50)
+}
 
 const outsideCode = (state: EditorState, range: { from: number }): boolean => {
   const $from = state.doc.resolve(range.from)
@@ -655,7 +697,7 @@ const extensionsFor = (
           mentionHighlight(catalog, fileIndex),
           Placeholder.configure({
             placeholder:
-              'Ask your agent to work on something…  / mentions a skill, @ mentions a file'
+              'Ask your agent to work on something…  / runs a command or mentions a skill, @ mentions a file'
           })
         ]
       : []),
@@ -704,9 +746,18 @@ const extensionsFor = (
           placement: 'top-start',
           allowToIncludeChar: true,
           allow: ({ state, range }) => outsideCode(state, range),
-          items: ({ query }) => skillOptions(catalog, query),
+          items: ({ query, editor }) =>
+            skillOptions(catalog, query, atMessageStart(editor.state, query)),
           command: ({ editor, range, props }) => {
-            const skill = props as AgentSkill
+            const skill = props as MenuOption
+            if (isCommand(skill)) {
+              editor
+                .chain()
+                .focus()
+                .insertContentAt(range, { type: 'text', text: `/${skill.name} ` })
+                .run()
+              return
+            }
             editor
               .chain()
               .focus()
@@ -728,12 +779,21 @@ const extensionsFor = (
           render: () => {
             let component: ReactRenderer<TagMenuHandle> | undefined
             let unmount: (() => void) | undefined
-            let latest: { query: string; command: (item: AgentSkill) => void } | null = null
-            const show = (props: { query: string; command: (item: AgentSkill) => void }): void => {
+            type MenuProps = {
+              query: string
+              editor: Editor
+              command: (item: MenuOption) => void
+            }
+            let latest: MenuProps | null = null
+            const show = (props: MenuProps): void => {
               latest = props
               component?.updateProps({
                 ...props,
-                items: skillOptions(catalog, props.query),
+                items: skillOptions(
+                  catalog,
+                  props.query,
+                  atMessageStart(props.editor.state, props.query)
+                ),
                 issue: issue?.current
               })
             }
@@ -850,6 +910,7 @@ export function ComposerEditor({
   defaultText,
   attachments,
   skills,
+  commands = noCommands,
   skillIssue = '',
   workspaceId = null,
   getAttachments,
@@ -865,6 +926,8 @@ export function ComposerEditor({
   defaultText: string
   attachments: ChatAttachmentUpload[]
   skills: readonly AgentSkill[]
+  /** Slash commands of the harness. Offered in the `/` menu only at the start of the message. */
+  commands?: readonly AgentCommand[]
   /** Shown in the empty skill menu when the harness could not be asked. */
   skillIssue?: string
   /** Workspace whose working directory `@` searches. */
@@ -900,9 +963,10 @@ export function ComposerEditor({
   const workspaceIdRef = useRef<number | null>(workspaceId)
   useLayoutEffect(() => {
     catalogRef.current.current = skills
+    catalogRef.current.commands = commands
     issueRef.current = skillIssue
     workspaceIdRef.current = workspaceId
-  }, [skillIssue, skills, workspaceId])
+  }, [commands, skillIssue, skills, workspaceId])
   const setup = useMemo(() => {
     const menuOpen = { current: false }
     return {
@@ -1004,7 +1068,7 @@ export function ComposerEditor({
   }, [editor, skillKey])
   useEffect(() => {
     menuRefreshRef.current?.()
-  }, [skillIssue])
+  }, [commands, skillIssue])
   useEffect(() => {
     if (!editor || editor.isDestroyed || workspaceId == null) return
     let cancel = false
@@ -1066,6 +1130,7 @@ export function ComposerEditor({
 }
 
 const noMessageSkills: readonly AgentSkill[] = []
+const noCommands: readonly AgentCommand[] = []
 const noMessageFiles: readonly string[] = []
 
 /** The same composer document, without a caret, so a sent message matches what was typed. */

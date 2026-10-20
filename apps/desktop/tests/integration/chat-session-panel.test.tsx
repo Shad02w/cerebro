@@ -311,6 +311,7 @@ describe('chat session layout', () => {
       }),
       agentCatalog: vi.fn(async () => catalog),
       agentSkills: vi.fn(async () => ({ skills: [] })),
+      agentCommands: vi.fn(async () => ({ commands: [] })),
       listWorkspaceFiles: vi.fn(async () => []),
       listWorkspaceChanges: vi.fn(async () => emptyChanges),
       layoutCommand: vi.fn(async () => ({ state: null })),

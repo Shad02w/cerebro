@@ -1,4 +1,4 @@
-import type { AgentCatalog, AgentHarness, AgentSkillList } from '@cerebro/core'
+import type { AgentCatalog, AgentCommandList, AgentHarness, AgentSkillList } from '@cerebro/core'
 export const harnessLabels: Record<AgentHarness, string> = {
   claude: 'Claude Code',
   codex: 'Codex',
@@ -34,6 +34,28 @@ export function agentSkillOptions(
     queryFn: () => {
       if (!harness) throw new Error('Choose a model first.')
       return window.cerebro.agentSkills(workspaceId, paneId, harness)
+    },
+    staleTime: 15_000
+  }
+}
+
+/** Slash commands the composer can run for the selected harness in this pane. */
+export function agentCommandOptions(
+  workspaceId: number,
+  paneId: number,
+  harness: AgentHarness | undefined
+): {
+  queryKey: readonly ['agent-commands', number, number, AgentHarness | undefined]
+  enabled: boolean
+  queryFn: () => Promise<AgentCommandList>
+  staleTime: number
+} {
+  return {
+    queryKey: ['agent-commands', workspaceId, paneId, harness] as const,
+    enabled: harness != null,
+    queryFn: () => {
+      if (!harness) throw new Error('Choose a model first.')
+      return window.cerebro.agentCommands(workspaceId, paneId, harness)
     },
     staleTime: 15_000
   }

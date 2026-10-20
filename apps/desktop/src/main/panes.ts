@@ -25,6 +25,11 @@ export function registerLayoutIpc(): void {
   ipcMain.handle(IPC.chat.skills, (_event, workspaceId: number, paneId: number, harness: string) =>
     muxCall('chat.skills', { workspaceId, paneId, harness })
   )
+  ipcMain.handle(
+    IPC.chat.commands,
+    (_event, workspaceId: number, paneId: number, harness: string) =>
+      muxCall('chat.commands', { workspaceId, paneId, harness })
+  )
   ipcMain.handle(IPC.chat.favorite, (_event, key: string, favorite: boolean) =>
     muxCall('chat.favorite', { key, favorite })
   )

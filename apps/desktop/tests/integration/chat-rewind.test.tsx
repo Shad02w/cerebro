@@ -114,6 +114,7 @@ function renderChat(initial: AgentSession): { commands: ChatCommand[] } {
     }),
     agentCatalog: vi.fn(async () => catalog),
     agentSkills: vi.fn(async () => ({ skills: [] })),
+    agentCommands: vi.fn(async () => ({ commands: [] })),
     listWorkspaceFiles: vi.fn(async () => []),
     chatAttachment: vi.fn()
   } as unknown as typeof window.cerebro
