@@ -1298,6 +1298,23 @@ describe('agent adapters', { concurrency: 1 }, () => {
     }
   )
 
+  test('Claude: a slash command’s local output is shown as text', { timeout: 15_000 }, async () => {
+    process.env.CEREBRO_CLAUDE_PATH = fixture
+    const models = await adapters.claude.models('/tmp')
+    const events: AgentDelta[] = []
+    await runTurn(adapters.claude, {
+      session: liveSession(models[0], 'claude-local-command'),
+      text: '/context',
+      signal: new AbortController().signal,
+      emit: (event) => events.push(event),
+      ask: async () => ({ allow: false, answers: {} })
+    })
+    const shown = events
+      .flatMap((event) => (event.type === 'item' && event.item.text ? [event.item.text] : []))
+      .join('')
+    assert.match(shown, /## Context Usage\n\n12k \/ 200k tokens/)
+  })
+
   test(
     'Claude: a child frame becomes a sub-agent, and a checklist tool does not',
     { timeout: 15_000 },

@@ -501,6 +501,18 @@ function claudePrompt(prompt, content) {
     claudeFinish(prompt)
     return
   }
+  if (prompt === '/context') {
+    // Claude runs this slash command itself and reports plain text, then ends the turn.
+    send({
+      type: 'system',
+      subtype: 'local_command_output',
+      content: '## Context Usage\n\n12k / 200k tokens',
+      uuid: 'local-command-test',
+      session_id: 'claude-test'
+    })
+    claudeFinish('')
+    return
+  }
   if (prompt.includes('attachments')) {
     claudeFinish(JSON.stringify(content))
     return

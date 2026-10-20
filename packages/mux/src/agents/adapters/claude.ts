@@ -943,6 +943,10 @@ export const claudeAdapter: AgentAdapter = {
         })
       } else if (frame.type === 'system' && frame.subtype === 'compact_boundary') {
         if (current) item(current.context, randomUUID(), 'notice', 'Native conversation compacted.')
+      } else if (frame.type === 'system' && frame.subtype === 'local_command_output') {
+        // Output of a slash command Claude ran itself, such as /context or /usage. It is text, not a UI.
+        if (current && typeof frame.content === 'string' && frame.content.trim())
+          item(current.context, randomUUID(), 'text', frame.content)
       } else if (frame.type === 'system' && frame.subtype === 'model_refusal_fallback')
         evictSuperseded(frame.retracted_message_uuids)
     }
