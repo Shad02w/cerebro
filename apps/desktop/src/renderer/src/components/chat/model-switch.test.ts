@@ -1,15 +1,15 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import type { AgentModel, ChatItem } from '@cerebro/core'
-import { messageToResend } from './model-switch'
+import type { AgentHarness, AgentModel } from '@cerebro/core'
+import { modelSwitchNotice } from './model-switch'
 
 function model(
-  partial: Pick<AgentModel, 'key' | 'harness' | 'provider'> & Partial<AgentModel>
+  partial: Pick<AgentModel, 'key' | 'harness' | 'label'> & Partial<AgentModel>
 ): AgentModel {
   return {
     instance: 'local',
+    provider: 'configured',
     id: partial.key,
-    label: partial.key,
     source: 'native',
     available: true,
     reasoning: [],
@@ -17,108 +17,68 @@ function model(
   }
 }
 
-const claudeA = model({ key: 'sonnet', harness: 'claude', provider: 'configured' })
-const claudeB = model({ key: 'opus', harness: 'claude', provider: 'configured' })
-const codexA = model({ key: 'gpt', harness: 'codex', provider: 'configured' })
-const codexB = model({ key: 'gpt-mini', harness: 'codex', provider: 'configured' })
-const piA = model({ key: 'pi-a', harness: 'pi', provider: 'openai' })
-const piB = model({ key: 'pi-b', harness: 'pi', provider: 'openai' })
+const harnesses: AgentHarness[] = ['claude', 'codex']
+const sonnet = model({ key: 'sonnet', harness: 'claude', label: 'Sonnet 5.5' })
+const opus = model({ key: 'opus', harness: 'claude', label: 'Opus 5.5' })
+const gpt = model({ key: 'gpt', harness: 'codex', label: 'GPT-5.5' })
+const gptMini = model({ key: 'gpt-mini', harness: 'codex', label: 'GPT-5.5 mini' })
+const piA = model({ key: 'pi-a', harness: 'pi', label: 'Pi A', provider: 'openai' })
+const piB = model({ key: 'pi-b', harness: 'pi', label: 'Pi B', provider: 'openai' })
 
-const sent: Array<Pick<ChatItem, 'kind' | 'text' | 'attachments'>> = [
-  { kind: 'user', text: 'glyph the branch' },
-  { kind: 'text', text: 'done' }
-]
-
-test('restores the last prompt when Claude or Codex changes model under the same provider', () => {
+test('a live model change names the new model and the lost prompt cache', () => {
   assert.equal(
-    messageToResend({
-      composerText: '',
-      attachmentCount: 0,
-      current: claudeA,
-      next: claudeB,
-      items: sent
-    }),
-    'glyph the branch'
+    modelSwitchNotice({ current: sonnet, next: opus, sessionStarted: true }),
+    'Now using Opus 5.5. This conversation stays, but its prompt cache starts over — the next message re-reads the full context.'
   )
   assert.equal(
-    messageToResend({
-      composerText: '   ',
-      attachmentCount: 0,
-      current: codexA,
-      next: codexB,
-      items: sent
-    }),
-    'glyph the branch'
+    modelSwitchNotice({ current: gpt, next: gptMini, sessionStarted: true }),
+    'Now using GPT-5.5 mini. This conversation stays, but its prompt cache starts over — the next message re-reads the full context.'
   )
 })
 
-test('leaves a typed draft, a different harness, and Pi model switches alone', () => {
+test('nothing is announced before a session, for the same model, or across harnesses', () => {
+  assert.equal(modelSwitchNotice({ current: sonnet, next: opus, sessionStarted: false }), null)
+  assert.equal(modelSwitchNotice({ current: undefined, next: opus, sessionStarted: true }), null)
+  assert.equal(modelSwitchNotice({ current: sonnet, next: sonnet, sessionStarted: true }), null)
+  assert.equal(modelSwitchNotice({ current: sonnet, next: gpt, sessionStarted: true }), null)
+})
+
+test('Pi model changes are not announced; its notice is not this one', () => {
+  assert.equal(modelSwitchNotice({ current: piA, next: piB, sessionStarted: true }), null)
+})
+
+test('picking between a Claude default alias and the model it names is not a change', () => {
+  const alias = model({
+    key: 'default',
+    harness: 'claude',
+    id: 'default',
+    label: 'Default · Sonnet 5.5'
+  })
+  const named = sonnet
   assert.equal(
-    messageToResend({
-      composerText: 'a new thought',
-      attachmentCount: 0,
-      current: claudeA,
-      next: claudeB,
-      items: sent
+    modelSwitchNotice({
+      current: alias,
+      next: named,
+      sessionStarted: true,
+      models: [alias, named]
     }),
     null
   )
   assert.equal(
-    messageToResend({
-      composerText: '',
-      attachmentCount: 1,
-      current: claudeA,
-      next: claudeB,
-      items: sent
+    modelSwitchNotice({
+      current: named,
+      next: alias,
+      sessionStarted: true,
+      models: [alias, named]
     }),
     null
   )
-  assert.equal(
-    messageToResend({
-      composerText: '',
-      attachmentCount: 0,
-      current: claudeA,
-      next: codexA,
-      items: sent
-    }),
-    null
-  )
-  assert.equal(
-    messageToResend({
-      composerText: '',
-      attachmentCount: 0,
-      current: piA,
-      next: piB,
-      items: sent
-    }),
-    null
-  )
-  assert.equal(
-    messageToResend({
-      composerText: '',
-      attachmentCount: 0,
-      current: claudeA,
-      next: claudeA,
-      items: sent
-    }),
-    null
-  )
-  assert.equal(
-    messageToResend({
-      composerText: '',
-      attachmentCount: 0,
-      current: claudeA,
-      next: claudeB,
-      items: [
-        {
-          kind: 'user',
-          text: 'with image',
-          attachments: [
-            { id: 'img', kind: 'image', name: 'a.png', mimeType: 'image/png', bytes: 1 }
-          ]
-        }
-      ]
-    }),
-    null
-  )
+})
+
+test('every notified harness is one that keeps the conversation', () => {
+  for (const harness of harnesses) {
+    const first = model({ key: `${harness}-a`, harness, label: 'A' })
+    const second = model({ key: `${harness}-b`, harness, label: 'B' })
+    assert.ok(modelSwitchNotice({ current: first, next: second, sessionStarted: true }))
+  }
 })

@@ -1,33 +1,32 @@
-import type { AgentHarness, AgentModel, ChatItem } from '@cerebro/core'
+import type { AgentHarness, AgentModel } from '@cerebro/core'
+import { claudeDefaultAliasTarget } from '@/lib/claude-default-alias'
 
 /** Harnesses that keep one native conversation when the model changes. */
-const RESEND_HARNESSES = new Set<AgentHarness>(['claude', 'codex'])
+const LIVE_SWITCH_HARNESSES = new Set<AgentHarness>(['claude', 'codex'])
+
+type SwitchModel = Pick<AgentModel, 'key' | 'harness' | 'provider' | 'id' | 'label'>
 
 /**
- * Text to put back in an empty composer so the last prompt can be sent again
- * after switching models under the same provider. Claude Code and Codex only;
- * a different harness starts a new conversation, and a draft the user already
- * typed is left alone.
+ * What a mid-conversation model change costs, as a notice, or null when nothing changes.
+ * Claude Code and Codex keep the conversation but key their prompt cache per model, so the
+ * next message re-reads the whole context instead of reusing cached input tokens.
+ * A Claude `default` alias resolves to the model it names, so picking between those two
+ * rows is not a change.
  */
-export function messageToResend(input: {
-  composerText: string
-  attachmentCount: number
-  current?: Pick<AgentModel, 'key' | 'harness' | 'provider'>
-  next: Pick<AgentModel, 'key' | 'harness' | 'provider'>
-  items: Array<Pick<ChatItem, 'kind' | 'text' | 'attachments'>>
+export function modelSwitchNotice(input: {
+  current?: SwitchModel
+  next: SwitchModel
+  sessionStarted: boolean
+  models?: readonly SwitchModel[]
 }): string | null {
-  const current = input.current
-  if (!current || !RESEND_HARNESSES.has(input.next.harness)) return null
-  if (current.harness !== input.next.harness || current.provider !== input.next.provider)
-    return null
-  if (current.key === input.next.key) return null
-  if (input.composerText.trim() || input.attachmentCount > 0) return null
-  for (let index = input.items.length - 1; index >= 0; index--) {
-    const item = input.items[index]
-    if (item.kind !== 'user') continue
-    if (item.attachments?.length) return null
-    const text = item.text.trim()
-    return text || null
-  }
-  return null
+  const { current, next, sessionStarted, models } = input
+  if (!sessionStarted || !current) return null
+  if (current.harness !== next.harness) return null
+  if (!LIVE_SWITCH_HARNESSES.has(next.harness)) return null
+  const resolve = (model: SwitchModel): SwitchModel =>
+    (models && claudeDefaultAliasTarget(model, models)) || model
+  const before = resolve(current)
+  const after = resolve(next)
+  if (before.key === after.key) return null
+  return `Now using ${after.label}. This conversation stays, but its prompt cache starts over — the next message re-reads the full context.`
 }
