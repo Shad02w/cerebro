@@ -51,7 +51,9 @@ export async function listProjects(): Promise<ProjectListResult> {
   trackNestedRepositories(listed.projects)
   return listed
 }
-export async function setActiveWorkspace(workspaceId: number): Promise<ProjectListResult> {
+export async function setActiveWorkspace(
+  workspaceId: number
+): Promise<{ activeWorkspaceId: number }> {
   return muxCall('registry', { action: 'select', workspaceId })
 }
 export async function createProjectFromGitUrl(gitUrl: string): Promise<Project> {

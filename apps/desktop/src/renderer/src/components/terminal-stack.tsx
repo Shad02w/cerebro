@@ -17,7 +17,7 @@ import { TERMINAL_PALETTES } from '@/lib/terminal-themes'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ensureWorkspaceForCheckout } from '@/lib/ensure-workspace-checkout'
-import { acceptLayout, layoutOptions } from '@/lib/query-client'
+import { acceptLayout, applyOptimisticFocus, layoutOptions, queryClient } from '@/lib/query-client'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
@@ -679,10 +679,16 @@ export function TerminalStack({
   }, [layout, activeWorkspaceId, visible, readyPanes, onStartupReady])
   const command = (request: LayoutCommand): void => {
     setError(null)
+    applyOptimisticFocus(request)
     void window.cerebro
       .layoutCommand(request)
       .then((reply) => acceptLayout(reply.state))
-      .catch((error) => setError(String(error)))
+      .catch((error) => {
+        setError(String(error))
+        // An optimistic focus the mux rejected must not stay on screen.
+        if (request.action === 'focus')
+          void queryClient.invalidateQueries({ queryKey: layoutOptions.queryKey })
+      })
   }
   const workspace = activeWorkspaceId == null ? undefined : layout.workspaces[activeWorkspaceId]
   const activeTabId = workspace?.activeTabId ?? null

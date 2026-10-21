@@ -5,8 +5,8 @@ import {
   type QueryKey,
   type UseQueryOptions
 } from '@tanstack/react-query'
-import type { GitHubStatus, RepositoryPullRequests } from '@shared/types'
-import type { LayoutState } from '@cerebro/core'
+import type { GitHubStatus, ProjectListResult, RepositoryPullRequests } from '@shared/types'
+import type { LayoutCommand, LayoutState } from '@cerebro/core'
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -34,6 +34,42 @@ export function acceptLayout(next: LayoutState): LayoutState {
   return queryClient.setQueryData<LayoutState>(layoutKey, (current) =>
     !current || next.epoch !== current.epoch || next.revision >= current.revision ? next : current
   )!
+}
+
+/**
+ * Shows a tab or pane focus before the mux confirms it. The revision is left alone, so the
+ * reply (or any newer layout event) replaces this state through `acceptLayout`.
+ */
+export function applyOptimisticFocus(command: LayoutCommand): void {
+  if (command.action !== 'focus') return
+  queryClient.setQueryData<LayoutState>(layoutKey, (current) => {
+    const workspace = current?.workspaces[command.workspaceId]
+    if (!current || !workspace) return current
+    const tab = workspace.tabs.find((candidate) =>
+      command.target === 'tab'
+        ? candidate.id === command.tabId
+        : command.tabId != null
+          ? candidate.id === command.tabId
+          : candidate.id === workspace.activeTabId
+    )
+    if (!tab) return current
+    const activePaneId =
+      command.target === 'pane' && command.paneId ? command.paneId : tab.activePaneId
+    if (workspace.activeTabId === tab.id && tab.activePaneId === activePaneId) return current
+    return {
+      ...current,
+      workspaces: {
+        ...current.workspaces,
+        [command.workspaceId]: {
+          ...workspace,
+          activeTabId: tab.id,
+          tabs: workspace.tabs.map((candidate) =>
+            candidate === tab ? { ...candidate, activePaneId } : candidate
+          )
+        }
+      }
+    }
+  })
 }
 
 export const layoutOptions = queryOptions({
@@ -79,6 +115,15 @@ export function pullRequestOptions(
         : PR_REFRESH_MS,
     refetchIntervalInBackground: true
   })
+}
+
+/** Moves the active workspace in the cached project list without refetching it. */
+export function applyActiveWorkspace(workspaceId: number): void {
+  queryClient.setQueryData<ProjectListResult>(projectsOptions.queryKey, (current) =>
+    current && current.activeWorkspaceId !== workspaceId
+      ? { ...current, activeWorkspaceId: workspaceId }
+      : current
+  )
 }
 
 export async function invalidateProjects(): Promise<void> {
@@ -147,8 +192,10 @@ export function connectQueryEvents(): () => void {
   })
   const unsubscribeLayout = window.cerebro.onLayoutChanged(acceptLayout)
   focusManager.setEventListener((handleFocus) => window.cerebro.onWindowFocus(handleFocus))
-  const unsubscribeProjects = window.cerebro.onProjectsInvalidate(() => {
-    void invalidateProjects()
+  const unsubscribeProjects = window.cerebro.onProjectsInvalidate((change) => {
+    // A selection-only change is applied in place; refetching would rescan every project.
+    if (change?.activeWorkspaceId != null) applyActiveWorkspace(change.activeWorkspaceId)
+    else void invalidateProjects()
   })
   const unsubscribeGitHub = window.cerebro.onGitHubStatus((status) => {
     void applyGitHubStatus(status)

@@ -99,7 +99,7 @@ export function getMux(): Promise<MuxClient> {
       client.on('agent.status', (event: AgentStatusEvent) => {
         for (const listener of statusListeners) listener(event)
       })
-      client.on('projects', () => broadcast(IPC.projects.invalidate))
+      client.on('projects', (change) => broadcast(IPC.projects.invalidate, change))
       client.on('focus', (workspaceId) => broadcast(IPC.layout.focusWorkspace, workspaceId))
       client.on('git', async ({ id, args, cwd }) => {
         try {

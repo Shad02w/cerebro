@@ -9,6 +9,7 @@ import type {
   WorkspaceStatus
 } from '@shared/types'
 import {
+  applyActiveWorkspace,
   invalidateProjects,
   PR_REFRESH_MS,
   projectsOptions,
@@ -133,9 +134,21 @@ export function useProjects(): ProjectsState {
     mutationFn: (directory: string) => window.cerebro.createProjectFromDirectory(directory),
     onSuccess: invalidateProjects
   })
+  // The row highlights and the content area switches on click; the mux write follows. A failed
+  // write restores the previous selection.
   const selectWorkspace = useMutation({
     mutationFn: (id: number) => window.cerebro.setActiveWorkspace(id),
-    onSuccess: updateList
+    onMutate: async (id: number) => {
+      // An in-flight list fetched before this click would otherwise put the old row back.
+      await queryClient.cancelQueries({ queryKey: projectsOptions.queryKey })
+      const previous = queryClient.getQueryData(projectsOptions.queryKey)?.activeWorkspaceId ?? null
+      applyActiveWorkspace(id)
+      return { previous }
+    },
+    onError: (_error, _id, context) => {
+      if (context?.previous != null) applyActiveWorkspace(context.previous)
+      else void invalidateProjects()
+    }
   })
   const createWorkspace = useMutation({
     mutationFn: ({
@@ -190,6 +203,8 @@ export function useProjects(): ProjectsState {
     createProject: createProject.mutateAsync,
     createProjectFromDirectory: createDirectory.mutateAsync,
     selectWorkspace: async (id: number): Promise<void> => {
+      // Layout focus events re-select the workspace that is already active.
+      if (queryClient.getQueryData(projectsOptions.queryKey)?.activeWorkspaceId === id) return
       await selectWorkspace.mutateAsync(id)
     },
     createWorkspace: (

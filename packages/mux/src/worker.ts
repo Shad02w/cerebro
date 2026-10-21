@@ -12,7 +12,8 @@ import {
   renameWorkspace,
   removeWorkspace,
   removeProject,
-  setActiveWorkspace,
+  selectActiveWorkspace,
+  getWorkspaceContext,
   setWorkspaceStatus,
   parseWorkspaceStatus,
   listWorkspaceChanges,
@@ -149,7 +150,7 @@ async function handle(method: string, p: RequestParams): Promise<unknown> {
         case 'list':
           return listProjects()
         case 'select':
-          return setActiveWorkspace(p.workspaceId)
+          return selectActiveWorkspace(p.workspaceId)
         case 'project.createDirectory':
           return createProjectFromDirectory(p.directory)
         case 'project.create':
@@ -191,31 +192,8 @@ async function handle(method: string, p: RequestParams): Promise<unknown> {
     }
     case 'terminal.theme':
       return getSettings().terminalTheme
-    case 'context': {
-      const { projects } = await listProjects()
-      const project = projects.find((project) =>
-        project.workspaces.some((workspace) => workspace.id === p.workspaceId)
-      )
-      const workspace = project?.workspaces.find((workspace) => workspace.id === p.workspaceId)
-      if (!project || !workspace)
-        throw Object.assign(new Error('Workspace not found.'), { code: 'not_found' })
-      const repositoryId =
-        p.repositoryId ?? (workspace.kind === 'root' ? null : workspace.repositoryId)
-      const repository = project.repositories.find((repo) => repo.id === repositoryId)
-      if (
-        repositoryId !== null &&
-        (!repository || (workspace.kind !== 'root' && workspace.repositoryId !== repositoryId))
-      )
-        throw Object.assign(new Error('Repository does not belong to this workspace.'), {
-          code: 'not_found'
-        })
-      return {
-        projectId: project.id,
-        workspaceId: workspace.id,
-        repositoryId,
-        cwd: workspace.kind === 'root' && repository ? repository.localPath : workspace.localPath
-      }
-    }
+    case 'context':
+      return getWorkspaceContext(p.workspaceId, p.repositoryId)
     default:
       throw new Error('Unknown storage method.')
   }
