@@ -45,6 +45,7 @@ import {
   type ChatSearchQuery,
   type ChatSearchResult,
   type ChatView,
+  type AgentCommandList,
   type AgentSkillList,
   type ChatSkillMention,
   type QueuedMessage,
@@ -332,6 +333,7 @@ export class AgentSessions {
   private catalog?: AgentCatalog
   private loadingCatalog?: Promise<AgentCatalog>
   private skillCache = new Map<string, { at: number; skills: AgentSkillList['skills'] }>()
+  private commandCache = new Map<string, { at: number; commands: AgentCommandList['commands'] }>()
   private searchIndex?: SessionSearchIndex
   private stopping = false
   constructor(
@@ -524,6 +526,21 @@ export class AgentSessions {
       return { skills }
     } catch (error) {
       return { skills: [], issue: error instanceof Error ? error.message : String(error) }
+    }
+  }
+  /** Slash commands for one harness in a workspace. Failures become an empty list so the composer still opens. */
+  async commands(harness: AgentHarness, cwd: string): Promise<AgentCommandList> {
+    const key = `${harness}\0${cwd}`
+    const cached = this.commandCache.get(key)
+    if (cached && Date.now() - cached.at < 15_000) return { commands: cached.commands }
+    const load = this.drivers[harness].commands
+    if (!load) return { commands: [] }
+    try {
+      const commands = await load(cwd)
+      this.commandCache.set(key, { at: Date.now(), commands })
+      return { commands }
+    } catch (error) {
+      return { commands: [], issue: error instanceof Error ? error.message : String(error) }
     }
   }
   async models(refresh = false): Promise<AgentCatalog> {

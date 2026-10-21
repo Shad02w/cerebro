@@ -1,4 +1,5 @@
 import {
+  parseSlashCommand,
   skillPromptText,
   type AgentDelta,
   type AttachmentPolicy,
@@ -10,6 +11,7 @@ import type { AgentAdapter, AutonomousTurn } from './adapter'
 import { piContextUsage } from '../context-usage'
 import { activeTurn, imagesOf, inline, item, model, modalities, withFilePaths } from './shared'
 import { piSkills } from '../skills'
+import { piCommands, piNativeCommands } from '../commands'
 
 const promptText = (text: string, skills?: ChatSkillMention[]): string =>
   skillPromptText(text, skills ?? [])
@@ -32,6 +34,19 @@ export const piAdapter: AgentAdapter = {
     )
     try {
       return piSkills(await rpc.request('get_commands'))
+    } finally {
+      rpc.close()
+    }
+  },
+  async commands(cwd) {
+    const rpc = new JsonProcess(
+      executable('pi'),
+      ['--mode', 'rpc', '--no-session', '--no-extensions'],
+      cwd,
+      true
+    )
+    try {
+      return piCommands(await rpc.request('get_commands'))
     } finally {
       rpc.close()
     }
@@ -203,6 +218,41 @@ export const piAdapter: AgentAdapter = {
         }
       }
     }
+    /**
+     * Pi's built-in TUI commands do not run through `prompt`. Returns the notice to show when `text`
+     * was one of them, or undefined for an ordinary prompt, prompt template or extension command.
+     */
+    const builtinCommand = async (
+      text: string
+    ): Promise<{ title: string; text: string } | undefined> => {
+      const slash = parseSlashCommand(text)
+      if (!slash || !piNativeCommands.some((entry) => entry.name === slash.name)) return undefined
+      const listed = await rpc.request('get_commands')
+      const overridden = (Array.isArray(listed.commands) ? listed.commands : []).some(
+        (entry: Frame) => entry?.name === slash.name && entry.source !== 'skill'
+      )
+      if (overridden) return undefined
+      const title = `/${slash.name}`
+      switch (slash.name) {
+        case 'compact': {
+          const result = await rpc.request(
+            'compact',
+            slash.args ? { customInstructions: slash.args } : {}
+          )
+          const before = Number(result.tokensBefore)
+          return {
+            title,
+            text: Number.isFinite(before)
+              ? `Compacted the conversation (was about ${before.toLocaleString('en-US')} tokens).`
+              : 'Compacted the conversation.'
+          }
+        }
+        default: {
+          const result = await rpc.request('export_html')
+          return { title, text: `Exported the session to ${result.path ?? 'an HTML file'}.` }
+        }
+      }
+    }
     return {
       async run(context) {
         if (closed) throw new Error('Pi process is closed.')
@@ -227,6 +277,12 @@ export const piAdapter: AgentAdapter = {
           const state = await rpc.request('get_state')
           if (state.sessionFile) context.emit({ type: 'binding', nativeId: state.sessionFile })
           if (current !== turn) return await ended
+          const command = await builtinCommand(context.text)
+          if (command) {
+            item(out, `command:${randomUUID()}`, 'notice', command.text, { title: command.title })
+            finish()
+            return await ended
+          }
           await rpc.request('prompt', {
             message: withFilePaths(
               promptText(context.text, context.skills),

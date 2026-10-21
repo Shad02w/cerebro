@@ -428,6 +428,7 @@ export async function startServer(): Promise<void> {
           case 'chat.catalog':
             await environment
             return agents.models(Boolean((p as unknown as { refresh?: boolean }).refresh))
+          case 'chat.commands':
           case 'chat.skills': {
             await environment
             const workspaceId = positive(p.workspaceId)
@@ -437,7 +438,9 @@ export async function startServer(): Promise<void> {
             const { pane } = findPane(workspaceId, paneId)
             if (pane.kind !== 'chat') throw new MuxError('conflict', 'Pane is not a chat.')
             const context = await chatContext(workspaceId, pane.repositoryId ?? undefined)
-            return agents.skills(harness, context.cwd)
+            return message.method === 'chat.commands'
+              ? agents.commands(harness, context.cwd)
+              : agents.skills(harness, context.cwd)
           }
           case 'chat.favorite': {
             const favorite = p as unknown as { key: string; favorite: boolean }

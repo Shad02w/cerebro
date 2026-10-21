@@ -525,6 +525,18 @@ function claudePrompt(prompt, content) {
     claudeFinish(prompt)
     return
   }
+  if (prompt === '/context') {
+    // Claude runs this slash command itself and reports plain text, then ends the turn.
+    send({
+      type: 'system',
+      subtype: 'local_command_output',
+      content: '## Context Usage\n\n12k / 200k tokens',
+      uuid: 'local-command-test',
+      session_id: 'claude-test'
+    })
+    claudeFinish('')
+    return
+  }
   if (prompt.includes('attachments')) {
     claudeFinish(JSON.stringify(content))
     return
@@ -1661,6 +1673,22 @@ createInterface({ input: process.stdin }).on('line', (line) => {
           30
         )
         break
+      case 'thread/compact/start':
+        reply({})
+        notify('turn/started', { threadId: frame.params.threadId, turn: { id: 'turn-compact' } })
+        notify('item/agentMessage/delta', {
+          threadId: frame.params.threadId,
+          itemId: 'compact-test',
+          delta: 'compact-ran'
+        })
+        notify('turn/completed', {
+          threadId: frame.params.threadId,
+          turn: { id: 'turn-compact', status: 'completed' }
+        })
+        break
+      case 'thread/name/set':
+        reply({})
+        break
       case 'turn/interrupt':
         reply({})
         codexActive = frame.params.threadId
@@ -1719,7 +1747,11 @@ createInterface({ input: process.stdin }).on('line', (line) => {
         break
       case 'set_model':
       case 'set_thinking_level':
+      case 'set_session_name':
         reply({})
+        break
+      case 'compact':
+        reply({ summary: 'ok', tokensBefore: 12345 })
         break
       case 'abort':
         reply({})

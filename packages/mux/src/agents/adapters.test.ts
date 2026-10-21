@@ -1257,6 +1257,62 @@ describe('agent adapters', { concurrency: 1 }, () => {
   )
 
   test(
+    'Codex and Pi list commands and run the built-ins through their own calls',
+    { timeout: 20_000 },
+    async () => {
+      process.env.CEREBRO_CODEX_PATH = fixture
+      process.env.CEREBRO_PI_PATH = fixture
+      const names = async (harness: AgentHarness): Promise<string[]> =>
+        ((await adapters[harness].commands?.('/tmp')) ?? []).map((entry) => entry.name)
+      assert.deepEqual(await names('codex'), ['compact', 'review', 'init'])
+      // Skills stay in the skill picker; templates and Pi's missing built-ins join the list.
+      assert.deepEqual(await names('pi'), ['compact', 'export', 'fix-tests'])
+
+      const run = async (harness: AgentHarness, text: string): Promise<AgentDelta[]> => {
+        const models = await adapters[harness].models('/tmp')
+        const events: AgentDelta[] = []
+        await runTurn(adapters[harness], {
+          session: liveSession(models[0], `command-${harness}`),
+          text,
+          signal: new AbortController().signal,
+          emit: (event) => events.push(event),
+          ask: async () => ({ allow: false, answers: {} })
+        })
+        return events
+      }
+      const shown = (events: AgentDelta[]): string =>
+        events
+          .flatMap((event) => (event.type === 'item' && event.item.text ? [event.item.text] : []))
+          .join('')
+
+      assert.match(shown(await run('pi', '/compact')), /Compacted .*12,345 tokens/)
+      // A prompt template is not a built-in, so Pi receives it as the prompt.
+      assert.match(shown(await run('pi', '/fix-tests now')), /Adapter connected/)
+
+      assert.match(shown(await run('codex', '/compact')), /compact-ran/)
+      // `/init` becomes an ordinary turn carrying the instructions Codex's TUI would send.
+      assert.match(shown(await run('codex', '/init')), /Adapter connected/)
+    }
+  )
+
+  test('Claude: a slash command’s local output is shown as text', { timeout: 15_000 }, async () => {
+    process.env.CEREBRO_CLAUDE_PATH = fixture
+    const models = await adapters.claude.models('/tmp')
+    const events: AgentDelta[] = []
+    await runTurn(adapters.claude, {
+      session: liveSession(models[0], 'claude-local-command'),
+      text: '/context',
+      signal: new AbortController().signal,
+      emit: (event) => events.push(event),
+      ask: async () => ({ allow: false, answers: {} })
+    })
+    const shown = events
+      .flatMap((event) => (event.type === 'item' && event.item.text ? [event.item.text] : []))
+      .join('')
+    assert.match(shown, /## Context Usage\n\n12k \/ 200k tokens/)
+  })
+
+  test(
     'Claude: a child frame becomes a sub-agent, and a checklist tool does not',
     { timeout: 15_000 },
     async () => {

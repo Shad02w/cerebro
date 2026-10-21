@@ -2,6 +2,7 @@ import type {
   AgentCatalog,
   AgentHarness,
   AgentModelDefaults,
+  AgentCommandList,
   AgentSkillList,
   ChatActivityOverview,
   ChatAttachmentContent,
@@ -332,6 +333,11 @@ export type CerebroApi = {
     paneId: number,
     harness: AgentHarness
   ) => Promise<AgentSkillList>
+  agentCommands: (
+    workspaceId: number,
+    paneId: number,
+    harness: AgentHarness
+  ) => Promise<AgentCommandList>
   agentFavorite: (key: string, favorite: boolean) => Promise<AgentCatalog>
   chatAttachment: (
     workspaceId: number,
