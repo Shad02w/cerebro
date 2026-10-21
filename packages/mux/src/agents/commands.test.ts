@@ -14,7 +14,12 @@ describe('harness command lists', () => {
       { name: '/review', description: 'Review the diff' },
       { name: 'review', description: 'duplicate' },
       { name: 'bad name' },
-      { name: 'formatter:lint', description: 'Lint' }
+      { name: 'formatter:lint', description: 'Lint' },
+      // Commands that switch the conversation belong to the app, by name or by alias.
+      { name: 'clear', builtin: true },
+      { name: 'wipe', aliases: ['reset'], builtin: true },
+      { name: 'resume', builtin: true },
+      { name: 'model', builtin: true }
     ])
     assert.deepEqual(
       listed.map((entry) => [entry.name, entry.source, entry.argumentHint]),
@@ -41,8 +46,7 @@ describe('harness command lists', () => {
         ['compact', 'custom'],
         ['export', 'builtin'],
         ['fix-tests', 'custom'],
-        ['name', 'builtin'],
-        ['new', 'builtin']
+        ['name', 'builtin']
       ]
     )
     assert.equal(listed[0].description, 'Extension compact')

@@ -1266,7 +1266,7 @@ describe('agent adapters', { concurrency: 1 }, () => {
         ((await adapters[harness].commands?.('/tmp')) ?? []).map((entry) => entry.name)
       assert.deepEqual(await names('codex'), ['compact', 'review', 'rename', 'init'])
       // Skills stay in the skill picker; templates and Pi's missing built-ins join the list.
-      assert.deepEqual(await names('pi'), ['compact', 'export', 'fix-tests', 'name', 'new'])
+      assert.deepEqual(await names('pi'), ['compact', 'export', 'fix-tests', 'name'])
 
       const run = async (harness: AgentHarness, text: string): Promise<AgentDelta[]> => {
         const models = await adapters[harness].models('/tmp')

@@ -15,6 +15,14 @@ const command = (
   source
 })
 
+/*
+ * Commands that start, replace or switch the conversation (/new, /fork, /resume, /clear ...) are
+ * left out of every list. Cerebro owns sessions: New Agent, fork-from-a-turn and the session list
+ * already do this, and the adapter must not swap its native conversation underneath the app.
+ * Codex and Pi are whitelists, because Cerebro owns those tables. Claude's list comes from the
+ * SDK, so it is a blacklist (below).
+ */
+
 /**
  * Commands Codex's TUI parses client-side. `codex app-server` has no listing and does not read a
  * leading `/` in `turn/start`, so the Codex adapter maps each one to the RPC that does the work.
@@ -32,7 +40,6 @@ export const codexCommands: readonly AgentCommand[] = [
  */
 export const piNativeCommands: readonly AgentCommand[] = [
   command('pi', 'compact', 'Compact the conversation context', 'builtin', '[instructions]'),
-  command('pi', 'new', 'Start a new session', 'builtin'),
   command('pi', 'name', 'Name this session', 'builtin', '<name>'),
   command('pi', 'export', 'Export this session to an HTML file', 'builtin')
 ]
@@ -40,10 +47,34 @@ export const piNativeCommands: readonly AgentCommand[] = [
 /** One slash command Claude Code reported (`Query.supportedCommands()`). */
 export type ClaudeSlashCommand = {
   name?: string
+  aliases?: string[]
   description?: string
   argumentHint?: string
   builtin?: boolean
 }
+
+/**
+ * Claude commands that switch the conversation, or that Cerebro already offers as a picker
+ * (model, access mode) or does not support (sign-in, quitting). A command is hidden when its
+ * name or any alias is listed, so `/reset` cannot reach `/clear` through the back door.
+ */
+export const claudeHiddenCommands: ReadonlySet<string> = new Set([
+  'clear',
+  'reset',
+  'new',
+  'resume',
+  'continue',
+  'rewind',
+  'checkpoint',
+  'fork',
+  'branch',
+  'exit',
+  'quit',
+  'login',
+  'logout',
+  'model',
+  'permissions'
+])
 
 /**
  * Everything Claude Code accepts as a leading `/name args`. Claude parses these from the prompt, so
@@ -54,6 +85,7 @@ export function claudeCommands(commands: readonly ClaudeSlashCommand[]): AgentCo
   for (const entry of commands) {
     const name = String(entry?.name ?? '').replace(/^\//, '')
     if (!safeSkillName(name) || found.has(name)) continue
+    if ([name, ...(entry.aliases ?? [])].some((alias) => claudeHiddenCommands.has(alias))) continue
     found.set(
       name,
       command(

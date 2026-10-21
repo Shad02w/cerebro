@@ -223,8 +223,7 @@ export const piAdapter: AgentAdapter = {
      * was one of them, or undefined for an ordinary prompt, prompt template or extension command.
      */
     const builtinCommand = async (
-      text: string,
-      emitBinding: (nativeId: string) => void
+      text: string
     ): Promise<{ title: string; text: string } | undefined> => {
       const slash = parseSlashCommand(text)
       if (!slash || !piNativeCommands.some((entry) => entry.name === slash.name)) return undefined
@@ -247,13 +246,6 @@ export const piAdapter: AgentAdapter = {
               ? `Compacted the conversation (was about ${before.toLocaleString('en-US')} tokens).`
               : 'Compacted the conversation.'
           }
-        }
-        case 'new': {
-          const result = await rpc.request('new_session')
-          if (result.cancelled) return { title, text: 'A new session was not started.' }
-          const state = await rpc.request('get_state')
-          if (state.sessionFile) emitBinding(state.sessionFile)
-          return { title, text: 'Started a new session.' }
         }
         case 'name':
           if (!slash.args) throw new Error('Usage: /name <name>')
@@ -289,9 +281,7 @@ export const piAdapter: AgentAdapter = {
           const state = await rpc.request('get_state')
           if (state.sessionFile) context.emit({ type: 'binding', nativeId: state.sessionFile })
           if (current !== turn) return await ended
-          const command = await builtinCommand(context.text, (nativeId) =>
-            context.emit({ type: 'binding', nativeId })
-          )
+          const command = await builtinCommand(context.text)
           if (command) {
             item(out, `command:${randomUUID()}`, 'notice', command.text, { title: command.title })
             finish()
