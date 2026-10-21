@@ -1,20 +1,16 @@
-import { useQueries } from '@tanstack/react-query'
-import {
-  agentActivityStatus,
-  type AgentActivityStatus,
-  type AgentHarness,
-  type PaneNode,
-  type WorkspaceTab
-} from '@cerebro/core'
+import type { PaneNode, WorkspaceTab } from '@cerebro/core'
 import { HarnessIcon, HarnessStatusIcon } from '@/components/harness-icon'
+import { useAgentActivity } from '@/lib/agent-activity'
 
 function chatPaneIds(node: PaneNode): number[] {
   if (node.type === 'pane') return node.kind === 'chat' ? [node.id] : []
   return [...chatPaneIds(node.first), ...chatPaneIds(node.second)]
 }
 
-type TabSession = { harness: AgentHarness; status: AgentActivityStatus }
-
+/**
+ * Reads the shared sidebar overview, not each pane's transcript, so background tabs cost no
+ * per-pane mux request while their agents stream.
+ */
 export function ChatTabIcon({
   workspaceId,
   tab
@@ -22,23 +18,13 @@ export function ChatTabIcon({
   workspaceId: number
   tab: WorkspaceTab
 }): React.JSX.Element | null {
+  const agents = useAgentActivity().get(workspaceId) ?? []
   const paneIds = chatPaneIds(tab.root)
-  const sessions = useQueries({
-    queries: paneIds.map((paneId) => ({
-      queryKey: ['chat', workspaceId, paneId],
-      queryFn: () => window.cerebro.chatCommand({ action: 'get', workspaceId, paneId }),
-      staleTime: Infinity,
-      select: (view: Awaited<ReturnType<typeof window.cerebro.chatCommand>>): TabSession | null =>
-        view.session
-          ? {
-              harness: view.session.model.harness,
-              status: agentActivityStatus(view.session)
-            }
-          : null
-    }))
-  })
+  const forPane = (paneId: number): (typeof agents)[number] | undefined =>
+    agents.find((agent) => agent.paneIds.includes(paneId))
   const session =
-    sessions[paneIds.indexOf(tab.activePaneId)]?.data ?? sessions.find((entry) => entry.data)?.data
+    (paneIds.includes(tab.activePaneId) ? forPane(tab.activePaneId) : undefined) ??
+    paneIds.map(forPane).find(Boolean)
   if (!session) return null
   if (session.status === 'idle') {
     return <HarnessIcon harness={session.harness} testId="chat-tab-agent-icon" />

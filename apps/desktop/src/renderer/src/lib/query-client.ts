@@ -2,6 +2,7 @@ import {
   focusManager,
   QueryClient,
   queryOptions,
+  type QueryKey,
   type UseQueryOptions
 } from '@tanstack/react-query'
 import type { GitHubStatus, RepositoryPullRequests } from '@shared/types'
@@ -103,13 +104,46 @@ export async function applyGitHubStatus(status: GitHubStatus): Promise<void> {
   await queryClient.invalidateQueries({ queryKey: ['branches'] })
 }
 
+const trailingChat = new Set<string>()
+/**
+ * Streaming agents send several `chat` events per second. Each marks matching queries stale,
+ * but only observed, enabled queries refetch, and one already fetching gets a single trailing
+ * refetch. Cancelling it instead would leave its mux request queued with nobody waiting.
+ */
+export function refreshChatQueries(queryKey: QueryKey): void {
+  void queryClient.invalidateQueries({ queryKey, refetchType: 'none' })
+  const cache = queryClient.getQueryCache()
+  for (const query of cache.findAll({ queryKey, type: 'active' })) {
+    const refetch = (): Promise<void> =>
+      queryClient.refetchQueries(
+        { queryKey: query.queryKey, exact: true },
+        { cancelRefetch: false }
+      )
+    if (query.state.fetchStatus !== 'fetching') {
+      void refetch()
+      continue
+    }
+    if (trailingChat.has(query.queryHash)) continue
+    trailingChat.add(query.queryHash)
+    const unsubscribe = cache.subscribe((event) => {
+      if (event.query !== query) return
+      if (event.type !== 'removed' && query.state.fetchStatus === 'fetching') return
+      unsubscribe()
+      trailingChat.delete(query.queryHash)
+      if (event.type !== 'removed') void refetch()
+    })
+  }
+}
+
 /** Installed once at bootstrap; no component effects or duplicate timers. */
 export function connectQueryEvents(): () => void {
   const unsubscribeChat = window.cerebro.onChatChanged(({ workspaceId }) => {
-    void queryClient.invalidateQueries({ queryKey: workspaceId ? ['chat', workspaceId] : ['chat'] })
+    refreshChatQueries(workspaceId ? ['chat', workspaceId] : ['chat'])
     // ['chat', workspaceId] does not match the sidebar aggregate at ['chat', 'overview'].
-    void queryClient.invalidateQueries({ queryKey: ['chat', 'overview'] })
-    void queryClient.invalidateQueries({ queryKey: ['chat', 'search'] })
+    if (workspaceId) {
+      refreshChatQueries(['chat', 'overview'])
+      refreshChatQueries(['chat', 'search'])
+    }
   })
   const unsubscribeLayout = window.cerebro.onLayoutChanged(acceptLayout)
   focusManager.setEventListener((handleFocus) => window.cerebro.onWindowFocus(handleFocus))
