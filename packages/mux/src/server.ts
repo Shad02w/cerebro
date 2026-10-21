@@ -112,6 +112,19 @@ export async function startServer(): Promise<void> {
       throw error
     }
   }
+  type ChatContext = { cwd: string; repositoryId: number | null }
+  /** Pane context changes only with the project registry, so chat commands reuse it until then. */
+  const chatContexts = new Map<string, Promise<ChatContext>>()
+  const chatContext = (workspaceId: number, repositoryId?: number): Promise<ChatContext> => {
+    const key = `${workspaceId}:${repositoryId ?? ''}`
+    let context = chatContexts.get(key)
+    if (!context) {
+      context = storage.call<ChatContext>('context', { workspaceId, repositoryId })
+      context.catch(() => chatContexts.delete(key))
+      chatContexts.set(key, context)
+    }
+    return context
+  }
   const exclusive = <T>(fn: () => Promise<T>): Promise<T> => {
     const next = serial.then(fn)
     serial = next.then(
@@ -276,6 +289,7 @@ export async function startServer(): Promise<void> {
       if (p.action !== 'list') publish('projects', {})
       return result
     } finally {
+      chatContexts.clear()
       providers.delete(operationId)
     }
   }
@@ -422,10 +436,7 @@ export async function startServer(): Promise<void> {
             if (!isAgentHarness(harness)) throw new MuxError('usage', 'Invalid harness.')
             const { pane } = findPane(workspaceId, paneId)
             if (pane.kind !== 'chat') throw new MuxError('conflict', 'Pane is not a chat.')
-            const context = await storage.call<{ cwd: string; repositoryId: number | null }>(
-              'context',
-              { workspaceId, repositoryId: pane.repositoryId ?? undefined }
-            )
+            const context = await chatContext(workspaceId, pane.repositoryId ?? undefined)
             return agents.skills(harness, context.cwd)
           }
           case 'chat.favorite': {
@@ -440,22 +451,22 @@ export async function startServer(): Promise<void> {
               String(p.sessionId ?? ''),
               String(p.attachmentId ?? '')
             )
-          case 'chat.command':
+          case 'chat.command': {
             await environment
-            return exclusive(async () => {
+            const run = async (): Promise<unknown> => {
               const workspaceId = positive(p.workspaceId),
                 paneId = positive(p.paneId)
               const { pane } = findPane(workspaceId, paneId)
               if (pane.kind !== 'chat') throw new MuxError('conflict', 'Pane is not a chat.')
-              const context = await storage.call<{ cwd: string; repositoryId: number | null }>(
-                'context',
-                { workspaceId, repositoryId: pane.repositoryId ?? undefined }
-              )
+              const context = await chatContext(workspaceId, pane.repositoryId ?? undefined)
               return agents.command(
                 { ...context, workspaceId, paneId },
                 p as unknown as ChatCommand
               )
-            })
+            }
+            // `get` only reads in-memory state, so it never waits behind layout or agent mutations.
+            return (p as { action?: unknown }).action === 'get' ? run() : exclusive(run)
+          }
           case 'layout.get':
             return layout
           case 'changes.list':
