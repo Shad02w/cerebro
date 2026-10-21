@@ -153,7 +153,7 @@ describe('chat rewind', () => {
     Range.prototype.getBoundingClientRect = () => rect
   })
 
-  it('places Rewind to the left of Copy and edits the prompt until Escape', async () => {
+  it('places Rewind to the left of Copy and keeps the sent prompt read-only', async () => {
     const user = userEvent.setup()
     renderChat(conversation())
     const message = await screen.findByTestId('chat-user-message')
@@ -162,13 +162,14 @@ describe('chat rewind', () => {
     expect(rewind.compareDocumentPosition(copy) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(rewind).toHaveAttribute('aria-label', 'Rewind to before this prompt')
 
-    await user.click(screen.getByTestId('chat-user-bubble'))
-    expect(message).toHaveAttribute('data-editing', 'true')
-    const editor = screen.getByRole('textbox', { name: 'Edit prompt' })
-    expect(editor).toHaveTextContent('First prompt')
-    await user.keyboard('{Escape}')
+    const bubble = screen.getByTestId('chat-user-bubble')
+    expect(bubble).not.toHaveAttribute('role')
+    expect(bubble).not.toHaveAttribute('tabindex')
+    await user.click(bubble)
     expect(screen.queryByRole('textbox', { name: 'Edit prompt' })).toBeNull()
-    expect(message).not.toHaveAttribute('data-editing')
+    expect(within(message).queryByRole('textbox')).toBeNull()
+    expect(message.querySelector('[contenteditable="true"]')).toBeNull()
+    expect(bubble).toHaveTextContent('First prompt')
   })
 
   it('shows one Undo line under the kept response and restores the displaced draft', async () => {

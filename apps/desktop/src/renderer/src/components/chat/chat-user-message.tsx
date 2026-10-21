@@ -7,7 +7,7 @@ import { ImagePreviewDialog } from '@/components/image-preview-dialog'
 import { SuccessToast } from '@/components/success-toast'
 import { useClipboard } from '@/hooks/use-clipboard'
 import { dataUrl, formatBytes } from './chat-attachments'
-import { ComposerEditor, ComposerMessage } from './composer-editor'
+import { ComposerMessage } from './composer-editor'
 import { loadWorkspaceFiles } from './workspace-files'
 
 const noAttachments: ChatAttachment[] = []
@@ -64,14 +64,7 @@ export function ChatUserMessage({
   const [toast, setToast] = useState<{ id: number; message: string } | null>(null)
   const [error, setError] = useState(false)
   const [preview, setPreview] = useState<ChatAttachment | null>(null)
-  const [editing, setEditing] = useState(false)
-  const edited = useRef(text)
   const toastId = useRef(0)
-  const uploads = attachments.map((attachment) => ({ ...attachment, data: '' }))
-  const startEdit = (): void => {
-    edited.current = text
-    setEditing(true)
-  }
   const copyMessage = async (): Promise<void> => {
     setToast(null)
     setError(false)
@@ -83,26 +76,10 @@ export function ChatUserMessage({
     <div
       className="ml-auto flex max-w-[90%] flex-col items-end gap-1"
       data-testid="chat-user-message"
-      data-editing={editing || undefined}
     >
       <div
         className="max-w-full rounded-2xl bg-muted px-4 py-3 text-sm break-words"
         data-testid="chat-user-bubble"
-        role={editing ? undefined : 'button'}
-        tabIndex={editing ? undefined : 0}
-        aria-label={editing ? undefined : 'Edit prompt'}
-        onClick={(event) => {
-          if (editing) return
-          const target = event.target
-          if (!(target instanceof HTMLElement) || target.closest('button')) return
-          startEdit()
-        }}
-        onKeyDown={(event) => {
-          if (editing || event.target !== event.currentTarget) return
-          if (event.key !== 'Enter' && event.key !== ' ') return
-          event.preventDefault()
-          startEdit()
-        }}
       >
         {attachments.length ? (
           <ul className="mb-2 flex flex-wrap gap-2" aria-label="Attachments">
@@ -145,22 +122,7 @@ export function ChatUserMessage({
             ))}
           </ul>
         ) : null}
-        {editing ? (
-          <ComposerEditor
-            variant="message"
-            defaultText={text}
-            attachments={uploads}
-            skills={skills}
-            workspaceId={workspaceId}
-            getAttachments={() => uploads}
-            onDocument={(next) => {
-              edited.current = next
-            }}
-            onAttachFiles={() => {}}
-            onSubmit={() => {}}
-            onCancel={() => setEditing(false)}
-          />
-        ) : text ? (
+        {text ? (
           <ComposerMessage
             text={text}
             attachments={attachments}
@@ -184,7 +146,7 @@ export function ChatUserMessage({
           data-testid="chat-rewind"
           onClick={(event) => {
             event.stopPropagation()
-            onRewind?.(editing ? edited.current : text)
+            onRewind?.(text)
           }}
         >
           <Undo2 aria-hidden="true" />
