@@ -1,8 +1,7 @@
 import { readFile, stat } from 'node:fs/promises'
-import { homedir } from 'node:os'
-import { extname, isAbsolute, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { extname } from 'node:path'
 import type { ChatAttachmentContent, ChatImageType } from '@cerebro/core'
+import { resolveLocalFilePath } from './local-file'
 
 /** Local images an agent reply may show. Larger than composer attachments: these are screenshots and renders. */
 export const chatImageMaxBytes = 10 * 1024 * 1024
@@ -15,30 +14,12 @@ const mimeTypes: Record<string, ChatImageType> = {
   '.webp': 'image/webp'
 }
 
-function decode(value: string): string {
-  try {
-    return decodeURI(value)
-  } catch {
-    return value
-  }
-}
-
 /** Turns a markdown image source into an absolute local path. Remote sources are rejected. */
-export function resolveChatImagePath(source: string): string {
-  const value = source.trim()
-  let path: string
-  if (/^file:/i.test(value)) path = fileURLToPath(value)
-  else if (/^[a-z][a-z0-9+.-]*:/i.test(value) && !/^[a-z]:[\\/]/i.test(value))
-    throw new Error('Only local images can be shown.')
-  else if (value === '~' || value.startsWith('~/')) path = join(homedir(), decode(value.slice(1)))
-  else path = decode(value)
-  if (!isAbsolute(path)) throw new Error('Only absolute image paths can be shown.')
-  return path
-}
+export const resolveChatImagePath = resolveLocalFilePath
 
 /** Reads a local image file for an agent reply as base64. Never fetches over the network. */
 export async function readChatImage(source: string): Promise<ChatAttachmentContent> {
-  const path = resolveChatImagePath(source)
+  const path = resolveLocalFilePath(source)
   const mimeType = mimeTypes[extname(path).toLowerCase()]
   if (!mimeType) throw new Error('Unsupported image type.')
   const info = await stat(path)

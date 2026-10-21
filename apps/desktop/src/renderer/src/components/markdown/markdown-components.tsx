@@ -1,6 +1,7 @@
 import type { Components } from 'streamdown'
 import { MarkdownCode } from './markdown-code'
 import { MarkdownImage } from './markdown-image'
+import { MarkdownVideo } from './markdown-video'
 
 /** Overrides shared by every agent's markdown. Everything else uses Streamdown's own renderers. */
 export const markdownComponents: Components = {
@@ -17,5 +18,6 @@ export const markdownComponents: Components = {
     </a>
   ),
   code: MarkdownCode,
-  img: ({ src, alt }) => <MarkdownImage src={src} alt={alt} />
+  img: ({ src, alt }) => <MarkdownImage src={src} alt={alt} />,
+  video: MarkdownVideo
 }

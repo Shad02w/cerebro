@@ -25,7 +25,7 @@ import {
 } from '@shared/types'
 import { AsciiField } from '@/components/ascii-field'
 import { Button } from '@/components/ui/button'
-import { SuccessToast } from '@/components/success-toast'
+import { SuccessToast, type ToastTone } from '@/components/success-toast'
 import { acceptLayout } from '@/lib/query-client'
 import { StarsBackground } from '@/lib/stars-background'
 import { defaultChatTabLabel, generatedTabLabel, promptTabLabel } from '@/lib/thread-tab-title'
@@ -61,7 +61,7 @@ import { useComposerDraft } from './use-composer-draft'
 import { attachmentAccept } from './chat-attachments'
 import { ModelPicker } from './model-picker'
 import { ContextUsageRing } from './context-usage-ring'
-import { messageToResend } from './model-switch'
+import { modelSwitchNotice } from './model-switch'
 import { agentCommandOptions, agentSkillOptions, catalogOptions, harnessLabels } from './queries'
 import { observeChatLayout } from './chat-layout'
 import './chat-status.css'
@@ -177,11 +177,15 @@ export function ChatView({
   const [selection, setSelection] = useState<AgentModel>()
   const [reasoning, setReasoning] = useState('')
   const [accessSelection, setAccessSelection] = useState<AgentAccessMode>()
-  const [notice, setNotice] = useState<{ id: number; message: string } | null>(null)
+  const [notice, setNotice] = useState<{
+    id: number
+    message: string
+    tone: ToastTone
+  } | null>(null)
   const noticeId = useRef(0)
-  const notify = useCallback((message: string) => {
+  const notify = useCallback((message: string, tone: ToastTone = 'error') => {
     noticeId.current += 1
-    setNotice({ id: noticeId.current, message })
+    setNotice({ id: noticeId.current, message, tone })
   }, [])
   const catalogModels = catalog.data?.models
   if (
@@ -239,7 +243,10 @@ export function ChatView({
     canAttachImage: imageRejection,
     policy: attachmentPolicy,
     agent: agentName,
-    onError: notify
+    // The hook reports null when every attachment was accepted; that is not a notice.
+    onError: (message) => {
+      if (message) notify(message)
+    }
   })
   const stick = useRef(true)
   const scrollingToEnd = useRef(false)
@@ -597,7 +604,7 @@ export function ChatView({
         toast={notice}
         onDismiss={() => setNotice(null)}
         testId="chat-notice-toast"
-        tone="error"
+        tone={notice?.tone ?? 'error'}
       />
       {starPhase !== 'off' ? (
         <StarsBackground
@@ -836,17 +843,16 @@ export function ChatView({
                                 )
                                 return
                               }
-                              const draft = readDraft()
-                              const restored = messageToResend({
-                                composerText: draft.text,
-                                attachmentCount: draft.attachments.length,
+                              // The draft is the user's own text; a model change never rewrites it.
+                              const switched = modelSwitchNotice({
                                 current: selected,
                                 next: model,
-                                items: session?.items ?? []
+                                sessionStarted: session != null,
+                                models: catalogModels
                               })
                               setSelection(model)
                               setReasoning('')
-                              if (restored) editorRef.current?.replaceText(restored)
+                              if (switched) notify(switched, 'info')
                             }}
                           />
                         </div>

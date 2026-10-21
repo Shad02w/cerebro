@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { copyFile, mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { crc32, deflateSync } from 'node:zlib'
@@ -1529,6 +1529,89 @@ test('agent replies render rich markdown, local images, and never load remote im
     await mkdir(chatEvidenceDir, { recursive: true })
     await screenshotChatEvidence(page, 'markdown-rich.png')
     expect(remoteRequests).toEqual([])
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('agent video replies stream local files through the media protocol', async ({
+  page,
+  electronApp
+}) => {
+  const directory = await mkdtemp(join(tmpdir(), 'cerebro-chat-video-'))
+  try {
+    await electronApp.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0].setSize(1250, 900)
+    )
+    const video = join(directory, 'clip one é.mp4')
+    await copyFile(resolve(__dirname, 'assets/clip.mp4'), video)
+    const project = await page.evaluate(
+      (directory) => window.cerebro.createProjectFromDirectory(directory),
+      directory
+    )
+    const workspaceId = project.workspaces[0].id
+    await page.evaluate(
+      (workspaceId) =>
+        window.cerebro.layoutCommand({
+          target: 'tab',
+          action: 'create',
+          workspaceId,
+          kind: 'chat'
+        }),
+      workspaceId
+    )
+    await page.reload()
+    await page.locator(`button[data-workspace-id="${workspaceId}"]`).click()
+    const chat = page.locator('[data-pane-kind="chat"]:visible')
+    await chat.getByTestId('chat-model-picker').click()
+    await page
+      .getByTestId('model-picker')
+      .getByRole('button', { name: 'Codex', exact: true })
+      .click()
+    await page
+      .getByTestId('model-picker')
+      .getByRole('option', { name: 'Test Model', exact: true })
+      .click()
+    await chat.getByRole('textbox', { name: 'Message agent' }).fill(`markdown-video ${video}`)
+    await chat.getByRole('button', { name: 'Send message', exact: true }).click()
+
+    const transcript = chat.getByTestId('chat-transcript')
+    await expect(transcript.getByRole('heading', { name: 'Video reply' })).toBeVisible()
+    const players = transcript.getByTestId('chat-video')
+    await expect(players).toHaveCount(3)
+    const sources = await players.evaluateAll((nodes) =>
+      nodes.map((node) => node.getAttribute('src'))
+    )
+    for (const source of sources) expect(source).toMatch(/^cerebro-media:\/\/local\//)
+    await expect(transcript.getByTestId('chat-video-placeholder')).toContainText('remote.mp4')
+
+    // Metadata only arrives when the protocol served real bytes, so this proves the clip loads.
+    await expect
+      .poll(() => players.first().evaluate((node) => (node as HTMLVideoElement).readyState))
+      .toBeGreaterThan(0)
+    const duration = await players.first().evaluate((node) => (node as HTMLVideoElement).duration)
+    expect(duration).toBeGreaterThan(0)
+
+    // Seeking past the first buffer only works when the protocol answers Range requests.
+    await players.first().evaluate((node) => {
+      ;(node as HTMLVideoElement).currentTime = 2
+    })
+    await expect
+      .poll(() => players.first().evaluate((node) => (node as HTMLVideoElement).currentTime))
+      .toBeGreaterThan(1.5)
+    await expect
+      .poll(() =>
+        players.first().evaluate((node) => {
+          const player = node as HTMLVideoElement
+          return !player.seeking && player.readyState >= 3
+        })
+      )
+      .toBe(true)
+    // Chromium keeps the control overlay spinner up briefly after a seek; let it settle.
+    await page.waitForTimeout(2000)
+
+    await mkdir(chatEvidenceDir, { recursive: true })
+    await screenshotChatEvidence(page, 'markdown-video.png')
   } finally {
     await rm(directory, { recursive: true, force: true })
   }

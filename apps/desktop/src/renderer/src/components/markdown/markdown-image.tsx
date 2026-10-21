@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
+import { isVideoSource, readVideoMarkdownSource } from '@shared/media'
 import { PreviewableImage } from '@/components/image-preview-dialog'
+import { MarkdownVideo } from './markdown-video'
 
 const remoteSource = /^(?:https?:)?\/\//i
 const dataImage = /^data:image\//i
@@ -45,6 +47,8 @@ export function MarkdownImage({
   if (typeof src !== 'string' || !src) return null
   if (dataImage.test(src))
     return <PreviewableImage src={src} alt={alt} className="my-2 h-auto max-w-full" />
+  if (readVideoMarkdownSource(src) !== null || isVideoSource(src))
+    return <MarkdownVideo src={src} alt={typeof alt === 'string' ? alt : undefined} />
   if (remoteSource.test(src)) return <Placeholder alt={alt} src={src} />
   return <LocalImage alt={alt} src={src} />
 }

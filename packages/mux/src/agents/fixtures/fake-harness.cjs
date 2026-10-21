@@ -118,6 +118,30 @@ function codexPrompt(threadId, prompt, input) {
     codexDone()
     return
   }
+  if (prompt.startsWith('markdown-video ')) {
+    const video = prompt.slice('markdown-video '.length)
+    // Agents usually write a file URL into their video tags; keep that path exercised.
+    const url = video.startsWith('/') ? `file://${video}` : video
+    notify('item/completed', {
+      item: {
+        type: 'agentMessage',
+        id: 'video',
+        text: [
+          '## Video reply',
+          '',
+          `<video controls src="${url}"></video>`,
+          '',
+          `<video controls><source src="${url}" type="video/mp4"></video>`,
+          '',
+          `![clip](<${video}>)`,
+          '',
+          '![remote](https://example.invalid/remote.mp4)'
+        ].join('\n')
+      }
+    })
+    codexDone()
+    return
+  }
   if (prompt === 'pid') {
     notify('item/completed', {
       item: { type: 'agentMessage', id: 'pid', text: String(process.pid) }

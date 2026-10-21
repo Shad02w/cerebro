@@ -12,12 +12,16 @@ import { registerNativeCommandIpc } from './native-commands'
 import { ensureCerebroHome } from './paths'
 import { registerCliIpc } from './cli-install'
 import { registerDiagnosticsIpc } from './diagnostics'
+import { registerMediaProtocol, registerMediaScheme } from './media-protocol'
 import { registerNotifications } from './notifications'
 import { IPC } from '../shared/ipc'
 
 process.on('uncaughtExceptionMonitor', (error, origin) =>
   log('error', 'desktop.crash', { origin, error })
 )
+
+// Privileged schemes must be registered before the app is ready.
+registerMediaScheme()
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -92,6 +96,7 @@ app.whenReady().then(() => {
   registerCliIpc()
   registerDiagnosticsIpc()
   registerNativeCommandIpc()
+  registerMediaProtocol()
   registerNotifications()
   void getMux().catch((error) => console.error('[mux]', error.message))
 

@@ -134,7 +134,6 @@ export type ComposerEditorHandle = {
   removeAttachment: (attachmentId: string) => void
   replace: (text: string) => void
   clear: () => void
-  replaceText: (text: string) => void
   focus: () => void
 }
 
@@ -244,9 +243,7 @@ function handleComposerKeyDown(
 function composerEditorHandle(
   editor: Editor | null,
   getAttachments: { current: () => ChatAttachmentUpload[] },
-  vim: { current: ComposerVimOptions },
-  catalog: SkillCatalog,
-  files: WorkspaceFileIndex
+  vim: { current: ComposerVimOptions }
 ): ComposerEditorHandle {
   return {
     insertAttachment: (attachmentId) => {
@@ -305,17 +302,6 @@ function composerEditorHandle(
     clear: () => {
       editor?.commands.clearContent(true)
       if (editor && vim.current.enabled) setComposerVimMode(editor, vim.current.initialMode)
-    },
-    replaceText: (text: string) => {
-      if (!editor) return
-      editor.commands.setContent(
-        textToContent(text, {
-          skills: catalog.current,
-          files: [...files.current]
-        }),
-        { emitUpdate: true }
-      )
-      editor.commands.focus('end')
     },
     focus: () => {
       // A freshly loaded draft has its caret at the start; resume typing after it instead.
@@ -1115,12 +1101,7 @@ export function ComposerEditor({
     })
     if (changed) editor.view.dispatch(tr)
   }, [attachments, editor])
-  useImperativeHandle(
-    ref,
-    () =>
-      composerEditorHandle(editor, getAttachmentsRef, vimRef, catalogRef.current, filesRef.current),
-    [editor]
-  )
+  useImperativeHandle(ref, () => composerEditorHandle(editor, getAttachmentsRef, vimRef), [editor])
   return (
     <>
       <EditorContent editor={editor} />

@@ -1,9 +1,24 @@
 import { useEffect, useRef } from 'react'
 import { Toast } from '@base-ui/react/toast'
-import { Check, CircleAlert, X } from 'lucide-react'
+import { Check, CircleAlert, Info, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 type SuccessToastValue = { id: number; message: string }
+
+/** `info` is for notices that are neither a success nor a failure, such as a lost prompt cache. */
+export type ToastTone = 'success' | 'error' | 'info'
+
+const toneIcons: Record<ToastTone, typeof Check> = {
+  success: Check,
+  error: CircleAlert,
+  info: Info
+}
+
+const toneColors: Record<ToastTone, string> = {
+  success: 'text-green-500',
+  error: 'text-destructive',
+  info: 'text-sky-500'
+}
 
 function ToastList({
   toast,
@@ -14,12 +29,12 @@ function ToastList({
   toast: SuccessToastValue
   onDismiss: () => void
   testId?: string
-  tone: 'success' | 'error'
+  tone: ToastTone
 }): React.JSX.Element {
   const manager = Toast.useToastManager()
   const added = useRef(false)
   const onDismissRef = useRef(onDismiss)
-  const Icon = tone === 'error' ? CircleAlert : Check
+  const Icon = toneIcons[tone]
   useEffect(() => {
     onDismissRef.current = onDismiss
   }, [onDismiss])
@@ -40,13 +55,7 @@ function ToastList({
             data-testid={testId}
             className="app-no-drag flex items-center gap-3 rounded-lg border border-border bg-popover px-4 py-3 text-popover-foreground shadow-lg transition-[opacity,transform] duration-200 data-ending-style:opacity-0 data-starting-style:translate-y-2 data-starting-style:opacity-0"
           >
-            <Icon
-              className={cn(
-                'size-4 shrink-0',
-                tone === 'error' ? 'text-destructive' : 'text-green-500'
-              )}
-              aria-hidden="true"
-            />
+            <Icon className={cn('size-4 shrink-0', toneColors[tone])} aria-hidden="true" />
             <Toast.Title className="flex-1 text-sm" />
             <Toast.Close
               aria-label="Dismiss notification"
@@ -71,7 +80,7 @@ export function SuccessToast({
   toast: SuccessToastValue | null
   onDismiss: () => void
   testId?: string
-  tone?: 'success' | 'error'
+  tone?: ToastTone
 }): React.JSX.Element | null {
   if (!toast) return null
   // Keyed by id so a repeated message replaces the previous toast and restarts its timer.
