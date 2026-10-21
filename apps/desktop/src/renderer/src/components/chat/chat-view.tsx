@@ -1,4 +1,13 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState
+} from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowUp, MessageSquare, Paperclip, Square } from 'lucide-react'
 import {
@@ -59,7 +68,7 @@ import { VimModeBadge } from './vim-mode-badge'
 import { useComposerDraft } from './use-composer-draft'
 import { attachmentAccept } from './chat-attachments'
 import { ModelPicker } from './model-picker'
-import { ContextUsageRing } from './context-usage-ring'
+import { ContextUsagePanel, ContextUsageTrigger } from './context-usage-panel'
 import { modelSwitchNotice } from './model-switch'
 import { agentSkillOptions, catalogOptions, harnessLabels } from './queries'
 import { observeChatLayout } from './chat-layout'
@@ -177,6 +186,9 @@ export function ChatView({
   const [selection, setSelection] = useState<AgentModel>()
   const [reasoning, setReasoning] = useState('')
   const [accessSelection, setAccessSelection] = useState<AgentAccessMode>()
+  const [contextUsageOpen, setContextUsageOpen] = useState(false)
+  const contextUsageId = useId()
+  const contextUsageRoot = useRef<HTMLDivElement>(null)
   const [notice, setNotice] = useState<{
     id: number
     message: string
@@ -209,6 +221,24 @@ export function ChatView({
   const composer = useRef<HTMLDivElement>(null)
   const editorRef = useRef<ComposerEditorHandle>(null)
   const fileInput = useRef<HTMLInputElement>(null)
+  // The panel renders nothing without usage, so drop the open state with it.
+  if (!session?.contextUsage && contextUsageOpen) setContextUsageOpen(false)
+  useEffect(() => {
+    if (!contextUsageOpen) return
+    const dismiss = (event: PointerEvent): void => {
+      if (contextUsageRoot.current?.contains(event.target as Node)) return
+      setContextUsageOpen(false)
+    }
+    const closeOnEscape = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setContextUsageOpen(false)
+    }
+    document.addEventListener('pointerdown', dismiss)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('pointerdown', dismiss)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [contextUsageOpen])
   // Confirmed empty only after the section/session query has resolved.
   // A rewind back to the first prompt leaves no items, and the composer stays docked.
   const empty = !loading && !session?.items.length && !session?.rewind
@@ -783,9 +813,18 @@ export function ChatView({
                 </div>
               ) : null}
               <div
+                ref={contextUsageRoot}
                 className={`chat-composer-glow-wrap relative mx-auto max-w-3xl ${visible ? 'pointer-events-auto' : ''}`}
                 data-testid="chat-composer-shell"
               >
+                <ContextUsagePanel
+                  usage={session?.contextUsage}
+                  harness={session?.model.harness}
+                  modelLabel={session?.model.label}
+                  open={contextUsageOpen}
+                  id={contextUsageId}
+                  onClose={() => setContextUsageOpen(false)}
+                />
                 <div
                   className="chat-composer-empty"
                   data-testid="chat-empty-hero"
@@ -854,10 +893,13 @@ export function ChatView({
                           />
                         </div>
                         {composerVim && mode ? <VimModeBadge mode={mode} /> : null}
-                        <ContextUsageRing
+                        <ContextUsageTrigger
                           usage={session?.contextUsage}
                           harness={session?.model.harness}
                           modelLabel={session?.model.label}
+                          open={contextUsageOpen}
+                          controls={contextUsageId}
+                          onToggle={() => setContextUsageOpen((value) => !value)}
                         />
                         <select
                           aria-label="Access mode"
