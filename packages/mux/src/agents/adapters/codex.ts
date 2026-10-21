@@ -573,13 +573,6 @@ export const codexAdapter: AgentAdapter = {
                 target: { type: 'uncommittedChanges' }
               })
               if (typeof review.turn?.id === 'string') turnId = review.turn.id
-            } else if (slash.name === 'rename') {
-              if (!slash.args) throw new Error('Usage: /rename <name>')
-              await server.request('thread/name/set', { threadId, name: slash.args })
-              item(out, `command:${randomUUID()}`, 'notice', `Thread renamed to “${slash.args}”.`, {
-                title: '/rename'
-              })
-              finish()
             }
             if (context.signal.aborted) native.interrupt()
             return done

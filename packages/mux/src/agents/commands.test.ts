@@ -19,7 +19,8 @@ describe('harness command lists', () => {
       { name: 'clear', builtin: true },
       { name: 'wipe', aliases: ['reset'], builtin: true },
       { name: 'resume', builtin: true },
-      { name: 'model', builtin: true }
+      { name: 'model', builtin: true },
+      { name: 'rename', builtin: true }
     ])
     assert.deepEqual(
       listed.map((entry) => [entry.name, entry.source, entry.argumentHint]),
@@ -45,8 +46,7 @@ describe('harness command lists', () => {
       [
         ['compact', 'custom'],
         ['export', 'builtin'],
-        ['fix-tests', 'custom'],
-        ['name', 'builtin']
+        ['fix-tests', 'custom']
       ]
     )
     assert.equal(listed[0].description, 'Extension compact')

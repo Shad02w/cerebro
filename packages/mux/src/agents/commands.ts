@@ -16,9 +16,9 @@ const command = (
 })
 
 /*
- * Commands that start, replace or switch the conversation (/new, /fork, /resume, /clear ...) are
- * left out of every list. Cerebro owns sessions: New Agent, fork-from-a-turn and the session list
- * already do this, and the adapter must not swap its native conversation underneath the app.
+ * Commands that start, replace, switch or rename the conversation (/new, /fork, /resume, /clear,
+ * /rename ...) are left out of every list. Cerebro owns sessions and their titles: New Agent,
+ * fork-from-a-turn, the session list and naming already do this, and the adapter must not swap its native conversation underneath the app.
  * Codex and Pi are whitelists, because Cerebro owns those tables. Claude's list comes from the
  * SDK, so it is a blacklist (below).
  */
@@ -30,7 +30,6 @@ const command = (
 export const codexCommands: readonly AgentCommand[] = [
   command('codex', 'compact', 'Summarize the conversation to free up context', 'builtin'),
   command('codex', 'review', 'Review the uncommitted changes and find issues', 'builtin'),
-  command('codex', 'rename', 'Rename this thread', 'builtin', '<name>'),
   command('codex', 'init', 'Create an AGENTS.md with instructions for Codex', 'builtin')
 ]
 
@@ -40,7 +39,6 @@ export const codexCommands: readonly AgentCommand[] = [
  */
 export const piNativeCommands: readonly AgentCommand[] = [
   command('pi', 'compact', 'Compact the conversation context', 'builtin', '[instructions]'),
-  command('pi', 'name', 'Name this session', 'builtin', '<name>'),
   command('pi', 'export', 'Export this session to an HTML file', 'builtin')
 ]
 
@@ -54,7 +52,7 @@ export type ClaudeSlashCommand = {
 }
 
 /**
- * Claude commands that switch the conversation, or that Cerebro already offers as a picker
+ * Claude commands that switch or rename the conversation, or that Cerebro already offers as a picker
  * (model, access mode) or does not support (sign-in, quitting). A command is hidden when its
  * name or any alias is listed, so `/reset` cannot reach `/clear` through the back door.
  */
@@ -73,7 +71,8 @@ export const claudeHiddenCommands: ReadonlySet<string> = new Set([
   'login',
   'logout',
   'model',
-  'permissions'
+  'permissions',
+  'rename'
 ])
 
 /**

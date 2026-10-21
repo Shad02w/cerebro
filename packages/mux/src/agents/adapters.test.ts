@@ -1264,9 +1264,9 @@ describe('agent adapters', { concurrency: 1 }, () => {
       process.env.CEREBRO_PI_PATH = fixture
       const names = async (harness: AgentHarness): Promise<string[]> =>
         ((await adapters[harness].commands?.('/tmp')) ?? []).map((entry) => entry.name)
-      assert.deepEqual(await names('codex'), ['compact', 'review', 'rename', 'init'])
+      assert.deepEqual(await names('codex'), ['compact', 'review', 'init'])
       // Skills stay in the skill picker; templates and Pi's missing built-ins join the list.
-      assert.deepEqual(await names('pi'), ['compact', 'export', 'fix-tests', 'name'])
+      assert.deepEqual(await names('pi'), ['compact', 'export', 'fix-tests'])
 
       const run = async (harness: AgentHarness, text: string): Promise<AgentDelta[]> => {
         const models = await adapters[harness].models('/tmp')
@@ -1286,13 +1286,10 @@ describe('agent adapters', { concurrency: 1 }, () => {
           .join('')
 
       assert.match(shown(await run('pi', '/compact')), /Compacted .*12,345 tokens/)
-      assert.match(shown(await run('pi', '/name Release')), /Session named “Release”/)
-      await assert.rejects(run('pi', '/name'), /Usage: \/name <name>/)
       // A prompt template is not a built-in, so Pi receives it as the prompt.
       assert.match(shown(await run('pi', '/fix-tests now')), /Adapter connected/)
 
       assert.match(shown(await run('codex', '/compact')), /compact-ran/)
-      assert.match(shown(await run('codex', '/rename Release')), /Thread renamed to “Release”/)
       // `/init` becomes an ordinary turn carrying the instructions Codex's TUI would send.
       assert.match(shown(await run('codex', '/init')), /Adapter connected/)
     }

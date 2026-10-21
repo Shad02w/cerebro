@@ -247,10 +247,6 @@ export const piAdapter: AgentAdapter = {
               : 'Compacted the conversation.'
           }
         }
-        case 'name':
-          if (!slash.args) throw new Error('Usage: /name <name>')
-          await rpc.request('set_session_name', { name: slash.args })
-          return { title, text: `Session named “${slash.args}”.` }
         default: {
           const result = await rpc.request('export_html')
           return { title, text: `Exported the session to ${result.path ?? 'an HTML file'}.` }
