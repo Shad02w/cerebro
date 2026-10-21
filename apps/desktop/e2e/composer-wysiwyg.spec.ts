@@ -234,7 +234,9 @@ test('agent composer renders bullets, inline code, a code block, and skill menti
     await page.keyboard.type('/')
     const piMenu = page.getByTestId('composer-skill-menu')
     await expect(piMenu.getByTestId('composer-skill-option-review')).toBeVisible()
-    await expect(piMenu.getByText('fix-tests')).toHaveCount(0)
+    // A prompt template is not a skill. It is offered as a command instead.
+    await expect(piMenu.getByTestId('composer-skill-option-fix-tests')).toHaveCount(0)
+    await expect(piMenu.getByTestId('composer-command-option-fix-tests')).toBeVisible()
     await page.screenshot({ path: testInfo.outputPath('composer-pi-skills.png') })
     await piMenu.getByTestId('composer-skill-option-review').click()
     await expect(piComposer.getByTestId('composer-tag')).toHaveText('/review')
