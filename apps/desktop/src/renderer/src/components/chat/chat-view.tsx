@@ -127,7 +127,9 @@ export function ChatView({
   const view = useQuery({
     queryKey,
     queryFn: () => window.cerebro.chatCommand({ action: 'get', workspaceId, paneId }),
-    staleTime: Infinity
+    staleTime: Infinity,
+    // Hidden panes stay mounted. Invalidation only marks them stale; they refetch once when shown.
+    enabled: visible
   })
   const catalog = useQuery(catalogOptions)
   // Pending with no data is "not confirmed yet" — never treat it as empty.
