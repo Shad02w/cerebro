@@ -1,13 +1,30 @@
 import { memo } from 'react'
-import { Streamdown, type ControlsConfig } from 'streamdown'
+import { Streamdown, type AllowedTags, type ControlsConfig } from 'streamdown'
 import { markdownComponents } from './markdown-components'
 import { markdownPlugins } from './markdown-plugins'
+import { prepareVideoMarkdown } from './video-markdown'
 
 const controls: ControlsConfig = {
   table: false,
   image: false,
   code: false,
   mermaid: { copy: true, download: false, fullscreen: true, panZoom: true }
+}
+
+// Streamdown's sanitizer follows GitHub and would drop `<video>` (and any `file:` source) entirely.
+const allowedTags: AllowedTags = {
+  video: [
+    'src',
+    'poster',
+    'controls',
+    'width',
+    'height',
+    'loop',
+    'muted',
+    'autoPlay',
+    'playsInline',
+    'title'
+  ]
 }
 
 const keepUrl = (url: string): string => url
@@ -31,11 +48,12 @@ export const AgentMarkdown = memo(function AgentMarkdown({
         plugins={markdownPlugins}
         components={markdownComponents}
         controls={controls}
+        allowedTags={allowedTags}
         lineNumbers={false}
         linkSafety={{ enabled: false }}
         urlTransform={keepUrl}
       >
-        {text}
+        {prepareVideoMarkdown(text)}
       </Streamdown>
     </div>
   )
