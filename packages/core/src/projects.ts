@@ -705,6 +705,65 @@ export async function setActiveWorkspace(workspaceId: number): Promise<ProjectLi
   return listProjects()
 }
 
+/** Persists the selection without rebuilding the project list (no nested-repo git scans). */
+export function selectActiveWorkspace(workspaceId: number): { activeWorkspaceId: number } {
+  const db = getDb()
+  const row = db.prepare('SELECT id FROM workspaces WHERE id = ?').get(workspaceId) as
+    { id: number } | undefined
+  if (!row) throw new Error('Workspace not found.')
+  setActiveWorkspaceId(workspaceId, db)
+  return { activeWorkspaceId: workspaceId }
+}
+
+export type WorkspaceContext = {
+  projectId: number
+  workspaceId: number
+  repositoryId: number | null
+  cwd: string
+}
+
+/** Resolves a workspace's repository and working directory from the database alone. */
+export function getWorkspaceContext(
+  workspaceId: number,
+  requestedRepositoryId?: number | null
+): WorkspaceContext {
+  const db = getDb()
+  const workspace = db
+    .prepare('SELECT id, project_id, repository_id, kind, local_path FROM workspaces WHERE id = ?')
+    .get(workspaceId) as
+    | {
+        id: number
+        project_id: number
+        repository_id: number
+        kind: WorkspaceKind
+        local_path: string
+      }
+    | undefined
+  if (!workspace) throw Object.assign(new Error('Workspace not found.'), { code: 'not_found' })
+  const repositoryId =
+    requestedRepositoryId ?? (workspace.kind === 'root' ? null : workspace.repository_id)
+  const repository =
+    repositoryId === null
+      ? undefined
+      : (db
+          .prepare('SELECT id, local_path FROM repositories WHERE id = ? AND project_id = ?')
+          .get(repositoryId, workspace.project_id) as
+          { id: number; local_path: string } | undefined)
+  if (
+    repositoryId !== null &&
+    (!repository || (workspace.kind !== 'root' && workspace.repository_id !== repositoryId))
+  )
+    throw Object.assign(new Error('Repository does not belong to this workspace.'), {
+      code: 'not_found'
+    })
+  return {
+    projectId: workspace.project_id,
+    workspaceId: workspace.id,
+    repositoryId,
+    cwd: workspace.kind === 'root' && repository ? repository.local_path : workspace.local_path
+  }
+}
+
 export async function setWorkspaceStatus(
   workspaceId: number,
   status: WorkspaceStatus

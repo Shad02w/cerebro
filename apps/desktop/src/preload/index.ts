@@ -6,6 +6,7 @@ import type {
   GitHubStatus,
   NativeCommandId,
   PtyDataEvent,
+  ProjectsChange,
   PtyExitEvent
 } from '../shared/types'
 
@@ -129,7 +130,7 @@ const api: CerebroApi = {
     }
   },
   onProjectsInvalidate: (listener) => {
-    const handler = (): void => listener()
+    const handler = (_event: IpcRendererEvent, change?: ProjectsChange): void => listener(change)
     ipcRenderer.on(IPC.projects.invalidate, handler)
     return () => {
       ipcRenderer.removeListener(IPC.projects.invalidate, handler)

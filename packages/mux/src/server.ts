@@ -79,7 +79,13 @@ export async function startServer(): Promise<void> {
     params: unknown,
     action: () => Promise<T>
   ): Promise<T> => {
-    if (method === 'layout.command' && (params as { action?: string }).action === 'list')
+    // Reads and focus changes are idempotent: replaying one is harmless, so they skip the
+    // dedupe journal (a hash plus two storage round trips per click).
+    const requested = (params as { action?: string }).action
+    if (
+      (method === 'layout.command' && (requested === 'list' || requested === 'focus')) ||
+      (method === 'registry' && requested === 'select')
+    )
       return action()
     const fingerprint = createHash('sha256')
       .update(JSON.stringify({ method, params }))
@@ -248,7 +254,10 @@ export async function startServer(): Promise<void> {
     )
       throw new MuxError('usage', 'Unknown registry action.')
     if (p.action === 'list') return storage.call('registry', p)
-    const listed = await storage.call<ProjectListResult>('registry', { action: 'list' })
+    // Only removals need the full list; every other action must not pay for a project rescan.
+    const listed = p.action.endsWith('.remove')
+      ? await storage.call<ProjectListResult>('registry', { action: 'list' })
+      : { projects: [], activeWorkspaceId: null }
     let removed: number[] = []
     if (p.action === 'workspace.remove') {
       const workspace = listed.projects
@@ -286,7 +295,9 @@ export async function startServer(): Promise<void> {
             paneIds: removedPanes
           })
         )
-      if (p.action !== 'list') publish('projects', {})
+      // A selection only moves the active id, which every client can apply without refetching.
+      if (p.action === 'select') publish('projects', { activeWorkspaceId: positive(p.workspaceId) })
+      else publish('projects', {})
       return result
     } finally {
       chatContexts.clear()

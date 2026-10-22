@@ -161,6 +161,9 @@ export type ProjectListResult = {
   activeWorkspaceId: number | null
 }
 
+/** Payload of a `projects` invalidation. A selection-only change carries the new active id. */
+export type ProjectsChange = { activeWorkspaceId?: number } | undefined
+
 export type ProjectBranch = {
   name: string
   hasWorkspace: boolean
@@ -380,7 +383,7 @@ export type CerebroApi = {
   createProjectFromDirectory: (directory: string) => Promise<Project>
   pickProjectDirectory: () => Promise<string | null>
   removeProject: (projectId: number, deleteFiles: boolean) => Promise<ProjectListResult>
-  setActiveWorkspace: (workspaceId: number) => Promise<ProjectListResult>
+  setActiveWorkspace: (workspaceId: number) => Promise<{ activeWorkspaceId: number }>
   createWorkspace: (projectId: number, branch: string, from?: string | null) => Promise<Workspace>
   renameWorkspace: (workspaceId: number, displayName: string | null) => Promise<ProjectListResult>
   removeWorkspace: (workspaceId: number, deleteFiles: boolean) => Promise<ProjectListResult>
@@ -408,7 +411,7 @@ export type CerebroApi = {
   disconnectGitHub: () => Promise<GitHubStatus>
   onGitHubStatus: (listener: (status: GitHubStatus) => void) => () => void
   /** Subscribe to project-list invalidation events (emitted after CLI mutations). */
-  onProjectsInvalidate: (listener: () => void) => () => void
+  onProjectsInvalidate: (listener: (change?: ProjectsChange) => void) => () => void
   /** File › Close menu (no accelerator); runs the same path as the closeTab keybind. */
   onMenuClose: (listener: () => void) => () => void
   openPty: (workspaceId: number, paneId: number) => Promise<PtyOpenResult>

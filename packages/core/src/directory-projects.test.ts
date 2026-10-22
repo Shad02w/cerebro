@@ -6,7 +6,12 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { test } from 'node:test'
 import { getDb, resetDbConnection } from './db'
-import { createProjectFromDirectory, listProjects } from './projects'
+import {
+  createProjectFromDirectory,
+  getWorkspaceContext,
+  listProjects,
+  selectActiveWorkspace
+} from './projects'
 
 const execFileAsync = promisify(execFile)
 
@@ -214,5 +219,27 @@ VALUES (?, ?, ?, ?, ?)
     assert.equal(frontendProject?.workspaces[0]?.branch, 'main')
     assert.equal(backendProject?.workspaces[0]?.branch, 'develop')
     assert.notEqual(frontendProject?.id, backendProject?.id)
+  })
+})
+
+test('selecting a workspace and resolving its context never rescan nested repositories', async () => {
+  await withHome('cerebro-select-', async (home) => {
+    const parent = join(home, 'apps')
+    await initGitRepo(join(parent, 'frontend'), 'main')
+    const project = await createProjectFromDirectory(parent)
+    const workspace = project.workspaces[0]!
+
+    assert.deepEqual(selectActiveWorkspace(workspace.id), { activeWorkspaceId: workspace.id })
+    assert.equal((await listProjects()).activeWorkspaceId, workspace.id)
+    assert.throws(() => selectActiveWorkspace(999_999), /Workspace not found/)
+
+    const context = getWorkspaceContext(workspace.id)
+    assert.equal(context.projectId, project.id)
+    assert.equal(context.workspaceId, workspace.id)
+    assert.equal(context.repositoryId, workspace.repositoryId)
+    assert.equal(context.cwd, parent)
+
+    assert.throws(() => getWorkspaceContext(999_999), /Workspace not found/)
+    assert.throws(() => getWorkspaceContext(workspace.id, 999_999), /does not belong/)
   })
 })
