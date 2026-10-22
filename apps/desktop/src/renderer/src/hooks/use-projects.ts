@@ -135,15 +135,23 @@ export function useProjects(): ProjectsState {
     onSuccess: invalidateProjects
   })
   // The row highlights and the content area switches on click; the mux write follows. A failed
-  // write restores the previous selection.
+  // write restores the previous selection. A workspace the cached list has never seen (just
+  // created) cannot be highlighted from the cache, so that case refetches the list instead.
   const selectWorkspace = useMutation({
     mutationFn: (id: number) => window.cerebro.setActiveWorkspace(id),
     onMutate: async (id: number) => {
+      const cached = queryClient.getQueryData(projectsOptions.queryKey)
+      if (!cached?.projects.some((item) => item.workspaces.some((item) => item.id === id))) {
+        return { previous: undefined, unseen: true }
+      }
       // An in-flight list fetched before this click would otherwise put the old row back.
       await queryClient.cancelQueries({ queryKey: projectsOptions.queryKey })
-      const previous = queryClient.getQueryData(projectsOptions.queryKey)?.activeWorkspaceId ?? null
       applyActiveWorkspace(id)
-      return { previous }
+      return { previous: cached.activeWorkspaceId, unseen: false }
+    },
+    // Refetch after the write so the list reports the new selection, not the one before it.
+    onSuccess: (_result, _id, context) => {
+      if (context?.unseen) void invalidateProjects()
     },
     onError: (_error, _id, context) => {
       if (context?.previous != null) applyActiveWorkspace(context.previous)

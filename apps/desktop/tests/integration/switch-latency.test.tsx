@@ -88,6 +88,25 @@ it('restores the previous workspace when the mux rejects the selection', async (
   expect(result.current.activeWorkspaceId).toBe(11)
 })
 
+it('refetches the list instead of highlighting a workspace it has never loaded', async () => {
+  let created = false
+  const listProjects = vi.fn(async () => ({
+    projects: [
+      created ? { ...project, workspaces: [...project.workspaces, workspace(13)] } : project
+    ],
+    activeWorkspaceId: created ? 13 : 11
+  }))
+  window.cerebro.listProjects = listProjects
+  window.cerebro.setActiveWorkspace = vi.fn(async (id: number) => ({ activeWorkspaceId: id }))
+  const { result } = renderHook(() => useProjects(), { wrapper })
+  await waitFor(() => expect(result.current.activeWorkspaceId).toBe(11))
+
+  created = true
+  await act(() => result.current.selectWorkspace(13))
+  await waitFor(() => expect(result.current.activeWorkspace?.id).toBe(13))
+  expect(listProjects).toHaveBeenCalledTimes(2)
+})
+
 it('skips the mux call when the workspace is already active', async () => {
   const setActiveWorkspace = vi.fn(async (id: number) => ({ activeWorkspaceId: id }))
   window.cerebro.setActiveWorkspace = setActiveWorkspace
