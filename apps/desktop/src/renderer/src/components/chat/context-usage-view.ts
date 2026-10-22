@@ -619,7 +619,7 @@ const hasClaudeRows = (usage: AgentContextUsage): boolean =>
 
 const hasCodexCall = (usage: AgentContextUsage): boolean => usage.codex != null
 
-/** Rows, bar slices, and header copy for the context popover. */
+/** Rows, bar slices, and header copy for the context panel above the composer. */
 export function contextUsageView(
   usage: AgentContextUsage,
   meta: { harness?: AgentHarness; modelLabel?: string } = {}

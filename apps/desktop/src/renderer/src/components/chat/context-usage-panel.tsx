@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, X } from 'lucide-react'
 import type { AgentContextUsage, AgentHarness } from '@cerebro/core'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import {
   contextUsageView,
@@ -68,8 +68,9 @@ function UsageRow({
     </>
   )
   const className = cn(
-    'grid w-full grid-cols-[0.5rem_1fr_auto_3.25rem] items-center gap-x-2 px-2 py-1 text-left',
-    indent && 'pl-7'
+    'grid w-full grid-cols-[0.5rem_1fr_auto_3.25rem] items-center gap-x-2 rounded-md px-2 py-1 text-left',
+    indent && 'pl-7',
+    row.expandable && 'hover:bg-muted/60'
   )
   return (
     <li data-testid="context-usage-row" data-slice={row.id}>
@@ -121,92 +122,138 @@ function UsageBar({
   )
 }
 
-export function ContextUsageRing({
+/** The ring in the composer toolbar. It opens the panel docked above the composer. */
+export function ContextUsageTrigger({
   usage,
   harness,
-  modelLabel
+  modelLabel,
+  open,
+  controls,
+  onToggle
 }: {
   usage?: AgentContextUsage
   harness?: AgentHarness
   modelLabel?: string
+  open: boolean
+  controls: string
+  onToggle: () => void
 }): React.JSX.Element | null {
   if (!usage) return null
   const view = contextUsageView(usage, { harness, modelLabel })
   const percentage = view.ringPercent
   const offset = circumference * (1 - (percentage ?? 0) / 100)
   return (
-    <Popover>
-      <PopoverTrigger
-        type="button"
-        data-testid="context-usage-ring"
-        aria-label={
-          percentage == null
-            ? 'Context usage, nothing to report yet'
-            : `${percentage}% of context used`
-        }
-        className={cn(
-          'flex shrink-0 items-center rounded-md p-1 text-xs outline-none hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-muted',
-          ringColor(percentage)
-        )}
-      >
-        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+    <button
+      type="button"
+      data-testid="context-usage-ring"
+      aria-label={
+        percentage == null
+          ? 'Context usage, nothing to report yet'
+          : `${percentage}% of context used`
+      }
+      aria-expanded={open}
+      aria-controls={controls}
+      onClick={onToggle}
+      className={cn(
+        'flex shrink-0 items-center rounded-md p-1 text-xs outline-none hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring',
+        open && 'bg-muted',
+        ringColor(percentage)
+      )}
+    >
+      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+        <circle
+          cx="7"
+          cy="7"
+          r={radius}
+          fill="none"
+          stroke="currentColor"
+          strokeOpacity="0.25"
+          strokeWidth="2"
+        />
+        {percentage == null ? null : (
           <circle
             cx="7"
             cy="7"
             r={radius}
             fill="none"
             stroke="currentColor"
-            strokeOpacity="0.25"
             strokeWidth="2"
+            strokeLinecap="round"
+            strokeDasharray={circumference}
+            strokeDashoffset={offset}
+            transform="rotate(-90 7 7)"
           />
-          {percentage == null ? null : (
-            <circle
-              cx="7"
-              cy="7"
-              r={radius}
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeDasharray={circumference}
-              strokeDashoffset={offset}
-              transform="rotate(-90 7 7)"
-            />
-          )}
-        </svg>
-      </PopoverTrigger>
-      <PopoverContent
-        side="top"
-        align="end"
-        sideOffset={8}
-        positionerClassName="z-[80]"
-        className="z-[80] w-96 bg-popover p-1.5 text-xs text-popover-foreground data-starting-style:opacity-100!"
-        data-testid="context-usage-popover"
-      >
-        <div className="px-2 pt-1.5 pb-1">
-          <p className="text-muted-foreground">{view.title}</p>
-          <p className="mt-0.5 font-medium">{view.headline}</p>
-          <p className="mt-0.5 text-muted-foreground tabular-nums">{view.summary}</p>
+        )}
+      </svg>
+    </button>
+  )
+}
+
+/**
+ * Detail panel for the context ring. It is absolutely positioned above the composer
+ * and stretches to the composer width, so it reads as part of the composer rather
+ * than a detached popover.
+ */
+export function ContextUsagePanel({
+  usage,
+  harness,
+  modelLabel,
+  open,
+  id,
+  onClose
+}: {
+  usage?: AgentContextUsage
+  harness?: AgentHarness
+  modelLabel?: string
+  open: boolean
+  id: string
+  onClose: () => void
+}): React.JSX.Element | null {
+  if (!open || !usage) return null
+  const view = contextUsageView(usage, { harness, modelLabel })
+  return (
+    <section
+      id={id}
+      data-testid="context-usage-panel"
+      aria-label={view.title}
+      className="context-usage-panel absolute inset-x-0 bottom-full z-20 mb-2 max-h-[min(34rem,70vh)] overflow-y-auto overscroll-contain rounded-2xl border bg-popover p-1.5 text-xs text-popover-foreground shadow-xl"
+    >
+      <div className="flex items-start gap-2 px-2 pt-1.5 pb-1.5">
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+            {view.title}
+          </p>
+          <p className="mt-0.5 text-sm font-medium">{view.headline}</p>
+          <p className="mt-0.5 text-[11px] text-muted-foreground tabular-nums">{view.summary}</p>
         </div>
-        {view.bar ? <UsageBar segments={view.bar} windowTokens={usage.contextWindow} /> : null}
-        {view.sections.map((group) => (
-          <section key={group.id}>
-            {group.label ? (
-              <p className="px-2 pt-2 pb-0.5 text-[10px] font-medium tracking-wide text-muted-foreground">
-                {group.label}
-              </p>
-            ) : null}
-            <ul aria-label={group.label || 'Context usage'} className="flex flex-col">
-              {group.rows.map((row) => (
-                <UsageRow key={row.id} row={row} />
-              ))}
-            </ul>
-          </section>
-        ))}
-        {view.note ? (
-          <p className="px-2 pt-2 pb-1 leading-snug text-muted-foreground">{view.note}</p>
-        ) : null}
-      </PopoverContent>
-    </Popover>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          aria-label="Close context usage"
+          onClick={onClose}
+        >
+          <X className="size-3.5" />
+        </Button>
+      </div>
+      {view.bar ? <UsageBar segments={view.bar} windowTokens={usage.contextWindow} /> : null}
+      {view.sections.map((group) => (
+        <section key={group.id}>
+          {group.label ? (
+            <p className="px-2 pt-2 pb-0.5 text-[10px] font-medium tracking-wide text-muted-foreground">
+              {group.label}
+            </p>
+          ) : null}
+          <ul aria-label={group.label || 'Context usage'} className="flex flex-col">
+            {group.rows.map((row) => (
+              <UsageRow key={row.id} row={row} />
+            ))}
+          </ul>
+        </section>
+      ))}
+      {view.note ? (
+        <p className="px-2 pt-2 pb-1 text-[11px] leading-snug text-muted-foreground">{view.note}</p>
+      ) : null}
+    </section>
   )
 }
