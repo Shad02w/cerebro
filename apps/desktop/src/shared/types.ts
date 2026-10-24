@@ -250,11 +250,6 @@ export type FileDiffContents = {
 /** Stored keyboard shortcut overrides keyed by action id (e.g. `closeTab`). */
 export type KeybindOverrides = Partial<Record<string, string>>
 
-/** Empty pane background. `stars` is the default; `ascii` is a drifting character texture. */
-export const AGENT_BACKGROUNDS = ['glow', 'stars', 'ascii', 'off'] as const
-export type AgentBackground = (typeof AGENT_BACKGROUNDS)[number]
-export const DEFAULT_AGENT_BACKGROUND: AgentBackground = 'stars'
-
 /** Mode the agent composer starts in (and returns to after sending) when vim mode is on. */
 export const COMPOSER_VIM_MODES = ['insert', 'normal'] as const
 export type ComposerVimMode = (typeof COMPOSER_VIM_MODES)[number]
@@ -266,8 +261,6 @@ export type AppSettings = {
   terminalFontSize: number
   /** `'auto'` or a CSS font-family name such as `Cerebro Mono`. */
   terminalFontFamily: string
-  /** Empty agent pane: composer glow, star field, or neither. */
-  agentBackground: AgentBackground
   /** Vim keybindings in the agent composer. Off by default. */
   composerVim: boolean
   /** Vim mode the composer starts in when `composerVim` is on. */

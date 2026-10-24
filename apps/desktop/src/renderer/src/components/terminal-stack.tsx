@@ -26,7 +26,6 @@ import '@/assets/terminal.css'
 import {
   DEFAULT_TERMINAL_FONT_SIZE,
   TERMINAL_FONT_FAMILY_AUTO,
-  type AgentBackground,
   type ComposerVimMode,
   type AgentModelDefaults,
   type LastAgent
@@ -627,7 +626,6 @@ type TerminalStackProps = {
   fontSize: number | null
   themeId: TerminalThemeId | null
   fontFamily: string | null
-  agentBackground: AgentBackground
   composerVim: boolean
   composerVimMode: ComposerVimMode
   agentModelDefaults: AgentModelDefaults
@@ -645,7 +643,6 @@ export function TerminalStack({
   fontSize,
   fontFamily,
   themeId,
-  agentBackground,
   composerVim,
   composerVimMode,
   agentModelDefaults,
@@ -777,7 +774,6 @@ export function TerminalStack({
         layoutQuery.isSuccess &&
         !workspace?.tabs.length ? (
           <WorkspaceEmptyState
-            ascii={agentBackground === 'ascii'}
             onNewTerminal={() => addTab(activeWorkspaceId)}
             onOpenChat={() => addTab(activeWorkspaceId, 'chat')}
             onOpenChanges={() => openChanges(activeWorkspaceId)}
@@ -858,7 +854,6 @@ export function TerminalStack({
                           tabLabel={tab.label}
                           visible={shown}
                           active={active}
-                          agentBackground={agentBackground}
                           composerVim={composerVim}
                           composerVimMode={composerVimMode}
                           agentModelDefaults={agentModelDefaults}
