@@ -8,7 +8,7 @@ import {
   statSync,
   type Dirent
 } from 'node:fs'
-import { basename, isAbsolute, join, resolve } from 'node:path'
+import { basename, isAbsolute, join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import {
   isWorkspaceStatus,
@@ -188,6 +188,29 @@ async function withNestedRepos(project: Project): Promise<Project> {
   const directory = project.workspaces[0]?.localPath
   if (!directory) return { ...project, nestedRepos: [] }
   return { ...project, nestedRepos: await listNestedRepos(directory) }
+}
+
+/** True when `candidate` sits inside `parent`, excluding the folder itself. */
+function isPathInsideDirectory(parent: string, candidate: string): boolean {
+  const path = relative(parent, candidate)
+  if (!path || isAbsolute(path)) return false
+  return path.split(/[\\/]/)[0] !== '..'
+}
+
+/**
+ * Projects registered by opening a checkout inside a plain directory workspace —
+ * the rows listed under a multi-root folder. Removing the folder removes them too.
+ */
+export function projectsInsideDirectory(projects: Project[], projectId: number): Project[] {
+  const parent = projects.find((project) => project.id === projectId)
+  if (!parent || !isPlainDirectory(parent)) return []
+  const root = parent.repositories[0]?.localPath
+  if (!root) return []
+  return projects.filter(
+    (project) =>
+      project.id !== projectId &&
+      project.repositories.some((repository) => isPathInsideDirectory(root, repository.localPath))
+  )
 }
 
 function directoryImportError(error: unknown): Error {
@@ -1123,6 +1146,8 @@ export async function renameWorkspace(
 
 /**
  * Unregister a project (CASCADE clears repositories and workspaces).
+ * Removing a plain directory workspace also unregisters the projects opened from
+ * its nested repository rows, so the whole folder leaves the app together.
  * When `deleteFiles` is true, first removes every nested worktree from disk.
  * Default checkouts and opened folders are never deleted from disk.
  */
@@ -1131,20 +1156,26 @@ export async function removeProject(
   options: RemoveOptions
 ): Promise<ProjectListResult> {
   const db = getDb()
-  const project = db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId) as
-    { id: number } | undefined
+  const { projects } = loadProjectsFromDb()
+  const project = projects.find((item) => item.id === projectId)
   if (!project) throw new Error('Project not found.')
 
+  const removal = [project, ...projectsInsideDirectory(projects, projectId)]
+  const placeholders = removal.map(() => '?').join(', ')
   const worktrees = db
     .prepare(
       `
 SELECT w.id, w.local_path, r.local_path AS repository_path
 FROM workspaces w
 JOIN repositories r ON r.id = w.repository_id
-WHERE w.project_id = ? AND w.kind = 'worktree'
+WHERE w.project_id IN (${placeholders}) AND w.kind = 'worktree'
       `
     )
-    .all(projectId) as Array<{ id: number; local_path: string; repository_path: string }>
+    .all(...removal.map((item) => item.id)) as Array<{
+    id: number
+    local_path: string
+    repository_path: string
+  }>
 
   if (options.deleteFiles) {
     for (const worktree of worktrees) {
@@ -1152,7 +1183,9 @@ WHERE w.project_id = ? AND w.kind = 'worktree'
     }
   }
 
-  db.prepare('DELETE FROM projects WHERE id = ?').run(projectId)
+  db.prepare(`DELETE FROM projects WHERE id IN (${placeholders})`).run(
+    ...removal.map((item) => item.id)
+  )
   ensureActiveWorkspaceValid(null, db)
   return listProjects()
 }

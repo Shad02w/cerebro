@@ -248,6 +248,7 @@ cerebro workspace list --project 3
 
 - `project delete` / `workspace delete` — remove worktree directories from disk (`git worktree remove`), then unregister.
 - `project remove` / `workspace remove` — unregister only; directories stay on disk.
+- Removing a multi-root folder also unregisters the projects opened from its nested repository rows, so the whole folder leaves the app together.
 - Default checkouts and opened folders are never deleted from disk.
 
 **Never rely on human-readable messages** to detect errors — use the `code` field and exit status.

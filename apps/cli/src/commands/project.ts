@@ -14,7 +14,7 @@ Commands:
   create <git-url>              Clone a git URL and register it as a new project
   create --directory <path>     Add a folder. Git checkouts join their repository; other folders stay separate
   delete <project-id>           Delete nested worktrees from disk, then unregister the project
-  remove <project-id>           Unregister the project; leave directories on disk
+  remove <project-id>           Unregister the project (and its nested projects); leave directories on disk
 
 Options:
   --help                        Show this help

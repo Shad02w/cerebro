@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
-import { mkdir, mkdtemp, realpath, rm } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
@@ -10,6 +10,7 @@ import {
   createProjectFromDirectory,
   getWorkspaceContext,
   listProjects,
+  removeProject,
   selectActiveWorkspace
 } from './projects'
 
@@ -241,5 +242,35 @@ test('selecting a workspace and resolving its context never rescan nested reposi
 
     assert.throws(() => getWorkspaceContext(999_999), /Workspace not found/)
     assert.throws(() => getWorkspaceContext(workspace.id, 999_999), /does not belong/)
+  })
+})
+
+test('removing a multi-root folder also unregisters projects opened from its nested rows', async () => {
+  await withHome('cerebro-remove-nested-', async (home) => {
+    const parent = join(home, 'apps')
+    const frontend = join(parent, 'frontend')
+    const backend = join(parent, 'backend')
+    const outside = join(home, 'outside')
+    await initGitRepo(frontend, 'main')
+    await initGitRepo(backend, 'develop')
+    await initGitRepo(outside, 'main')
+
+    const folder = await createProjectFromDirectory(parent)
+    const opened = await createProjectFromDirectory(backend)
+    const unrelated = await createProjectFromDirectory(outside)
+    assert.equal((await listProjects()).projects.length, 3)
+    selectActiveWorkspace(opened.workspaces[0]!.id)
+
+    const result = await removeProject(folder.id, { deleteFiles: false })
+
+    // The folder and its nested projects leave the app together; the folder on disk stays.
+    assert.deepEqual(
+      result.projects.map((project) => project.id),
+      [unrelated.id]
+    )
+    assert.equal(result.activeWorkspaceId, unrelated.workspaces[0]?.id)
+    await access(frontend)
+    await access(backend)
+    assert.throws(() => getWorkspaceContext(opened.workspaces[0]!.id), /Workspace not found/)
   })
 })

@@ -17,7 +17,7 @@ import { log, setLogProcess } from './log'
 import { readRuntimeManifest } from './runtime-manifest'
 import { StorageWorker } from './worker-client'
 import { AgentSessions } from './agents/service'
-import { isAgentHarness, type ChatCommand } from '@cerebro/core'
+import { isAgentHarness, projectsInsideDirectory, type ChatCommand } from '@cerebro/core'
 import { Terminals } from './terminals'
 import { loadShellEnv } from './shell-env'
 import type { LayoutChange } from './layout'
@@ -273,7 +273,9 @@ export async function startServer(): Promise<void> {
     } else if (p.action === 'project.remove') {
       const project = listed.projects.find((project) => project.id === positive(p.projectId))
       if (!project) throw new MuxError('not_found', 'Project not found.')
-      removed = project.workspaces.map((workspace) => workspace.id)
+      // Removing a multi-root folder also removes the projects opened from its nested rows.
+      const projects = [project, ...projectsInsideDirectory(listed.projects, project.id)]
+      removed = projects.flatMap((item) => item.workspaces.map((workspace) => workspace.id))
     }
     for (const workspaceId of removed) await agents.stopWorkspace(workspaceId)
     const removedPanes: number[] = []
