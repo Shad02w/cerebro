@@ -570,7 +570,8 @@ describe('sidebar project rows', () => {
 
     await user.hover(screen.getByTestId('workspace-row-41'))
     const rootCard = await screen.findByTestId('workspace-hover-41')
-    expect(rootCard).toHaveTextContent('Multi-root workspace')
+    expect(rootCard).toHaveTextContent('apps-folder')
+    expect(rootCard).not.toHaveTextContent('Multi-root workspace')
 
     await user.hover(screen.getByTestId('workspace-nested-repo-frontend').querySelector('button')!)
     const nestedCard = await screen.findByTestId('workspace-nested-hover-frontend')
@@ -582,6 +583,53 @@ describe('sidebar project rows', () => {
     )
     expect(nestedCard).toHaveTextContent('Approved')
     expect(nestedCard).toHaveTextContent('Yes')
+  })
+
+  it('shows the full custom folder name in the hover card', async () => {
+    const user = userEvent.setup()
+    const customName =
+      'A very long custom multi-root folder name that wraps across the popover without truncation'
+    const apps: Project = {
+      ...scratch,
+      id: 4,
+      name: 'apps-folder',
+      nestedRepos: [
+        {
+          name: 'frontend',
+          branch: 'main',
+          localPath: '/tmp/apps-folder/frontend',
+          github: null
+        }
+      ],
+      repositories: [
+        {
+          ...scratch.repositories[0]!,
+          id: 4,
+          projectId: 4,
+          name: 'apps-folder',
+          localPath: '/tmp/apps-folder'
+        }
+      ],
+      workspaces: [
+        workspace({
+          id: 41,
+          projectId: 4,
+          repositoryId: 4,
+          kind: 'default',
+          branch: '',
+          localPath: '/tmp/apps-folder',
+          displayName: customName
+        })
+      ]
+    }
+    renderSidebar('project', 41, [apps])
+
+    await user.hover(screen.getByTestId('workspace-row-41'))
+    await screen.findByTestId('workspace-hover-41')
+    const name = screen.getByTestId('workspace-hover-name-41')
+    expect(name).toHaveTextContent(customName)
+    expect(name.className).toContain('break-words')
+    expect(name.className).not.toContain('truncate')
   })
 
   it('collapses nested repositories without hiding the root sessions', async () => {

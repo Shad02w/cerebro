@@ -804,7 +804,10 @@ function ProjectItem({
                 const muted = muteWorkspaceRows && workspace.id !== activeWorkspaceId
                 return (
                   <SidebarMenuSubItem key={workspace.id}>
-                    <WorkspaceHoverCard workspace={workspace}>
+                    <WorkspaceHoverCard
+                      workspace={workspace}
+                      label={workspaceRowLabel(project, workspace)}
+                    >
                       <SidebarMenuRow data-workspace-id={workspace.id}>
                         <SidebarMenuSubButton
                           size="sm"
@@ -961,7 +964,7 @@ function NestedRepoRow({
   return (
     <li data-testid={`workspace-nested-repo-${repo.name}`}>
       {match ? (
-        <WorkspaceHoverCard workspace={match} showStatus={false}>
+        <WorkspaceHoverCard workspace={match} label={repo.name} showStatus={false}>
           {row}
         </WorkspaceHoverCard>
       ) : (
@@ -1254,7 +1257,11 @@ function PlainDirectoryRow({
         data-testid={grouped ? `workspace-root-${workspace.id}` : undefined}
         data-active={grouped && active ? 'true' : 'false'}
       >
-        <WorkspaceHoverCard workspace={workspace} multiRoot={grouped}>
+        <WorkspaceHoverCard
+          workspace={workspace}
+          label={workspaceRowLabel(project, workspace)}
+          multiRoot={grouped}
+        >
           <SidebarMenuRow data-workspace-id={workspace.id}>
             <DirectoryNameLine
               project={project}
@@ -1473,7 +1480,7 @@ function WorkspaceSearchResults({
           return (
             <SidebarMenuItem key={workspace.id}>
               <SidebarMenuRow data-workspace-id={workspace.id}>
-                <WorkspaceHoverCard workspace={workspace} showStatus={carriesStatus}>
+                <WorkspaceHoverCard workspace={workspace} label={label} showStatus={carriesStatus}>
                   <SidebarMenuButton
                     className="app-no-drag h-auto min-h-12 items-start py-2 pr-8"
                     isActive={workspace.id === activeWorkspaceId}
