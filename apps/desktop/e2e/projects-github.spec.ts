@@ -431,7 +431,7 @@ test('GitHub-linked project shows PR state and can create worktree workspaces', 
   expect(fromMain?.id).toBeTruthy()
 })
 
-test('can delete worktrees and remove projects from the app', async ({ page, githubMock }) => {
+test('can delete worktrees and remove projects from the sidebar', async ({ page, githubMock }) => {
   await connectGitHub(page, githubMock)
 
   await page.getByRole('button', { name: 'Add project' }).first().click()
@@ -456,15 +456,17 @@ test('can delete worktrees and remove projects from the app', async ({ page, git
   expect(projectMeta.defaultWorkspaceId).not.toBeNull()
   expect(projectMeta.clonePath).not.toBeNull()
 
-  // Default workspace: Delete / Remove from app are disabled with guidance tooltip.
+  // Default workspace: Remove from sidebar / Delete from disk are disabled with guidance tooltip.
   await page.getByTestId(`workspace-row-${projectMeta.defaultWorkspaceId}`).hover()
   await page.getByTestId(`workspace-menu-${projectMeta.defaultWorkspaceId}`).click()
   const defaultDelete = page.getByTestId(`workspace-delete-${projectMeta.defaultWorkspaceId}`)
   await expect(defaultDelete).toBeVisible()
-  await expect(defaultDelete.getByRole('menuitem', { name: 'Delete' })).toBeDisabled()
+  await expect(defaultDelete.getByRole('menuitem', { name: 'Delete from disk' })).toBeDisabled()
   await defaultDelete.hover()
   await expect(
-    page.getByText("Default workspace — can't be deleted. Remove the project instead.")
+    page.getByText(
+      "Default workspace — can't be removed on its own. Remove the project from the sidebar instead."
+    )
   ).toBeVisible()
   // Toggle the same trigger closed (Escape is consumed by the tooltip).
   await page.getByTestId(`workspace-menu-${projectMeta.defaultWorkspaceId}`).click()
@@ -493,14 +495,16 @@ test('can delete worktrees and remove projects from the app', async ({ page, git
   expect(reviewMeta.localPath).not.toBeNull()
   await access(reviewMeta.localPath!)
 
-  // Delete worktree from disk.
+  // Delete worktree from disk, after confirming the warning dialog.
   await page.getByTestId(`workspace-row-${reviewMeta.id}`).hover()
   await page.getByTestId(`workspace-menu-${reviewMeta.id}`).click()
   await page.getByTestId(`workspace-delete-${reviewMeta.id}`).click()
+  await expect(page.getByTestId('delete-from-disk-dialog')).toBeVisible()
+  await page.getByTestId('delete-from-disk-confirm').click()
   await expect(page.getByTestId(`workspace-row-${reviewMeta.id}`)).toHaveCount(0)
   await expect(access(reviewMeta.localPath!)).rejects.toThrow()
 
-  // Create another worktree and remove from app only.
+  // Create another worktree and remove it from the sidebar only.
   await page.getByTestId(`project-add-workspace-${projectMeta.projectId}`).click()
   await expect(page.getByTestId('workspace-branch-select')).toBeVisible({ timeout: 30_000 })
   await chooseBranch(page, 'workspace-branch-select', 'feature/conflict')
@@ -526,7 +530,7 @@ test('can delete worktrees and remove projects from the app', async ({ page, git
   await expect(page.getByTestId(`workspace-row-${conflictMeta.id}`)).toHaveCount(0)
   await access(conflictMeta.localPath!)
 
-  // Remove project from app; clone directory remains.
+  // Remove project from the sidebar; clone directory remains.
   await page.getByTestId(`project-row-${projectMeta.projectId}`).hover()
   await page.getByTestId(`project-menu-${projectMeta.projectId}`).click()
   await page.getByTestId(`project-remove-${projectMeta.projectId}`).click()

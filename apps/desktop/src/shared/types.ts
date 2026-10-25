@@ -326,12 +326,12 @@ export type CerebroApi = {
   agentCatalog: (refresh?: boolean) => Promise<AgentCatalog>
   agentSkills: (
     workspaceId: number,
-    paneId: number,
+    repositoryId: number | null,
     harness: AgentHarness
   ) => Promise<AgentSkillList>
   agentCommands: (
     workspaceId: number,
-    paneId: number,
+    repositoryId: number | null,
     harness: AgentHarness
   ) => Promise<AgentCommandList>
   agentFavorite: (key: string, favorite: boolean) => Promise<AgentCatalog>

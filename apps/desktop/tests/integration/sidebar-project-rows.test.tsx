@@ -137,7 +137,13 @@ function sidebarElement(
   sidebarGroupBy: SidebarGroupBy = 'project',
   activeWorkspaceId = 11,
   projects: Project[] = [notes, scratch],
-  onSelectWorkspace: (workspaceId: number) => void = vi.fn()
+  onSelectWorkspace: (workspaceId: number) => void = vi.fn(),
+  onRemoveProject: (projectId: number, deleteFiles: boolean) => Promise<void> = vi.fn(
+    async () => {}
+  ),
+  onRemoveWorkspace: (workspaceId: number, deleteFiles: boolean) => Promise<void> = vi.fn(
+    async () => {}
+  )
 ): React.JSX.Element {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } }
@@ -155,8 +161,8 @@ function sidebarElement(
             onAddProject={vi.fn()}
             onAddWorkspace={vi.fn()}
             onRenameWorkspace={vi.fn(async () => {})}
-            onRemoveProject={vi.fn()}
-            onRemoveWorkspace={vi.fn()}
+            onRemoveProject={onRemoveProject}
+            onRemoveWorkspace={onRemoveWorkspace}
             onSetWorkspaceStatus={vi.fn()}
             sidebarGroupBy={sidebarGroupBy}
             onSidebarGroupBy={vi.fn()}
@@ -564,7 +570,8 @@ describe('sidebar project rows', () => {
 
     await user.hover(screen.getByTestId('workspace-row-41'))
     const rootCard = await screen.findByTestId('workspace-hover-41')
-    expect(rootCard).toHaveTextContent('Multi-root workspace')
+    expect(rootCard).toHaveTextContent('apps-folder')
+    expect(rootCard).not.toHaveTextContent('Multi-root workspace')
 
     await user.hover(screen.getByTestId('workspace-nested-repo-frontend').querySelector('button')!)
     const nestedCard = await screen.findByTestId('workspace-nested-hover-frontend')
@@ -576,6 +583,53 @@ describe('sidebar project rows', () => {
     )
     expect(nestedCard).toHaveTextContent('Approved')
     expect(nestedCard).toHaveTextContent('Yes')
+  })
+
+  it('shows the full custom folder name in the hover card', async () => {
+    const user = userEvent.setup()
+    const customName =
+      'A very long custom multi-root folder name that wraps across the popover without truncation'
+    const apps: Project = {
+      ...scratch,
+      id: 4,
+      name: 'apps-folder',
+      nestedRepos: [
+        {
+          name: 'frontend',
+          branch: 'main',
+          localPath: '/tmp/apps-folder/frontend',
+          github: null
+        }
+      ],
+      repositories: [
+        {
+          ...scratch.repositories[0]!,
+          id: 4,
+          projectId: 4,
+          name: 'apps-folder',
+          localPath: '/tmp/apps-folder'
+        }
+      ],
+      workspaces: [
+        workspace({
+          id: 41,
+          projectId: 4,
+          repositoryId: 4,
+          kind: 'default',
+          branch: '',
+          localPath: '/tmp/apps-folder',
+          displayName: customName
+        })
+      ]
+    }
+    renderSidebar('project', 41, [apps])
+
+    await user.hover(screen.getByTestId('workspace-row-41'))
+    await screen.findByTestId('workspace-hover-41')
+    const name = screen.getByTestId('workspace-hover-name-41')
+    expect(name).toHaveTextContent(customName)
+    expect(name.className).toContain('break-words')
+    expect(name.className).not.toContain('truncate')
   })
 
   it('collapses nested repositories without hiding the root sessions', async () => {
@@ -719,5 +773,94 @@ describe('sidebar project rows', () => {
 
     view.rerender(sidebarElement('project', 31, [notes, ledger]))
     expect(screen.queryByTestId('workspace-row-31')).not.toBeInTheDocument()
+  })
+
+  it('lists remove-from-sidebar above delete-from-disk in the workspace menu', async () => {
+    const user = userEvent.setup()
+    const onRemoveWorkspace = vi.fn(async () => {})
+    render(
+      sidebarElement(
+        'project',
+        11,
+        [notes, scratch],
+        vi.fn(),
+        vi.fn(async () => {}),
+        onRemoveWorkspace
+      )
+    )
+
+    await user.click(screen.getByTestId('workspace-menu-12'))
+    const labels = (await screen.findAllByRole('menuitem')).map((item) => item.textContent?.trim())
+    const removeAt = labels.indexOf('Remove from sidebar')
+    expect(removeAt).toBeGreaterThan(-1)
+    expect(labels[removeAt + 1]).toBe('Delete from disk')
+    expect(screen.queryByText('Remove from app')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('menuitem', { name: 'Remove from sidebar' }))
+    expect(onRemoveWorkspace).toHaveBeenCalledWith(12, false)
+    expect(screen.queryByTestId('delete-from-disk-dialog')).not.toBeInTheDocument()
+  })
+
+  it('confirms delete-from-disk before removing a worktree from disk', async () => {
+    const user = userEvent.setup()
+    const onRemoveWorkspace = vi.fn(async () => {})
+    render(
+      sidebarElement(
+        'project',
+        11,
+        [notes, scratch],
+        vi.fn(),
+        vi.fn(async () => {}),
+        onRemoveWorkspace
+      )
+    )
+
+    await user.click(screen.getByTestId('workspace-menu-12'))
+    await user.click(await screen.findByRole('menuitem', { name: 'Delete from disk' }))
+
+    const dialog = await screen.findByTestId('delete-from-disk-dialog')
+    expect(dialog).toHaveTextContent('Delete from disk?')
+    expect(dialog).toHaveTextContent('/tmp/notes-labels')
+    expect(dialog).toHaveTextContent('Keeps the branch in the repository.')
+    expect(onRemoveWorkspace).not.toHaveBeenCalled()
+
+    await user.click(screen.getByTestId('delete-from-disk-cancel'))
+    expect(screen.queryByTestId('delete-from-disk-dialog')).not.toBeInTheDocument()
+    expect(onRemoveWorkspace).not.toHaveBeenCalled()
+
+    await user.click(screen.getByTestId('workspace-menu-12'))
+    await user.click(await screen.findByRole('menuitem', { name: 'Delete from disk' }))
+    await user.click(await screen.findByTestId('delete-from-disk-confirm'))
+    await waitFor(() => {
+      expect(onRemoveWorkspace).toHaveBeenCalledWith(12, true)
+    })
+  })
+
+  it('confirms delete-from-disk before removing a project from disk', async () => {
+    const user = userEvent.setup()
+    const onRemoveProject = vi.fn(async () => {})
+    render(
+      sidebarElement(
+        'project',
+        11,
+        [notes, scratch],
+        vi.fn(),
+        onRemoveProject,
+        vi.fn(async () => {})
+      )
+    )
+
+    await user.click(screen.getByTestId('project-menu-1'))
+    await user.click(await screen.findByRole('menuitem', { name: 'Delete from disk' }))
+
+    const dialog = await screen.findByTestId('delete-from-disk-dialog')
+    expect(dialog).toHaveTextContent('notes')
+    expect(dialog).toHaveTextContent('Deletes the worktree checkouts Cerebro created from disk.')
+    expect(dialog).toHaveTextContent('Keeps the main checkout and any folder you opened.')
+
+    await user.click(screen.getByTestId('delete-from-disk-confirm'))
+    await waitFor(() => {
+      expect(onRemoveProject).toHaveBeenCalledWith(1, true)
+    })
   })
 })

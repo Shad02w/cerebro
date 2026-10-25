@@ -11,6 +11,7 @@ import '@/assets/sidebar.css'
 import {
   ArrowLeft,
   ChevronRight,
+  CircleMinus,
   Copy,
   Folder,
   FolderPlus,
@@ -46,6 +47,10 @@ import { layoutOptions } from '@/lib/query-client'
 import { SETTINGS_SECTIONS } from '@/lib/settings-sections'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import {
+  DeleteFromDiskDialog,
+  type DeleteFromDiskTarget
+} from '@/components/delete-from-disk-dialog'
 import { RenameWorkspaceDialog } from '@/components/rename-workspace-dialog'
 import { NestedRepoHoverCard, WorkspaceHoverCard } from '@/components/workspace-hover-card'
 import { WorkspacePrPopover } from '@/components/workspace-pr-popover'
@@ -91,7 +96,7 @@ import {
 } from '@/components/ui/sidebar'
 
 const DEFAULT_WORKSPACE_TOOLTIP =
-  "Default workspace — can't be deleted. Remove the project instead."
+  "Default workspace — can't be removed on its own. Remove the project from the sidebar instead."
 
 /** Quiet section-label look shared by project rows and directory roots. */
 const sectionLabelClass = cn(
@@ -123,8 +128,8 @@ type AppSidebarProps = {
   onAddProject: () => void
   onAddWorkspace: (project: Project) => void
   onRenameWorkspace: (workspaceId: number, displayName: string | null) => Promise<void>
-  onRemoveProject: (projectId: number, deleteFiles: boolean) => void
-  onRemoveWorkspace: (workspaceId: number, deleteFiles: boolean) => void
+  onRemoveProject: (projectId: number, deleteFiles: boolean) => Promise<void>
+  onRemoveWorkspace: (workspaceId: number, deleteFiles: boolean) => Promise<void>
   onSetWorkspaceStatus: (workspaceId: number, status: WorkspaceStatus) => void
   sidebarGroupBy: SidebarGroupBy
   onSidebarGroupBy: (groupBy: SidebarGroupBy) => Promise<void> | void
@@ -323,18 +328,26 @@ function workspaceRowLabel(project: Project, workspace: Workspace): string {
   return custom || defaultWorkspaceLabel(project, workspace)
 }
 
-function DisabledDestructiveItem({
+function DisabledMenuItem({
   testId,
-  label
+  label,
+  icon: Icon,
+  destructive = false
 }: {
   testId: string
   label: string
+  icon: typeof Trash2
+  destructive?: boolean
 }): React.JSX.Element {
   return (
     <Tooltip>
       <TooltipTrigger render={<span className="flex w-full" data-testid={testId} />}>
-        <DropdownMenuItem variant="destructive" disabled className="w-full">
-          <Trash2 />
+        <DropdownMenuItem
+          variant={destructive ? 'destructive' : 'default'}
+          disabled
+          className="w-full"
+        >
+          <Icon />
           {label}
         </DropdownMenuItem>
       </TooltipTrigger>
@@ -410,6 +423,17 @@ function ProjectOverflowMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" side="right" className="w-52">
         <DropdownMenuItem
+          data-testid={`project-remove-${project.id}`}
+          onClick={(event): void => {
+            event.stopPropagation()
+            onRemoveProject(project.id, false)
+          }}
+        >
+          <CircleMinus />
+          Remove from sidebar
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
           variant="destructive"
           data-testid={`project-delete-${project.id}`}
           onClick={(event): void => {
@@ -418,18 +442,7 @@ function ProjectOverflowMenu({
           }}
         >
           <Trash2 />
-          Delete
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          variant="destructive"
-          data-testid={`project-remove-${project.id}`}
-          onClick={(event): void => {
-            event.stopPropagation()
-            onRemoveProject(project.id, false)
-          }}
-        >
-          <Trash2 />
-          Remove from app
+          Delete from disk
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -520,17 +533,31 @@ function WorkspaceOverflowMenu({
             <DropdownMenuSeparator />
             {isDefault ? (
               <>
-                <DisabledDestructiveItem
-                  testId={`workspace-delete-${workspace.id}`}
-                  label="Delete"
-                />
-                <DisabledDestructiveItem
+                <DisabledMenuItem
                   testId={`workspace-remove-${workspace.id}`}
-                  label="Remove from app"
+                  label="Remove from sidebar"
+                  icon={CircleMinus}
+                />
+                <DisabledMenuItem
+                  testId={`workspace-delete-${workspace.id}`}
+                  label="Delete from disk"
+                  icon={Trash2}
+                  destructive
                 />
               </>
             ) : (
               <>
+                <DropdownMenuItem
+                  data-testid={`workspace-remove-${workspace.id}`}
+                  onClick={(event): void => {
+                    event.stopPropagation()
+                    onRemoveWorkspace?.(workspace.id, false)
+                  }}
+                >
+                  <CircleMinus />
+                  Remove from sidebar
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem
                   variant="destructive"
                   data-testid={`workspace-delete-${workspace.id}`}
@@ -540,18 +567,7 @@ function WorkspaceOverflowMenu({
                   }}
                 >
                   <Trash2 />
-                  Delete
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  variant="destructive"
-                  data-testid={`workspace-remove-${workspace.id}`}
-                  onClick={(event): void => {
-                    event.stopPropagation()
-                    onRemoveWorkspace?.(workspace.id, false)
-                  }}
-                >
-                  <Trash2 />
-                  Remove from app
+                  Delete from disk
                 </DropdownMenuItem>
               </>
             )}
@@ -788,7 +804,10 @@ function ProjectItem({
                 const muted = muteWorkspaceRows && workspace.id !== activeWorkspaceId
                 return (
                   <SidebarMenuSubItem key={workspace.id}>
-                    <WorkspaceHoverCard workspace={workspace}>
+                    <WorkspaceHoverCard
+                      workspace={workspace}
+                      label={workspaceRowLabel(project, workspace)}
+                    >
                       <SidebarMenuRow data-workspace-id={workspace.id}>
                         <SidebarMenuSubButton
                           size="sm"
@@ -945,7 +964,7 @@ function NestedRepoRow({
   return (
     <li data-testid={`workspace-nested-repo-${repo.name}`}>
       {match ? (
-        <WorkspaceHoverCard workspace={match} showStatus={false}>
+        <WorkspaceHoverCard workspace={match} label={repo.name} showStatus={false}>
           {row}
         </WorkspaceHoverCard>
       ) : (
@@ -1003,6 +1022,17 @@ function DirectoryRowMenu({
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
+          data-testid={`project-remove-${project.id}`}
+          onClick={(event): void => {
+            event.stopPropagation()
+            onRemoveProject(project.id, false)
+          }}
+        >
+          <CircleMinus />
+          Remove from sidebar
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
           variant="destructive"
           data-testid={`project-delete-${project.id}`}
           onClick={(event): void => {
@@ -1011,18 +1041,7 @@ function DirectoryRowMenu({
           }}
         >
           <Trash2 />
-          Delete
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          variant="destructive"
-          data-testid={`project-remove-${project.id}`}
-          onClick={(event): void => {
-            event.stopPropagation()
-            onRemoveProject(project.id, false)
-          }}
-        >
-          <Trash2 />
-          Remove from app
+          Delete from disk
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -1238,7 +1257,11 @@ function PlainDirectoryRow({
         data-testid={grouped ? `workspace-root-${workspace.id}` : undefined}
         data-active={grouped && active ? 'true' : 'false'}
       >
-        <WorkspaceHoverCard workspace={workspace} multiRoot={grouped}>
+        <WorkspaceHoverCard
+          workspace={workspace}
+          label={workspaceRowLabel(project, workspace)}
+          multiRoot={grouped}
+        >
           <SidebarMenuRow data-workspace-id={workspace.id}>
             <DirectoryNameLine
               project={project}
@@ -1457,7 +1480,7 @@ function WorkspaceSearchResults({
           return (
             <SidebarMenuItem key={workspace.id}>
               <SidebarMenuRow data-workspace-id={workspace.id}>
-                <WorkspaceHoverCard workspace={workspace} showStatus={carriesStatus}>
+                <WorkspaceHoverCard workspace={workspace} label={label} showStatus={carriesStatus}>
                   <SidebarMenuButton
                     className="app-no-drag h-auto min-h-12 items-start py-2 pr-8"
                     isActive={workspace.id === activeWorkspaceId}
@@ -1761,6 +1784,9 @@ export function AppSidebar({
     setGroupBy(sidebarGroupBy)
   }
   const [renameTarget, setRenameTarget] = useState<RenameTarget | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<DeleteFromDiskTarget | null>(null)
+  const [deletePending, setDeletePending] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const openRename = (project: Project, workspace: Workspace): void => {
     const defaultName = defaultWorkspaceLabel(project, workspace)
     setRenameTarget({
@@ -1768,6 +1794,54 @@ export function AppSidebar({
       defaultName,
       currentName: workspace.displayName?.trim() || defaultName
     })
+  }
+  /** `Remove from sidebar` only unregisters; only `Delete from disk` asks first. */
+  const requestRemoveProject = (projectId: number, deleteFiles: boolean): void => {
+    if (!deleteFiles) {
+      void onRemoveProject(projectId, false)
+      return
+    }
+    const project = projects.find((item) => item.id === projectId)
+    setDeleteError(null)
+    setDeleteTarget({
+      kind: 'project',
+      projectId,
+      name: project?.name ?? 'This project'
+    })
+  }
+  const requestRemoveWorkspace = (workspaceId: number, deleteFiles: boolean): void => {
+    if (!deleteFiles) {
+      void onRemoveWorkspace(workspaceId, false)
+      return
+    }
+    const project = projects.find((item) =>
+      item.workspaces.some((workspace) => workspace.id === workspaceId)
+    )
+    const workspace = project?.workspaces.find((item) => item.id === workspaceId)
+    setDeleteError(null)
+    setDeleteTarget({
+      kind: 'workspace',
+      workspaceId,
+      name: project && workspace ? workspaceRowLabel(project, workspace) : 'This workspace',
+      path: workspace?.localPath ?? ''
+    })
+  }
+  const confirmDelete = async (): Promise<void> => {
+    if (!deleteTarget || deletePending) return
+    setDeletePending(true)
+    setDeleteError(null)
+    try {
+      if (deleteTarget.kind === 'project') {
+        await onRemoveProject(deleteTarget.projectId, true)
+      } else {
+        await onRemoveWorkspace(deleteTarget.workspaceId, true)
+      }
+      setDeleteTarget(null)
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : 'Could not delete from disk.')
+    } finally {
+      setDeletePending(false)
+    }
   }
   const query = search.trim().toLowerCase()
   const sidebarProjects = projectsBesidesNestedRepos(projects)
@@ -1875,8 +1949,8 @@ export function AppSidebar({
                         onSelectWorkspace={onSelectWorkspace}
                         onOpenAgent={openAgent}
                         onAddWorkspace={onAddWorkspace}
-                        onRemoveProject={onRemoveProject}
-                        onRemoveWorkspace={onRemoveWorkspace}
+                        onRemoveProject={requestRemoveProject}
+                        onRemoveWorkspace={requestRemoveWorkspace}
                         onRenameWorkspace={openRename}
                         onSetStatus={onSetWorkspaceStatus}
                       />
@@ -1897,7 +1971,7 @@ export function AppSidebar({
                               onRenameWorkspace={(workspace): void =>
                                 openRename(project, workspace)
                               }
-                              onRemoveProject={onRemoveProject}
+                              onRemoveProject={requestRemoveProject}
                               onSetStatus={onSetWorkspaceStatus}
                             />
                           )
@@ -1916,8 +1990,8 @@ export function AppSidebar({
                             onOpenAgent={openAgent}
                             onAddWorkspace={onAddWorkspace}
                             onRenameWorkspace={(workspace): void => openRename(project, workspace)}
-                            onRemoveProject={onRemoveProject}
-                            onRemoveWorkspace={onRemoveWorkspace}
+                            onRemoveProject={requestRemoveProject}
+                            onRemoveWorkspace={requestRemoveWorkspace}
                             onSetStatus={onSetWorkspaceStatus}
                           />
                         )
@@ -1963,6 +2037,21 @@ export function AppSidebar({
               if (!next) setRenameTarget(null)
             }}
             onRename={onRenameWorkspace}
+          />
+        ) : null}
+        {deleteTarget ? (
+          <DeleteFromDiskDialog
+            target={deleteTarget}
+            pending={deletePending}
+            error={deleteError}
+            onCancel={(): void => {
+              if (deletePending) return
+              setDeleteTarget(null)
+              setDeleteError(null)
+            }}
+            onConfirm={(): void => {
+              void confirmDelete()
+            }}
           />
         ) : null}
         <SessionSearchDialog

@@ -22,13 +22,15 @@ export function registerLayoutIpc(): void {
   ipcMain.handle(IPC.chat.catalog, (_event, refresh: boolean) =>
     muxCall('chat.catalog', { refresh })
   )
-  ipcMain.handle(IPC.chat.skills, (_event, workspaceId: number, paneId: number, harness: string) =>
-    muxCall('chat.skills', { workspaceId, paneId, harness })
+  ipcMain.handle(
+    IPC.chat.skills,
+    (_event, workspaceId: number, repositoryId: number | null, harness: string) =>
+      muxCall('chat.skills', { workspaceId, repositoryId, harness })
   )
   ipcMain.handle(
     IPC.chat.commands,
-    (_event, workspaceId: number, paneId: number, harness: string) =>
-      muxCall('chat.commands', { workspaceId, paneId, harness })
+    (_event, workspaceId: number, repositoryId: number | null, harness: string) =>
+      muxCall('chat.commands', { workspaceId, repositoryId, harness })
   )
   ipcMain.handle(IPC.chat.favorite, (_event, key: string, favorite: boolean) =>
     muxCall('chat.favorite', { key, favorite })

@@ -166,6 +166,66 @@ test('adds a folder of git repos as one workspace', async ({ page, electronApp }
   }
 })
 
+test('remove from sidebar removes a multi-root folder with its nested repositories', async ({
+  page,
+  electronApp
+}) => {
+  const root = await mkdtemp(join(tmpdir(), 'cerebro-nested-remove-e2e-'))
+  const parent = join(root, 'apps-folder')
+  const frontend = join(parent, 'frontend')
+  const backend = join(parent, 'backend')
+
+  try {
+    await initGitRepo(frontend, 'main', 'frontend-app')
+    await initGitRepo(backend, 'develop', 'backend-app')
+    await addDirectoryViaUi(page, electronApp, parent)
+
+    const folder = page.getByTestId(/workspace-row-/).filter({ hasText: 'apps-folder' })
+    await expect(folder).toBeVisible({ timeout: 30_000 })
+    const group = page.getByTestId(/workspace-root-/)
+    const backendRow = group.locator(
+      '[data-testid="workspace-nested-repo-backend"] [data-workspace-role="repository"]'
+    )
+    await backendRow.click()
+
+    // Opening a nested row registers that checkout as its own project.
+    await expect
+      .poll(async () => {
+        const listed = await page.evaluate(async () => window.cerebro.listProjects())
+        return listed.projects.length
+      })
+      .toBe(2)
+    const listed = await page.evaluate(async () => window.cerebro.listProjects())
+    const project = listed.projects.find((item) => item.name === 'apps-folder')
+    expect(project).toBeTruthy()
+
+    // Give the nested workspace content so its layout must be cleaned up too.
+    const nestedWorkspaceId = Number(await backendRow.getAttribute('data-workspace-id'))
+    await page.getByRole('button', { name: 'New Changes tab' }).click()
+    await expect(page.getByTestId('content-tab-bar')).toBeVisible()
+    const layoutBefore = await page.evaluate(async () => window.cerebro.getLayout())
+    expect(layoutBefore.workspaces[nestedWorkspaceId]).toBeTruthy()
+
+    await folder.hover()
+    await page.getByTestId(`workspace-menu-${project!.workspaces[0]!.id}`).click()
+    await page.getByTestId(`project-remove-${project!.id}`).click()
+
+    // The folder leaves the app together with the project opened from its nested row.
+    await expect(page.getByTestId(/workspace-row-/)).toHaveCount(0)
+    await expect(page.getByTestId(/project-row-/)).toHaveCount(0)
+    await expect(page.getByTestId('content-tab-bar')).toHaveCount(0)
+    const layoutAfter = await page.evaluate(async () => window.cerebro.getLayout())
+    expect(layoutAfter.workspaces[nestedWorkspaceId]).toBeUndefined()
+    const remaining = await page.evaluate(async () => window.cerebro.listProjects())
+    expect(remaining.projects).toHaveLength(0)
+    expect(remaining.activeWorkspaceId).toBeNull()
+    await access(frontend)
+    await access(backend)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test('opens changes for a nested repository from that row', async ({ page, electronApp }) => {
   const root = await mkdtemp(join(tmpdir(), 'cerebro-nested-changes-e2e-'))
   const parent = join(root, 'apps-folder')
@@ -443,7 +503,7 @@ test('adds a leftover submodule folder as its own workspace', async ({ page, ele
   }
 })
 
-test('remove from app unregisters a directory project but keeps the folder', async ({
+test('remove from sidebar unregisters a directory project but keeps the folder', async ({
   page,
   electronApp
 }) => {
@@ -470,7 +530,7 @@ test('remove from app unregisters a directory project but keeps the folder', asy
     await page.getByTestId(`workspace-menu-${defaultWorkspace!.id}`).click()
     await expect(
       page.getByTestId(`workspace-delete-${defaultWorkspace!.id}`).getByRole('menuitem', {
-        name: 'Delete'
+        name: 'Delete from disk'
       })
     ).toBeDisabled()
     await page.keyboard.press('Escape')
@@ -513,6 +573,8 @@ test('project delete leaves an opened-folder checkout on disk', async ({ page, e
     await page.getByTestId(`project-row-${project!.id}`).hover()
     await page.getByTestId(`project-menu-${project!.id}`).click()
     await page.getByTestId(`project-delete-${project!.id}`).click()
+    await expect(page.getByTestId('delete-from-disk-dialog')).toBeVisible()
+    await page.getByTestId('delete-from-disk-confirm').click()
 
     await expect(page.getByTestId(`project-row-${project!.id}`)).toHaveCount(0)
     await access(repo)

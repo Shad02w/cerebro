@@ -97,6 +97,7 @@ async function rewindUploads(
 export function ChatView({
   workspaceId,
   paneId,
+  repositoryId = null,
   visible = true,
   active = false,
   composerVim = false,
@@ -108,6 +109,8 @@ export function ChatView({
 }: {
   workspaceId: number
   paneId: number
+  /** The pane's repository in a multi-repo workspace. */
+  repositoryId?: number | null
   visible?: boolean
   active?: boolean
   composerVim?: boolean
@@ -205,10 +208,23 @@ export function ChatView({
     [catalogModels, agentModelDefaults, lastAgent]
   )
   const selected = selection ?? session?.model ?? resolved
-  const skillQuery = useQuery(agentSkillOptions(workspaceId, paneId, selected?.harness))
+  // Listing skills starts a harness process. A new pane waits until the `/` menu opens;
+  // a transcript needs the list at once to show its skill chips.
+  const [catalogWanted, setCatalogWanted] = useState(false)
+  const catalogScope = {
+    workspaceId,
+    repositoryId,
+    harness: selected?.harness,
+    provider: selected?.provider,
+    enabled: catalogWanted || Boolean(items?.length)
+  }
+  const skillQuery = useQuery(agentSkillOptions(catalogScope))
   const skillList = skillQuery.data?.skills ?? noSkills
-  const commandQuery = useQuery(agentCommandOptions(workspaceId, paneId, selected?.harness))
+  const commandQuery = useQuery(agentCommandOptions(catalogScope))
   const commandList = commandQuery.data?.commands ?? noCommands
+  const catalogLoading =
+    selected?.harness != null && (skillQuery.isPending || commandQuery.isPending)
+  const wantCatalog = useCallback(() => setCatalogWanted(true), [])
   const inFlight = useRef(false)
   const pendingSend = useRef<{ id: string; text: string; key?: string } | null>(null)
   const viewRef = useRef<HTMLDivElement>(null)
@@ -830,6 +846,8 @@ export function ChatView({
                     commands={commandList}
                     workspaceId={workspaceId}
                     skillIssue={skillList.length ? '' : (skillQuery.data?.issue ?? '')}
+                    skillsLoading={catalogLoading}
+                    onSkillMenuOpen={wantCatalog}
                     getAttachments={() => readDraft().attachments}
                     onDocument={onDocument}
                     vim={vimOptions}

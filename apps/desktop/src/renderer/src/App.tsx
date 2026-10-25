@@ -198,12 +198,12 @@ function App(): React.JSX.Element {
             onAddProject={(): void => setProjectDialogOpen(true)}
             onAddWorkspace={(project): void => setWorkspaceDialogProject(project)}
             onRenameWorkspace={renameWorkspace}
-            onRemoveProject={(projectId, deleteFiles): void => {
-              void removeProject(projectId, deleteFiles)
-            }}
-            onRemoveWorkspace={(workspaceId, deleteFiles): void => {
-              void removeWorkspace(workspaceId, deleteFiles)
-            }}
+            onRemoveProject={(projectId, deleteFiles): Promise<void> =>
+              removeProject(projectId, deleteFiles)
+            }
+            onRemoveWorkspace={(workspaceId, deleteFiles): Promise<void> =>
+              removeWorkspace(workspaceId, deleteFiles)
+            }
             sidebarGroupBy={settings?.sidebarGroupBy ?? 'project'}
             onSidebarGroupBy={(groupBy: SidebarGroupBy): Promise<void> =>
               updateSettings({ sidebarGroupBy: groupBy }).then(() => undefined)

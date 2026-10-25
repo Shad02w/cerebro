@@ -227,11 +227,14 @@ function PullRequestDetails({
 
 export function WorkspaceHoverCard({
   workspace,
+  label,
   showStatus = true,
   multiRoot = false,
   children
 }: {
   workspace?: Workspace
+  /** Sidebar row name, including a custom rename. */
+  label: string
   showStatus?: boolean
   /** A directory workspace that contains multiple git checkouts. */
   multiRoot?: boolean
@@ -244,6 +247,8 @@ export function WorkspaceHoverCard({
     : workspace.kind === 'root'
       ? 'Root workspace'
       : 'Folder workspace'
+  const name = label.trim() || fallbackLabel
+  const branch = workspace.branch && workspace.branch !== '.' ? workspace.branch : null
   return (
     <HoverCardPreview
       label="Workspace details"
@@ -251,7 +256,15 @@ export function WorkspaceHoverCard({
       trigger={children}
     >
       <div className="space-y-1">
-        <p className="break-words font-medium">{workspace.branch || fallbackLabel}</p>
+        <p
+          className="min-w-0 break-words font-medium"
+          data-testid={`workspace-hover-name-${workspace.id}`}
+        >
+          {name}
+        </p>
+        {branch && branch !== name ? (
+          <p className="min-w-0 break-words text-xs text-muted-foreground">{branch}</p>
+        ) : null}
         {showStatus ? (
           <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <WorkspaceStatusIcon status={workspaceStatus(workspace.status)} />
