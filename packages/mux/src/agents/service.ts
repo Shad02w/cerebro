@@ -320,6 +320,29 @@ function lastReply(session: AgentSession): string {
   return text ? text.text.trim().replace(/\s+/g, ' ').slice(0, 200) : 'Finished the task.'
 }
 
+const DISCOVERY_TTL_MS = 60_000
+const DISCOVERY_LIMIT = 2
+/** A finished lookup has `at`; one still running shares its promise with later callers. */
+type Discovery<T> = { value: Promise<T>; at?: number }
+/** Runs at most `limit` tasks at once, in arrival order. */
+class Limiter {
+  private active = 0
+  private waiting: Array<() => void> = []
+  constructor(private limit: number) {}
+  async run<T>(task: () => Promise<T>): Promise<T> {
+    // A finishing task hands its slot straight to the next waiter, so `active` never overshoots.
+    if (this.active < this.limit) this.active++
+    else await new Promise<void>((resolve) => this.waiting.push(resolve))
+    try {
+      return await task()
+    } finally {
+      const next = this.waiting.shift()
+      if (next) next()
+      else this.active--
+    }
+  }
+}
+
 /** Persistent logical sessions. UI attachments never own a native process. */
 export class AgentSessions {
   private sessions = new Map<string, AgentSession>()
@@ -332,8 +355,12 @@ export class AgentSessions {
   private timers = new Map<string, ReturnType<typeof setTimeout>>()
   private catalog?: AgentCatalog
   private loadingCatalog?: Promise<AgentCatalog>
-  private skillCache = new Map<string, { at: number; skills: AgentSkillList['skills'] }>()
-  private commandCache = new Map<string, { at: number; commands: AgentCommandList['commands'] }>()
+  /**
+   * Skills and commands per harness and folder. Each lookup starts a harness process, so callers
+   * share one in-flight lookup and at most `DISCOVERY_LIMIT` run at once.
+   */
+  private discovered = new Map<string, Discovery<unknown>>()
+  private discoveryQueue = new Limiter(DISCOVERY_LIMIT)
   private searchIndex?: SessionSearchIndex
   private stopping = false
   constructor(
@@ -515,33 +542,46 @@ export class AgentSessions {
   }
   /** Skills for one harness in a workspace. Failures become an empty list so the composer still opens. */
   async skills(harness: AgentHarness, cwd: string): Promise<AgentSkillList> {
-    const key = `${harness}\0${cwd}`
-    const cached = this.skillCache.get(key)
-    if (cached && Date.now() - cached.at < 15_000) return { skills: cached.skills }
     const load = this.drivers[harness].skills
     if (!load) return { skills: [] }
     try {
-      const skills = await load(cwd)
-      this.skillCache.set(key, { at: Date.now(), skills })
-      return { skills }
+      return { skills: await this.discover('skills', harness, cwd, load) }
     } catch (error) {
       return { skills: [], issue: error instanceof Error ? error.message : String(error) }
     }
   }
   /** Slash commands for one harness in a workspace. Failures become an empty list so the composer still opens. */
   async commands(harness: AgentHarness, cwd: string): Promise<AgentCommandList> {
-    const key = `${harness}\0${cwd}`
-    const cached = this.commandCache.get(key)
-    if (cached && Date.now() - cached.at < 15_000) return { commands: cached.commands }
     const load = this.drivers[harness].commands
     if (!load) return { commands: [] }
     try {
-      const commands = await load(cwd)
-      this.commandCache.set(key, { at: Date.now(), commands })
-      return { commands }
+      return { commands: await this.discover('commands', harness, cwd, load) }
     } catch (error) {
       return { commands: [], issue: error instanceof Error ? error.message : String(error) }
     }
+  }
+  private discover<T>(
+    kind: 'skills' | 'commands',
+    harness: AgentHarness,
+    cwd: string,
+    load: (cwd: string) => Promise<T>
+  ): Promise<T> {
+    const key = `${kind}\0${harness}\0${cwd}`
+    const entry = this.discovered.get(key) as Discovery<T> | undefined
+    if (entry && (!entry.at || Date.now() - entry.at < DISCOVERY_TTL_MS)) return entry.value
+    const value = this.discoveryQueue.run(() => load(cwd))
+    const next: Discovery<T> = { value }
+    this.discovered.set(key, next)
+    value.then(
+      () => {
+        next.at = Date.now()
+      },
+      () => {
+        // A failure is not cached, so the next open asks again.
+        if (this.discovered.get(key) === next) this.discovered.delete(key)
+      }
+    )
+    return value
   }
   async models(refresh = false): Promise<AgentCatalog> {
     if (this.catalog && !refresh) return { ...this.catalog, favorites: this.favorites }

@@ -17,46 +17,71 @@ export const catalogOptions = {
   staleTime: 60_000
 }
 
-/** Skills the composer can mention for the selected harness in this pane. */
-export function agentSkillOptions(
-  workspaceId: number,
-  paneId: number,
+type ComposerCatalogScope = {
+  workspaceId: number
+  /** The pane's repository in a multi-repo workspace; it picks the folder the harness reads. */
+  repositoryId: number | null
   harness: AgentHarness | undefined
-): {
-  queryKey: readonly ['agent-skills', number, number, AgentHarness | undefined]
+  provider: string | undefined
+  /** Lists are fetched only once they are needed, never because a pane opened. */
   enabled: boolean
-  queryFn: () => Promise<AgentSkillList>
-  staleTime: number
-} {
+}
+/**
+ * Asking a harness for its skills or commands starts a native process, so every chat pane in a
+ * folder shares one entry. Focus does not refetch; a stale entry refetches when it is needed again.
+ */
+const composerCatalog = {
+  staleTime: 60_000,
+  refetchOnWindowFocus: false,
+  refetchOnReconnect: false
+} as const
+type ComposerCatalogKey<Kind extends string> = readonly [
+  Kind,
+  number,
+  number | null,
+  AgentHarness | undefined,
+  string | undefined
+]
+type ComposerCatalogOptions<Kind extends string, T> = typeof composerCatalog & {
+  queryKey: ComposerCatalogKey<Kind>
+  enabled: boolean
+  queryFn: () => Promise<T>
+}
+
+/** Skills the composer can mention for the selected harness in this folder. */
+export function agentSkillOptions({
+  workspaceId,
+  repositoryId,
+  harness,
+  provider,
+  enabled
+}: ComposerCatalogScope): ComposerCatalogOptions<'agent-skills', AgentSkillList> {
   return {
-    queryKey: ['agent-skills', workspaceId, paneId, harness] as const,
-    enabled: harness != null,
+    queryKey: ['agent-skills', workspaceId, repositoryId, harness, provider] as const,
+    enabled: enabled && harness != null,
     queryFn: () => {
       if (!harness) throw new Error('Choose a model first.')
-      return window.cerebro.agentSkills(workspaceId, paneId, harness)
+      return window.cerebro.agentSkills(workspaceId, repositoryId, harness)
     },
-    staleTime: 15_000
+    ...composerCatalog
   }
 }
 
-/** Slash commands the composer can run for the selected harness in this pane. */
-export function agentCommandOptions(
-  workspaceId: number,
-  paneId: number,
-  harness: AgentHarness | undefined
-): {
-  queryKey: readonly ['agent-commands', number, number, AgentHarness | undefined]
-  enabled: boolean
-  queryFn: () => Promise<AgentCommandList>
-  staleTime: number
-} {
+/** Slash commands the composer can run for the selected harness in this folder. */
+export function agentCommandOptions({
+  workspaceId,
+  repositoryId,
+  harness,
+  provider,
+  enabled
+}: ComposerCatalogScope): ComposerCatalogOptions<'agent-commands', AgentCommandList> {
   return {
-    queryKey: ['agent-commands', workspaceId, paneId, harness] as const,
-    enabled: harness != null,
+    queryKey: ['agent-commands', workspaceId, repositoryId, harness, provider] as const,
+    enabled: enabled && harness != null,
     queryFn: () => {
       if (!harness) throw new Error('Choose a model first.')
-      return window.cerebro.agentCommands(workspaceId, paneId, harness)
+      return window.cerebro.agentCommands(workspaceId, repositoryId, harness)
     },
-    staleTime: 15_000
+    ...composerCatalog
   }
 }

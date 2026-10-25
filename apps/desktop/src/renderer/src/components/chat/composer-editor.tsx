@@ -43,6 +43,7 @@ import {
   type ChatSkillRef
 } from '@cerebro/core'
 import { cn } from '@/lib/utils'
+import { Skeleton } from '@/components/ui/skeleton'
 import { imageFiles, type Chip } from './chat-attachments'
 import {
   codeLanguages,
@@ -77,6 +78,7 @@ const skillMentionKey = new PluginKey('skillMention')
 const fileMentionKey = new PluginKey('fileMention')
 const skillHighlightKey = new PluginKey('skillHighlight')
 
+type SkillMenuStatus = { issue: string; loading: boolean; onOpen?: () => void }
 type SkillCatalog = { current: readonly AgentSkill[]; commands?: readonly AgentCommand[] }
 type MenuOption = AgentSkill | AgentCommand
 const isCommand = (option: MenuOption): option is AgentCommand => 'source' in option
@@ -526,13 +528,16 @@ function SkillMenu({
   items,
   query,
   command,
-  issue
+  issue,
+  loading = false
 }: {
   ref?: React.Ref<TagMenuHandle>
   items: MenuOption[]
   query: string
   command: (item: MenuOption) => void
   issue?: string
+  /** The harness has not answered yet. */
+  loading?: boolean
 }): React.JSX.Element {
   const itemsKey = items.map((item) => item.id).join('\0')
   const { highlighted, move, highlightIndex, listRef, optionRef } = useMenuHighlight(
@@ -607,6 +612,15 @@ function SkillMenu({
             </button>
           </Fragment>
         ))
+      ) : loading ? (
+        <div data-testid="composer-skill-menu-loading" aria-busy="true" className="space-y-1 p-1">
+          {[0, 1, 2].map((row) => (
+            <div key={row} className="space-y-1.5 px-1 py-1.5">
+              <Skeleton className="h-3.5 w-1/3" />
+              <Skeleton className="h-3 w-4/5" />
+            </div>
+          ))}
+        </div>
       ) : (
         <p className="px-2 py-3 text-center text-sm break-words text-muted-foreground">
           {query ? 'No matches' : issue || 'No commands or skills'}
@@ -649,7 +663,7 @@ const extensionsFor = (
   catalog: SkillCatalog,
   interactive: boolean,
   menuRefresh?: { current: (() => void) | null },
-  issue?: { current: string },
+  menuStatus?: { current: SkillMenuStatus },
   files?: WorkspaceFileIndex,
   workspaceId?: { current: number | null }
 ): Extensions => {
@@ -780,7 +794,8 @@ const extensionsFor = (
                   props.query,
                   atMessageStart(props.editor.state, props.query)
                 ),
-                issue: issue?.current
+                issue: menuStatus?.current.issue,
+                loading: menuStatus?.current.loading
               })
             }
             if (menuRefresh) {
@@ -791,6 +806,7 @@ const extensionsFor = (
             return {
               onStart: (props) => {
                 menuOpen.current = true
+                menuStatus?.current.onOpen?.()
                 component = new ReactRenderer(SkillMenu, { props, editor: props.editor })
                 unmount = props.mount(component.element)
                 show(props)
@@ -898,6 +914,8 @@ export function ComposerEditor({
   skills,
   commands = noCommands,
   skillIssue = '',
+  skillsLoading = false,
+  onSkillMenuOpen,
   workspaceId = null,
   getAttachments,
   onDocument,
@@ -916,6 +934,10 @@ export function ComposerEditor({
   commands?: readonly AgentCommand[]
   /** Shown in the empty skill menu when the harness could not be asked. */
   skillIssue?: string
+  /** Shows a skeleton in the empty skill menu while the harness lists its skills. */
+  skillsLoading?: boolean
+  /** Called when `/` opens the skill menu, so the lists load only once they are wanted. */
+  onSkillMenuOpen?: () => void
   /** Workspace whose working directory `@` searches. */
   workspaceId?: number | null
   getAttachments: () => ChatAttachmentUpload[]
@@ -943,16 +965,20 @@ export function ComposerEditor({
   // through, so it inserts the markdown newline instead of sending.
   const lineBreak = useRef(false)
   const catalogRef = useRef<SkillCatalog>({ current: skills })
-  const issueRef = useRef(skillIssue)
+  const menuStatusRef = useRef<SkillMenuStatus>({
+    issue: skillIssue,
+    loading: skillsLoading,
+    onOpen: onSkillMenuOpen
+  })
   const menuRefreshRef = useRef<(() => void) | null>(null)
   const filesRef = useRef<WorkspaceFileIndex>({ current: new Set(), generation: 0 })
   const workspaceIdRef = useRef<number | null>(workspaceId)
   useLayoutEffect(() => {
     catalogRef.current.current = skills
     catalogRef.current.commands = commands
-    issueRef.current = skillIssue
+    menuStatusRef.current = { issue: skillIssue, loading: skillsLoading, onOpen: onSkillMenuOpen }
     workspaceIdRef.current = workspaceId
-  }, [commands, skillIssue, skills, workspaceId])
+  }, [commands, onSkillMenuOpen, skillIssue, skills, skillsLoading, workspaceId])
   const setup = useMemo(() => {
     const menuOpen = { current: false }
     return {
@@ -967,7 +993,7 @@ export function ComposerEditor({
         // eslint-disable-next-line react-hooks/refs -- the suggestion renderer stores its refresh here
         menuRefreshRef,
         // eslint-disable-next-line react-hooks/refs -- read when the menu renders, not during this render
-        issueRef,
+        menuStatusRef,
         // eslint-disable-next-line react-hooks/refs -- the file index is filled after the walk resolves
         filesRef.current,
         // eslint-disable-next-line react-hooks/refs -- read when @ is typed, not during this render
@@ -1054,7 +1080,7 @@ export function ComposerEditor({
   }, [editor, skillKey])
   useEffect(() => {
     menuRefreshRef.current?.()
-  }, [commands, skillIssue])
+  }, [commands, skillIssue, skillsLoading])
   useEffect(() => {
     if (!editor || editor.isDestroyed || workspaceId == null) return
     let cancel = false
