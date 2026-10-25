@@ -8,12 +8,9 @@ type WorkspaceEmptyStateProps = {
   onNewTerminal: () => void
   onOpenChat: () => void
   onOpenChanges: () => void
-  /** Draw the drifting ASCII texture behind the guide. */
-  ascii?: boolean
 }
 
 export function WorkspaceEmptyState({
-  ascii = false,
   onNewTerminal,
   onOpenChanges,
   onOpenChat
@@ -27,7 +24,7 @@ export function WorkspaceEmptyState({
       data-testid="workspace-empty-state"
       className="relative isolate flex h-full flex-col items-center justify-center gap-6 px-6 text-center"
     >
-      {ascii ? <AsciiField /> : null}
+      <AsciiField />
       <BrainMark />
       <div className="space-y-1">
         <h2 className="text-lg font-medium">Start in this workspace</h2>

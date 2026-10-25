@@ -1,9 +1,7 @@
 import type { TerminalThemeId } from '@shared/terminal-themes'
 import { Plus } from 'lucide-react'
 import {
-  DEFAULT_AGENT_BACKGROUND,
   type ComposerVimMode,
-  type AgentBackground,
   type AgentModelDefaults,
   type LastAgent,
   type Workspace
@@ -24,7 +22,6 @@ type WorkspaceViewProps = {
   terminalTheme: TerminalThemeId | null
   terminalFontSize: number | null
   terminalFontFamily: string | null
-  agentBackground: AgentBackground | null
   composerVim: boolean
   composerVimMode: ComposerVimMode
   agentModelDefaults: AgentModelDefaults
@@ -45,7 +42,6 @@ export function WorkspaceView({
   terminalTheme,
   terminalFontSize,
   terminalFontFamily,
-  agentBackground,
   composerVim,
   composerVimMode,
   agentModelDefaults,
@@ -67,7 +63,7 @@ export function WorkspaceView({
     <div className="relative flex min-h-0 flex-1 flex-col">
       {!workspace ? (
         <div className="absolute inset-0 isolate z-10 flex flex-col items-center justify-center gap-3 bg-background px-8 text-center">
-          {agentBackground === 'ascii' ? <AsciiField /> : null}
+          <AsciiField />
           <BrainMark className="mb-8" />
           {hasProjects ? null : (
             <div className="space-y-1">
@@ -98,7 +94,6 @@ export function WorkspaceView({
         themeId={terminalTheme}
         fontSize={terminalFontSize}
         fontFamily={terminalFontFamily}
-        agentBackground={agentBackground ?? DEFAULT_AGENT_BACKGROUND}
         composerVim={composerVim}
         composerVimMode={composerVimMode}
         agentModelDefaults={agentModelDefaults}

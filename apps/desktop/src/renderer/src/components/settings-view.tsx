@@ -4,15 +4,8 @@ import { CliSettings } from '@/components/cli-settings'
 import { DiagnosticsSettings } from '@/components/diagnostics-settings'
 import type { TerminalThemeId } from '@shared/terminal-themes'
 import { useEffect, useRef, useState } from 'react'
-import type {
-  AgentBackground,
-  AppSettings,
-  AppSettingsPatch,
-  ComposerVimMode,
-  GitHubStatus
-} from '@shared/types'
+import type { AppSettings, AppSettingsPatch, ComposerVimMode, GitHubStatus } from '@shared/types'
 import {
-  AGENT_BACKGROUNDS,
   MAX_TERMINAL_FONT_SIZE,
   MIN_TERMINAL_FONT_SIZE,
   TERMINAL_FONT_FAMILY_AUTO
@@ -127,13 +120,6 @@ type GeneralSettingsProps = {
   onPickDirectory: () => Promise<string | null>
 }
 
-const AGENT_BACKGROUND_ITEMS = [
-  { value: 'glow', label: 'Glow' },
-  { value: 'stars', label: 'Stars' },
-  { value: 'ascii', label: 'ASCII' },
-  { value: 'off', label: 'Off' }
-]
-
 const COMPOSER_VIM_ITEMS = [
   { value: 'off', label: 'Off' },
   { value: 'on', label: 'On' }
@@ -187,20 +173,6 @@ function GeneralSettings({
     }
   }
 
-  const savingBackground = useRef(false)
-  const persistAgentBackground = async (value: AgentBackground): Promise<void> => {
-    if (savingBackground.current || value === settings.agentBackground) return
-    savingBackground.current = true
-    setLocalError(null)
-    try {
-      await onUpdate({ agentBackground: value })
-    } catch (err) {
-      setLocalError(err instanceof Error ? err.message : 'Failed to save agent background.')
-    } finally {
-      savingBackground.current = false
-    }
-  }
-
   const savingVim = useRef(false)
   const persistComposerVim = async (patch: {
     composerVim?: boolean
@@ -222,41 +194,6 @@ function GeneralSettings({
     <section className="space-y-6" data-testid="settings-general">
       <div className="space-y-3">
         <h2 className="text-xs font-medium text-muted-foreground">Agent</h2>
-        <div className="flex items-start justify-between gap-6">
-          <div className="min-w-0 flex-1 space-y-1">
-            <Label htmlFor="agent-background" className="text-[13px] font-medium">
-              Background
-            </Label>
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              Glow sits behind the composer. Stars fill the empty pane until the first message is
-              sent. ASCII fills empty panes with drifting characters that ripple when you click
-              empty space. Off leaves the pane plain.
-            </p>
-          </div>
-          <Select
-            items={AGENT_BACKGROUND_ITEMS}
-            value={settings.agentBackground}
-            onValueChange={(value): void => {
-              const next = AGENT_BACKGROUNDS.find((background) => background === value)
-              if (next) void persistAgentBackground(next)
-            }}
-          >
-            <SelectTrigger
-              id="agent-background"
-              className="h-7 w-36"
-              data-testid="settings-agent-background"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {AGENT_BACKGROUND_ITEMS.map((item) => (
-                <SelectItem key={item.value} value={item.value}>
-                  {item.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
         <div className="flex items-start justify-between gap-6">
           <div className="min-w-0 flex-1 space-y-1">
             <Label htmlFor="composer-vim" className="text-[13px] font-medium">

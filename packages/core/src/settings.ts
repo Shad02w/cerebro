@@ -10,13 +10,11 @@ import type {
   SidebarGroupBy
 } from './types'
 import {
-  DEFAULT_AGENT_BACKGROUND,
   DEFAULT_COMPOSER_VIM_MODE,
   DEFAULT_TERMINAL_FONT_SIZE,
   MAX_TERMINAL_FONT_SIZE,
   MIN_TERMINAL_FONT_SIZE,
   TERMINAL_FONT_FAMILY_AUTO,
-  isAgentBackground,
   isComposerVimMode
 } from './types'
 import { getDb } from './db'
@@ -30,7 +28,6 @@ type StoredSettings = {
   terminalTheme?: string
   terminalFontSize?: number
   terminalFontFamily?: string
-  agentBackground?: string
   composerVim?: boolean
   composerVimMode?: string
   keybinds?: Record<string, string>
@@ -45,7 +42,6 @@ function defaultSettings(): AppSettings {
     terminalTheme: DEFAULT_TERMINAL_THEME,
     terminalFontSize: DEFAULT_TERMINAL_FONT_SIZE,
     terminalFontFamily: TERMINAL_FONT_FAMILY_AUTO,
-    agentBackground: DEFAULT_AGENT_BACKGROUND,
     composerVim: false,
     composerVimMode: DEFAULT_COMPOSER_VIM_MODE,
     keybinds: {},
@@ -260,15 +256,11 @@ function mergeSettings(stored: StoredSettings): AppSettings {
   const terminalTheme = isTerminalThemeId(stored.terminalTheme)
     ? stored.terminalTheme
     : DEFAULT_TERMINAL_THEME
-  const agentBackground = isAgentBackground(stored.agentBackground)
-    ? stored.agentBackground
-    : DEFAULT_AGENT_BACKGROUND
   return {
     defaultCloneDir,
     terminalFontSize,
     terminalFontFamily,
     terminalTheme,
-    agentBackground,
     composerVim: stored.composerVim === true,
     composerVimMode: isComposerVimMode(stored.composerVimMode)
       ? stored.composerVimMode
@@ -321,11 +313,6 @@ export function setSettings(patch: AppSettingsPatch): AppSettings {
       throw new Error('Sidebar grouping must be project or status.')
     }
     next.sidebarGroupBy = patch.sidebarGroupBy
-  }
-
-  if (patch.agentBackground !== undefined) {
-    if (!isAgentBackground(patch.agentBackground)) throw new Error('Unknown agent background.')
-    next.agentBackground = patch.agentBackground
   }
 
   if (patch.composerVim !== undefined) {

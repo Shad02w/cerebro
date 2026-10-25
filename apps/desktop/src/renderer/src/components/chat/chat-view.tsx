@@ -25,18 +25,11 @@ import {
   type ChatItem as ChatTranscriptItem,
   type ChatView as ChatSnapshot
 } from '@cerebro/core'
-import {
-  DEFAULT_AGENT_BACKGROUND,
-  type AgentBackground,
-  type ComposerVimMode,
-  type AgentModelDefaults,
-  type LastAgent
-} from '@shared/types'
+import { type ComposerVimMode, type AgentModelDefaults, type LastAgent } from '@shared/types'
 import { AsciiField } from '@/components/ascii-field'
 import { Button } from '@/components/ui/button'
 import { SuccessToast, type ToastTone } from '@/components/success-toast'
 import { acceptLayout } from '@/lib/query-client'
-import { StarsBackground } from '@/lib/stars-background'
 import { defaultChatTabLabel, generatedTabLabel, promptTabLabel } from '@/lib/thread-tab-title'
 import { cn } from '@/lib/utils'
 import { ChatItem, WorkingGroup } from './chat-item'
@@ -107,7 +100,6 @@ export function ChatView({
   repositoryId = null,
   visible = true,
   active = false,
-  agentBackground = DEFAULT_AGENT_BACKGROUND,
   composerVim = false,
   composerVimMode = 'insert',
   agentModelDefaults,
@@ -121,7 +113,6 @@ export function ChatView({
   repositoryId?: number | null
   visible?: boolean
   active?: boolean
-  agentBackground?: AgentBackground
   composerVim?: boolean
   composerVimMode?: ComposerVimMode
   agentModelDefaults: AgentModelDefaults
@@ -611,26 +602,15 @@ export function ChatView({
     editorRef.current?.focus()
   }, [active, loading])
   const alertText = session?.error ?? (view.error ? String(view.error) : null)
-  const starsWanted = agentBackground === 'stars' && empty
-  const asciiWanted = agentBackground === 'ascii' && empty
-  const [starPhase, setStarPhase] = useState<'on' | 'out' | 'off'>('off')
-  if (starsWanted && starPhase !== 'on') setStarPhase('on')
-  else if (!starsWanted && starPhase === 'on') setStarPhase('out')
   const [asciiPhase, setAsciiPhase] = useState<'on' | 'out' | 'off'>('off')
-  if (asciiWanted && asciiPhase !== 'on') setAsciiPhase('on')
-  else if (!asciiWanted && asciiPhase === 'on') setAsciiPhase('out')
+  if (empty && asciiPhase !== 'on') setAsciiPhase('on')
+  else if (!empty && asciiPhase === 'on') setAsciiPhase('out')
   useEffect(() => {
-    if (starPhase !== 'out' && asciiPhase !== 'out') return
+    if (asciiPhase !== 'out') return
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    const timeout = window.setTimeout(
-      () => {
-        setStarPhase((phase) => (phase === 'out' ? 'off' : phase))
-        setAsciiPhase((phase) => (phase === 'out' ? 'off' : phase))
-      },
-      reduce ? 0 : 480
-    )
+    const timeout = window.setTimeout(() => setAsciiPhase('off'), reduce ? 0 : 480)
     return () => window.clearTimeout(timeout)
-  }, [starPhase, asciiPhase])
+  }, [asciiPhase])
   const transcript = session?.items.length ? session : null
   const knownTurnIds = transcriptTurnIds(transcript?.items, transcript?.turnId)
   const watchedTurnIds = watchedTurns(transcript?.items, busy, transcript?.turnId)
@@ -645,7 +625,6 @@ export function ChatView({
       ref={viewRef}
       className="@container/chat relative z-0 flex h-full min-w-0 flex-col bg-background text-foreground"
       data-testid="chat-view"
-      data-agent-background={agentBackground}
       data-loading={loading || undefined}
     >
       <SuccessToast
@@ -654,17 +633,8 @@ export function ChatView({
         testId="chat-notice-toast"
         tone={notice?.tone ?? 'error'}
       />
-      {starPhase !== 'off' ? (
-        <StarsBackground
-          aria-hidden="true"
-          data-testid="chat-stars"
-          data-visible={starPhase === 'on' ? 'true' : 'false'}
-          pointerEvents={false}
-          className="chat-stars pointer-events-none absolute inset-0 -z-10"
-        />
-      ) : null}
       {asciiPhase !== 'off' ? (
-        <AsciiField visible={asciiPhase === 'on'} className="chat-stars" />
+        <AsciiField visible={asciiPhase === 'on'} className="chat-ascii" />
       ) : null}
       {loading ? (
         <div
@@ -834,7 +804,7 @@ export function ChatView({
               ) : null}
               <div
                 ref={contextUsageRoot}
-                className={`chat-composer-glow-wrap relative mx-auto max-w-3xl ${visible ? 'pointer-events-auto' : ''}`}
+                className={`relative mx-auto max-w-3xl ${visible ? 'pointer-events-auto' : ''}`}
                 data-testid="chat-composer-shell"
               >
                 <ContextUsagePanel
@@ -856,13 +826,6 @@ export function ChatView({
                     Work with Claude Code, Codex, or Pi in this workspace.
                   </p>
                 </div>
-                {agentBackground === 'glow' ? (
-                  <div
-                    className="chat-composer-glow"
-                    aria-hidden="true"
-                    data-testid="chat-composer-glow"
-                  />
-                ) : null}
                 <form
                   className="chat-composer-shell relative rounded-2xl border bg-background p-2 shadow-lg"
                   data-dragging={dragging || undefined}

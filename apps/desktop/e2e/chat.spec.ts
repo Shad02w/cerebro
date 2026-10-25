@@ -1218,12 +1218,12 @@ test('agent pane loading does not flash empty placeholder before session is conf
   }
 })
 
-test('empty agent pane shows a light teal star field until the first message', async ({
+test('empty agent pane shows the ASCII field until the first message', async ({
   page,
   electronApp
 }, testInfo) => {
   test.setTimeout(90_000)
-  const directory = await mkdtemp(join(tmpdir(), 'cerebro-chat-stars-'))
+  const directory = await mkdtemp(join(tmpdir(), 'cerebro-chat-ascii-'))
   try {
     await electronApp.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0].setSize(1250, 900)
@@ -1238,17 +1238,7 @@ test('empty agent pane shows a light teal star field until the first message', a
     await page.getByRole('button', { name: /^New Agent tab/ }).click()
 
     await expect(page.getByTestId('chat-empty-hero')).toBeVisible()
-    const stars = page.getByTestId('chat-stars')
-    await expect(stars).toBeVisible()
-    await expect(stars).toHaveAttribute('data-star-color', /sidebar-selected/)
-    const starDot = stars.locator('[data-slot="star-layer"]').first().locator('div').first()
-    const starShadow = await starDot.evaluate((el) => getComputedStyle(el).boxShadow)
-    // Theme teal lifted toward white, not the near-invisible 16% specks.
-    expect(starShadow).toMatch(/rgb|color\(/)
-    expect(starShadow).not.toMatch(/0\.16/)
-    const background = await stars.evaluate((el) => getComputedStyle(el).backgroundImage)
-    expect(background).toContain('radial-gradient')
-    expect(background).toMatch(/0\.08|8%/)
+    await expect(page.getByTestId('ascii-field')).toBeVisible()
     const send = page.getByRole('button', { name: 'Send message', exact: true })
     const box = await send.boundingBox()
     expect(box).toBeTruthy()
@@ -1261,75 +1251,18 @@ test('empty agent pane shows a light teal star field until the first message', a
     )
     expect(hit).toBe('Send message')
     await page.screenshot({
-      path: testInfo.outputPath('agent-pane-stars-200.png')
+      path: testInfo.outputPath('agent-pane-ascii-200.png')
     })
 
-    await page.getByRole('textbox', { name: 'Message agent' }).fill('Hello stars')
+    await page.getByRole('textbox', { name: 'Message agent' }).fill('Hello ascii')
     await expect(page.getByTestId('chat-composer')).toHaveAttribute('data-dock', 'center')
-    await expect(page.getByTestId('chat-stars')).toBeVisible()
-    await page.screenshot({ path: testInfo.outputPath('agent-pane-stars-while-typing.png') })
+    await expect(page.getByTestId('ascii-field')).toBeVisible()
+    await page.screenshot({ path: testInfo.outputPath('agent-pane-ascii-while-typing.png') })
     await send.click()
     await expect(page.getByTestId('chat-transcript')).toContainText('Adapter connected.')
-    await expect(page.getByTestId('chat-stars')).toHaveCount(0)
+    await expect(page.getByTestId('ascii-field')).toHaveCount(0)
     await expect(page.getByTestId('chat-composer')).toHaveAttribute('data-dock', 'bottom')
-    await page.screenshot({ path: testInfo.outputPath('agent-pane-stars-after-first-send.png') })
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test('empty agent pane switches between stars, glow, and off', async ({
-  page,
-  electronApp
-}, testInfo) => {
-  test.setTimeout(90_000)
-  const directory = await mkdtemp(join(tmpdir(), 'cerebro-chat-background-'))
-  try {
-    await electronApp.evaluate(({ BrowserWindow }) =>
-      BrowserWindow.getAllWindows()[0].setSize(1250, 900)
-    )
-    const project = await page.evaluate(
-      (folder) => window.cerebro.createProjectFromDirectory(folder),
-      directory
-    )
-    const workspaceId = project.workspaces[0].id
-    await page.reload()
-    await openWorkspace(page, workspaceId)
-    await page.getByRole('button', { name: /^New Agent tab/ }).click()
-
-    const choose = async (
-      label: 'Glow' | 'Stars' | 'Off',
-      value: 'glow' | 'stars' | 'off'
-    ): Promise<void> => {
-      await page.getByRole('button', { name: 'Settings', exact: true }).click()
-      const background = page.getByTestId('settings-agent-background')
-      await background.click()
-      await page.getByRole('option', { name: label, exact: true }).click()
-      await expect(background).toHaveText(label)
-      await page.getByRole('button', { name: 'Back' }).click()
-      await expect(page.getByTestId('chat-view')).toHaveAttribute('data-agent-background', value)
-    }
-
-    await expect(page.getByTestId('chat-view')).toHaveAttribute('data-agent-background', 'stars')
-    await expect(page.getByTestId('chat-stars')).toBeVisible()
-    await expect(page.getByTestId('chat-composer-glow')).toHaveCount(0)
-    await page.screenshot({ path: testInfo.outputPath('agent-background-stars.png') })
-
-    await choose('Glow', 'glow')
-    await expect(page.getByTestId('chat-stars')).toHaveCount(0)
-    await expect(page.getByTestId('chat-composer-glow')).toBeVisible()
-    await expect(page.getByTestId('chat-composer')).toHaveAttribute('data-dock', 'center')
-    await page.screenshot({ path: testInfo.outputPath('agent-background-glow.png') })
-
-    await choose('Off', 'off')
-    await expect(page.getByTestId('chat-stars')).toHaveCount(0)
-    await expect(page.getByTestId('chat-composer-glow')).toHaveCount(0)
-    await expect(page.getByTestId('chat-empty-hero')).toBeVisible()
-    await page.screenshot({ path: testInfo.outputPath('agent-background-off.png') })
-
-    await choose('Stars', 'stars')
-    await expect(page.getByTestId('chat-stars')).toBeVisible()
-    await expect(page.getByTestId('chat-composer-glow')).toHaveCount(0)
+    await page.screenshot({ path: testInfo.outputPath('agent-pane-ascii-after-first-send.png') })
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
