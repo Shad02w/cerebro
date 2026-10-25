@@ -166,7 +166,7 @@ test('adds a folder of git repos as one workspace', async ({ page, electronApp }
   }
 })
 
-test('remove from app removes a multi-root folder with its nested repositories', async ({
+test('remove from sidebar removes a multi-root folder with its nested repositories', async ({
   page,
   electronApp
 }) => {
@@ -503,7 +503,7 @@ test('adds a leftover submodule folder as its own workspace', async ({ page, ele
   }
 })
 
-test('remove from app unregisters a directory project but keeps the folder', async ({
+test('remove from sidebar unregisters a directory project but keeps the folder', async ({
   page,
   electronApp
 }) => {
@@ -530,7 +530,7 @@ test('remove from app unregisters a directory project but keeps the folder', asy
     await page.getByTestId(`workspace-menu-${defaultWorkspace!.id}`).click()
     await expect(
       page.getByTestId(`workspace-delete-${defaultWorkspace!.id}`).getByRole('menuitem', {
-        name: 'Delete'
+        name: 'Delete from disk'
       })
     ).toBeDisabled()
     await page.keyboard.press('Escape')
@@ -573,6 +573,8 @@ test('project delete leaves an opened-folder checkout on disk', async ({ page, e
     await page.getByTestId(`project-row-${project!.id}`).hover()
     await page.getByTestId(`project-menu-${project!.id}`).click()
     await page.getByTestId(`project-delete-${project!.id}`).click()
+    await expect(page.getByTestId('delete-from-disk-dialog')).toBeVisible()
+    await page.getByTestId('delete-from-disk-confirm').click()
 
     await expect(page.getByTestId(`project-row-${project!.id}`)).toHaveCount(0)
     await access(repo)
