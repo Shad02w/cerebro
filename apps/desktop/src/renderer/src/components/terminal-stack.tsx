@@ -621,6 +621,20 @@ function openFocusedWorkspace(
   return true
 }
 
+/** True when the tab or pane a close names is no longer in the latest layout. */
+function closedAlready(request: LayoutCommand): boolean {
+  if (request.action !== 'close') return false
+  const workspace = queryClient.getQueryData<LayoutState>(layoutOptions.queryKey)?.workspaces[
+    request.workspaceId
+  ]
+  if (!workspace) return true
+  return request.target === 'tab'
+    ? !workspace.tabs.some((tab) => tab.id === request.tabId)
+    : !workspace.tabs.some((tab) =>
+        positionPanes(tab.root).panes.some(({ pane }) => pane.id === request.paneId)
+      )
+}
+
 type TerminalStackProps = {
   visible: boolean
   activeWorkspaceId: number | null
@@ -684,6 +698,8 @@ export function TerminalStack({
       .layoutCommand(request)
       .then((reply) => acceptLayout(reply.state))
       .catch((error) => {
+        // Repeated Mod+W can target a tab an earlier close already removed; that is not a failure.
+        if (request.action === 'close' && closedAlready(request)) return
         setError(String(error))
         // An optimistic focus the mux rejected must not stay on screen.
         if (request.action === 'focus')
@@ -855,6 +871,7 @@ export function TerminalStack({
                         <ChatView
                           workspaceId={workspaceId}
                           paneId={pane.id}
+                          repositoryId={pane.repositoryId ?? null}
                           tabLabel={tab.label}
                           visible={shown}
                           active={active}

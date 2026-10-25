@@ -2288,3 +2288,55 @@ test('an idle harness exit is shown until the next turn finishes', async () => {
     rmSync(f.dir, { recursive: true, force: true })
   }
 })
+
+test('skill lookups share one harness process per folder and run at most two at once', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'cerebro-agents-'))
+  const pending: Array<{ cwd: string; resolve: () => void }> = []
+  let active = 0
+  let peak = 0
+  const adapter: AgentAdapter = {
+    models: async () => [model],
+    skills: (cwd) => {
+      active++
+      peak = Math.max(peak, active)
+      return new Promise((resolve) =>
+        pending.push({
+          cwd,
+          resolve: () => {
+            active--
+            resolve([])
+          }
+        })
+      )
+    },
+    connect: () => {
+      throw new Error('not used')
+    }
+  }
+  const service = new AgentSessions(dir, () => {}, { claude: adapter, codex: adapter, pi: adapter })
+  try {
+    const lookups = [
+      ...Array.from({ length: 5 }, () => service.skills('codex', '/a')),
+      service.skills('codex', '/b'),
+      service.skills('codex', '/c')
+    ]
+    await waitFor(() => pending.length === 2)
+    // Five callers in /a share one lookup; /c waits for a free slot.
+    assert.deepEqual(
+      pending.map((entry) => entry.cwd),
+      ['/a', '/b']
+    )
+    pending.shift()!.resolve()
+    await waitFor(() => pending.length === 2)
+    assert.equal(pending[1].cwd, '/c')
+    while (pending.length) pending.shift()!.resolve()
+    await Promise.all(lookups)
+    assert.equal(peak, 2)
+    // A finished lookup is reused without asking the harness again.
+    await service.skills('codex', '/a')
+    assert.equal(pending.length, 0)
+  } finally {
+    await service.shutdown()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})

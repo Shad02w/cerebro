@@ -444,13 +444,12 @@ export async function startServer(): Promise<void> {
           case 'chat.commands':
           case 'chat.skills': {
             await environment
+            // Keyed by workspace and repository, not pane, so every chat pane in a folder shares one list.
             const workspaceId = positive(p.workspaceId)
-            const paneId = positive(p.paneId)
             const harness = (p as { harness?: unknown }).harness
             if (!isAgentHarness(harness)) throw new MuxError('usage', 'Invalid harness.')
-            const { pane } = findPane(workspaceId, paneId)
-            if (pane.kind !== 'chat') throw new MuxError('conflict', 'Pane is not a chat.')
-            const context = await chatContext(workspaceId, pane.repositoryId ?? undefined)
+            const repositoryId = p.repositoryId == null ? undefined : positive(p.repositoryId)
+            const context = await chatContext(workspaceId, repositoryId)
             return message.method === 'chat.commands'
               ? agents.commands(harness, context.cwd)
               : agents.skills(harness, context.cwd)
