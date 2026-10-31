@@ -106,7 +106,7 @@ describe('chat End of response', () => {
   it('ends every idle turn when no work is running', async () => {
     renderChat(session())
     await screen.findByText('Still running')
-    expect(screen.getAllByRole('separator', { name: 'End of response' })).toHaveLength(3)
+    expect(screen.getAllByTestId('chat-turn-end')).toHaveLength(3)
   })
 
   it('holds End of response from the turn that resumed a running agent', async () => {
@@ -118,7 +118,7 @@ describe('chat End of response', () => {
       })
     )
     await screen.findByText('Still running')
-    expect(screen.getAllByRole('separator', { name: 'End of response' })).toHaveLength(1)
+    expect(screen.getAllByTestId('chat-turn-end')).toHaveLength(1)
     expect(screen.getAllByTestId('chat-turn-held')).toHaveLength(2)
   })
 
@@ -146,7 +146,7 @@ describe('chat End of response', () => {
       })
     )
     await screen.findByText('Agent "Find feature path" finished · 58m 38s')
-    expect(screen.getAllByRole('separator', { name: 'End of response' })).toHaveLength(3)
+    expect(screen.getAllByTestId('chat-turn-end')).toHaveLength(3)
   })
 
   it('holds the turn whose shell is still running in the background', async () => {
@@ -163,6 +163,6 @@ describe('chat End of response', () => {
       })
     )
     await screen.findByText('Still running')
-    expect(screen.getAllByRole('separator', { name: 'End of response' })).toHaveLength(1)
+    expect(screen.getAllByTestId('chat-turn-end')).toHaveLength(1)
   })
 })

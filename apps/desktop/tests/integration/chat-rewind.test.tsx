@@ -189,7 +189,7 @@ describe('chat rewind', () => {
       undo.compareDocumentPosition(within(notice).getByText(/Rewound to this response/)) &
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy()
-    const separator = screen.getByRole('separator', { name: 'End of response' })
+    const separator = screen.getByTestId('chat-turn-end')
     expect(
       separator.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy()
@@ -211,7 +211,7 @@ describe('chat rewind', () => {
     expect(await screen.findByTestId('chat-rewind-notice')).toHaveTextContent(
       'Rewound to the start. Changes were not restored.'
     )
-    expect(screen.queryByRole('separator', { name: 'End of response' })).toBeNull()
+    expect(screen.queryByTestId('chat-turn-end')).toBeNull()
     expect(screen.getByTestId('chat-composer')).toHaveAttribute('data-dock', 'bottom')
   })
 })

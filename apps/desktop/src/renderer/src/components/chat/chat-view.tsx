@@ -708,14 +708,9 @@ export function ChatView({
                         !outcomes.has(last.turnId) &&
                         (last.turnId !== transcript.turnId || !busy) ? (
                           <div
-                            role={waiting ? undefined : 'separator'}
-                            aria-label={waiting ? undefined : 'End of response'}
-                            data-testid={waiting ? 'chat-turn-held' : undefined}
-                            className="flex items-center gap-3 py-2 text-xs text-muted-foreground"
+                            data-testid={waiting ? 'chat-turn-held' : 'chat-turn-end'}
+                            className="flex items-center py-2 text-xs text-muted-foreground"
                           >
-                            <span
-                              className={cn('h-px flex-1 bg-border', waiting && 'bg-transparent')}
-                            />
                             <ChatTurnActions
                               workspaceId={workspaceId}
                               paneId={paneId}
@@ -726,10 +721,6 @@ export function ChatView({
                               forkCapability={
                                 catalog.data?.capabilities[transcript.model.harness]?.fork
                               }
-                            />
-                            {waiting ? null : <span>End of response</span>}
-                            <span
-                              className={cn('h-px flex-1 bg-border', waiting && 'bg-transparent')}
                             />
                           </div>
                         ) : null}
@@ -857,6 +848,7 @@ export function ChatView({
                           <ModelPicker
                             selected={selected}
                             sessionStarted={session != null}
+                            returnFocus={() => editorRef.current?.focus()}
                             onSelect={(model) => {
                               onRememberAgent?.(model)
                               if (session && session.model.harness !== model.harness) {
