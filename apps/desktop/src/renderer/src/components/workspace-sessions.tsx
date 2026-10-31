@@ -180,7 +180,7 @@ export function WorkspaceSessionList({
               data-agent-title={title}
               data-agent-harness={agent.harness}
               aria-label={title}
-              className="flex min-w-0 w-full flex-col gap-0.5 rounded-sm text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sidebar-selected"
+              className="session-row-btn flex min-w-0 w-full flex-col gap-0.5 rounded-sm text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sidebar-selected"
               onClick={(): void => onOpenAgent(agent)}
             >
               <span className="flex min-w-0 items-center gap-1.5 pr-5">

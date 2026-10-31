@@ -501,3 +501,28 @@
   [data-row-toggle-chevron] {
   opacity: 1;
 }
+
+/* Thread hover. It sits one step above the parent row's own fill: grey over an
+   unselected row, stronger teal over a selected row or group. */
+.cerebro-sidebar .session-row-btn {
+  transition: background-color 120ms ease;
+}
+
+.cerebro-sidebar .session-row-btn:hover {
+  background-color: color-mix(in srgb, var(--sidebar-foreground) 7%, var(--sidebar-accent));
+}
+
+.cerebro-sidebar .sidebar-root-group .session-row-btn:hover {
+  background-color: color-mix(in srgb, var(--sidebar-foreground) 9%, transparent);
+}
+
+.cerebro-sidebar [data-sidebar='menu-row']:has([data-active='true']) .session-row-btn:hover,
+.cerebro-sidebar .sidebar-root-group[data-active='true'] .session-row-btn:hover {
+  background-color: color-mix(in srgb, var(--sidebar-selected) 26%, var(--sidebar));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cerebro-sidebar .session-row-btn {
+    transition: none;
+  }
+}
