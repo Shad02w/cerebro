@@ -8,7 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
-import { SuccessToast } from '@/components/success-toast'
+import { SuccessToast, type ToastTone } from '@/components/success-toast'
 import { useClipboard } from '@/hooks/use-clipboard'
 
 /** Copy and fork actions for one completed turn (a user message + its response). */
@@ -30,19 +30,15 @@ export function ChatTurnActions({
   forkCapability?: AgentCapabilities['fork']
 }): React.JSX.Element {
   const copy = useClipboard()
-  const [toast, setToast] = useState<{ id: number; message: string } | null>(null)
-  const [copyError, setCopyError] = useState(false)
-  const [forkError, setForkError] = useState<string | null>(null)
+  const [toast, setToast] = useState<{ id: number; message: string; tone: ToastTone } | null>(null)
   const toastId = useRef(0)
+  const notify = (message: string, tone: ToastTone): void =>
+    setToast({ id: ++toastId.current, message, tone })
   const copyResponse = async (): Promise<void> => {
-    setToast(null)
-    setCopyError(false)
-    if (await copy(text))
-      setToast({ id: ++toastId.current, message: 'Response copied to clipboard.' })
-    else setCopyError(true)
+    if (await copy(text)) notify('Response copied to clipboard.', 'success')
+    else notify('Could not copy response.', 'error')
   }
   const fork = async (target: 'tab' | 'pane'): Promise<void> => {
-    setForkError(null)
     try {
       const forked = await window.cerebro.chatCommand({
         action: 'fork',
@@ -82,7 +78,9 @@ export function ChatTurnActions({
         sessionId: forked.session.id
       })
     } catch (error) {
-      setForkError(error instanceof Error ? error.message : String(error))
+      // Electron prefixes errors thrown across IPC; the reason after it is what the user needs.
+      const reason = error instanceof Error ? error.message : String(error)
+      notify(reason.replace(/^Error invoking remote method '[^']+':\s*(Error:\s*)?/i, ''), 'error')
     }
   }
   return (
@@ -139,17 +137,12 @@ export function ChatTurnActions({
           ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
-      {copyError ? (
-        <p role="alert" className="text-xs text-destructive">
-          Could not copy response.
-        </p>
-      ) : null}
-      {forkError ? (
-        <p role="alert" className="text-xs text-destructive">
-          {forkError}
-        </p>
-      ) : null}
-      <SuccessToast toast={toast} onDismiss={() => setToast(null)} testId="chat-turn-copy-toast" />
+      <SuccessToast
+        toast={toast}
+        onDismiss={() => setToast(null)}
+        testId="chat-turn-copy-toast"
+        tone={toast?.tone}
+      />
     </div>
   )
 }
