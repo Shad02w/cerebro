@@ -70,7 +70,7 @@ test('rewind puts the prompt in the composer and undo restores the turn', async 
     await expect(notice.getByTestId('chat-rewind-undo')).toHaveText('Undo')
     await expect(chat.getByTestId('chat-composer').getByTestId('chat-rewind-notice')).toHaveCount(0)
     const underResponse = await chat.getByTestId('chat-transcript').evaluate((node) => {
-      const separator = node.querySelector('[aria-label="End of response"]')
+      const separator = node.querySelector('[data-testid="chat-turn-end"]')
       const line = node.querySelector('[data-testid="chat-rewind-notice"]')
       if (!separator || !line) return false
       return Boolean(separator.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING)
@@ -84,7 +84,7 @@ test('rewind puts the prompt in the composer and undo restores the turn', async 
     await expect(chat.getByTestId('chat-rewind-notice')).toHaveCount(0)
     await expect(chat.getByTestId('chat-user-message')).toHaveCount(2)
     await expect(chat.getByTestId('chat-transcript')).toContainText('second prompt')
-    await expect(chat.getByRole('separator', { name: 'End of response' })).toHaveCount(2)
+    await expect(chat.getByTestId('chat-turn-end')).toHaveCount(2)
     await expect(composer).not.toContainText('second prompt')
     await page.screenshot({ path: join(evidence, 'restored.png') })
   } finally {

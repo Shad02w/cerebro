@@ -368,10 +368,7 @@ test('chat works through native adapters, survives reload, handles requests, and
     await expect(composer.getByRole('status')).toHaveCount(0)
     await expect(composer.getByRole('alert')).toHaveCount(0)
     const clearance = async (): Promise<number> => {
-      const lastBox = await chatTranscript
-        .getByRole('separator', { name: 'End of response' })
-        .last()
-        .boundingBox()
+      const lastBox = await chatTranscript.getByTestId('chat-turn-end').last().boundingBox()
       const composerBox = await composer.boundingBox()
       return composerBox!.y - (lastBox!.y + lastBox!.height)
     }
