@@ -252,12 +252,15 @@ function CatalogIssues({
 export function ModelPicker({
   selected,
   onSelect,
-  sessionStarted = false
+  sessionStarted = false,
+  returnFocus
 }: {
   selected?: AgentModel
   onSelect: (model: AgentModel) => void
   /** False until the chat has a session. Favorites are the first pane in that case. */
   sessionStarted?: boolean
+  /** Focus this instead of the trigger when the popup closes. */
+  returnFocus?: () => void
 }): React.JSX.Element {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
@@ -325,6 +328,14 @@ export function ModelPicker({
         <Combobox.Positioner align="start" side="top" sideOffset={4} className="isolate z-50">
           <Combobox.Popup
             initialFocus={inputRef}
+            finalFocus={
+              returnFocus
+                ? () => {
+                    returnFocus()
+                    return false
+                  }
+                : undefined
+            }
             aria-label="Choose model"
             data-testid="model-picker"
             className="z-50 w-[min(400px,calc(100vw-32px))] origin-(--transform-origin) overflow-hidden rounded-xl border bg-popover p-0 text-popover-foreground shadow-md outline-hidden transition-[opacity,transform] duration-150 data-ending-style:scale-95 data-ending-style:opacity-0 data-starting-style:scale-95 data-starting-style:opacity-0"

@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { describe, expect, it } from 'vitest'
 import type { AgentCapabilities, AgentCatalog, AgentHarness, AgentModel } from '@cerebro/core'
 import { ModelPicker } from '@/components/chat/model-picker'
@@ -58,7 +58,18 @@ function Picker({
   initial?: AgentModel
 }): React.JSX.Element {
   const [selected, setSelected] = useState(initial)
-  return <ModelPicker selected={selected} sessionStarted={sessionStarted} onSelect={setSelected} />
+  const composer = useRef<HTMLInputElement>(null)
+  return (
+    <>
+      <input aria-label="Composer" ref={composer} />
+      <ModelPicker
+        selected={selected}
+        sessionStarted={sessionStarted}
+        onSelect={setSelected}
+        returnFocus={() => composer.current?.focus()}
+      />
+    </>
+  )
 }
 
 function renderPicker(
@@ -135,6 +146,15 @@ describe('ModelPicker', () => {
     await user.type(screen.getByRole('combobox', { name: 'Search models' }), 'gpt')
     expect(await screen.findByRole('option', { name: /GPT-5.5/ })).toBeInTheDocument()
     expect(screen.queryByRole('option', { name: /Sonnet 5.5/ })).not.toBeInTheDocument()
+  })
+
+  it('returns focus to the composer after a model is picked', async () => {
+    const user = userEvent.setup()
+    renderPicker([gpt], true)
+    await user.click(screen.getByTestId('chat-model-picker'))
+    await user.type(await screen.findByRole('combobox', { name: 'Search models' }), 'gpt')
+    await user.click(await screen.findByRole('option', { name: /GPT-5.5/ }))
+    await waitFor(() => expect(screen.getByLabelText('Composer')).toHaveFocus())
   })
 
   it('lists one Sonnet when the account default names that model', async () => {

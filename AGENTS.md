@@ -153,6 +153,16 @@ Use Playwright's Electron support through the existing fixtures in `e2e/fixtures
 
 If the app cannot be built or launched here, say so instead of claiming the fix is verified.
 
+#### Video evidence for user flows
+
+A screenshot shows one state. When the change involves a user flow (a sequence of steps or interactions, such as focus moving after a pick, a menu opening then closing, drag, typing, or streaming output), record a video of the flow in the real Electron app and embed it in the final response instead of, or in addition to, screenshots. Reserve screenshots for static visual changes.
+
+- The shared `electronApp` fixture does not record. In the scratch spec, launch Electron yourself with `_electron.launch({ ..., recordVideo: { dir: '/tmp/<topic>-video', size: { width: 1280, height: 800 } } })`. Reuse `electronAppArgs` from `./fixtures`, remove `ELECTRON_RUN_AS_NODE`, `ELECTRON_RENDERER_URL` and `CEREBRO_DB_PATH` from the env, set `NODE_ENV: 'test'` and an isolated temp `CEREBRO_HOME`, and call `app.close()` in `finally`. The video file is only finalized after the app closes.
+- Add short `page.waitForTimeout(500–1000)` pauses and `keyboard.type(..., { delay: 60 })` so a human can follow the video. Assertions still decide pass or fail.
+- Convert to mp4 for the response: `ffmpeg -y -loglevel error -i <dir>/page@*.webm -c:v libx264 -pix_fmt yuv420p /tmp/<topic>.mp4`.
+- Embed it with the same Markdown syntax as images, using an absolute path: `![description](/tmp/<topic>.mp4)`. This agent renders video from that embed.
+- Delete the scratch spec afterwards, as above.
+
 ## CLI (`apps/cli`)
 
 The `cerebro` CLI lets agents and humans manage projects and workspaces from any terminal — including terminals that are not inside the Cerebro desktop app.
