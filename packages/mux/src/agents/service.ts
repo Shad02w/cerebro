@@ -1542,14 +1542,37 @@ export class AgentSessions {
       throw new Error('Conversation not found in this repository.')
     return session
   }
+  /**
+   * Stops everything the session is doing so its transcript can be edited in place: queued
+   * sends, the running turn (pending approvals are declined), and background work or child
+   * agents. Resolves once the turn has fully settled, so no late delta can reach the session.
+   */
+  private async settle(session: AgentSession): Promise<void> {
+    // Dropped first: a queued message would otherwise start as the aborted turn ends.
+    delete session.queue
+    for (;;) {
+      const runtime = this.running.get(session.id)
+      if (!runtime) break
+      runtime.controller.abort()
+      await runtime.done
+    }
+    const open = (session.subagents ?? []).some(
+      (child) => child.status === 'created' || child.status === 'running'
+    )
+    // Closing the connection is what stops background shells and children the harness owns.
+    if (open || session.background?.some((task) => task.status === 'running'))
+      this.release(session.id)
+  }
   /** Hides the chosen prompt and everything after it. Undo restores that tail. */
   private async rewind(scope: AgentScope, command: ChatCommand): Promise<ChatView> {
     const session = this.sessionFor(scope, command.sessionId)
-    if (busy(session)) throw new Error('Stop the running turn before rewinding.')
-    if (session.queue?.length) throw new Error('Remove queued messages before rewinding.')
-    if (session.background?.some((task) => task.status === 'running'))
-      throw new Error('Stop background work before rewinding.')
     if (!command.itemId) throw new Error('Choose a prompt to rewind.')
+    const exists = [...session.items, ...(session.rewind?.tail ?? [])].find(
+      (item) => item.id === command.itemId
+    )
+    if (exists?.kind !== 'user')
+      throw new Error('That prompt is no longer part of this conversation.')
+    await this.settle(session)
     const pending = session.rewind
     const full = pending ? [...session.items, ...pending.tail] : session.items
     const tipNative = pending?.nativeId ?? session.nativeId
@@ -1607,7 +1630,7 @@ export class AgentSessions {
     const session = this.sessionFor(scope, command.sessionId)
     const rewind = session.rewind
     if (!rewind) return this.view(scope)
-    if (busy(session)) throw new Error('Stop the running turn before rewinding.')
+    await this.settle(session)
     if (session.model.harness === 'pi' && rewind.nativeId && session.nativeId !== rewind.nativeId) {
       const switched = await this.connectionFor(session).switchSession?.(rewind.nativeId)
       if (switched?.cancelled) throw new Error('Rewind was cancelled.')
@@ -1629,33 +1652,48 @@ export class AgentSessions {
       source.repositoryId !== scope.repositoryId
     )
       throw new Error('Conversation not found in this repository.')
-    if (busy(source)) throw new Error('Stop the running turn before forking.')
     if (!command.turnId) throw new Error('Choose a section to fork.')
+    // The source keeps streaming while an earlier section is forked. Only the turn still being
+    // written has no end to cut at.
+    if (busy(source) && command.turnId === source.turnId)
+      throw new Error('Wait for this response to finish before forking it.')
     const cut = source.items.map((item) => item.turnId).lastIndexOf(command.turnId)
     if (cut === -1) throw new Error('That section is no longer part of this conversation.')
+    const id = randomUUID()
+    const now = Date.now()
+    // Built from named fields on purpose: queue, background work, subagents, a pending rewind and
+    // the running clock belong to the source's live process and must not follow the copy.
     const next: AgentSession = {
-      ...structuredClone(source),
-      id: randomUUID(),
+      version: source.version,
+      id,
+      workspaceId: source.workspaceId,
+      repositoryId: source.repositoryId,
+      cwd: source.cwd,
       title: `${source.title} (fork)`,
+      model: structuredClone(source.model),
+      ...(source.reasoning ? { reasoning: source.reasoning } : {}),
+      ...(source.accessMode ? { accessMode: source.accessMode } : {}),
       status: 'idle',
       generation: '',
-      turnId: undefined,
       sequence: 0,
-      error: undefined,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      items: structuredClone(source.items.slice(0, cut + 1)),
+      createdAt: now,
+      updatedAt: now,
+      // Work the source still had running (a background tool) has no process in the copy.
+      items: structuredClone(source.items.slice(0, cut + 1)).map((item) => {
+        if (item.request) item.request.resolved = true
+        return item.status === 'running' ? { ...item, status: 'interrupted' as const } : item
+      }),
+      ...(source.todo ? { todo: { ...structuredClone(source.todo), listId: todoListId(id) } } : {}),
       commands: [],
-      forkedFrom: { sessionId: source.id, turnId: command.turnId },
-      nativeId: undefined,
-      checkpoints: undefined
+      forkedFrom: { sessionId: source.id, turnId: command.turnId }
     }
-    if (next.todo) next.todo = { ...next.todo, listId: todoListId(next.id) }
     const checkpoint = source.checkpoints?.[command.turnId]
-    if (source.model.harness === 'claude' && checkpoint && source.nativeId) {
+    // Read once, before the await: a streaming source can rebind its native session meanwhile.
+    const nativeId = source.nativeId
+    if (source.model.harness === 'claude' && checkpoint && nativeId) {
       try {
         const { forkSession } = await import('@anthropic-ai/claude-agent-sdk')
-        const result = await forkSession(source.nativeId, {
+        const result = await forkSession(nativeId, {
           upToMessageId: checkpoint,
           title: next.title,
           dir: source.cwd
