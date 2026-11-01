@@ -163,7 +163,7 @@ export function WorkspaceSessionList({
   const visible = expanded ? sorted : sorted.slice(0, OPEN_SESSION_CAP)
   const hidden = sorted.length - visible.length
   return (
-    <div data-testid="workspace-sessions" className="flex flex-col bg-transparent px-2 pb-1.5">
+    <div data-testid="workspace-sessions" className="flex flex-col bg-transparent px-0.5 pb-1.5">
       {visible.map((agent) => {
         const title = sessionTitle(agent, layout)
         const model = agent.modelLabel.trim() || harnessLabels[agent.harness]
@@ -172,7 +172,7 @@ export function WorkspaceSessionList({
         return (
           <div
             key={agent.sessionId}
-            className={cn('session-row relative bg-transparent py-0.5', muted && 'opacity-60')}
+            className={cn('session-row relative bg-transparent py-0', muted && 'opacity-60')}
           >
             <button
               type="button"
@@ -180,7 +180,7 @@ export function WorkspaceSessionList({
               data-agent-title={title}
               data-agent-harness={agent.harness}
               aria-label={title}
-              className="flex min-w-0 w-full flex-col gap-0.5 rounded-sm text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sidebar-selected"
+              className="session-row-btn flex min-w-0 w-full flex-col gap-0.5 rounded-md px-1.5 py-0.5 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sidebar-selected"
               onClick={(): void => onOpenAgent(agent)}
             >
               <span className="flex min-w-0 items-center gap-1.5 pr-5">
@@ -223,7 +223,7 @@ export function WorkspaceSessionList({
                 type="button"
                 data-testid="workspace-agent-close"
                 aria-label={`Close ${title}`}
-                className="session-row-close absolute top-0.5 right-0 inline-flex size-4 items-center justify-center rounded-sm text-sidebar-foreground/55 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                className="session-row-close absolute top-0.5 right-1.5 inline-flex size-4 items-center justify-center rounded-sm text-sidebar-foreground/55 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                 onClick={(event): void => {
                   event.stopPropagation()
                   closeSession(agent, layout)
