@@ -7,7 +7,7 @@ import { expect, test, type ElectronApplication, type Page } from './fixtures'
 
 const execFileAsync = promisify(execFile)
 
-test('header searches projects, repositories and branches without changing tree state', async ({
+test('command palette finds projects and workspaces and focuses the sidebar row', async ({
   page,
   electronApp
 }) => {
@@ -20,49 +20,31 @@ test('header searches projects, repositories and branches without changing tree 
     await addDirectoryViaUi(page, electronApp, join(source, 'server'))
     await expect(page.getByRole('dialog')).toHaveCount(0)
     const sidebar = page.locator('[data-slot="sidebar"]')
-    const projectRow = sidebar.getByTestId(/project-row-/).filter({ hasText: 'client' })
-    await expect(projectRow).toBeVisible()
-    if ((await projectRow.getAttribute('aria-expanded')) !== 'true') await projectRow.click()
-    await expect(projectRow).toHaveAttribute('aria-expanded', 'true')
-    await projectRow.click()
-    await expect(projectRow).toHaveAttribute('aria-expanded', 'false')
+    await expect(sidebar.getByRole('textbox')).toHaveCount(0)
 
-    const search = page.getByRole('textbox', { name: 'Search projects and workspaces' })
-    const results = sidebar.getByTestId(/workspace-search-result-/)
-    await search.fill('CLIENT')
-    await expect(results).toHaveCount(1)
-    await expect(results).toContainText('feature/sidebar-search')
-    await search.fill('SIDEBAR-SEARCH')
-    await expect(results).toHaveCount(1)
-    await search.press('Enter')
-    await expect(results).toHaveAttribute('aria-current', 'location')
-    await expect(page.getByTestId('content-tab-bar')).toBeVisible()
-    await expect(page.locator('[data-terminal-workspace-id]')).toHaveCount(0)
+    const palette = page.getByTestId('command-palette')
+    const input = page.getByTestId('command-palette-input')
+    const options = palette.getByTestId('command-palette-option')
+    await sidebar.getByTestId('sidebar-search').click()
+    await expect(palette).toBeVisible()
+    await expect(input).toBeFocused()
+    await input.fill('SIDEBAR-SEARCH')
+    await expect(options).toHaveCount(1)
+    await expect(options.first()).toHaveAttribute('data-row-type', 'workspace')
+    await expect(options.first()).toContainText('feature/sidebar-search')
+    await input.press('Enter')
+    await expect(palette).toHaveCount(0)
+    const selected = sidebar.locator('button[aria-current="location"]')
+    await expect(selected).toContainText('feature/sidebar-search')
+    await expect(selected).toBeFocused()
 
-    await search.fill('client')
-    await expect(results).toHaveCount(1)
-    await expect(sidebar.getByRole('status')).toHaveText('1 workspace found')
-    await search.fill('no-such-workspace')
-    await expect(results).toHaveCount(0)
-    await expect(sidebar.getByRole('status')).toHaveText('No matching workspaces')
-    const selected = await page.evaluate(
-      async () => (await window.cerebro.listProjects()).activeWorkspaceId
-    )
-    await search.press('Enter')
-    expect(
-      await page.evaluate(async () => (await window.cerebro.listProjects()).activeWorkspaceId)
-    ).toBe(selected)
-
-    await page.getByRole('button', { name: 'Clear search' }).click()
-    await expect(search).toBeFocused()
-    await expect(search).toHaveValue('')
-    await expect(projectRow).toBeVisible()
-    await expect(projectRow).toHaveAttribute('aria-expanded', 'false')
-    await search.fill('server')
-    await expect(results).toHaveCount(1)
-    await search.press('Escape')
-    await expect(search).toHaveValue('')
-    await expect(projectRow).toHaveAttribute('aria-expanded', 'false')
+    await page.keyboard.press('ControlOrMeta+k')
+    await expect(palette).toBeVisible()
+    await input.fill('no-such-workspace')
+    await expect(options).toHaveCount(0)
+    await expect(palette).toContainText('Nothing matches “no-such-workspace”.')
+    await input.press('Escape')
+    await expect(palette).toHaveCount(0)
   } finally {
     await rm(source, { recursive: true, force: true })
   }

@@ -3,7 +3,7 @@ export const KEYBIND_ACTION_IDS = [
   'newTerminal',
   'newChat',
   'openChanges',
-  'searchSessions',
+  'openCommandPalette',
   'openSettings',
   'toggleSidebar',
   'toggleDevTools'
@@ -59,9 +59,9 @@ export const KEYBIND_CATALOG: readonly KeybindAction[] = [
     target: 'app'
   },
   {
-    id: 'searchSessions',
-    label: 'Search sessions',
-    description: 'Search open and closed agent sessions in every project.',
+    id: 'openCommandPalette',
+    label: 'Open command palette',
+    description: 'Search projects, workspaces, open sessions and session history.',
     defaultHotkey: 'Mod+K',
     target: 'app'
   },
@@ -101,10 +101,31 @@ export function getKeybindAction(id: KeybindActionId): KeybindAction {
   return action
 }
 
+/** Action ids that were renamed. A saved override under the old id carries over. */
+const LEGACY_KEYBIND_IDS: Readonly<Record<string, KeybindActionId>> = {
+  searchSessions: 'openCommandPalette'
+}
+
+/** Moves overrides saved under a renamed action id to the current id. A current id wins. */
+export function migrateKeybindOverrides<T extends Record<string, unknown>>(
+  overrides: T | null | undefined
+): T | null | undefined {
+  if (!overrides) return overrides
+  let next: Record<string, unknown> | null = null
+  for (const [legacy, current] of Object.entries(LEGACY_KEYBIND_IDS)) {
+    if (!(legacy in overrides)) continue
+    next ??= { ...overrides }
+    if (!(current in next)) next[current] = next[legacy]
+    delete next[legacy]
+  }
+  return (next as T | null) ?? overrides
+}
+
 /** Resolve stored overrides against catalog defaults. */
 export function resolveKeybinds(
   overrides?: KeybindOverrides | null
 ): Record<KeybindActionId, string> {
+  overrides = migrateKeybindOverrides(overrides)
   const resolved = {} as Record<KeybindActionId, string>
   for (const action of KEYBIND_CATALOG) {
     const override = overrides?.[action.id]
@@ -138,7 +159,7 @@ export function normalizeKeybindOverrides(value: unknown): KeybindOverrides | un
   }
   const input = value as Record<string, unknown>
   const next: KeybindOverrides = {}
-  for (const [key, raw] of Object.entries(input)) {
+  for (const [key, raw] of Object.entries(migrateKeybindOverrides(input) ?? {})) {
     if (!isKeybindActionId(key)) continue
     if (raw === null || raw === undefined) continue
     if (typeof raw !== 'string') throw new Error(`Keybind for ${key} must be a string.`)

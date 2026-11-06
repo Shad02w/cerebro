@@ -41,6 +41,7 @@ import { useKeybindHandler } from '@/keybinds'
 import { ChangesView } from '@/components/changes-view'
 import { ContentTabBar } from '@/components/content-tab-bar'
 import { WorkspaceEmptyState } from '@/components/workspace-empty-state'
+import { focusIsHeld } from '@/lib/held-focus'
 
 type TerminalSessionProps = {
   workspaceId: number
@@ -491,7 +492,8 @@ function TerminalSession({
     const frame = window.requestAnimationFrame(() => {
       fitSession(terminal, fitAddon, sessionIdRef.current, exitedRef.current)
       terminal.refresh(0, Math.max(0, terminal.rows - 1))
-      terminal.focus()
+      // The command palette just focused a sidebar row on purpose.
+      if (!focusIsHeld()) terminal.focus()
     })
 
     return () => window.cancelAnimationFrame(frame)
