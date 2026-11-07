@@ -1,4 +1,5 @@
 import { AgentModelSettings } from '@/components/agent-model-settings'
+import { SettingsGroup, SettingsRow } from '@/components/settings-layout'
 import { TerminalThemeCombobox } from '@/components/terminal-theme-combobox'
 import { CliSettings } from '@/components/cli-settings'
 import { DiagnosticsSettings } from '@/components/diagnostics-settings'
@@ -16,7 +17,6 @@ import { listAvailableTerminalFonts, type TerminalFontOption } from '@/lib/termi
 import { KeyboardSettings } from '@/keybinds'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
@@ -63,7 +63,10 @@ export function SettingsView({
     >
       <div className="app-no-drag flex-1 overflow-auto px-8 py-6">
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-8">
-          <h1 className="text-xl font-semibold tracking-tight">{meta.label}</h1>
+          <header className="space-y-1">
+            <h1 className="text-xl font-semibold tracking-tight">{meta.label}</h1>
+            <p className="text-[13px] text-muted-foreground">{meta.description}</p>
+          </header>
           {section === 'general' ? (
             loading || !settings ? (
               <p className="text-sm text-muted-foreground">Loading settings…</p>
@@ -191,19 +194,13 @@ function GeneralSettings({
   }
 
   return (
-    <section className="space-y-6" data-testid="settings-general">
-      <div className="space-y-3">
-        <h2 className="text-xs font-medium text-muted-foreground">Agent</h2>
-        <div className="flex items-start justify-between gap-6">
-          <div className="min-w-0 flex-1 space-y-1">
-            <Label htmlFor="composer-vim" className="text-[13px] font-medium">
-              Vim mode
-            </Label>
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              Modal editing in the agent composer. Enter sends only in insert mode, and @ tags
-              complete only while typing in insert mode.
-            </p>
-          </div>
+    <section className="space-y-8" data-testid="settings-general">
+      <SettingsGroup title="Agent">
+        <SettingsRow
+          label="Vim mode"
+          htmlFor="composer-vim"
+          description="Modal editing in the agent composer. Enter sends only in insert mode, and @ tags complete only while typing in insert mode."
+        >
           <Select
             items={COMPOSER_VIM_ITEMS}
             value={settings.composerVim ? 'on' : 'off'}
@@ -228,16 +225,12 @@ function GeneralSettings({
               ))}
             </SelectContent>
           </Select>
-        </div>
-        <div className="flex items-start justify-between gap-6">
-          <div className="min-w-0 flex-1 space-y-1">
-            <Label htmlFor="composer-vim-mode" className="text-[13px] font-medium">
-              Starting vim mode
-            </Label>
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              The composer opens in this mode and returns to it after a message is sent.
-            </p>
-          </div>
+        </SettingsRow>
+        <SettingsRow
+          label="Starting vim mode"
+          htmlFor="composer-vim-mode"
+          description="The composer opens in this mode and returns to it after a message is sent."
+        >
           <Select
             items={COMPOSER_VIM_MODE_ITEMS}
             value={settings.composerVimMode}
@@ -262,19 +255,14 @@ function GeneralSettings({
               ))}
             </SelectContent>
           </Select>
-        </div>
-      </div>
-      <div className="space-y-3">
-        <h2 className="text-xs font-medium text-muted-foreground">Projects</h2>
-        <div className="flex items-start justify-between gap-6">
-          <div className="min-w-0 flex-1 space-y-1">
-            <Label htmlFor="clone-location" className="text-[13px] font-medium">
-              Default clone location
-            </Label>
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              New projects are cloned into this folder. Existing checkouts are not moved.
-            </p>
-          </div>
+        </SettingsRow>
+      </SettingsGroup>
+      <SettingsGroup title="Projects">
+        <SettingsRow
+          label="Default clone location"
+          htmlFor="clone-location"
+          description="New projects are cloned into this folder. Existing checkouts are not moved."
+        >
           <div className="flex w-[min(24rem,48%)] shrink-0 items-center gap-2">
             <Input
               id="clone-location"
@@ -304,8 +292,8 @@ function GeneralSettings({
               Choose folder
             </Button>
           </div>
-        </div>
-      </div>
+        </SettingsRow>
+      </SettingsGroup>
       {localError || error ? (
         <p className="text-xs text-destructive">{localError ?? error}</p>
       ) : null}
@@ -417,68 +405,63 @@ function TerminalSettings({ settings, error, onUpdate }: TerminalSettingsProps):
     : TERMINAL_FONT_FAMILY_AUTO
 
   return (
-    <section className="space-y-6" data-testid="settings-terminal">
-      <div className="space-y-3 max-w-sm">
-        <Label htmlFor="terminal-theme" className="text-[13px] font-medium">
-          Theme
-        </Label>
-        <TerminalThemeCombobox
-          value={settings.terminalTheme}
-          onChange={(value) => {
-            void persistTheme(value)
-          }}
-        />
-      </div>
-      <div className="space-y-3">
-        <Label htmlFor="terminal-font-size" className="text-[13px] font-medium">
-          Font size
-        </Label>
-        <Input
-          id="terminal-font-size"
-          type="number"
-          min={MIN_TERMINAL_FONT_SIZE}
-          max={MAX_TERMINAL_FONT_SIZE}
-          className="h-7 w-28"
-          value={fontSize}
-          data-testid="settings-font-size"
-          onChange={(event): void => setFontSize(event.target.value)}
-          onBlur={(): void => {
-            void persistFontSize(fontSize)
-          }}
-          onKeyDown={(event): void => {
-            if (event.key === 'Enter') {
-              event.currentTarget.blur()
-            }
-          }}
-        />
-      </div>
-      <div className="space-y-3">
-        <Label htmlFor="terminal-font-family" className="text-[13px] font-medium">
-          Font family
-        </Label>
-        <Select
-          items={fontOptions}
-          value={familyValue}
-          onValueChange={(value): void => {
-            if (value) void persistFontFamily(value)
-          }}
-        >
-          <SelectTrigger
-            id="terminal-font-family"
-            className="h-7 w-full max-w-sm"
-            data-testid="settings-font-family"
+    <section className="space-y-8" data-testid="settings-terminal">
+      <SettingsGroup title="Display">
+        <SettingsRow label="Theme" htmlFor="terminal-theme">
+          <div className="w-64 shrink-0">
+            <TerminalThemeCombobox
+              value={settings.terminalTheme}
+              onChange={(value) => {
+                void persistTheme(value)
+              }}
+            />
+          </div>
+        </SettingsRow>
+        <SettingsRow label="Font size" htmlFor="terminal-font-size" description="In pixels.">
+          <Input
+            id="terminal-font-size"
+            type="number"
+            min={MIN_TERMINAL_FONT_SIZE}
+            max={MAX_TERMINAL_FONT_SIZE}
+            className="h-7 w-28"
+            value={fontSize}
+            data-testid="settings-font-size"
+            onChange={(event): void => setFontSize(event.target.value)}
+            onBlur={(): void => {
+              void persistFontSize(fontSize)
+            }}
+            onKeyDown={(event): void => {
+              if (event.key === 'Enter') {
+                event.currentTarget.blur()
+              }
+            }}
+          />
+        </SettingsRow>
+        <SettingsRow label="Font family" htmlFor="terminal-font-family">
+          <Select
+            items={fontOptions}
+            value={familyValue}
+            onValueChange={(value): void => {
+              if (value) void persistFontFamily(value)
+            }}
           >
-            <SelectValue placeholder="Select a font" />
-          </SelectTrigger>
-          <SelectContent>
-            {fontOptions.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+            <SelectTrigger
+              id="terminal-font-family"
+              className="h-7 w-64"
+              data-testid="settings-font-family"
+            >
+              <SelectValue placeholder="Select a font" />
+            </SelectTrigger>
+            <SelectContent>
+              {fontOptions.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </SettingsRow>
+      </SettingsGroup>
       {localError || error ? (
         <p className="text-sm text-destructive">{localError ?? error}</p>
       ) : null}
@@ -547,7 +530,7 @@ function IntegrationsSettings({
   return (
     <section className="space-y-4" data-testid="settings-integrations">
       <div
-        className="space-y-4 rounded-lg border border-border p-4"
+        className="space-y-4 rounded-lg border border-border bg-card p-4 text-card-foreground"
         data-testid="github-integration-card"
       >
         <div className="space-y-1">

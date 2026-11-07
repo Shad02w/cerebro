@@ -821,7 +821,7 @@ export function ChatView({
                   </p>
                 </div>
                 <form
-                  className="chat-composer-shell relative rounded-2xl border bg-background p-2 shadow-lg"
+                  className="chat-composer-shell relative rounded-xl border bg-card p-2 shadow-[0_2px_4px_oklch(0_0_0/0.08),0_16px_32px_-8px_oklch(0_0_0/0.28)] dark:shadow-[0_2px_4px_oklch(0_0_0/0.3),0_16px_32px_-8px_oklch(0_0_0/0.6)]"
                   data-dragging={dragging || undefined}
                   onSubmit={(e) => {
                     e.preventDefault()

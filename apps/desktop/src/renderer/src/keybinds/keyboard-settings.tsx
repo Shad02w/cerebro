@@ -107,7 +107,7 @@ export function KeyboardSettings({
         Click a shortcut to record a new key combination. Escape cancels. Shortcuts with modifiers
         work while the terminal is focused.
       </p>
-      <div className="space-y-3">
+      <div className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card">
         {KEYBIND_CATALOG.map((action) => {
           const hotkey = bindings[action.id]
           const isEditing = editingId === action.id && recorder.isRecording
@@ -115,7 +115,7 @@ export function KeyboardSettings({
           return (
             <div
               key={action.id}
-              className="flex items-start justify-between gap-6 rounded-lg border border-border px-4 py-3"
+              className="flex items-center justify-between gap-6 px-4 py-3 transition-colors hover:bg-accent/40"
               data-testid={`keybind-row-${action.id}`}
             >
               <div className="min-w-0 flex-1 space-y-1">
