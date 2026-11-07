@@ -1,5 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ComponentProps } from 'react'
-import { OPEN_COMMAND_PALETTE_EVENT } from '@/lib/app-events'
+import { createContext, useContext, useState, type ComponentProps } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import '@/assets/sidebar.css'
 import {
@@ -1713,14 +1712,6 @@ export function AppSidebar({
     setPaletteOpen((current) => !current)
     return true
   })
-  // Window chrome outside the sidebar (activity rail, command bar) opens the same palette.
-  useEffect(() => {
-    const open = (): void => {
-      if (!isSettings) setPaletteOpen(true)
-    }
-    window.addEventListener(OPEN_COMMAND_PALETTE_EVENT, open)
-    return () => window.removeEventListener(OPEN_COMMAND_PALETTE_EVENT, open)
-  }, [isSettings])
   const openAgent = (agent: ChatAgentActivity): void => {
     void openAgentSession(agent, onSelectWorkspace).catch(() => {})
   }
@@ -1750,7 +1741,6 @@ export function AppSidebar({
         <Sidebar
           collapsible={isSettings ? 'none' : 'offcanvas'}
           className={cn('cerebro-sidebar', isSettings && 'border-r border-sidebar-border')}
-          data-sidebar-mode={isSettings ? 'settings' : 'projects'}
         >
           <NavigationHeader
             isSettings={isSettings}

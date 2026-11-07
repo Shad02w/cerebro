@@ -107,7 +107,7 @@ export function KeyboardSettings({
         Click a shortcut to record a new key combination. Escape cancels. Shortcuts with modifiers
         work while the terminal is focused.
       </p>
-      <div className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card shadow-card">
+      <div className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card">
         {KEYBIND_CATALOG.map((action) => {
           const hotkey = bindings[action.id]
           const isEditing = editingId === action.id && recorder.isRecording

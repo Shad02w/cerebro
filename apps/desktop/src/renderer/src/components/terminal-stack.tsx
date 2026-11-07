@@ -13,7 +13,7 @@ import type {
 import { PaneFrame, SplitHandle } from './pane-layout'
 import { positionPanes } from '@/lib/pane-layout'
 import { DEFAULT_TERMINAL_THEME, type TerminalThemeId } from '@shared/terminal-themes'
-import { useTerminalPalette } from '@/lib/terminal-surface'
+import { TERMINAL_PALETTES } from '@/lib/terminal-themes'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ensureWorkspaceForCheckout } from '@/lib/ensure-workspace-checkout'
@@ -225,13 +225,14 @@ function useTerminalAppearance(
   },
   fontSize: number,
   fontFamilyPreference: string,
-  theme: Record<string, string>,
+  themeId: TerminalThemeId,
   ready: boolean
 ): void {
   const devicePixelRatio = useDevicePixelRatio()
   useEffect(() => {
     const terminal = terminalRef.current
     if (!terminal) return
+    const theme = TERMINAL_PALETTES[themeId]
     const current = terminal.options.theme ?? {}
     // Applying the same theme after snapshot replay erases restored OSC colors.
     if (
@@ -240,7 +241,7 @@ function useTerminalAppearance(
     ) {
       terminal.options.theme = { ...theme }
     }
-  }, [terminalRef, theme, ready])
+  }, [terminalRef, themeId, ready])
   useEffect(() => {
     const terminal = terminalRef.current
     const fitAddon = fitAddonRef.current
@@ -284,11 +285,10 @@ function TerminalSession({
   themeId,
   onStartupReady
 }: TerminalSessionProps): React.JSX.Element {
-  const palette = useTerminalPalette(themeId)
-  const themeRef = useRef(palette)
+  const themeRef = useRef(themeId)
   useLayoutEffect(() => {
-    themeRef.current = palette
-  }, [palette])
+    themeRef.current = themeId
+  }, [themeId])
   const hostRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
@@ -310,7 +310,7 @@ function TerminalSession({
     { terminalRef, fitAddonRef, hostRef, sessionIdRef, exitedRef },
     fontSize,
     fontFamilyPreference,
-    palette,
+    themeId,
     ready
   )
   useEffect(() => {
@@ -366,7 +366,7 @@ function TerminalSession({
           reflowCursorLine: false,
           rescaleOverlappingGlyphs: true,
           letterSpacing,
-          theme: { ...themeRef.current },
+          theme: { ...TERMINAL_PALETTES[themeRef.current] },
           fontFamily: resolvedFont.css
         })
         forwardUserInputOnly(terminal)
@@ -548,7 +548,7 @@ function TerminalSession({
         ref={hostRef}
         className="terminal-host"
         data-terminal-theme={themeId}
-        style={{ backgroundColor: palette.background ?? '#000000' }}
+        style={{ backgroundColor: TERMINAL_PALETTES[themeId].background ?? '#000000' }}
       />
       <TerminalNotices
         status={status}
@@ -667,7 +667,6 @@ export function TerminalStack({
   onSelectWorkspace,
   onStartupReady
 }: TerminalStackProps): React.JSX.Element {
-  const stackPalette = useTerminalPalette(themeId ?? DEFAULT_TERMINAL_THEME)
   const layoutQuery = useQuery(layoutOptions)
   const layout = layoutQuery.data ?? EMPTY_LAYOUT
   const [readyPanes, setReadyPanes] = useState<Set<string>>(() => new Set())
@@ -782,7 +781,10 @@ export function TerminalStack({
         data-testid="terminal-sessions"
         className="relative min-h-0 flex-1 overflow-hidden"
         style={{
-          backgroundColor: activeTabId == null ? '#000000' : (stackPalette.background ?? '#000000')
+          backgroundColor:
+            activeTabId == null
+              ? '#000000'
+              : (TERMINAL_PALETTES[themeId ?? DEFAULT_TERMINAL_THEME].background ?? '#000000')
         }}
       >
         {visible &&

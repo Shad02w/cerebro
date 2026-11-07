@@ -8,7 +8,6 @@ import { AgentNotifications } from '@/components/agent-notifications'
 import { AddProjectDialog } from '@/components/add-project-dialog'
 import { AddWorkspaceDialog } from '@/components/add-workspace-dialog'
 import { AppSidebar } from '@/components/app-sidebar'
-import { ActivityRail, CommandBar, StatusBar } from '@/components/app-chrome'
 import { SettingsView } from '@/components/settings-view'
 import { WorkspaceView } from '@/components/workspace-view'
 import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from '@/components/ui/sidebar'
@@ -19,7 +18,6 @@ import { useProjects } from '@/hooks/use-projects'
 import { useSettings } from '@/hooks/use-settings'
 import { KeybindProvider, useKeybindHandler } from '@/keybinds'
 import { navigate, projectsPath, settingsPath } from '@/lib/app-route'
-import { useAppearance } from '@/lib/appearance'
 import {
   TITLEBAR_HEIGHT,
   TITLEBAR_TRIGGER_LEFT,
@@ -105,7 +103,6 @@ function App(): React.JSX.Element {
   const completeStartup = useCallback(() => setStartupComplete(true), [])
   const route = useAppRoute()
   const isSettings = route.name === 'settings'
-  const { style: uiStyle } = useAppearance()
   const [projectDialogOpen, setProjectDialogOpen] = useState(false)
   const [workspaceDialogProject, setWorkspaceDialogProject] = useState<Project | null>(null)
   const {
@@ -189,25 +186,9 @@ function App(): React.JSX.Element {
           <SettingsKeybindBridge />
           <ExpandSidebarOnSettings enabled={isSettings} />
           <WindowDragOverlay
-            showSidebarTrigger={!isSettings && uiStyle !== 'editor' && uiStyle !== 'slate'}
+            showSidebarTrigger={!isSettings}
             deferTriggerToTabBar={activeWorkspace != null}
           />
-          {uiStyle === 'editor' ? (
-            <ActivityRail
-              isSettings={isSettings}
-              onAddProject={(): void => setProjectDialogOpen(true)}
-              onOpenSettings={(): void => navigate(settingsPath('general'))}
-            />
-          ) : null}
-          {uiStyle === 'slate' ? (
-            <CommandBar
-              isSettings={isSettings}
-              workspace={isSettings ? null : activeWorkspace}
-              projects={projects}
-              onAddProject={(): void => setProjectDialogOpen(true)}
-              onOpenSettings={(): void => navigate(settingsPath('general'))}
-            />
-          ) : null}
           <AppSidebar
             mode={isSettings ? 'settings' : 'projects'}
             projects={projects}
@@ -281,9 +262,6 @@ function App(): React.JSX.Element {
                 onStartupReady={startupComplete ? undefined : completeStartup}
               />
             </div>
-            {uiStyle === 'editor' ? (
-              <StatusBar workspace={isSettings ? null : activeWorkspace} projects={projects} />
-            ) : null}
           </SidebarInset>
           <AgentNotifications />
           <AddProjectDialog

@@ -480,14 +480,10 @@ test('shows working-tree diffs in a Changes tab with a right-hand file list', as
       .poll(async () => diffsHost.evaluate((el) => getComputedStyle(el).colorScheme))
       .toMatch(/dark/)
     const backgroundRgb = await diffsHost.evaluate((el) => {
-      // Theme tokens are oklch, so normalize the computed color through a canvas pixel.
       const raw = getComputedStyle(el).backgroundColor
-      const ctx = document.createElement('canvas').getContext('2d')
-      if (!ctx) return raw
-      ctx.fillStyle = raw
-      ctx.fillRect(0, 0, 1, 1)
-      const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data
-      return [r, g, b]
+      const match = raw.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/)
+      if (!match) return raw
+      return [Number(match[1]), Number(match[2]), Number(match[3])]
     })
     expect(Array.isArray(backgroundRgb)).toBe(true)
     const [r, g, b] = backgroundRgb as [number, number, number]

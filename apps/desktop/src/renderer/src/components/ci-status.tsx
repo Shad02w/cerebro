@@ -15,18 +15,18 @@ import {
 import type { WorkspaceCiCheck, WorkspacePullRequest } from '@shared/types'
 
 const presentation = {
-  success: { label: 'Passing', Icon: CheckCircle2, color: 'text-success' },
-  failure: { label: 'Failing', Icon: XCircle, color: 'text-destructive' },
-  in_progress: { label: 'Running', Icon: CircleDashed, color: 'text-info' },
-  queued: { label: 'Queued', Icon: Hourglass, color: 'text-warning' },
-  pending: { label: 'Pending', Icon: Clock3, color: 'text-warning' },
-  waiting: { label: 'Waiting', Icon: PauseCircle, color: 'text-warning' },
+  success: { label: 'Passing', Icon: CheckCircle2, color: 'text-emerald-500' },
+  failure: { label: 'Failing', Icon: XCircle, color: 'text-red-500' },
+  in_progress: { label: 'Running', Icon: CircleDashed, color: 'text-sky-500' },
+  queued: { label: 'Queued', Icon: Hourglass, color: 'text-amber-500' },
+  pending: { label: 'Pending', Icon: Clock3, color: 'text-amber-500' },
+  waiting: { label: 'Waiting', Icon: PauseCircle, color: 'text-amber-500' },
   cancelled: { label: 'Cancelled', Icon: Ban, color: 'text-muted-foreground' },
   skipped: { label: 'Skipped', Icon: CircleMinus, color: 'text-muted-foreground' },
   neutral: { label: 'Neutral', Icon: CircleMinus, color: 'text-muted-foreground' },
-  timed_out: { label: 'Timed out', Icon: TimerOff, color: 'text-destructive' },
-  action_required: { label: 'Action required', Icon: ShieldAlert, color: 'text-warning' },
-  startup_failure: { label: 'Startup failed', Icon: TriangleAlert, color: 'text-destructive' },
+  timed_out: { label: 'Timed out', Icon: TimerOff, color: 'text-red-500' },
+  action_required: { label: 'Action required', Icon: ShieldAlert, color: 'text-amber-500' },
+  startup_failure: { label: 'Startup failed', Icon: TriangleAlert, color: 'text-red-500' },
   stale: { label: 'Stale', Icon: Clock3, color: 'text-muted-foreground' },
   none: { label: 'No checks', Icon: CircleMinus, color: 'text-muted-foreground' },
   unavailable: { label: 'Unavailable', Icon: CircleHelp, color: 'text-muted-foreground' }

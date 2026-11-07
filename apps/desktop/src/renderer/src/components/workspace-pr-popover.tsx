@@ -22,14 +22,9 @@ function presentation(pr: WorkspacePullRequest): {
   color: string
 } {
   if (pr.state === 'merged')
-    return { label: 'Merged', state: 'merged', Icon: GitMerge, color: 'text-merged' }
+    return { label: 'Merged', state: 'merged', Icon: GitMerge, color: 'text-violet-500' }
   if (pr.state === 'closed')
-    return {
-      label: 'Closed',
-      state: 'closed',
-      Icon: GitPullRequestClosed,
-      color: 'text-destructive'
-    }
+    return { label: 'Closed', state: 'closed', Icon: GitPullRequestClosed, color: 'text-red-500' }
   if (pr.isDraft)
     return {
       label: 'Draft',
@@ -42,11 +37,11 @@ function presentation(pr: WorkspacePullRequest): {
       label: 'Changes requested',
       state: 'changes_requested',
       Icon: MessageSquareWarning,
-      color: 'text-warning'
+      color: 'text-amber-500'
     }
   if (pr.reviewDecision === 'approved')
-    return { label: 'Approved', state: 'approved', Icon: Check, color: 'text-success' }
-  return { label: 'Open', state: 'open', Icon: GitPullRequest, color: 'text-success' }
+    return { label: 'Approved', state: 'approved', Icon: Check, color: 'text-emerald-500' }
+  return { label: 'Open', state: 'open', Icon: GitPullRequest, color: 'text-emerald-500' }
 }
 function reviewLabel(pr: WorkspacePullRequest): string {
   return {

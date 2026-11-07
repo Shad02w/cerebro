@@ -215,8 +215,8 @@ describe('ChatSessionPanel', () => {
     expect(stat).toHaveTextContent('+15 -5')
     expect(stat).toHaveAttribute('data-additions', '15')
     expect(stat).toHaveAttribute('data-deletions', '5')
-    expect(within(stat).getByText('+15', { exact: true })).toHaveClass('text-success')
-    expect(within(stat).getByText('-5', { exact: true })).toHaveClass('text-destructive')
+    expect(within(stat).getByText('+15', { exact: true })).toHaveClass('text-green-500')
+    expect(within(stat).getByText('-5', { exact: true })).toHaveClass('text-red-500')
     expect(within(changes).queryByTestId('chat-session-badge')).toBeNull()
     expect(screen.getAllByTestId('chat-diff-stat')).toHaveLength(1)
     expect(screen.getByTestId('chat-session-panel-tasks')).toBeInTheDocument()
@@ -235,7 +235,7 @@ describe('ChatSessionPanel', () => {
     expect(mark).not.toHaveTextContent('+')
     expect(mark).toHaveAttribute('data-additions', '15')
     expect(mark).toHaveAttribute('data-deletions', '5')
-    expect(mark.className).toContain('bg-success')
+    expect(mark.className).toContain('bg-green-500')
   })
 
   it('starts collapsed and expands back to every section', async () => {

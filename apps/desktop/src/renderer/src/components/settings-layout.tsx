@@ -13,8 +13,8 @@ export function SettingsGroup({
 }): React.JSX.Element {
   return (
     <div className={cn('space-y-2', className)}>
-      <h2 className="ui-eyebrow px-1 text-xs text-muted-foreground">{title}</h2>
-      <div className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card text-card-foreground shadow-card">
+      <h2 className="px-1 text-xs font-medium text-muted-foreground">{title}</h2>
+      <div className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card text-card-foreground">
         {children}
       </div>
     </div>

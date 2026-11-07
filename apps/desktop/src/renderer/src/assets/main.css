@@ -1,7 +1,5 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
-@import './themes.css';
-@import './layouts.css';
 
 @source '../**/*.{ts,tsx}';
 @source '../../../../node_modules/streamdown/dist/*.js';
@@ -11,7 +9,7 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --font-sans: var(--app-font-sans);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -31,29 +29,6 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
-  --color-destructive-foreground: var(--destructive-foreground);
-  --color-success: var(--success);
-  --color-success-foreground: var(--success-foreground);
-  --color-warning: var(--warning);
-  --color-warning-foreground: var(--warning-foreground);
-  --color-info: var(--info);
-  --color-info-foreground: var(--info-foreground);
-  --color-merged: var(--merged);
-  --color-merged-foreground: var(--merged-foreground);
-  --color-header: var(--header);
-  --color-tab-active: var(--tab-active);
-  --color-tab-active-foreground: var(--tab-active-foreground);
-  --color-tab-active-border: var(--tab-active-border);
-  --color-overlay: var(--overlay);
-  --color-code: var(--code);
-  --color-chart-1: var(--chart-1);
-  --color-chart-2: var(--chart-2);
-  --color-chart-3: var(--chart-3);
-  --color-chart-4: var(--chart-4);
-  --color-chart-5: var(--chart-5);
-  --shadow-popover: var(--elevation-popover);
-  --shadow-dialog: var(--elevation-dialog);
-  --shadow-card: var(--elevation-card);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -67,22 +42,7 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
-:root,
-[data-ui-style='classic'] {
-  /* Non-color tokens. Every [data-ui-style] block in themes.css may override these. */
-  --app-font-sans:
-    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --row-height: 2rem;
-  --elevation-card: none;
-  --elevation-popover: 0 4px 12px -2px oklch(0 0 0 / 0.12), 0 1px 3px oklch(0 0 0 / 0.08);
-  --elevation-dialog: 0 24px 48px -12px oklch(0 0 0 / 0.3), 0 2px 6px oklch(0 0 0 / 0.08);
-  --sidebar-selected-fill: 16%;
-  --sidebar-selected-ring: 80%;
-  --sidebar-selected-glow: 10px;
-  --eyebrow-transform: none;
-  --eyebrow-tracking: 0;
-  --eyebrow-weight: 500;
-
+:root {
   --radius: 0.625rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -112,30 +72,9 @@
   --sidebar-ring: oklch(0.708 0 0);
   --sidebar-selected: var(--color-teal-500);
   --pane-border: color-mix(in oklch, var(--ring) 60%, black);
-  --destructive-foreground: oklch(1 0 0);
-  --success: oklch(0.6 0.15 162);
-  --success-foreground: oklch(1 0 0);
-  --warning: oklch(0.7 0.17 70);
-  --warning-foreground: oklch(0.2 0.03 70);
-  --info: oklch(0.6 0.15 237);
-  --info-foreground: oklch(1 0 0);
-  --merged: oklch(0.56 0.24 293);
-  --merged-foreground: oklch(1 0 0);
-  --header: var(--background);
-  --tab-active: var(--muted);
-  --tab-active-foreground: var(--foreground);
-  --tab-active-border: transparent;
-  --overlay: oklch(0 0 0 / 0.5);
-  --code: oklch(0.97 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
 }
 
-.dark,
-.dark [data-ui-style='classic'] {
+.dark {
   color-scheme: dark;
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
@@ -165,26 +104,6 @@
   --sidebar-ring: oklch(0.556 0 0);
   --sidebar-selected: var(--color-teal-300);
   --pane-border: color-mix(in oklch, var(--ring) 60%, black);
-  --destructive-foreground: oklch(1 0 0);
-  --success: oklch(0.696 0.17 162.48);
-  --success-foreground: oklch(0.15 0.03 162);
-  --warning: oklch(0.769 0.188 70.08);
-  --warning-foreground: oklch(0.2 0.03 70);
-  --info: oklch(0.685 0.169 237.323);
-  --info-foreground: oklch(0.15 0.03 237);
-  --merged: oklch(0.606 0.25 292.717);
-  --merged-foreground: oklch(1 0 0);
-  --header: var(--background);
-  --tab-active: var(--muted);
-  --tab-active-foreground: var(--foreground);
-  --tab-active-border: transparent;
-  --overlay: oklch(0 0 0 / 0.5);
-  --code: oklch(0.085 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
 }
 
 @layer base {
@@ -229,13 +148,6 @@
   background: color-mix(in srgb, var(--muted-foreground) 50%, transparent);
 }
 
-/* Small uppercase-capable section label. Styles opt in through the eyebrow tokens. */
-.ui-eyebrow {
-  text-transform: var(--eyebrow-transform);
-  letter-spacing: var(--eyebrow-tracking);
-  font-weight: var(--eyebrow-weight);
-}
-
 .app-drag-region {
   -webkit-app-region: drag;
 }
@@ -248,26 +160,18 @@
 [data-sidebar='menu-button'][data-active='true'],
 [data-sidebar='menu-sub-button'][data-active='true'],
 [data-workspace-role][data-active='true'] {
-  background-color: color-mix(
-    in oklch,
-    var(--sidebar-selected) var(--sidebar-selected-fill),
-    var(--sidebar-accent)
-  );
+  background-color: color-mix(in oklch, var(--sidebar-selected) 16%, var(--sidebar-accent));
   font-weight: 500;
-  color: var(--sidebar-selected-foreground, var(--sidebar-accent-foreground));
+  color: var(--sidebar-accent-foreground);
   box-shadow:
-    0 0 0 1px color-mix(in oklch, var(--sidebar-selected) var(--sidebar-selected-ring), transparent),
-    0 0 var(--sidebar-selected-glow) color-mix(in oklch, var(--sidebar-selected) 42%, transparent);
+    0 0 0 1px color-mix(in oklch, var(--sidebar-selected) 80%, transparent),
+    0 0 10px color-mix(in oklch, var(--sidebar-selected) 42%, transparent);
 }
 
 [data-sidebar='menu-button'][data-active='true']:hover,
 [data-sidebar='menu-sub-button'][data-active='true']:hover,
 [data-workspace-role][data-active='true']:hover {
-  background-color: color-mix(
-    in oklch,
-    var(--sidebar-selected) calc(var(--sidebar-selected-fill) + 6%),
-    var(--sidebar-accent)
-  );
+  background-color: color-mix(in oklch, var(--sidebar-selected) 22%, var(--sidebar-accent));
 }
 
 /* More-actions are per-row. Do not use group-hover on the menu-item: nested

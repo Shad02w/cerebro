@@ -1,5 +1,4 @@
 import { AgentModelSettings } from '@/components/agent-model-settings'
-import { AppearanceSettings } from '@/components/appearance-settings'
 import { SettingsGroup, SettingsRow } from '@/components/settings-layout'
 import { TerminalThemeCombobox } from '@/components/terminal-theme-combobox'
 import { CliSettings } from '@/components/cli-settings'
@@ -68,9 +67,7 @@ export function SettingsView({
             <h1 className="text-xl font-semibold tracking-tight">{meta.label}</h1>
             <p className="text-[13px] text-muted-foreground">{meta.description}</p>
           </header>
-          {section === 'appearance' ? (
-            <AppearanceSettings />
-          ) : section === 'general' ? (
+          {section === 'general' ? (
             loading || !settings ? (
               <p className="text-sm text-muted-foreground">Loading settings…</p>
             ) : (
@@ -410,11 +407,7 @@ function TerminalSettings({ settings, error, onUpdate }: TerminalSettingsProps):
   return (
     <section className="space-y-8" data-testid="settings-terminal">
       <SettingsGroup title="Display">
-        <SettingsRow
-          label="Theme"
-          htmlFor="terminal-theme"
-          description="Cerebro Default follows the selected UI style and color mode."
-        >
+        <SettingsRow label="Theme" htmlFor="terminal-theme">
           <div className="w-64 shrink-0">
             <TerminalThemeCombobox
               value={settings.terminalTheme}
@@ -537,7 +530,7 @@ function IntegrationsSettings({
   return (
     <section className="space-y-4" data-testid="settings-integrations">
       <div
-        className="space-y-4 rounded-lg border border-border bg-card p-4 text-card-foreground shadow-card"
+        className="space-y-4 rounded-lg border border-border bg-card p-4 text-card-foreground"
         data-testid="github-integration-card"
       >
         <div className="space-y-1">

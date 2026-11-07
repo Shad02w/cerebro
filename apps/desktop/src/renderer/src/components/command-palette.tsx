@@ -197,7 +197,7 @@ function CommandPalettePanel({
       data-testid="command-palette"
       aria-label="Command palette"
       finalFocus={() => !chosen.current}
-      className="top-[12%] z-[60] flex max-h-[min(32.5rem,calc(100%-6rem))] w-[min(38.75rem,calc(100%-2rem))] max-w-none translate-y-0 flex-col gap-0 overflow-hidden rounded-xl bg-popover p-0 opacity-100 shadow-dialog transition-none data-starting-style:opacity-100! sm:max-w-none"
+      className="top-[12%] z-[60] flex max-h-[min(32.5rem,calc(100%-6rem))] w-[min(38.75rem,calc(100%-2rem))] max-w-none translate-y-0 flex-col gap-0 overflow-hidden rounded-xl bg-popover p-0 opacity-100 shadow-2xl transition-none data-starting-style:opacity-100! sm:max-w-none"
       showCloseButton={false}
     >
       <DialogTitle className="sr-only">Command palette</DialogTitle>

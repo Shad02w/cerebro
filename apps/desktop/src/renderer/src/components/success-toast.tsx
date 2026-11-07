@@ -15,9 +15,9 @@ const toneIcons: Record<ToastTone, typeof Check> = {
 }
 
 const toneColors: Record<ToastTone, string> = {
-  success: 'text-success',
+  success: 'text-green-500',
   error: 'text-destructive',
-  info: 'text-info'
+  info: 'text-sky-500'
 }
 
 function ToastList({

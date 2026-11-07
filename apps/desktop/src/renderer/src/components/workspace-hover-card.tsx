@@ -19,7 +19,7 @@ function prStatePresentation(pr: WorkspacePullRequest): {
       label: 'Merged',
       state: 'merged',
       Icon: GitMerge,
-      className: 'border-transparent bg-merged text-merged-foreground'
+      className: 'border-transparent bg-violet-600 text-white dark:bg-violet-500'
     }
   }
   if (pr.state === 'closed') {
@@ -27,7 +27,7 @@ function prStatePresentation(pr: WorkspacePullRequest): {
       label: 'Closed',
       state: 'closed',
       Icon: GitPullRequestClosed,
-      className: 'border-transparent bg-destructive text-destructive-foreground'
+      className: 'border-transparent bg-red-600 text-white dark:bg-red-500'
     }
   }
   if (pr.isDraft) {
@@ -35,14 +35,14 @@ function prStatePresentation(pr: WorkspacePullRequest): {
       label: 'Draft',
       state: 'draft',
       Icon: GitPullRequestDraft,
-      className: 'border-transparent bg-muted-foreground text-background'
+      className: 'border-transparent bg-zinc-500 text-white'
     }
   }
   return {
     label: 'Open',
     state: 'open',
     Icon: GitPullRequest,
-    className: 'border-transparent bg-success text-success-foreground'
+    className: 'border-transparent bg-emerald-600 text-white dark:bg-emerald-500'
   }
 }
 
@@ -219,7 +219,7 @@ function PullRequestDetails({
       </dl>
       <CiChecks pr={pr} />
       {prStatus?.state === 'stale' ? (
-        <p className="text-xs text-warning">Last known status · Refresh failed</p>
+        <p className="text-xs text-amber-500">Last known status · Refresh failed</p>
       ) : null}
     </div>
   )

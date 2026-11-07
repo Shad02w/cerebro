@@ -66,7 +66,7 @@ const tabsTriggerVariants = cva(
           'dark:text-muted-foreground dark:hover:text-foreground',
           'group-data-[variant=default]/tabs-list:data-active:shadow-sm',
           'data-active:bg-background data-active:text-foreground',
-          'dark:data-active:border-input dark:data-active:bg-accent dark:data-active:text-foreground'
+          'dark:data-active:border-input dark:data-active:bg-input/30 dark:data-active:text-foreground'
         ],
         line: [
           'h-[calc(100%-1px)] flex-1 rounded-md px-2 py-1 text-sm text-foreground/60',
@@ -81,8 +81,9 @@ const tabsTriggerVariants = cva(
         ],
         pill: [
           'h-7 max-w-48 min-w-0 shrink-0 justify-start rounded-md px-2.5 py-1 text-xs text-muted-foreground',
-          'data-active:border-tab-active-border data-active:bg-tab-active data-active:text-tab-active-foreground data-active:shadow-none',
-          'bg-transparent hover:bg-accent/60 hover:text-foreground'
+          'data-active:bg-muted data-active:text-foreground data-active:shadow-none',
+          'bg-transparent hover:text-foreground',
+          'dark:data-active:border-transparent dark:data-active:bg-muted'
         ]
       }
     },

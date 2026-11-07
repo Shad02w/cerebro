@@ -5,10 +5,9 @@ import type { AppNotification } from '@cerebro/core'
 const AUTO_DISMISS_MS = 8000
 
 function NotificationIcon({ kind }: { kind: AppNotification['kind'] }): React.JSX.Element {
-  if (kind === 'blocked') return <Bell className="size-4 text-warning" aria-hidden="true" />
-  if (kind === 'failed')
-    return <CircleAlert className="size-4 text-destructive" aria-hidden="true" />
-  return <CircleCheck className="size-4 text-success" aria-hidden="true" />
+  if (kind === 'blocked') return <Bell className="size-4 text-amber-500" aria-hidden="true" />
+  if (kind === 'failed') return <CircleAlert className="size-4 text-red-500" aria-hidden="true" />
+  return <CircleCheck className="size-4 text-green-500" aria-hidden="true" />
 }
 
 export function AgentNotifications(): React.JSX.Element | null {

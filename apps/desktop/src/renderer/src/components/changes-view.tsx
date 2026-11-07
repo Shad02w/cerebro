@@ -36,13 +36,7 @@ import {
   changesProgressOptions,
   type LoadedChange
 } from '@/lib/changes-query'
-import {
-  changesWorkerPool,
-  changesHighlighterOptions,
-  DIFF_SURFACE_CSS,
-  DIFF_THEMES
-} from '@/lib/changes-highlighter'
-import { useAppearance } from '@/lib/appearance'
+import { changesWorkerPool, changesHighlighterOptions } from '@/lib/changes-highlighter'
 import { queryClient } from '@/lib/query-client'
 import { cn } from '@/lib/utils'
 
@@ -62,10 +56,10 @@ type ChangesViewProps = {
 }
 
 const DIFF_OPTIONS: FileDiffOptions<undefined, undefined> = {
-  theme: DIFF_THEMES,
+  theme: 'pierre-dark',
+  themeType: 'dark',
   stickyHeader: true,
   unsafeCSS: `
-    ${DIFF_SURFACE_CSS}
     [data-diffs-header] {
       box-sizing: border-box;
       height: 32px;
@@ -129,8 +123,7 @@ const ChangeFileContent = memo(function ChangeFileContent({
         : null,
     [item, annotations]
   )
-  const { resolved: themeType } = useAppearance()
-  const options = useMemo(() => ({ ...DIFF_OPTIONS, themeType, collapsed }), [themeType, collapsed])
+  const options = useMemo(() => ({ ...DIFF_OPTIONS, collapsed }), [collapsed])
   const renderToggle = useCallback(
     () => (
       <Button

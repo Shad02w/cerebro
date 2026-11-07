@@ -3,7 +3,6 @@ import {
   Cpu,
   Keyboard,
   LifeBuoy,
-  Palette,
   Settings,
   SquareTerminal,
   Terminal,
@@ -24,12 +23,6 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     label: 'General',
     description: 'Configure projects and the empty agent pane.',
     icon: Settings
-  },
-  {
-    id: 'appearance',
-    label: 'Appearance',
-    description: 'Pick a UI style and a light or dark color mode.',
-    icon: Palette
   },
   {
     id: 'provider',

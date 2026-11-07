@@ -821,7 +821,7 @@ export function ChatView({
                   </p>
                 </div>
                 <form
-                  className="chat-composer-shell relative rounded-2xl border bg-background p-2 shadow-lg"
+                  className="chat-composer-shell relative rounded-[22px] border bg-card p-2 shadow-[0_2px_4px_oklch(0_0_0/0.08),0_16px_32px_-8px_oklch(0_0_0/0.28)] dark:shadow-[0_2px_4px_oklch(0_0_0/0.3),0_16px_32px_-8px_oklch(0_0_0/0.6)]"
                   data-dragging={dragging || undefined}
                   onSubmit={(e) => {
                     e.preventDefault()
@@ -929,6 +929,7 @@ export function ChatView({
                             type="button"
                             size="icon-sm"
                             variant="outline"
+                            className="rounded-full"
                             aria-label="Stop agent"
                             onClick={() => {
                               void execute({ action: 'stop', sessionId: session?.id })
@@ -937,7 +938,12 @@ export function ChatView({
                             <Square className="size-3 fill-current" />
                           </Button>
                         ) : null}
-                        <Button type="submit" size="icon-sm" aria-label="Send message">
+                        <Button
+                          type="submit"
+                          size="icon-sm"
+                          className="rounded-full"
+                          aria-label="Send message"
+                        >
                           <ArrowUp className="size-4" />
                         </Button>
                       </div>
