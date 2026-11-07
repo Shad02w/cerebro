@@ -71,6 +71,8 @@
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
   --sidebar-selected: var(--color-teal-500);
+  --sidebar-session-hover: color-mix(in oklch, var(--sidebar-foreground) 7%, transparent);
+  --sidebar-session-hover-selected: color-mix(in oklch, var(--sidebar-selected) 20%, transparent);
   --pane-border: color-mix(in oklch, var(--ring) 60%, black);
 }
 
@@ -103,6 +105,8 @@
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
   --sidebar-selected: var(--color-teal-300);
+  --sidebar-session-hover: color-mix(in oklch, var(--sidebar-foreground) 9%, transparent);
+  --sidebar-session-hover-selected: color-mix(in oklch, var(--sidebar-selected) 20%, transparent);
   --pane-border: color-mix(in oklch, var(--ring) 60%, black);
 }
 

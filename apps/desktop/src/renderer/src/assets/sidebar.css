@@ -255,6 +255,21 @@
   outline-offset: -2px;
 }
 
+/* Hovering a session lifts it off the workspace row: a neutral tint on an
+   unfocused row, the selected color on a focused one. */
+.cerebro-sidebar .session-row {
+  border-radius: 6px;
+  transition: background-color 120ms ease;
+}
+
+.cerebro-sidebar .session-row:hover {
+  background-color: var(--sidebar-session-hover);
+}
+
+.cerebro-sidebar [data-sidebar='menu-row']:has([data-active='true']) .session-row:hover {
+  background-color: var(--sidebar-session-hover-selected);
+}
+
 /* Session close sits in the title-line slot and fades in on that row only. */
 .cerebro-sidebar .session-row-close {
   opacity: 0;
