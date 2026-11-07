@@ -79,6 +79,8 @@ type Running = {
   requests: Map<string, (answer: AgentAnswer) => void>
   /** Registered by the adapter once it has a live handle into the running turn. Absent means this harness/run can't be steered right now. */
   steer?: (text: string, attachments: RunAttachment[], skills?: ChatSkillMention[]) => Promise<void>
+  /** Queued message ids the user steered before the adapter registered `steer`. They are folded in once it does. */
+  pendingSteers?: Set<string>
 }
 /** A session's live harness process. Access mode and cwd are launch settings; changing either restarts it. */
 type Live = {
@@ -208,6 +210,10 @@ function validateAttachments(
 }
 const busy = (session: AgentSession): boolean =>
   session.status === 'running' || session.status === 'waiting'
+/** A queued message can join the running turn only when it was queued with that turn's model and access mode. */
+const steerableWith = (session: AgentSession, queued: QueuedMessage): boolean =>
+  queued.model.key === session.model.key &&
+  (queued.accessMode ?? 'full') === (session.accessMode ?? 'full')
 const activityRank: Record<AgentActivityStatus, number> = {
   waiting: 0,
   running: 1,
@@ -1083,32 +1089,32 @@ export class AgentSessions {
       return this.view(scope)
     }
     if (command.action === 'steer') {
-      const runtime = session && this.running.get(session.id)
-      if (!session || !runtime?.steer) throw new Error('No active turn to steer.')
+      if (!session) throw new Error('No active turn to steer.')
       const queued = (session.queue ?? []).find((q) => q.id === command.commandId)
       if (!queued) return this.view(scope) // already steered/removed elsewhere — no-op
-      if (
-        queued.model.key !== session.model.key ||
-        (queued.accessMode ?? 'full') !== (session.accessMode ?? 'full')
-      )
+      if (!busy(session)) {
+        // The turn this message waited on is over (failed, stopped, or cut off by a host restart) and
+        // nothing will auto-send it, so steering it now just sends it.
+        session.queue = (session.queue ?? []).filter((q) => q.id !== queued.id)
+        session.cwd = scope.cwd
+        this.commitRewind(session)
+        this.sendQueued(session, queued)
+        return this.view(scope)
+      }
+      if (!steerableWith(session, queued))
         throw new Error(
           'This message was queued with different model or access settings. Remove it and resend, or let it send automatically after this response.'
         )
-      const attachments = (queued.attachments ?? []).map((meta) => ({
-        ...meta,
-        path: this.attachmentPath(meta)
-      }))
-      // Native call first: on rejection the item stays queued untouched and the error just propagates, like any other action.
-      await runtime.steer(queued.text, attachments, queued.skills)
-      session.queue = (session.queue ?? []).filter((q) => q.id !== command.commandId)
-      session.items.push({
-        id: randomUUID(),
-        turnId: session.turnId!,
-        kind: 'user',
-        text: queued.text,
-        ...(queued.attachments?.length ? { attachments: queued.attachments } : {})
-      })
-      this.changed(session, true)
+      const runtime = this.running.get(session.id)
+      if (!runtime) throw new Error('No active turn to steer.')
+      if (!runtime.steer) {
+        // The turn is still starting (or the harness began it on its own) and has no steer handle yet.
+        // Fold the message in as soon as the adapter registers one; if it never does, the message stays
+        // queued and sends after this response like any other queued message.
+        ;(runtime.pendingSteers ??= new Set()).add(queued.id)
+        return this.view(scope)
+      }
+      await this.deliverSteer(session, runtime, queued)
       return this.view(scope)
     }
     if (command.action === 'dequeue') {
@@ -1262,6 +1268,64 @@ export class AgentSessions {
     session.queue = [...(session.queue ?? []), queued]
     this.changed(session, true)
     return this.view(scope)
+  }
+  /** Starts a turn from a message that was waiting in the queue. The caller has already removed it from the queue. */
+  private sendQueued(session: AgentSession, next: QueuedMessage): void {
+    const attachments = (next.attachments ?? []).map((meta) => ({
+      ...meta,
+      path: this.attachmentPath(meta)
+    }))
+    this.beginTurn(
+      session,
+      next.text,
+      attachments,
+      next.model,
+      next.reasoning,
+      next.accessMode ?? 'full',
+      next.skills ?? []
+    )
+  }
+  /** Folds a queued message into the running turn and moves it from the queue into the transcript. */
+  private async deliverSteer(
+    session: AgentSession,
+    runtime: Running,
+    queued: QueuedMessage
+  ): Promise<void> {
+    const attachments = (queued.attachments ?? []).map((meta) => ({
+      ...meta,
+      path: this.attachmentPath(meta)
+    }))
+    // Native call first: on rejection the item stays queued untouched and the error just propagates, like any other action.
+    await runtime.steer!(queued.text, attachments, queued.skills)
+    session.queue = (session.queue ?? []).filter((q) => q.id !== queued.id)
+    session.items.push({
+      id: randomUUID(),
+      turnId: session.turnId!,
+      kind: 'user',
+      text: queued.text,
+      ...(queued.attachments?.length ? { attachments: queued.attachments } : {})
+    })
+    this.changed(session, true)
+  }
+  /** Delivers steers requested before the adapter could take them, in the order they were asked for. */
+  private flushPendingSteers(session: AgentSession, runtime: Running): void {
+    const ids = [...(runtime.pendingSteers ?? [])]
+    runtime.pendingSteers = undefined
+    if (!ids.length) return
+    void (async () => {
+      for (const id of ids) {
+        if (runtime.controller.signal.aborted || this.running.get(session.id) !== runtime) return
+        const queued = (session.queue ?? []).find((q) => q.id === id)
+        // Removed, edited to other settings, or already sent meanwhile: leave the queue as it is.
+        if (!queued || !steerableWith(session, queued)) continue
+        try {
+          await this.deliverSteer(session, runtime, queued)
+        } catch (error) {
+          // It stays queued and sends after this response instead.
+          console.warn(`[agents] session ${session.id} steer failed: ${String(error)}`)
+        }
+      }
+    })()
   }
   /** Starts a brand-new turn: sets turn/session fields, records the user item, and fires the adapter run. Used for both a live send and an auto-flushed queue item. */
   private beginTurn(
@@ -1803,6 +1867,7 @@ export class AgentSessions {
         ask,
         registerSteer: (fn) => {
           runtime.steer = fn
+          this.flushPendingSteers(session, runtime)
         }
       })
       if (runtime.controller.signal.aborted) {
@@ -1852,19 +1917,7 @@ export class AgentSessions {
       if (!this.stopping && session.status !== 'failed' && session.queue?.length) {
         const [next, ...rest] = session.queue
         session.queue = rest
-        const attachments = (next.attachments ?? []).map((meta) => ({
-          ...meta,
-          path: this.attachmentPath(meta)
-        }))
-        this.beginTurn(
-          session,
-          next.text,
-          attachments,
-          next.model,
-          next.reasoning,
-          next.accessMode ?? 'full',
-          next.skills ?? []
-        )
+        this.sendQueued(session, next)
       }
       this.releaseIfDetached(session.id)
       await this.noteForkPoints(session)
