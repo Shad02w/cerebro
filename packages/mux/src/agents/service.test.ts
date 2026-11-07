@@ -2455,3 +2455,46 @@ test('skill lookups share one harness process per folder and run at most two at 
     rmSync(dir, { recursive: true, force: true })
   }
 })
+test('a long conversation keeps growing past 2,000 items and views carry only the newest window', async () => {
+  let turn = 0
+  const f = fixture(async (context) => {
+    turn++
+    // Large tool output pushes the session file past the old 2 MB cap too.
+    for (let index = 0; index < 1_200; index++)
+      context.emit({
+        type: 'item',
+        item: {
+          id: `t${turn}-${index}`,
+          kind: 'text',
+          text: `${turn}:${index} ${'x'.repeat(1_000)}`
+        }
+      })
+  })
+  try {
+    const service = new AgentSessions(f.dir, () => {}, f.drivers)
+    await service.command(scope, send)
+    const second = await service.command(scope, { ...send, commandId: 'second', text: 'more' })
+    const third = await service.command(scope, { ...send, commandId: 'third', text: 'even more' })
+    assert.equal(second.session?.error, undefined)
+    assert.equal(third.session?.error, undefined)
+    assert.notEqual(third.session?.status, 'failed')
+    const all = await service.command(scope, { ...send, action: 'get', itemLimit: 100_000 })
+    // 3 prompts and 3 × 1,200 replies, all kept.
+    assert.equal(all.session?.items.length, 3_603)
+    assert.equal(all.earlierItems, undefined)
+    const tail = await service.command(scope, { ...send, action: 'get' })
+    assert.equal(tail.session?.items.length, 400)
+    assert.equal(tail.earlierItems, 3_203)
+    assert.equal(tail.session?.items.at(-1)?.text, all.session?.items.at(-1)?.text)
+    const wider = await service.command(scope, { ...send, action: 'get', itemLimit: 800 })
+    assert.equal(wider.session?.items.length, 800)
+    assert.equal(wider.earlierItems, 2_803)
+    await service.shutdown()
+    const restored = new AgentSessions(f.dir, () => {}, f.drivers)
+    const reopened = await restored.command(scope, { ...send, action: 'get', itemLimit: 100_000 })
+    assert.equal(reopened.session?.items.length, 3_603)
+    await restored.shutdown()
+  } finally {
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})

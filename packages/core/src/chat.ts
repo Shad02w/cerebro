@@ -500,7 +500,15 @@ export type AgentSessionSummary = Pick<
   AgentSession,
   'id' | 'title' | 'model' | 'status' | 'updatedAt'
 >
-export type ChatView = { session: AgentSession | null; sessions: AgentSessionSummary[] }
+/** Items a chat view sends when the command names no `itemLimit`. */
+export const CHAT_VIEW_ITEMS = 400
+export type ChatView = {
+  /** `items` holds only the newest `itemLimit` items. The host keeps the whole transcript. */
+  session: AgentSession | null
+  sessions: AgentSessionSummary[]
+  /** Older items left out of `session.items`. Ask again with a larger `itemLimit` to show them. */
+  earlierItems?: number
+}
 /** Session status drawn on sidebar rows and agent tabs for an open pane. */
 export type AgentActivityStatus = AgentSession['status'] | 'finished'
 /**
@@ -632,6 +640,8 @@ export type ChatCommand = {
   itemId?: string
   /** Composer text replaced when a rewind prefills the prompt. Restored by undo. */
   displacedDraft?: string
+  /** Newest transcript items the returned view carries. Defaults to `CHAT_VIEW_ITEMS`. */
+  itemLimit?: number
 }
 export type AgentDelta =
   | { type: 'item'; item: Omit<ChatItem, 'turnId'>; append?: boolean }
