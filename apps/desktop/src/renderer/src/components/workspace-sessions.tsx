@@ -163,7 +163,7 @@ export function WorkspaceSessionList({
   const visible = expanded ? sorted : sorted.slice(0, OPEN_SESSION_CAP)
   const hidden = sorted.length - visible.length
   return (
-    <div data-testid="workspace-sessions" className="flex flex-col bg-transparent px-0.5 pb-1.5">
+    <div data-testid="workspace-sessions" className="flex flex-col bg-transparent px-1 pb-1">
       {visible.map((agent) => {
         const title = sessionTitle(agent, layout)
         const model = agent.modelLabel.trim() || harnessLabels[agent.harness]
