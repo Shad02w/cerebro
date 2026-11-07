@@ -13,6 +13,7 @@ import type { AppSettings, AppSettingsPatch } from '@shared/types'
 import { catalogOptions, harnessLabels } from '@/components/chat/queries'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
+import { SettingsGroup, SettingsRow } from '@/components/settings-layout'
 import {
   Select,
   SelectContent,
@@ -101,7 +102,7 @@ function ProviderModelGroup({
   if (!value) return null
   return (
     <div
-      className="space-y-1.5"
+      className="space-y-1.5 px-4 py-3"
       data-testid="settings-agent-model-group"
       data-harness={group.harness}
       data-provider={group.provider}
@@ -162,11 +163,11 @@ function AgentModelGroupList({
   current: AgentModel | undefined
   onPersist: (model: AgentModel, makeCurrent: boolean) => void
 }): React.JSX.Element {
-  if (pending) return <p className="text-xs text-muted-foreground">Discovering models…</p>
+  if (pending) return <p className="px-4 py-3 text-xs text-muted-foreground">Discovering models…</p>
   const firstPi = groups.find((group) => group.harness === 'pi')
   if (!groups.length) {
     return (
-      <div className="space-y-1.5">
+      <div className="space-y-1.5 px-4 py-3">
         <p className="text-xs text-muted-foreground">
           No models discovered. Install a harness, then refresh.
         </p>
@@ -186,7 +187,11 @@ function AgentModelGroupList({
           onPersist={onPersist}
         />
       ))}
-      {piIssue && !firstPi ? <PiSetupNotice issue={piIssue} /> : null}
+      {piIssue && !firstPi ? (
+        <div className="px-4 py-3">
+          <PiSetupNotice issue={piIssue} />
+        </div>
+      ) : null}
     </>
   )
 }
@@ -246,42 +251,41 @@ export function AgentModelSettings({
   }
 
   return (
-    <div className="space-y-3" data-testid="settings-agent-models">
-      <div className="flex items-start justify-between gap-6">
-        <div className="min-w-0 flex-1 space-y-1">
-          <h3 className="text-[13px] font-medium">Default model</h3>
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            New agent panes open on the harness you used last, with the model chosen here. Cerebro
-            refreshes the model list on startup. If a saved model is gone, that provider uses its
-            current default.
-          </p>
-        </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="xs"
-          data-testid="settings-refresh-models"
-          onClick={(): void => {
-            if (!refresh.isPending) refresh.mutate()
-          }}
+    <section className="space-y-8" data-testid="settings-agent-models">
+      <SettingsGroup title="Model list">
+        <SettingsRow
+          label="Available models"
+          description="New agent panes open on the harness you used last, with the model chosen below. Cerebro refreshes the model list on startup. If a saved model is gone, that provider uses its current default."
         >
-          <RefreshCw className={refresh.isPending ? 'animate-spin' : undefined} />
-          Refresh
-        </Button>
-      </div>
-      <AgentModelGroupList
-        pending={catalog.isPending}
-        groups={groups}
-        piIssue={piIssue}
-        defaults={settings.agentModelDefaults}
-        current={current}
-        onPersist={persist}
-      />
+          <Button
+            type="button"
+            variant="outline"
+            size="xs"
+            data-testid="settings-refresh-models"
+            onClick={(): void => {
+              if (!refresh.isPending) refresh.mutate()
+            }}
+          >
+            <RefreshCw className={refresh.isPending ? 'animate-spin' : undefined} />
+            Refresh
+          </Button>
+        </SettingsRow>
+      </SettingsGroup>
+      <SettingsGroup title="Default model">
+        <AgentModelGroupList
+          pending={catalog.isPending}
+          groups={groups}
+          piIssue={piIssue}
+          defaults={settings.agentModelDefaults}
+          current={current}
+          onPersist={persist}
+        />
+      </SettingsGroup>
       {error ? (
         <p role="alert" className="text-xs text-destructive">
           {error}
         </p>
       ) : null}
-    </div>
+    </section>
   )
 }

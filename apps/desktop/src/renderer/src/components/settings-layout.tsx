@@ -32,7 +32,7 @@ export function SettingsRow({
   label: ReactNode
   htmlFor?: string
   description?: ReactNode
-  children: ReactNode
+  children?: ReactNode
   stacked?: boolean
 }): React.JSX.Element {
   return (
