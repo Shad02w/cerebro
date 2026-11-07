@@ -331,24 +331,56 @@ test('fork copies a completed section into a new session, leaves the source unto
     rmSync(f.dir, { recursive: true, force: true })
   }
 })
-test('fork rejects while the source turn is still running', async () => {
+test('forking an earlier section while a later turn streams leaves the stream running and copies no live state', async () => {
+  let finishLive: () => void = () => {}
   const f = fixture(async (context) => {
-    await new Promise<void>((resolve) => context.signal.addEventListener('abort', () => resolve()))
+    if (context.text !== 'again') {
+      context.emit({
+        type: 'item',
+        item: { id: 'answer', kind: 'text', text: `reply ${context.text}` }
+      })
+      return
+    }
+    context.emit({ type: 'item', item: { id: 'live', kind: 'text', text: 'partial' } })
+    await new Promise<void>((resolve) => {
+      finishLive = resolve
+      context.signal.addEventListener('abort', () => resolve(), { once: true })
+    })
   })
   const service = new AgentSessions(f.dir, () => {}, f.drivers)
   try {
     const first = await service.command(scope, send)
+    const sourceId = first.session!.id
+    const firstTurnId = first.session!.items[0].turnId
+    const streaming = await service.command(scope, { ...send, commandId: 'second', text: 'again' })
+    assert.equal(streaming.session!.status, 'running')
+    const liveTurnId = streaming.session!.turnId!
+    const queued = await service.command(scope, { ...send, commandId: 'third', text: 'later' })
+    assert.equal(queued.session!.queue?.length, 1)
+
     await assert.rejects(
-      service.command(scope, {
-        ...send,
-        action: 'fork',
-        sessionId: first.session!.id,
-        turnId: first.session!.turnId!
-      }),
-      /Stop the running turn/
+      service.command(scope, { ...send, action: 'fork', sessionId: sourceId, turnId: liveTurnId }),
+      /Wait for this response to finish/
     )
+    const forked = await service.command(scope, {
+      ...send,
+      action: 'fork',
+      sessionId: sourceId,
+      turnId: firstTurnId
+    })
+    assert.equal(forked.session!.status, 'idle')
+    assert.equal(forked.session!.items.length, 2)
+    assert.equal(forked.session!.queue, undefined)
+    assert.equal(forked.session!.runningSince, undefined)
+    assert.equal(forked.session!.background, undefined)
+    assert.equal(forked.session!.turnId, undefined)
+
+    const source = await service.command(scope, { ...send, action: 'open', sessionId: sourceId })
+    assert.equal(source.session!.status, 'running')
+    assert.equal(source.session!.queue?.length, 1)
+    finishLive()
+    await settled()
   } finally {
-    await service.command(scope, { ...send, action: 'stop' })
     await service.shutdown()
     rmSync(f.dir, { recursive: true, force: true })
   }
@@ -1862,30 +1894,35 @@ test('a second rewind still undoes to the original tip and keeps the first displ
   }
 })
 
-test('rewind rejects while a turn is running, a message is queued, or background work is running', async () => {
-  let release: () => void = () => {}
+test('rewind stops a running turn, drops queued messages and stops background work before cutting', async () => {
+  let aborted = false
   const f = fixture(
     (context) =>
       new Promise((resolve) => {
-        const finish = (): void => resolve()
-        release = finish
-        context.signal.addEventListener('abort', finish, { once: true })
+        context.signal.addEventListener(
+          'abort',
+          () => {
+            aborted = true
+            resolve()
+          },
+          { once: true }
+        )
       })
   )
   const service = new AgentSessions(f.dir, () => {}, f.drivers)
   try {
     const started = await service.command(scope, send)
-    await assert.rejects(
-      service.command(scope, {
-        ...send,
-        action: 'rewind',
-        sessionId: started.session!.id,
-        itemId: started.session!.items[0].id
-      }),
-      /Stop the running turn before rewinding/
-    )
-    release()
-    await settled()
+    assert.equal(started.session!.status, 'running')
+    const rewound = await service.command(scope, {
+      ...send,
+      action: 'rewind',
+      sessionId: started.session!.id,
+      itemId: started.session!.items[0].id
+    })
+    assert.equal(aborted, true)
+    assert.equal(rewound.session!.status, 'interrupted')
+    assert.equal(rewound.session!.items.length, 0)
+    assert.equal(rewound.session!.rewind?.itemId, started.session!.items[0].id)
   } finally {
     await service.shutdown()
     rmSync(f.dir, { recursive: true, force: true })
@@ -1900,23 +1937,30 @@ test('rewind rejects while a turn is running, a message is queued, or background
   )
   const queuedHost = new AgentSessions(queued.dir, () => {}, queued.drivers)
   try {
-    await assert.rejects(
-      queuedHost.command(scope, { ...send, action: 'rewind', sessionId: 'queued', itemId: 'u1' }),
-      /Remove queued messages before rewinding/
-    )
+    const view = await queuedHost.command(scope, {
+      ...send,
+      action: 'rewind',
+      sessionId: 'queued',
+      itemId: 'u1'
+    })
+    assert.equal(view.session!.queue, undefined)
+    assert.equal(view.session!.rewind?.itemId, 'u1')
   } finally {
     await queuedHost.shutdown()
     rmSync(queued.dir, { recursive: true, force: true })
   }
 
   const backgroundDir = mkdtempSync(join(tmpdir(), 'cerebro-agents-'))
+  let closed = false
   const backgroundAdapter: AgentAdapter = {
     models: async () => [model],
     connect: (_session, host) => ({
       run: async () => {
         host.task({ id: 'job', status: 'running', title: 'dev server', startedAt: 1 })
       },
-      close: () => {}
+      close: () => {
+        closed = true
+      }
     })
   }
   const backgroundHost = new AgentSessions(backgroundDir, () => {}, {
@@ -1927,15 +1971,15 @@ test('rewind rejects while a turn is running, a message is queued, or background
   try {
     const started = await backgroundHost.command(scope, send)
     await settled()
-    await assert.rejects(
-      backgroundHost.command(scope, {
-        ...send,
-        action: 'rewind',
-        sessionId: started.session!.id,
-        itemId: started.session!.items[0].id
-      }),
-      /Stop background work before rewinding/
-    )
+    const view = await backgroundHost.command(scope, {
+      ...send,
+      action: 'rewind',
+      sessionId: started.session!.id,
+      itemId: started.session!.items[0].id
+    })
+    assert.equal(closed, true)
+    assert.equal(view.session!.background, undefined)
+    assert.equal(view.session!.rewind?.itemId, started.session!.items[0].id)
   } finally {
     await backgroundHost.shutdown()
     rmSync(backgroundDir, { recursive: true, force: true })

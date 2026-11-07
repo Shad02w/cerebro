@@ -206,6 +206,50 @@ describe('chat rewind', () => {
     expect(screen.getByTestId('chat-transcript')).toHaveTextContent('First answer')
   })
 
+  it('rewinds an idle session at once without asking', async () => {
+    const user = userEvent.setup()
+    const { commands } = renderChat(conversation())
+    await user.click(await screen.findByTestId('chat-rewind'))
+    await waitFor(() => expect(commands.some((c) => c.action === 'rewind')).toBe(true))
+    expect(screen.queryByTestId('chat-rewind-dialog')).toBeNull()
+  })
+
+  it('asks before a rewind that stops a running turn and queued messages, and only then sends it', async () => {
+    const user = userEvent.setup()
+    const { commands } = renderChat(
+      conversation({
+        status: 'running',
+        queue: [{ id: 'q1', text: 'later', model, accessMode: 'full' }]
+      })
+    )
+    await user.click(await screen.findByTestId('chat-rewind'))
+    const dialog = await screen.findByTestId('chat-rewind-dialog')
+    expect(dialog).toHaveTextContent('The agent is working. It will be stopped.')
+    expect(dialog).toHaveTextContent('1 queued message will be removed.')
+    expect(commands.some((c) => c.action === 'rewind')).toBe(false)
+
+    await user.click(screen.getByTestId('chat-rewind-cancel'))
+    await waitFor(() => expect(screen.queryByTestId('chat-rewind-dialog')).toBeNull())
+    expect(commands.some((c) => c.action === 'rewind')).toBe(false)
+
+    await user.click(screen.getByTestId('chat-rewind'))
+    await user.click(await screen.findByTestId('chat-rewind-confirm'))
+    await waitFor(() => expect(commands.some((c) => c.action === 'rewind')).toBe(true))
+  })
+
+  it('asks when only background work is running', async () => {
+    const user = userEvent.setup()
+    renderChat(
+      conversation({
+        background: [{ id: 'job', title: 'dev server', status: 'running', startedAt: 1 }]
+      })
+    )
+    await user.click(await screen.findByTestId('chat-rewind'))
+    expect(await screen.findByTestId('chat-rewind-dialog')).toHaveTextContent(
+      'Background tasks will be stopped.'
+    )
+  })
+
   it('uses the start copy when the first prompt is the cut', async () => {
     renderChat(atStart)
     expect(await screen.findByTestId('chat-rewind-notice')).toHaveTextContent(

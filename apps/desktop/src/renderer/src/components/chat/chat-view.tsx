@@ -48,6 +48,8 @@ import { ChatScrollEndButton } from './chat-scroll-end'
 import { ChatTurnActions } from './chat-turn-actions'
 import { ChatTurnRail } from './chat-turn-rail'
 import { ChatQueue } from './chat-queue'
+import { ChatRewindDialog } from './chat-rewind-dialog'
+import { rewindStops } from './chat-rewind-stops'
 import {
   activeChatTurn,
   chatTurnAnchorItemIds,
@@ -444,6 +446,16 @@ export function ChatView({
     },
     [execute, readDraft, replace, session, workspaceId]
   )
+  const [confirmRewind, setConfirmRewind] = useState<{
+    item: ChatTranscriptItem
+    text: string
+  } | null>(null)
+  const stops = session ? rewindStops(session) : []
+  /** An idle session rewinds at once. Live work needs the user to confirm that it is stopped. */
+  const requestRewind = (item: ChatTranscriptItem, text: string): void => {
+    if (stops.length) setConfirmRewind({ item, text })
+    else void rewindTo(item, text)
+  }
   const undoRewind = useCallback(async (): Promise<void> => {
     const draft = session?.rewind?.displacedDraft ?? ''
     filledRewind.current = null
@@ -680,7 +692,7 @@ export function ChatView({
                           onRewind={
                             entry.item.kind === 'user'
                               ? (text) => {
-                                  void rewindTo(entry.item, text)
+                                  requestRewind(entry.item, text)
                                 }
                               : undefined
                           }
@@ -731,6 +743,17 @@ export function ChatView({
                     )
                   })
                 : null}
+              {confirmRewind ? (
+                <ChatRewindDialog
+                  stops={stops}
+                  onCancel={() => setConfirmRewind(null)}
+                  onConfirm={() => {
+                    const { item, text } = confirmRewind
+                    setConfirmRewind(null)
+                    void rewindTo(item, text)
+                  }}
+                />
+              ) : null}
               {session?.rewind ? (
                 <div
                   data-testid="chat-rewind-notice"
