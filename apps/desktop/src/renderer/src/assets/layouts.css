@@ -1,0 +1,384 @@
+/*
+  Per-style layout and component treatment.
+
+  themes.css decides color, radius and elevation. This file decides shape:
+  where the sidebar and content area sit, how tabs, rows, the composer and
+  messages look. Every rule is scoped to one `[data-ui-style]` and only
+  restyles existing elements, so features and the project → workspace →
+  thread hierarchy stay intact. Extra chrome (activity rail, status bar,
+  command bar) lives in components/app-chrome.tsx.
+*/
+
+/* ═════════════════ Graphite: floating content panel ═════════════════ */
+:root[data-ui-style='graphite'] [data-slot='sidebar-wrapper'] {
+  background: var(--sidebar);
+}
+
+:root[data-ui-style='graphite'] [data-slot='sidebar-container'] {
+  border-right: 0;
+}
+
+:root[data-ui-style='graphite'] [data-slot='sidebar-inset'] {
+  margin: 8px 8px 8px 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) + 4px);
+}
+
+:root[data-ui-style='graphite']
+  [data-slot='sidebar'][data-state='collapsed']
+  ~ [data-slot='sidebar-inset'] {
+  margin-left: 8px;
+}
+
+:root[data-ui-style='graphite'] .cerebro-sidebar[data-sidebar-mode='settings'] {
+  border-right: 0;
+}
+
+/* Tabs read as text with an ink underline instead of pills. */
+:root[data-ui-style='graphite'] [data-slot='content-tab-pill'] {
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  height: 100%;
+}
+
+:root[data-ui-style='graphite'] [data-slot='content-tab-pill'][data-active] {
+  background: transparent;
+  box-shadow: inset 0 -2px 0 var(--foreground);
+}
+
+:root[data-ui-style='graphite'] .chat-composer-shell {
+  border-radius: var(--radius);
+  box-shadow: none;
+  border-color: var(--input);
+}
+
+:root[data-ui-style='graphite'] .chat-composer-shell:focus-within {
+  border-color: var(--ring);
+}
+
+:root[data-ui-style='graphite'] [data-testid='chat-user-bubble'] {
+  border: 1px solid var(--border);
+  background: var(--background);
+  border-radius: var(--radius);
+}
+
+/* ═════════════════ Editor: activity bar, editor tabs, status bar ═════════════════ */
+:root[data-ui-style='editor']
+  [data-slot='sidebar'][data-state='expanded']
+  > [data-slot='sidebar-container'] {
+  left: 3rem;
+}
+
+:root[data-ui-style='editor']
+  [data-slot='sidebar'][data-state='expanded']
+  > [data-slot='sidebar-gap'] {
+  width: var(--sidebar-width);
+}
+
+/* The rail owns Settings and Add project, so the sidebar drops its copies. */
+:root[data-ui-style='editor'] [data-sidebar-mode='projects'] [data-sidebar='footer'],
+:root[data-ui-style='editor'] [data-sidebar-mode='projects'] [aria-label='Add project'] {
+  display: none;
+}
+
+:root[data-ui-style='editor'] .cerebro-sidebar [data-sidebar='header'] {
+  padding-top: 0.75rem;
+}
+
+:root[data-ui-style='editor'] [data-testid='sidebar-heading'] {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+:root[data-ui-style='editor'] .cerebro-sidebar [data-sidebar='menu-button'],
+:root[data-ui-style='editor'] .cerebro-sidebar [data-workspace-role] {
+  border-radius: 4px;
+}
+
+/* Editor tabs: full height, square, separated, with an accent line on the active tab. */
+:root[data-ui-style='editor'] [data-testid='content-tab-bar'] [data-slot='tabs-list'] {
+  margin-left: 0;
+  gap: 0;
+}
+
+:root[data-ui-style='editor'] [data-slot='content-tab-pill'] {
+  height: 100%;
+  border-radius: 0;
+  border: 0;
+  border-right: 1px solid var(--border);
+  padding-inline: 14px;
+  background: var(--header);
+}
+
+:root[data-ui-style='editor'] [data-slot='content-tab-pill'][data-active] {
+  background: var(--background);
+  box-shadow: inset 0 2px 0 var(--primary);
+  border-color: var(--border);
+}
+
+:root[data-ui-style='editor'] .chat-composer-shell {
+  border-radius: 6px;
+  box-shadow: none;
+  background: var(--card);
+}
+
+:root[data-ui-style='editor'] .chat-composer-shell:focus-within {
+  border-color: var(--ring);
+}
+
+:root[data-ui-style='editor'] [data-testid='chat-user-bubble'] {
+  border-radius: 6px;
+  background: var(--card);
+  border: 1px solid var(--border);
+}
+
+/* ═════════════════ Paper: floating sidebar, project cards ═════════════════ */
+:root[data-ui-style='paper'] {
+  --app-font-display: ui-serif, 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+}
+
+:root[data-ui-style='paper'] [data-slot='sidebar-wrapper'] {
+  background: color-mix(in oklch, var(--sidebar), var(--foreground) 4%);
+}
+
+:root[data-ui-style='paper'] [data-slot='sidebar-container'] {
+  padding: 10px;
+  border-right: 0;
+}
+
+:root[data-ui-style='paper'] [data-slot='sidebar-container'] > [data-slot='sidebar-inner'],
+:root[data-ui-style='paper'] .cerebro-sidebar[data-sidebar-mode='settings'] {
+  border: 1px solid var(--sidebar-border);
+  border-radius: calc(var(--radius) + 6px);
+  box-shadow: var(--elevation-card);
+}
+
+:root[data-ui-style='paper'] .cerebro-sidebar[data-sidebar-mode='settings'] {
+  margin: 10px;
+  height: calc(100% - 20px);
+}
+
+:root[data-ui-style='paper'] [data-slot='sidebar-inset'] {
+  margin: 10px 10px 10px 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) + 6px);
+  box-shadow: var(--elevation-card);
+}
+
+:root[data-ui-style='paper']
+  [data-slot='sidebar'][data-state='collapsed']
+  ~ [data-slot='sidebar-inset'] {
+  margin-left: 10px;
+}
+
+:root[data-ui-style='paper'] [data-testid='sidebar-heading'],
+:root[data-ui-style='paper'] [data-testid='settings-view'] h1,
+:root[data-ui-style='paper'] [data-testid='workspace-empty-state'] h2,
+:root[data-ui-style='paper'] [data-testid='chat-empty-hero'] h2 {
+  font-family: var(--app-font-display);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+:root[data-ui-style='paper'] [data-testid='sidebar-heading'] {
+  font-size: 18px;
+}
+
+/* Each project and its workspaces sit together on one card. */
+:root[data-ui-style='paper']
+  [data-sidebar-mode='projects']
+  [data-sidebar='group-content']
+  > [data-sidebar='menu']
+  > [data-sidebar='menu-item'] {
+  margin-bottom: 8px;
+  padding: 4px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: calc(var(--radius) + 2px);
+  background: var(--card);
+}
+
+:root[data-ui-style='paper'] [data-slot='content-tab-pill'] {
+  border-radius: 999px;
+}
+
+:root[data-ui-style='paper'] [data-slot='content-tab-pill'][data-active] {
+  box-shadow: var(--elevation-card);
+}
+
+:root[data-ui-style='paper'] [data-slot='button'] {
+  border-radius: 999px;
+}
+
+:root[data-ui-style='paper'] .chat-composer-shell {
+  border-radius: 22px;
+  box-shadow: var(--elevation-popover);
+  background: var(--card);
+}
+
+:root[data-ui-style='paper'] [data-testid='chat-user-bubble'] {
+  border-radius: 18px 18px 6px 18px;
+  background: color-mix(in oklch, var(--primary) 14%, var(--card));
+}
+
+/* ═════════════════ Swiss: index layout ═════════════════ */
+:root[data-ui-style='swiss'] [data-slot='sidebar-container'],
+:root[data-ui-style='swiss'] .cerebro-sidebar[data-sidebar-mode='settings'] {
+  border-right: 2px solid var(--foreground);
+}
+
+:root[data-ui-style='swiss'] [data-testid='sidebar-heading'] {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+:root[data-ui-style='swiss'] .cerebro-sidebar [data-sidebar='header'] > div:first-child {
+  height: auto;
+  padding-bottom: 10px;
+  border-bottom: 2px solid var(--foreground);
+}
+
+:root[data-ui-style='swiss'] .cerebro-sidebar .sidebar-project-button {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sidebar-foreground);
+}
+
+:root[data-ui-style='swiss'] .cerebro-sidebar .sidebar-project-button [data-row-icon] {
+  color: var(--sidebar-foreground);
+}
+
+:root[data-ui-style='swiss']
+  [data-sidebar-mode='projects']
+  [data-sidebar='group-content']
+  > [data-sidebar='menu']
+  > [data-sidebar='menu-item'] {
+  border-top: 1px solid var(--foreground);
+  padding-top: 4px;
+  margin-top: 6px;
+}
+
+:root[data-ui-style='swiss'] .cerebro-sidebar [data-sidebar='menu-button'],
+:root[data-ui-style='swiss'] .cerebro-sidebar [data-workspace-role],
+:root[data-ui-style='swiss'] .cerebro-sidebar [data-sidebar='menu-row'] {
+  border-radius: 0 !important;
+}
+
+:root[data-ui-style='swiss'] [data-testid='content-tab-bar'] {
+  box-shadow: inset 0 -2px 0 var(--foreground) !important;
+}
+
+:root[data-ui-style='swiss'] [data-slot='content-tab-pill'] {
+  border-radius: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+:root[data-ui-style='swiss'] [data-slot='button'] {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+:root[data-ui-style='swiss'] .chat-composer-shell {
+  border-radius: 0;
+  border: 2px solid var(--foreground);
+  box-shadow: 6px 6px 0 var(--primary);
+}
+
+:root[data-ui-style='swiss'] [data-testid='chat-user-bubble'] {
+  border-radius: 0;
+  background: var(--foreground);
+  color: var(--background);
+}
+
+:root[data-ui-style='swiss'] [data-testid='settings-view'] h1 {
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  text-transform: uppercase;
+}
+
+/* ═════════════════ Slate: command bar across the top ═════════════════ */
+:root[data-ui-style='slate'] [data-slot='sidebar-wrapper'] {
+  padding-top: 2.75rem;
+}
+
+:root[data-ui-style='slate'] [data-slot='sidebar-container'] {
+  top: 2.75rem;
+  height: calc(100svh - 2.75rem);
+}
+
+:root[data-ui-style='slate'] .cerebro-sidebar [data-sidebar='header'] {
+  padding-top: 0.75rem;
+}
+
+/* The command bar owns Search, Add project and Settings. */
+:root[data-ui-style='slate'] [data-sidebar-mode='projects'] [data-sidebar='footer'],
+:root[data-ui-style='slate'] [data-sidebar-mode='projects'] [aria-label='Add project'],
+:root[data-ui-style='slate'] [data-sidebar-mode='projects'] [data-testid='sidebar-search'] {
+  display: none;
+}
+
+:root[data-ui-style='slate'] [data-testid='sidebar-heading'] {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+:root[data-ui-style='slate'] [data-testid='content-tab-bar'] {
+  height: 2.5rem !important;
+}
+
+:root[data-ui-style='slate'] [data-slot='content-tab-pill'] {
+  height: 1.75rem;
+  border-radius: 999px;
+}
+
+:root[data-ui-style='slate'] .cerebro-sidebar [data-sidebar='menu-button'],
+:root[data-ui-style='slate'] .cerebro-sidebar [data-workspace-role] {
+  border-radius: 8px;
+}
+
+:root[data-ui-style='slate'] .chat-composer-shell {
+  border-radius: 14px;
+  background: var(--card);
+}
+
+:root[data-ui-style='slate'] .chat-composer-shell:focus-within {
+  border-color: var(--ring);
+  box-shadow:
+    0 0 0 3px color-mix(in oklch, var(--ring) 22%, var(--background)),
+    var(--elevation-popover);
+}
+
+:root[data-ui-style='slate'] [data-testid='chat-user-bubble'] {
+  border-radius: 14px;
+  background: var(--tab-active);
+  color: var(--tab-active-foreground);
+}
+
+:root[data-ui-style='swiss']
+  [data-sidebar-mode='projects']
+  [data-sidebar='group-content']
+  > [data-sidebar='menu']
+  > [data-sidebar='menu-item']:first-child {
+  border-top: 0;
+}

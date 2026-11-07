@@ -290,8 +290,8 @@
   --elevation-card: none;
   --elevation-popover: 0 0 0 1px var(--foreground);
   --elevation-dialog: 0 0 0 1px var(--foreground), 8px 8px 0 0 var(--foreground);
-  --sidebar-selected-fill: 100%;
-  --sidebar-selected-ring: 0%;
+  --sidebar-selected-fill: 22%;
+  --sidebar-selected-ring: 100%;
   --sidebar-selected-glow: 0px;
   --eyebrow-transform: uppercase;
   --eyebrow-tracking: 0.08em;
@@ -322,7 +322,6 @@
   --sidebar-primary-foreground: oklch(1 0 0);
   --sidebar-accent: oklch(0.94 0 0);
   --sidebar-accent-foreground: oklch(0.12 0 0);
-  --sidebar-selected-foreground: oklch(1 0 0);
   --sidebar-border: oklch(0.12 0 0);
   --sidebar-ring: oklch(0.56 0.12 182);
   --sidebar-selected: oklch(0.56 0.12 182);
@@ -363,7 +362,6 @@
   --sidebar-primary-foreground: oklch(0.11 0 0);
   --sidebar-accent: oklch(0.2 0 0);
   --sidebar-accent-foreground: oklch(0.98 0 0);
-  --sidebar-selected-foreground: oklch(0.11 0 0);
   --sidebar-border: oklch(0.98 0 0);
   --sidebar-ring: oklch(0.8 0.14 180);
   --sidebar-selected: oklch(0.8 0.14 180);

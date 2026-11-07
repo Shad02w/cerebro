@@ -1,6 +1,7 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @import './themes.css';
+@import './layouts.css';
 
 @source '../**/*.{ts,tsx}';
 @source '../../../../node_modules/streamdown/dist/*.js';
