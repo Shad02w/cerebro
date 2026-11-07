@@ -102,11 +102,14 @@ export function KeyboardSettings({
   }
 
   return (
-    <section className="space-y-6" data-testid="settings-keyboard">
-      <p className="text-xs leading-relaxed text-muted-foreground">
-        Click a shortcut to record a new key combination. Escape cancels. Shortcuts with modifiers
-        work while the terminal is focused.
-      </p>
+    <section className="space-y-2" data-testid="settings-keyboard">
+      <div className="space-y-1 px-1">
+        <h2 className="text-xs font-medium text-muted-foreground">Shortcuts</h2>
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          Click a shortcut to record a new key combination. Escape cancels. Shortcuts with modifiers
+          work while the terminal is focused.
+        </p>
+      </div>
       <div className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card">
         {KEYBIND_CATALOG.map((action) => {
           const hotkey = bindings[action.id]

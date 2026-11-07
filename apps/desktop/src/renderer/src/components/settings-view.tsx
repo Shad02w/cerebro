@@ -528,155 +528,155 @@ function IntegrationsSettings({
   }
 
   return (
-    <section className="space-y-4" data-testid="settings-integrations">
-      <div
-        className="space-y-4 rounded-lg border border-border bg-card p-4 text-card-foreground"
-        data-testid="github-integration-card"
-      >
-        <div className="space-y-1">
-          <h3 className="text-sm font-medium">GitHub</h3>
-          <p className="text-xs text-muted-foreground">
-            Authorize Cerebro with a device code, then configure which repositories it can access.
-          </p>
-        </div>
+    <section className="space-y-8" data-testid="settings-integrations">
+      <SettingsGroup title="GitHub">
+        <div className="space-y-4 px-4 py-3" data-testid="github-integration-card">
+          <div className="space-y-1">
+            <h3 className="text-[13px] font-medium">GitHub account</h3>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              Authorize Cerebro with a device code, then configure which repositories it can access.
+            </p>
+          </div>
 
-        {loading || !status ? (
-          <p className="text-sm text-muted-foreground">Loading GitHub status…</p>
-        ) : status.state === 'unconfigured' ? (
-          <div className="space-y-2" data-testid="github-unconfigured">
-            <p className="text-sm text-muted-foreground">
-              GitHub is not configured in this build. Set{' '}
-              <code className="font-mono text-xs">MAIN_VITE_GITHUB_CLIENT_ID</code> in{' '}
-              <code className="font-mono text-xs">.env</code> (or{' '}
-              <code className="font-mono text-xs">CEREBRO_GITHUB_CLIENT_ID</code> at launch), then
-              restart Cerebro.
-            </p>
-          </div>
-        ) : status.state === 'pending' ? (
-          <div className="space-y-3" data-testid="github-pending">
-            <p className="text-sm text-muted-foreground">
-              Enter this code at <span className="font-mono text-xs">{status.verificationUri}</span>
-            </p>
-            <p className="font-mono text-3xl tracking-widest" data-testid="github-user-code">
-              {status.userCode}
-            </p>
-            <p className="text-xs text-muted-foreground" data-testid="github-expires">
-              Expires in {formatCountdown(status.expiresAt, nowMs)}
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="app-no-drag"
-                disabled={busy}
-                data-testid="github-copy-code"
-                onClick={(): void => {
-                  void copyUserCode(status.userCode)
-                }}
-              >
-                {copied ? 'Copied' : 'Copy code'}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="app-no-drag"
-                disabled={busy}
-                data-testid="github-cancel"
-                onClick={(): void => {
-                  void run(onCancel)
-                }}
-              >
-                Cancel
-              </Button>
+          {loading || !status ? (
+            <p className="text-sm text-muted-foreground">Loading GitHub status…</p>
+          ) : status.state === 'unconfigured' ? (
+            <div className="space-y-2" data-testid="github-unconfigured">
+              <p className="text-sm text-muted-foreground">
+                GitHub is not configured in this build. Set{' '}
+                <code className="font-mono text-xs">MAIN_VITE_GITHUB_CLIENT_ID</code> in{' '}
+                <code className="font-mono text-xs">.env</code> (or{' '}
+                <code className="font-mono text-xs">CEREBRO_GITHUB_CLIENT_ID</code> at launch), then
+                restart Cerebro.
+              </p>
             </div>
-          </div>
-        ) : status.state === 'connected' ? (
-          <div className="space-y-3" data-testid="github-connected">
-            <p className="text-xs text-muted-foreground" data-testid="github-repository-access">
-              {status.installationCount === 0
-                ? 'Install Cerebro on GitHub and choose the repositories to connect.'
-                : !status.repositoryAccess
-                  ? 'The GitHub App needs read access to Contents and Pull requests. Update its permissions, then approve the installation update.'
-                  : 'Repository access is configured. Use Configure to choose public and private repositories.'}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Cerebro refreshes PR status every minute and when you return to the app. If the App
-              cannot access a repository, Cerebro tries your GitHub CLI login, then Git for
-              branches. CLI access may include repositories outside the App selection.
-            </p>
-            <div className="flex items-center gap-3">
-              <img
-                src={status.account.avatarUrl}
-                alt=""
-                referrerPolicy="no-referrer"
-                className="size-10 rounded-full bg-muted object-cover"
-                data-testid="github-avatar"
-              />
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium" data-testid="github-login">
-                  {status.account.login}
-                </p>
-                {status.account.name ? (
-                  <p className="truncate text-xs text-muted-foreground">{status.account.name}</p>
-                ) : null}
+          ) : status.state === 'pending' ? (
+            <div className="space-y-3" data-testid="github-pending">
+              <p className="text-sm text-muted-foreground">
+                Enter this code at{' '}
+                <span className="font-mono text-xs">{status.verificationUri}</span>
+              </p>
+              <p className="font-mono text-3xl tracking-widest" data-testid="github-user-code">
+                {status.userCode}
+              </p>
+              <p className="text-xs text-muted-foreground" data-testid="github-expires">
+                Expires in {formatCountdown(status.expiresAt, nowMs)}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="app-no-drag"
+                  disabled={busy}
+                  data-testid="github-copy-code"
+                  onClick={(): void => {
+                    void copyUserCode(status.userCode)
+                  }}
+                >
+                  {copied ? 'Copied' : 'Copy code'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="app-no-drag"
+                  disabled={busy}
+                  data-testid="github-cancel"
+                  onClick={(): void => {
+                    void run(onCancel)
+                  }}
+                >
+                  Cancel
+                </Button>
               </div>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant="outline"
-                className="app-no-drag"
-                nativeButton={false}
-                render={
-                  <a
-                    href={status.configureUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    title="Manage which repositories Cerebro can access"
-                    data-testid="github-configure"
-                  />
-                }
-              >
-                Configure
-              </Button>
+          ) : status.state === 'connected' ? (
+            <div className="space-y-3" data-testid="github-connected">
+              <p className="text-xs text-muted-foreground" data-testid="github-repository-access">
+                {status.installationCount === 0
+                  ? 'Install Cerebro on GitHub and choose the repositories to connect.'
+                  : !status.repositoryAccess
+                    ? 'The GitHub App needs read access to Contents and Pull requests. Update its permissions, then approve the installation update.'
+                    : 'Repository access is configured. Use Configure to choose public and private repositories.'}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Cerebro refreshes PR status every minute and when you return to the app. If the App
+                cannot access a repository, Cerebro tries your GitHub CLI login, then Git for
+                branches. CLI access may include repositories outside the App selection.
+              </p>
+              <div className="flex items-center gap-3">
+                <img
+                  src={status.account.avatarUrl}
+                  alt=""
+                  referrerPolicy="no-referrer"
+                  className="size-10 rounded-full bg-muted object-cover"
+                  data-testid="github-avatar"
+                />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium" data-testid="github-login">
+                    {status.account.login}
+                  </p>
+                  {status.account.name ? (
+                    <p className="truncate text-xs text-muted-foreground">{status.account.name}</p>
+                  ) : null}
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  className="app-no-drag"
+                  nativeButton={false}
+                  render={
+                    <a
+                      href={status.configureUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="Manage which repositories Cerebro can access"
+                      data-testid="github-configure"
+                    />
+                  }
+                >
+                  Configure
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="app-no-drag"
+                  disabled={busy}
+                  data-testid="github-disconnect"
+                  onClick={(): void => {
+                    void run(onDisconnect)
+                  }}
+                >
+                  Disconnect
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3" data-testid="github-disconnected">
+              {status.state === 'error' ? (
+                <p className="text-sm text-destructive" data-testid="github-status-error">
+                  {status.message}
+                </p>
+              ) : null}
               <Button
                 type="button"
-                variant="outline"
                 className="app-no-drag"
                 disabled={busy}
-                data-testid="github-disconnect"
+                data-testid="github-connect"
                 onClick={(): void => {
-                  void run(onDisconnect)
+                  void run(onConnect)
                 }}
               >
-                Disconnect
+                Connect to GitHub
               </Button>
             </div>
-          </div>
-        ) : (
-          <div className="space-y-3" data-testid="github-disconnected">
-            {status.state === 'error' ? (
-              <p className="text-sm text-destructive" data-testid="github-status-error">
-                {status.message}
-              </p>
-            ) : null}
-            <Button
-              type="button"
-              className="app-no-drag"
-              disabled={busy}
-              data-testid="github-connect"
-              onClick={(): void => {
-                void run(onConnect)
-              }}
-            >
-              Connect to GitHub
-            </Button>
-          </div>
-        )}
+          )}
 
-        {localError || error ? (
-          <p className="text-sm text-destructive">{localError ?? error}</p>
-        ) : null}
-      </div>
+          {localError || error ? (
+            <p className="text-sm text-destructive">{localError ?? error}</p>
+          ) : null}
+        </div>
+      </SettingsGroup>
     </section>
   )
 }

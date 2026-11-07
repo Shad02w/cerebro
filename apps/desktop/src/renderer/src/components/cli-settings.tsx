@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { CliInstallStatus } from '@shared/types'
 import { Button } from '@/components/ui/button'
+import { SettingsGroup, SettingsRow } from '@/components/settings-layout'
 import { SuccessToast } from '@/components/success-toast'
 import { useClipboard } from '@/hooks/use-clipboard'
 
@@ -53,124 +54,123 @@ export function CliSettings(): React.JSX.Element {
   }
 
   return (
-    <section className="space-y-4" data-testid="settings-cli" aria-busy={busy}>
-      <div className="space-y-1">
-        <h2 className="text-sm font-medium">Command-line tool</h2>
-        <p className="text-xs text-muted-foreground">
-          Manage projects and workspaces from your terminal. No separate Node.js installation
-          needed.
-        </p>
-      </div>
+    <section className="space-y-8" data-testid="settings-cli" aria-busy={busy}>
       {status ? (
         <>
-          {status.development ? (
-            <p className="rounded-md border border-border p-3 text-xs text-muted-foreground">
-              Development mode installs <code>cerebro-dev</code> from this checkout, leaving your
-              released <code>cerebro</code> command alone. Rebuilds update the CLI automatically. It
-              defaults to this app’s data directory; CEREBRO_HOME can override it.
-            </p>
-          ) : (
-            <p className="text-xs text-muted-foreground">Updates with Cerebro.</p>
-          )}
-          <dl className="space-y-2 text-xs">
-            <div>
-              <dt className="text-muted-foreground">Status</dt>
-              <dd data-testid="cli-status" className="mt-1 font-medium">
-                {status.state === 'installed'
-                  ? 'Installed'
-                  : status.state === 'repair'
-                    ? 'Repair needed'
-                    : status.state === 'conflict'
-                      ? 'Installation conflict'
-                      : status.state === 'unsupported'
-                        ? 'Unavailable'
-                        : 'Not installed'}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-muted-foreground">Version</dt>
-              <dd className="mt-1">{status.version}</dd>
-            </div>
-            <div>
-              <dt className="text-muted-foreground">Command location</dt>
-              <dd className="mt-1 break-all font-mono">{status.path}</dd>
-            </div>
-            <div>
-              <dt className="text-muted-foreground">Shell configuration</dt>
-              <dd className="mt-1 break-all">
+          <SettingsGroup title="Command-line tool">
+            <SettingsRow
+              label="Status"
+              description="Manage projects and workspaces from your terminal. No separate Node.js installation needed."
+            >
+              <div className="flex shrink-0 flex-col items-end gap-2">
+                <span data-testid="cli-status" className="text-[13px] font-medium">
+                  {status.state === 'installed'
+                    ? 'Installed'
+                    : status.state === 'repair'
+                      ? 'Repair needed'
+                      : status.state === 'conflict'
+                        ? 'Installation conflict'
+                        : status.state === 'unsupported'
+                          ? 'Unavailable'
+                          : 'Not installed'}
+                </span>
+                <div className="flex flex-wrap justify-end gap-2">
+                  {status.state !== 'unsupported' && status.state !== 'conflict' ? (
+                    <>
+                      {status.state !== 'installed' ? (
+                        <Button
+                          size="sm"
+                          onClick={() =>
+                            void run(
+                              window.cerebro.installCli,
+                              status.state === 'repair'
+                                ? 'CLI installation repaired.'
+                                : 'CLI installed successfully.'
+                            )
+                          }
+                        >
+                          {busy
+                            ? 'Working…'
+                            : status.state === 'repair'
+                              ? 'Repair installation'
+                              : 'Install CLI'}
+                        </Button>
+                      ) : null}
+                      {status.state === 'installed' || status.state === 'repair' ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void run(window.cerebro.removeCli)}
+                        >
+                          {busy ? 'Working…' : 'Remove CLI'}
+                        </Button>
+                      ) : null}
+                    </>
+                  ) : null}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void run(window.cerebro.getCliStatus)}
+                  >
+                    Refresh status
+                  </Button>
+                </div>
+              </div>
+            </SettingsRow>
+            <SettingsRow
+              label="Version"
+              description={
+                status.development ? (
+                  <>
+                    Development mode installs <code>cerebro-dev</code> from this checkout, leaving
+                    your released <code>cerebro</code> command alone. Rebuilds update the CLI
+                    automatically. It defaults to this app’s data directory; CEREBRO_HOME can
+                    override it.
+                  </>
+                ) : (
+                  'Updates with Cerebro.'
+                )
+              }
+            >
+              <span className="shrink-0 text-xs">{status.version}</span>
+            </SettingsRow>
+            <SettingsRow label="Command location" stacked>
+              <span className="break-all font-mono text-xs text-muted-foreground">
+                {status.path}
+              </span>
+            </SettingsRow>
+            <SettingsRow label="Shell configuration" description={status.message} stacked>
+              <span className="break-all text-xs text-muted-foreground">
                 {status.onPath ? (
                   'Command directory is already on PATH.'
                 ) : (
                   <code>{status.profile}</code>
                 )}
-              </dd>
-            </div>
-          </dl>
-          <p className="text-xs text-muted-foreground">{status.message}</p>
-          <div className="flex flex-wrap gap-2">
-            {status.state !== 'unsupported' && status.state !== 'conflict' ? (
-              <>
-                {status.state !== 'installed' ? (
-                  <Button
-                    size="sm"
-                    onClick={() =>
-                      void run(
-                        window.cerebro.installCli,
-                        status.state === 'repair'
-                          ? 'CLI installation repaired.'
-                          : 'CLI installed successfully.'
-                      )
-                    }
-                  >
-                    {busy
-                      ? 'Working…'
-                      : status.state === 'repair'
-                        ? 'Repair installation'
-                        : 'Install CLI'}
-                  </Button>
-                ) : null}
-                {status.state === 'installed' || status.state === 'repair' ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => void run(window.cerebro.removeCli)}
-                  >
-                    {busy ? 'Working…' : 'Remove CLI'}
-                  </Button>
-                ) : null}
-              </>
-            ) : null}
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => void run(window.cerebro.getCliStatus)}
+              </span>
+            </SettingsRow>
+          </SettingsGroup>
+          <SettingsGroup title="Usage">
+            <SettingsRow
+              label={<code className="text-xs">{status.command} --help</code>}
+              description="Install updates shell configuration only when the command directory is missing from PATH. Remove deletes the launcher and any PATH entry Cerebro added; your projects and data stay on disk. If you move the app, repair the installation."
             >
-              Refresh status
-            </Button>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Install updates shell configuration only when the command directory is missing from
-            PATH. Remove deletes the launcher and any PATH entry Cerebro added; your projects and
-            data stay on disk. If you move the app, repair the installation.
-          </p>
-          <div className="flex items-center justify-between rounded-md border border-border px-3 py-2">
-            <code className="text-xs">{status.command} --help</code>
-            <Button
-              size="xs"
-              variant="ghost"
-              onClick={() => {
-                setToast(null)
-                void copy(`${status.command} --help`).then((success) => {
-                  if (success) {
-                    setError(null)
-                    notify('Command copied to clipboard.')
-                  } else setError('Could not copy command.')
-                })
-              }}
-            >
-              Copy command
-            </Button>
-          </div>
+              <Button
+                size="xs"
+                variant="outline"
+                onClick={() => {
+                  setToast(null)
+                  void copy(`${status.command} --help`).then((success) => {
+                    if (success) {
+                      setError(null)
+                      notify('Command copied to clipboard.')
+                    } else setError('Could not copy command.')
+                  })
+                }}
+              >
+                Copy command
+              </Button>
+            </SettingsRow>
+          </SettingsGroup>
         </>
       ) : (
         <p className="text-xs text-muted-foreground">Loading CLI status…</p>
