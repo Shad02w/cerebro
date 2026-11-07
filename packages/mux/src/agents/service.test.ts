@@ -726,6 +726,77 @@ test('steer folds a queued message into the running turn and removes it from the
     rmSync(f.dir, { recursive: true, force: true })
   }
 })
+test('steer requested before the turn can take one is folded in once the adapter registers it', async () => {
+  const steered: string[] = []
+  let register: (() => void) | undefined
+  const f = fixture(async (context) => {
+    // Models a turn still starting up (process spawn, model switch) before it has a steer handle.
+    register = () =>
+      context.registerSteer?.(async (text) => {
+        steered.push(text)
+      })
+    await new Promise<void>((resolve) => context.signal.addEventListener('abort', () => resolve()))
+  })
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    const first = await service.command(scope, send)
+    await service.command(scope, { ...send, commandId: 'second', text: 'steer me early' })
+    const pending = await service.command(scope, {
+      ...send,
+      action: 'steer',
+      sessionId: first.session!.id,
+      commandId: 'second'
+    })
+    assert.equal(pending.session?.queue?.length, 1)
+    assert.deepEqual(steered, [])
+    register!()
+    await new Promise((resolve) => setImmediate(resolve))
+    assert.deepEqual(steered, ['steer me early'])
+    const view = await service.command(scope, { ...send, action: 'get' })
+    assert.equal(view.session?.queue?.length, 0)
+    assert.equal(view.session?.items.at(-1)?.text, 'steer me early')
+    assert.equal(view.session?.items.at(-1)?.turnId, first.session?.turnId)
+  } finally {
+    await service.command(scope, { ...send, action: 'stop' })
+    await service.shutdown()
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
+test('steering a message left queued after the turn failed sends it as a new turn', async () => {
+  const texts: string[] = []
+  let fail: ((error: Error) => void) | undefined
+  const f = fixture(async (context) => {
+    texts.push(context.text)
+    if (texts.length === 1)
+      await new Promise<void>((_resolve, reject) => {
+        fail = reject
+      })
+  })
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    const first = await service.command(scope, send)
+    await service.command(scope, { ...send, commandId: 'second', text: 'still queued' })
+    fail!(new Error('boom'))
+    await new Promise((resolve) => setImmediate(resolve))
+    const failed = await service.command(scope, { ...send, action: 'get' })
+    assert.equal(failed.session?.status, 'failed')
+    assert.equal(failed.session?.queue?.length, 1)
+    const view = await service.command(scope, {
+      ...send,
+      action: 'steer',
+      sessionId: first.session!.id,
+      commandId: 'second'
+    })
+    assert.equal(view.session?.queue?.length, 0)
+    assert.notEqual(view.session?.turnId, first.session?.turnId)
+    assert.equal(view.session?.items.at(-1)?.text, 'still queued')
+    await new Promise((resolve) => setImmediate(resolve))
+    assert.deepEqual(texts, ['hello', 'still queued'])
+  } finally {
+    await service.shutdown()
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
 test('steer rejects a queued message whose model or access mode differs from the running turn', async () => {
   const f = fixture(async (context) => {
     context.registerSteer?.(async () => {})

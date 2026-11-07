@@ -268,6 +268,13 @@ export const claudeAdapter: AgentAdapter = {
       interrupt: (): void => void q?.interrupt().catch(() => {}),
       close
     }
+    const steer = async (
+      text: string,
+      attachments: RunAttachment[],
+      skills?: ChatSkillMention[]
+    ): Promise<void> => {
+      prompt.push(userMessage(promptText(text, skills), attachments))
+    }
     const adopt = (context: AutonomousTurn['context'], settle: AutonomousTurn['settle']): void => {
       current = activeTurn(context, settle, native)
       chainUuid = undefined
@@ -276,7 +283,12 @@ export const claudeAdapter: AgentAdapter = {
     const turnFor = (): AutonomousTurn | undefined => {
       if (current || closed) return current
       const turn = host.autonomous()
-      if (turn) adopt(turn.context, turn.settle)
+      if (turn) {
+        adopt(turn.context, turn.settle)
+        // The prompt stream is open for the process's whole life, so a turn Claude began on its own
+        // (following up on a background task) takes steered messages just like one the user started.
+        turn.context.registerSteer?.(steer)
+      }
       return current
     }
     const emit = (event: AgentDelta): void =>
@@ -1053,9 +1065,7 @@ export const claudeAdapter: AgentAdapter = {
             applied.effort = context.session.reasoning
           }
           if (current !== turn) return await done
-          context.registerSteer?.(async (text, attachments, skills) => {
-            prompt.push(userMessage(promptText(text, skills), attachments))
-          })
+          context.registerSteer?.(steer)
           prompt.push(
             userMessage(promptText(context.text, context.skills), context.attachments ?? [])
           )
