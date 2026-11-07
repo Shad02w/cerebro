@@ -11,6 +11,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowUp, MessageSquare, Paperclip, Square } from 'lucide-react'
 import {
+  CHAT_VIEW_ITEMS,
   resolveNewAgentModel,
   type AgentAccessMode,
   type AgentAnswer,
@@ -71,6 +72,8 @@ import { observeChatLayout } from './chat-layout'
 import { focusIsHeld } from '@/lib/held-focus'
 import './chat-status.css'
 
+/** Pixels from the top of the transcript at which older messages start loading. */
+const EARLIER_THRESHOLD = 600
 const noSkills: readonly AgentSkill[] = []
 const noCommands: readonly AgentCommand[] = []
 
@@ -130,9 +133,17 @@ export function ChatView({
     [composerVim, composerVimMode]
   )
   const queryKey = ['chat', workspaceId, paneId]
+  // The host sends only the newest items. Scrolling to the top asks for a larger window.
+  const itemLimit = useRef(CHAT_VIEW_ITEMS)
   const view = useQuery({
     queryKey,
-    queryFn: () => window.cerebro.chatCommand({ action: 'get', workspaceId, paneId }),
+    queryFn: () =>
+      window.cerebro.chatCommand({
+        action: 'get',
+        workspaceId,
+        paneId,
+        itemLimit: itemLimit.current
+      }),
     staleTime: Infinity,
     // Hidden panes stay mounted. Invalidation only marks them stale; they refetch once when shown.
     enabled: visible
@@ -142,9 +153,19 @@ export function ChatView({
   const loading = !view.data && view.isPending
   const session = view.data?.session
   const items = session?.items
+  const earlierItems = view.data?.earlierItems ?? 0
+  const sessionId = session?.id
+  useEffect(() => {
+    // Another conversation in this pane starts again from the newest items.
+    itemLimit.current = CHAT_VIEW_ITEMS
+  }, [sessionId])
+  // The first prompt is unknown while older items are left out, and an empty prompt renames nothing.
   const firstPrompt = useMemo(
-    () => items?.find((item) => item.kind === 'user' && item.text.trim())?.text ?? '',
-    [items]
+    () =>
+      earlierItems
+        ? ''
+        : (items?.find((item) => item.kind === 'user' && item.text.trim())?.text ?? ''),
+    [items, earlierItems]
   )
   const seenTitle = useRef<string | null>(null)
   const renameTab = useCallback(
@@ -301,9 +322,28 @@ export function ChatView({
     [items, busy, session?.turnId]
   )
   const turnAnchors = useMemo(() => new Set(chatTurnAnchorItemIds(items ?? [])), [items])
+  const earlierRef = useRef(earlierItems)
+  const loadingEarlier = useRef(false)
+  /** Distance from the bottom to keep while older items are added above. */
+  const keepFromBottom = useRef<number | null>(null)
+  const refetchView = view.refetch
+  useLayoutEffect(() => {
+    earlierRef.current = earlierItems
+  })
+  const showEarlier = useCallback(() => {
+    const node = scrolling.current
+    if (!node || loadingEarlier.current || earlierRef.current <= 0) return
+    loadingEarlier.current = true
+    keepFromBottom.current = node.scrollHeight - node.scrollTop
+    itemLimit.current += CHAT_VIEW_ITEMS
+    void refetchView().finally(() => {
+      loadingEarlier.current = false
+    })
+  }, [refetchView])
   const readScroll = useCallback(() => {
     const node = scrolling.current
     if (!node) return
+    if (node.scrollTop < EARLIER_THRESHOLD && !stick.current) showEarlier()
     const near = isTranscriptAtEnd(node.scrollHeight, node.scrollTop, node.clientHeight)
     if (scrollingToEnd.current && node.scrollTop + 1 < lastScrollTop.current)
       scrollingToEnd.current = false
@@ -324,7 +364,7 @@ export function ChatView({
     }
     const next = activeChatTurn(anchors, viewportTop)
     setActiveTurn((current) => (current === next ? current : next))
-  }, [])
+  }, [showEarlier])
   const scrollToEnd = useCallback(() => {
     const node = scrolling.current
     if (!node) return
@@ -385,7 +425,7 @@ export function ChatView({
       if (inFlight.current) return false
       inFlight.current = true
       try {
-        await mutateAsync({ ...command, workspaceId, paneId })
+        await mutateAsync({ ...command, workspaceId, paneId, itemLimit: itemLimit.current })
         return true
       } catch (error) {
         notify(error instanceof Error ? error.message : String(error))
@@ -483,6 +523,15 @@ export function ChatView({
       replaceRef.current(prompt.text, uploads)
     })()
   }, [session, workspaceId])
+  const firstItemId = items?.[0]?.id
+  useLayoutEffect(() => {
+    // Older items landed above the view. Keep the same message under the reader.
+    const node = scrolling.current
+    const fromBottom = keepFromBottom.current
+    if (!node || fromBottom === null) return
+    keepFromBottom.current = null
+    node.scrollTop = node.scrollHeight - fromBottom
+  }, [firstItemId])
   useLayoutEffect(() => {
     if (stick.current && scrolling.current)
       scrolling.current.scrollTop = scrolling.current.scrollHeight
@@ -670,6 +719,17 @@ export function ChatView({
           >
             <div className="mx-auto flex max-w-3xl flex-col gap-4">
               <TurnClock active={busy} activeIds={watchedTurnIds} knownIds={knownTurnIds} />
+              {transcript && earlierItems ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="self-center text-muted-foreground"
+                  data-testid="chat-show-earlier"
+                  onClick={showEarlier}
+                >
+                  Show earlier messages
+                </Button>
+              ) : null}
               {transcript
                 ? entries.map((entry, index, listed) => {
                     const first = entry.type === 'item' ? entry.item : entry.items[0]
