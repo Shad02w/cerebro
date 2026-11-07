@@ -808,6 +808,34 @@ test('dequeue removes a queued message without touching the running turn, and cl
     rmSync(f.dir, { recursive: true, force: true })
   }
 })
+test('edit-queued rewrites a queued message without touching the running turn', async () => {
+  const f = fixture(async (context) => {
+    await new Promise<void>((resolve) => context.signal.addEventListener('abort', () => resolve()))
+  })
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    const first = await service.command(scope, send)
+    await service.command(scope, { ...send, commandId: 'second', text: 'draft' })
+    const edit = { ...send, action: 'edit-queued' as const, sessionId: first.session!.id }
+    await assert.rejects(
+      service.command(scope, { ...edit, commandId: 'second', text: '   ' }),
+      /Write a message first/
+    )
+    const view = await service.command(scope, { ...edit, commandId: 'second', text: 'revised' })
+    assert.equal(view.session?.queue?.length, 1)
+    assert.equal(view.session?.queue?.[0]?.id, 'second')
+    assert.equal(view.session?.queue?.[0]?.text, 'revised')
+    assert.equal(view.session?.status, 'running')
+    assert.equal(view.session?.items.length, 1)
+    // Editing an id that already left the queue is a no-op.
+    const gone = await service.command(scope, { ...edit, commandId: 'missing', text: 'x' })
+    assert.equal(gone.session?.queue?.[0]?.text, 'revised')
+  } finally {
+    await service.command(scope, { ...send, action: 'stop' })
+    await service.shutdown()
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
 test('a queued message auto-fires as the next turn once the running turn finishes', async () => {
   let started = 0
   const releases: Array<() => void> = []

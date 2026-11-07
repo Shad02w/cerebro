@@ -220,7 +220,7 @@ export type ChatItem = {
     resolved?: boolean
   }
 }
-/** A message sent while a turn was running. Auto-sent as the next turn when the current one ends, or folded in early via 'steer'. */
+/** A message sent while a turn was running. Auto-sent as the next turn when the current one ends, or folded in early via 'steer'. Its text can be changed via 'edit-queued' until then. */
 export type QueuedMessage = {
   id: string
   text: string
@@ -609,12 +609,13 @@ export type ChatCommand = {
     | 'fork'
     | 'steer'
     | 'dequeue'
+    | 'edit-queued'
     | 'rewind'
     | 'undo'
   workspaceId: number
   paneId: number
   sessionId?: string
-  /** For 'send': idempotency key. For 'steer'/'dequeue': the QueuedMessage.id to act on. */
+  /** For 'send': idempotency key. For 'steer'/'dequeue'/'edit-queued': the QueuedMessage.id to act on. */
   commandId?: string
   text?: string
   attachments?: ChatAttachmentUpload[]

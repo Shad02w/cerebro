@@ -622,6 +622,19 @@ test('queued messages during a running turn can be steered in immediately or sen
     await send.click()
     await expect(page.getByTestId('chat-queue-item')).toHaveCount(2)
 
+    // A queued message can be edited before it is sent.
+    await page
+      .getByTestId('chat-queue-item')
+      .filter({ hasText: 'follow-up message' })
+      .getByRole('button', { name: 'Edit queued message' })
+      .click()
+    const editor = page.getByRole('textbox', { name: 'Queued message' })
+    await editor.fill('edited follow-up message')
+    await editor.press('Enter')
+    await expect(page.getByTestId('chat-queue-item').nth(1)).toContainText(
+      'edited follow-up message'
+    )
+
     // Steering one queued message folds it into the running turn without disturbing the other.
     await page
       .getByTestId('chat-queue-item')
@@ -629,7 +642,9 @@ test('queued messages during a running turn can be steered in immediately or sen
       .getByRole('button', { name: 'Steer' })
       .click()
     await expect(page.getByTestId('chat-queue-item')).toHaveCount(1)
-    await expect(page.getByTestId('chat-queue-item').first()).toContainText('follow-up message')
+    await expect(page.getByTestId('chat-queue-item').first()).toContainText(
+      'edited follow-up message'
+    )
     await expect(page.getByTestId('chat-transcript')).toContainText(
       '[steered: please steer this in]'
     )
@@ -637,7 +652,7 @@ test('queued messages during a running turn can be steered in immediately or sen
 
     // Stopping leaves the queue intact; it becomes the next turn automatically.
     await page.getByRole('button', { name: 'Stop agent' }).click()
-    await expect(page.getByTestId('chat-transcript')).toContainText('follow-up message', {
+    await expect(page.getByTestId('chat-transcript')).toContainText('edited follow-up message', {
       timeout: 15_000
     })
     await expect(page.getByTestId('chat-transcript')).toContainText('Adapter connected.')

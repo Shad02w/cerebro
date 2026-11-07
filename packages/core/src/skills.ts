@@ -60,6 +60,11 @@ const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\
 const bounded = (token: string): RegExp =>
   new RegExp(`${escapeRegExp(token)}(?![${skillNameChars}])`, 'g')
 
+/** True when `text` still contains the skill's display token as a whole word. */
+export function mentionsSkillToken(text: string, token: string): boolean {
+  return bounded(token).test(text)
+}
+
 /**
  * Rewrites display tokens into the harness prompt. Fenced and inline code stay literal so a
  * skill name inside a sample is not dispatched.

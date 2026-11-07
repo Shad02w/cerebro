@@ -157,3 +157,32 @@ test('a turn of only agent or task outcomes is not a response', () => {
   ])
   assert.deepEqual([...ids], ['idle'])
 })
+
+test('a steered message splits the turn so later work and Working sit below it', () => {
+  const before = [
+    item({ id: 'u', kind: 'user', text: 'go' }),
+    item({ id: 'a', kind: 'tool', title: 'Read' }),
+    item({ id: 't', kind: 'text', text: 'partial' }),
+    item({ id: 's', kind: 'user', text: 'steer' })
+  ]
+  const steered = transcriptEntries(before, 'turn')
+  assert.equal(workingAnchorId(steered, 'turn'), null)
+  assert.equal(steered[1].type === 'tools' && steered[1].live, false)
+  const entries = transcriptEntries(
+    [
+      ...before,
+      item({ id: 'b', kind: 'tool', title: 'Bash' }),
+      item({ id: 't2', kind: 'text', text: 'after' })
+    ],
+    'turn'
+  )
+  assert.deepEqual(
+    entries.map((entry) =>
+      entry.type === 'item' ? entry.item.id : entry.items.map((tool) => tool.id)
+    ),
+    ['u', ['a'], 't', 's', ['b'], 't2']
+  )
+  assert.equal(entries[1].type === 'tools' && entries[1].live, false)
+  assert.equal(entries[4].type === 'tools' && entries[4].live, true)
+  assert.equal(workingAnchorId(entries, 'turn'), 'b')
+})

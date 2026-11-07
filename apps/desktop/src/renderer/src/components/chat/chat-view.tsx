@@ -414,6 +414,11 @@ export function ChatView({
     },
     [execute, session?.id]
   )
+  const editQueued = useCallback(
+    (commandId: string, text: string): Promise<boolean> =>
+      execute({ action: 'edit-queued', sessionId: session?.id, commandId, text }),
+    [execute, session?.id]
+  )
   const applyingRewind = useRef(false)
   const filledRewind = useRef<string | null>(null)
   const readDraftRef = useRef(readDraft)
@@ -816,7 +821,12 @@ export function ChatView({
                   >
                     <ChatSessionChips session={session} />
                   </div>
-                  <ChatQueue session={session} onSteer={steer} onDequeue={dequeue} />
+                  <ChatQueue
+                    session={session}
+                    onSteer={steer}
+                    onDequeue={dequeue}
+                    onEdit={editQueued}
+                  />
                 </div>
               ) : null}
               <div

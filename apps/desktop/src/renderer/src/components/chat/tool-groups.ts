@@ -39,51 +39,72 @@ export function watchedTurns(
 }
 
 /**
- * One expandable for every tool call and reasoning block in a turn, placed where the first
- * of those appeared. `live` while that turn is still streaming.
+ * One expandable for every run of tool calls and reasoning in a turn, placed where the first
+ * of those appeared. A user message inside the turn (a steered message) starts a new run, so
+ * work done after a steer shows below it. Only the turn's last run is `live` while it streams.
  */
 export function transcriptEntries(
   items: readonly ChatItem[],
   liveTurnId?: string
 ): TranscriptEntry[] {
-  const groupedByTurn = new Map<string, ChatItem[]>()
+  const userCount = new Map<string, number>()
+  const runOf = new Map<ChatItem, string>()
+  const grouped = new Map<string, ChatItem[]>()
+  const lastRun = new Map<string, string>()
   for (const item of items) {
+    if (item.kind === 'user') {
+      userCount.set(item.turnId, (userCount.get(item.turnId) ?? 0) + 1)
+      continue
+    }
     if (!inWorkingGroup(item)) continue
-    const list = groupedByTurn.get(item.turnId) ?? []
+    const run = `${item.turnId}#${userCount.get(item.turnId) ?? 0}`
+    runOf.set(item, run)
+    const list = grouped.get(run) ?? []
     list.push(item)
-    groupedByTurn.set(item.turnId, list)
+    grouped.set(run, list)
+  }
+  for (const item of items) {
+    if (item.kind === 'user') lastRun.set(item.turnId, '')
+    const run = runOf.get(item)
+    if (run) lastRun.set(item.turnId, run)
   }
   const seen = new Set<string>()
   const entries: TranscriptEntry[] = []
   for (const item of items) {
-    if (!inWorkingGroup(item)) {
+    const run = runOf.get(item)
+    if (!run) {
       entries.push({ type: 'item', item })
       continue
     }
-    if (seen.has(item.turnId)) continue
-    seen.add(item.turnId)
+    if (seen.has(run)) continue
+    seen.add(run)
     entries.push({
       type: 'tools',
-      items: groupedByTurn.get(item.turnId) ?? [],
-      live: item.turnId === liveTurnId
+      items: grouped.get(run) ?? [],
+      live: item.turnId === liveTurnId && lastRun.get(item.turnId) === run
     })
   }
   return entries
 }
 
-/** First assistant entry in a turn. The live Working status sits above this entry. */
+/**
+ * First assistant entry after the live turn's latest user message (its prompt, or a message
+ * steered in since). The live Working status sits above this entry, so after a steer it moves
+ * below the steered message. Null until the reply after that message starts.
+ */
 export function workingAnchorId(
   entries: readonly TranscriptEntry[],
   turnId: string | undefined
 ): string | null {
   if (!turnId) return null
+  let anchor: string | null = null
   for (const entry of entries) {
     const item = entry.type === 'item' ? entry.item : entry.items[0]
     if (!item || item.turnId !== turnId) continue
-    if (entry.type === 'item' && entry.item.kind === 'user') continue
-    return item.id
+    if (entry.type === 'item' && entry.item.kind === 'user') anchor = null
+    else anchor ??= item.id
   }
-  return null
+  return anchor
 }
 
 /**

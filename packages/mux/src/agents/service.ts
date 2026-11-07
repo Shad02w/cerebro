@@ -49,6 +49,7 @@ import {
   type AgentSkillList,
   type ChatSkillMention,
   type QueuedMessage,
+  mentionsSkillToken,
   skillMentionsFor
 } from '@cerebro/core'
 import {
@@ -1123,6 +1124,23 @@ export class AgentSessions {
         session.queue = (session.queue ?? []).filter((q) => q.id !== command.commandId)
         this.changed(session, true)
       }
+      return this.view(scope)
+    }
+    if (command.action === 'edit-queued') {
+      const queued = session?.queue?.find((q) => q.id === command.commandId)
+      // Already steered, sent, or removed elsewhere: nothing left to edit.
+      if (!session || !queued) return this.view(scope)
+      if (typeof command.text !== 'string' || !command.text.trim())
+        throw new Error('Write a message first.')
+      if (command.text.length > 100_000) throw new Error('Message exceeds 100,000 characters.')
+      queued.text = command.text
+      // Drop skill mentions whose token the edit removed, so they are not dispatched.
+      const skills = (queued.skills ?? []).filter((skill) =>
+        mentionsSkillToken(command.text!, skill.token)
+      )
+      if (skills.length) queued.skills = skills
+      else delete queued.skills
+      this.changed(session, true)
       return this.view(scope)
     }
     if (command.action !== 'send') throw new Error('Unknown chat command.')
