@@ -27,5 +27,5 @@ test('system mode follows the OS preference; explicit modes ignore it', () => {
 
 test('offers classic plus five redesign styles with unique ids', () => {
   const ids = UI_STYLES.map((style) => style.id)
-  assert.deepEqual(ids, ['classic', 'graphite', 'editor', 'paper', 'swiss', 'indigo'])
+  assert.deepEqual(ids, ['classic', 'graphite', 'editor', 'paper', 'swiss', 'slate'])
 })

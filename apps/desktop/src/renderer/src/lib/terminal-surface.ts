@@ -16,7 +16,7 @@ const LIGHT_ANSI: Palette = {
   brightRed: '#d9363e',
   brightGreen: '#2b8a47',
   brightYellow: '#9c7000',
-  brightBlue: '#2f6fd0',
+  brightBlue: '#1f9488',
   brightMagenta: '#a04cc2',
   brightCyan: '#1b8c98'
 }
@@ -50,20 +50,20 @@ const SURFACES: Record<Exclude<UiStyleId, 'classic'>, Record<ColorMode, Palette>
     dark: surface('#0f0f0f', '#f2f2f2', 'dark')
   },
   editor: {
-    light: surface('#fcfcfc', '#2b2b2b', 'light', { cursor: '#2f6fd0' }),
-    dark: surface('#181818', '#d6d6d6', 'dark', { cursor: '#5b9cf5' })
+    light: surface('#fcfcfc', '#2b2b2b', 'light', { cursor: '#1f9488' }),
+    dark: surface('#181818', '#d6d6d6', 'dark', { cursor: '#4fd1c0' })
   },
   paper: {
-    light: surface('#fbf9f6', '#2f2a25', 'light', { cursor: '#c4613a' }),
-    dark: surface('#1f1c19', '#ece7e0', 'dark', { cursor: '#e08d68' })
+    light: surface('#fbf9f6', '#2f2a25', 'light', { cursor: '#2a8f84' }),
+    dark: surface('#1f1c19', '#ece7e0', 'dark', { cursor: '#5cc9b8' })
   },
   swiss: {
-    light: surface('#ffffff', '#0b0b0b', 'light', { cursor: '#e1361b' }),
-    dark: surface('#080808', '#fafafa', 'dark', { cursor: '#f0502e' })
+    light: surface('#ffffff', '#0b0b0b', 'light', { cursor: '#178a7d' }),
+    dark: surface('#080808', '#fafafa', 'dark', { cursor: '#5fe0cc' })
   },
-  indigo: {
-    light: surface('#fbfbfe', '#25263a', 'light', { cursor: '#5b5bd6' }),
-    dark: surface('#14151f', '#e9e9f4', 'dark', { cursor: '#8f8ff0' })
+  slate: {
+    light: surface('#fbfcfd', '#1f2833', 'light', { cursor: '#1f9488' }),
+    dark: surface('#121820', '#e6edf2', 'dark', { cursor: '#4fd1c0' })
   }
 }
 

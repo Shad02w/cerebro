@@ -2,10 +2,12 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useRef,
   useState,
   type ComponentProps
 } from 'react'
+import { OPEN_SESSION_SEARCH_EVENT } from '@/lib/app-events'
 import { useQuery } from '@tanstack/react-query'
 import '@/assets/sidebar.css'
 import {
@@ -1853,6 +1855,14 @@ export function AppSidebar({
     setSessionSearch((current) => (current?.mode === 'palette' ? null : { mode: 'palette' }))
     return true
   })
+  // Window chrome outside the sidebar (activity rail, command bar) opens the same palette.
+  useEffect(() => {
+    const open = (): void => {
+      if (!isSettings) setSessionSearch({ mode: 'palette' })
+    }
+    window.addEventListener(OPEN_SESSION_SEARCH_EVENT, open)
+    return () => window.removeEventListener(OPEN_SESSION_SEARCH_EVENT, open)
+  }, [isSettings])
   const openAgent = (agent: ChatAgentActivity): void => {
     void openAgentSession(agent, onSelectWorkspace).catch(() => {})
   }
@@ -1875,6 +1885,7 @@ export function AppSidebar({
         <Sidebar
           collapsible={isSettings ? 'none' : 'offcanvas'}
           className={cn('cerebro-sidebar', isSettings && 'border-r border-sidebar-border')}
+          data-sidebar-mode={isSettings ? 'settings' : 'projects'}
         >
           <NavigationHeader
             isSettings={isSettings}

@@ -10,27 +10,27 @@ export const UI_STYLES = [
   {
     id: 'graphite',
     label: 'Graphite',
-    description: 'Flat monochrome. Hairline borders, no shadows, one ink color.'
+    description: 'Flat monochrome on floating panels. Hairline borders, ink buttons, green focus.'
   },
   {
     id: 'editor',
     label: 'Editor',
-    description: 'Dense and editor-like. Layered opaque surfaces with a blue accent.'
+    description: 'Code-editor layout: activity bar, editor tabs and a status bar.'
   },
   {
     id: 'paper',
     label: 'Paper',
-    description: 'Soft and warm. Rounded corners, gentle shadows, terracotta accent.'
+    description: 'Soft and warm. Floating sidebar, projects grouped on cards.'
   },
   {
     id: 'swiss',
     label: 'Swiss',
-    description: 'Sharp and high contrast. Square corners, strong type, signal red.'
+    description: 'Sharp index layout. Square corners, heavy rules, numbered rows.'
   },
   {
-    id: 'indigo',
-    label: 'Indigo',
-    description: 'Cool tinted neutrals with an indigo accent carried through focus.'
+    id: 'slate',
+    label: 'Slate',
+    description: 'Command bar across the top with a breadcrumb and global search.'
   }
 ] as const
 
