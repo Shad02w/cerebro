@@ -66,6 +66,7 @@ import { ContextUsagePanel, ContextUsageTrigger } from './context-usage-panel'
 import { modelSwitchNotice } from './model-switch'
 import { agentCommandOptions, agentSkillOptions, catalogOptions, harnessLabels } from './queries'
 import { observeChatLayout } from './chat-layout'
+import { focusIsHeld } from '@/lib/held-focus'
 import './chat-status.css'
 
 const noSkills: readonly AgentSkill[] = []
@@ -599,6 +600,8 @@ export function ChatView({
     // Leave keyboard focus on a tab the user reached by keyboard (e.g. after closing the
     // tab next to it); a pointer click on a tab still moves focus into the composer.
     if (document.activeElement?.matches('[role="tablist"] :focus-visible')) return
+    // The command palette just focused a sidebar row on purpose.
+    if (focusIsHeld()) return
     editorRef.current?.focus()
   }, [active, loading])
   const alertText = session?.error ?? (view.error ? String(view.error) : null)

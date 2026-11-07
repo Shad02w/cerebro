@@ -1,13 +1,5 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-  type ComponentProps
-} from 'react'
-import { OPEN_SESSION_SEARCH_EVENT } from '@/lib/app-events'
+import { createContext, useContext, useEffect, useState, type ComponentProps } from 'react'
+import { OPEN_COMMAND_PALETTE_EVENT } from '@/lib/app-events'
 import { useQuery } from '@tanstack/react-query'
 import '@/assets/sidebar.css'
 import {
@@ -18,14 +10,12 @@ import {
   Folder,
   FolderPlus,
   GitBranch,
-  History,
   MoreHorizontal,
   Pencil,
   Plus,
   Search,
   Settings,
-  Trash2,
-  X
+  Trash2
 } from 'lucide-react'
 import type { ChatAgentActivity, LayoutState, PaneNode } from '@cerebro/core'
 import {
@@ -39,15 +29,16 @@ import {
 import type { SettingsSectionId } from '@/lib/app-route'
 import { HarnessIcon, HarnessStatusIcon } from '@/components/harness-icon'
 import { harnessLabels } from '@/components/chat/queries'
-import { SessionSearchDialog, type SessionSearchRequest } from '@/components/session-search-dialog'
+import { CommandPalette, type PaletteRow } from '@/components/command-palette'
 import { WorkspaceSessionList } from '@/components/workspace-sessions'
-import { useKeybindHandler } from '@/keybinds'
+import { ShortcutKbd, useKeybindBinding, useKeybindHandler } from '@/keybinds'
 import { sortAgentActivity, useAgentActivity } from '@/lib/agent-activity'
 import { openAgentSession } from '@/lib/open-agent-session'
 import { ensureWorkspaceForCheckout } from '@/lib/ensure-workspace-checkout'
+import { focusAndHold } from '@/lib/held-focus'
 import { layoutOptions } from '@/lib/query-client'
 import { SETTINGS_SECTIONS } from '@/lib/settings-sections'
-import { Input } from '@/components/ui/input'
+import { defaultWorkspaceLabel, isPaletteProject, workspaceRowLabel } from '@/lib/command-palette'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
   DeleteFromDiskDialog,
@@ -94,7 +85,8 @@ import {
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
-  SidebarRail
+  SidebarRail,
+  useSidebar
 } from '@/components/ui/sidebar'
 
 const DEFAULT_WORKSPACE_TOOLTIP =
@@ -148,34 +140,23 @@ async function copyToClipboard(value: string): Promise<void> {
   }
 }
 
-const OpenSessionSearchContext = createContext<{
-  open: (workspaceId: number) => void
-  historyWorkspaceId: number | null
-}>({ open: () => {}, historyWorkspaceId: null })
+/** The palette asks a project to expand. A new object each time, so repeats still apply. */
+const RevealProjectContext = createContext<{ projectId: number } | null>(null)
 
-function WorkspaceSessionHistory({ workspaceId }: { workspaceId: number }): React.JSX.Element {
-  const { open, historyWorkspaceId } = useContext(OpenSessionSearchContext)
-  return (
-    <PlusActionTooltip label="Session history">
-      <SidebarMenuAction
-        showOnHover
-        tabIndex={-1}
-        className="app-no-drag"
-        data-testid={`workspace-search-sessions-${workspaceId}`}
-        data-popup-open={historyWorkspaceId === workspaceId ? '' : undefined}
-        aria-label="Session history"
-        onPointerDown={(event): void => event.stopPropagation()}
-        onClick={(event): void => {
-          event.preventDefault()
-          event.stopPropagation()
-          open(workspaceId)
-        }}
-      >
-        <History className="size-3.5" />
-        <span className="sr-only">Session history</span>
-      </SidebarMenuAction>
-    </PlusActionTooltip>
-  )
+/** Focuses a sidebar row once it renders (a project may still be expanding). */
+function focusSidebarRow(selector: string): void {
+  let attempts = 0
+  const attempt = (): void => {
+    const row = document.querySelector<HTMLElement>(`[data-slot="sidebar"] ${selector}`)
+    if (row && !row.closest('[hidden]')) {
+      focusAndHold(row)
+      row.scrollIntoView({ block: 'nearest' })
+      return
+    }
+    attempts += 1
+    if (attempts < 30) requestAnimationFrame(attempt)
+  }
+  requestAnimationFrame(attempt)
 }
 
 function PlusActionTooltip({
@@ -317,17 +298,6 @@ function WorkspaceAgents({
       ) : null}
     </div>
   )
-}
-
-function defaultWorkspaceLabel(project: Project, workspace: Workspace): string {
-  if (workspace.kind === 'root') return 'root'
-  if (!workspace.branch || workspace.branch === '.') return project.name
-  return workspace.branch
-}
-
-function workspaceRowLabel(project: Project, workspace: Workspace): string {
-  const custom = workspace.displayName?.trim()
-  return custom || defaultWorkspaceLabel(project, workspace)
 }
 
 function DisabledMenuItem({
@@ -727,6 +697,15 @@ function ProjectItem({
   // (search). Leaving the project clears that, so the next outside selection
   // (CLI focus) opens it and the active row is visible.
   const [userClosed, setUserClosed] = useState(false)
+  const reveal = useContext(RevealProjectContext)
+  const [trackedReveal, setTrackedReveal] = useState(reveal)
+  if (reveal !== trackedReveal) {
+    setTrackedReveal(reveal)
+    if (reveal?.projectId === project.id) {
+      setUserClosed(false)
+      setOpen(true)
+    }
+  }
   if (containsActive !== trackedActive) {
     setTrackedActive(containsActive)
     if (!containsActive && userClosed) setUserClosed(false)
@@ -755,6 +734,7 @@ function ProjectItem({
                   githubLinked && 'pr-14'
                 )}
                 data-testid={rowTestId ?? `project-row-${project.id}`}
+                data-project-id={project.id}
                 data-project-kind={project.kind}
                 data-project-icon={githubLinked ? 'avatar' : 'folder'}
                 title={project.name}
@@ -842,7 +822,6 @@ function ProjectItem({
                         </SidebarMenuSubButton>
                         <BranchIconOverlay workspace={workspace} />
                         <RowActions overlay>
-                          <WorkspaceSessionHistory workspaceId={workspace.id} />
                           <WorkspaceOverflowMenu
                             workspace={workspace}
                             onRename={(): void => onRenameWorkspace(workspace)}
@@ -955,11 +934,6 @@ function NestedRepoRow({
       >
         <NestedRepoBody repo={repo} />
       </button>
-      {match ? (
-        <RowActions overlay>
-          <WorkspaceSessionHistory workspaceId={match.id} />
-        </RowActions>
-      ) : null}
       <WorkspaceSessionList agents={agents} onOpenAgent={onOpenAgent} />
     </SidebarMenuRow>
   )
@@ -1147,7 +1121,6 @@ function DirectoryNameLine({
           </button>
         ) : null}
         <RowActions overlay>
-          <WorkspaceSessionHistory workspaceId={workspace.id} />
           <DirectoryRowMenu
             project={project}
             workspace={workspace}
@@ -1305,48 +1278,20 @@ function PlainDirectoryRow({
   )
 }
 
-type WorkspaceSearchResult = { project: Project; workspace: Workspace; label: string }
-
-function searchWorkspaces(projects: Project[], query: string): WorkspaceSearchResult[] {
-  if (!query) return []
-  return projects.flatMap((project) =>
-    project.workspaces.flatMap((workspace) => {
-      const visible = workspaceRowLabel(project, workspace)
-      const haystack = [
-        project.name,
-        visible,
-        workspace.displayName,
-        defaultWorkspaceLabel(project, workspace),
-        workspace.kind === 'root' ? null : workspace.branch
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase()
-      return haystack.includes(query) ? [{ project, workspace, label: visible }] : []
-    })
-  )
-}
-
 function NavigationHeader({
   isSettings,
-  search,
   groupBy,
   onGroupBy,
-  onSearchChange,
   onAddProject,
-  firstResultId,
-  onSelectWorkspace
+  onOpenPalette
 }: {
   isSettings: boolean
-  search: string
   groupBy: SidebarGroupBy
   onGroupBy: (groupBy: SidebarGroupBy) => void
-  onSearchChange: (value: string) => void
   onAddProject: () => void
-  firstResultId: number | undefined
-  onSelectWorkspace: (workspaceId: number) => void
+  onOpenPalette: () => void
 }): React.JSX.Element {
-  const searchInput = useRef<HTMLInputElement>(null)
+  const paletteHotkey = useKeybindBinding('openCommandPalette')
   return (
     <SidebarHeader className="gap-2 px-3 pt-12 pb-1">
       <div className="app-drag-region flex h-8 items-center gap-2 px-2">
@@ -1355,6 +1300,25 @@ function NavigationHeader({
         </h2>
         {!isSettings ? (
           <>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    className="app-no-drag sidebar-header-action sidebar-header-quiet"
+                    aria-label="Search"
+                    data-testid="sidebar-search"
+                    onClick={onOpenPalette}
+                  />
+                }
+              >
+                <Search className="size-4" />
+              </TooltipTrigger>
+              <TooltipContent side="right" sideOffset={4} className="flex items-center gap-2">
+                Search
+                <ShortcutKbd hotkey={paletteHotkey} inverted />
+              </TooltipContent>
+            </Tooltip>
             <DropdownMenu>
               <PlusActionTooltip label="Group by">
                 <DropdownMenuTrigger
@@ -1413,112 +1377,7 @@ function NavigationHeader({
           </>
         ) : null}
       </div>
-      {!isSettings ? (
-        <div className="app-no-drag relative">
-          <Search
-            aria-hidden="true"
-            className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-sidebar-foreground/50"
-          />
-          <Input
-            ref={searchInput}
-            aria-label="Search projects and workspaces"
-            placeholder="Find a workspace…"
-            value={search}
-            className="h-8 rounded-md pr-8 pl-8 text-xs shadow-none md:text-xs"
-            onChange={(event) => onSearchChange(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.nativeEvent.isComposing) return
-              if (event.key === 'Escape') {
-                event.preventDefault()
-                onSearchChange('')
-              } else if (event.key === 'Enter' && firstResultId != null) {
-                event.preventDefault()
-                onSelectWorkspace(firstResultId)
-              }
-            }}
-          />
-          {search ? (
-            <button
-              type="button"
-              className="sidebar-header-action absolute top-1/2 right-0.5 -translate-y-1/2"
-              aria-label="Clear search"
-              onClick={() => {
-                onSearchChange('')
-                searchInput.current?.focus()
-              }}
-            >
-              <X className="size-3.5" />
-            </button>
-          ) : null}
-        </div>
-      ) : null}
     </SidebarHeader>
-  )
-}
-
-function WorkspaceSearchResults({
-  results,
-  activeWorkspaceId,
-  activity,
-  onSelectWorkspace,
-  onOpenAgent
-}: {
-  results: WorkspaceSearchResult[]
-  activeWorkspaceId: number | null
-  activity: Map<number, ChatAgentActivity[]>
-  onSelectWorkspace: (workspaceId: number) => void
-  onOpenAgent: (agent: ChatAgentActivity) => void
-}): React.JSX.Element {
-  return (
-    <div>
-      <p role="status" className="px-2 pt-1 pb-2 text-xs text-sidebar-foreground/60">
-        {results.length === 0
-          ? 'No matching workspaces'
-          : `${results.length} ${results.length === 1 ? 'workspace' : 'workspaces'} found`}
-      </p>
-      <SidebarMenu>
-        {results.map(({ project, workspace, label }) => {
-          const carriesStatus = workspaceCarriesStatus(project, workspace)
-          return (
-            <SidebarMenuItem key={workspace.id}>
-              <SidebarMenuRow data-workspace-id={workspace.id}>
-                <WorkspaceHoverCard workspace={workspace} label={label} showStatus={carriesStatus}>
-                  <SidebarMenuButton
-                    className="app-no-drag h-auto min-h-12 items-start py-2 pr-8"
-                    isActive={workspace.id === activeWorkspaceId}
-                    aria-current={workspace.id === activeWorkspaceId ? 'location' : undefined}
-                    onClick={() => onSelectWorkspace(workspace.id)}
-                    data-testid={`workspace-search-result-${workspace.id}`}
-                    data-workspace-status={
-                      carriesStatus ? workspaceStatus(workspace.status) : undefined
-                    }
-                  >
-                    {workspace.branch && workspace.branch !== '.' ? (
-                      <GitBranch className="mt-0.5" />
-                    ) : (
-                      <Folder className="mt-0.5" />
-                    )}
-                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                      <span className="truncate text-xs font-medium">{label}</span>
-                      <span className="truncate text-[11px] text-sidebar-foreground/60">
-                        {project.name}
-                      </span>
-                    </span>
-                  </SidebarMenuButton>
-                </WorkspaceHoverCard>
-                <RowActions overlay>
-                  <WorkspaceSessionHistory workspaceId={workspace.id} />
-                </RowActions>
-                <WorkspaceSessionList
-                  agents={activity.get(workspace.id) ?? []}
-                  onOpenAgent={onOpenAgent}
-                />
-              </SidebarMenuRow>
-            </SidebarMenuItem>
-          )
-        })}
-      </SidebarMenu>
-    </div>
   )
 }
 
@@ -1778,7 +1637,6 @@ export function AppSidebar({
   onBack
 }: AppSidebarProps): React.JSX.Element {
   const isSettings = mode === 'settings'
-  const [search, setSearch] = useState('')
   const [groupBy, setGroupBy] = useState(sidebarGroupBy)
   const [trackedGroup, setTrackedGroup] = useState(sidebarGroupBy)
   if (sidebarGroupBy !== trackedGroup) {
@@ -1845,42 +1703,49 @@ export function AppSidebar({
       setDeletePending(false)
     }
   }
-  const query = search.trim().toLowerCase()
   const sidebarProjects = projectsBesidesNestedRepos(projects)
-  const results = searchWorkspaces(sidebarProjects, query)
   const activity = useAgentActivity()
-  const [sessionSearch, setSessionSearch] = useState<SessionSearchRequest | null>(null)
-  useKeybindHandler('searchSessions', () => {
+  const sidebar = useSidebar()
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  const [reveal, setReveal] = useState<{ projectId: number } | null>(null)
+  useKeybindHandler('openCommandPalette', () => {
     if (isSettings) return false
-    setSessionSearch((current) => (current?.mode === 'palette' ? null : { mode: 'palette' }))
+    setPaletteOpen((current) => !current)
     return true
   })
   // Window chrome outside the sidebar (activity rail, command bar) opens the same palette.
   useEffect(() => {
     const open = (): void => {
-      if (!isSettings) setSessionSearch({ mode: 'palette' })
+      if (!isSettings) setPaletteOpen(true)
     }
-    window.addEventListener(OPEN_SESSION_SEARCH_EVENT, open)
-    return () => window.removeEventListener(OPEN_SESSION_SEARCH_EVENT, open)
+    window.addEventListener(OPEN_COMMAND_PALETTE_EVENT, open)
+    return () => window.removeEventListener(OPEN_COMMAND_PALETTE_EVENT, open)
   }, [isSettings])
   const openAgent = (agent: ChatAgentActivity): void => {
     void openAgentSession(agent, onSelectWorkspace).catch(() => {})
   }
-  const openWorkspaceSearch = useCallback(
-    (workspaceId: number): void => {
-      setSessionSearch({ mode: 'workspace', workspaceId })
-    },
-    [setSessionSearch]
-  )
-  const statusLayout = !isSettings && !query && sidebarProjects.length > 0 && groupBy === 'status'
+  /** Shows the sidebar and expands the project so the chosen row can take focus. */
+  const revealInSidebar = (projectId: number | null): void => {
+    if (sidebar.isMobile) sidebar.setOpenMobile(true)
+    else if (!sidebar.open) sidebar.setOpen(true)
+    if (projectId != null) setReveal({ projectId })
+  }
+  const choosePaletteRow = async (row: PaletteRow): Promise<void> => {
+    if (row.type === 'project') {
+      revealInSidebar(row.project.id)
+      focusSidebarRow(`[data-project-id="${row.project.id}"]`)
+    } else if (row.type === 'workspace') {
+      onSelectWorkspace(row.workspace.id)
+      revealInSidebar(isPaletteProject(row.project) ? row.project.id : null)
+      focusSidebarRow(`button[data-workspace-id="${row.workspace.id}"]`)
+    } else {
+      await openAgentSession(row.hit, onSelectWorkspace)
+    }
+  }
+  const statusLayout = !isSettings && sidebarProjects.length > 0 && groupBy === 'status'
 
   return (
-    <OpenSessionSearchContext.Provider
-      value={{
-        open: openWorkspaceSearch,
-        historyWorkspaceId: sessionSearch?.mode === 'workspace' ? sessionSearch.workspaceId : null
-      }}
-    >
+    <RevealProjectContext.Provider value={reveal}>
       <>
         <Sidebar
           collapsible={isSettings ? 'none' : 'offcanvas'}
@@ -1889,7 +1754,6 @@ export function AppSidebar({
         >
           <NavigationHeader
             isSettings={isSettings}
-            search={search}
             groupBy={groupBy}
             onGroupBy={(next): void => {
               if (next === groupBy) return
@@ -1897,10 +1761,8 @@ export function AppSidebar({
               setGroupBy(next)
               void Promise.resolve(onSidebarGroupBy(next)).catch(() => setGroupBy(previous))
             }}
-            onSearchChange={setSearch}
             onAddProject={onAddProject}
-            firstResultId={results[0]?.workspace.id}
-            onSelectWorkspace={onSelectWorkspace}
+            onOpenPalette={(): void => setPaletteOpen(true)}
           />
           <SidebarContent className={statusLayout ? 'overflow-hidden' : undefined}>
             {isSettings ? (
@@ -1932,26 +1794,12 @@ export function AppSidebar({
                 <SidebarGroupContent
                   className={statusLayout ? 'flex min-h-0 flex-1 flex-col' : undefined}
                 >
-                  {query ? (
-                    <WorkspaceSearchResults
-                      results={results}
-                      activeWorkspaceId={activeWorkspaceId}
-                      activity={activity}
-                      onSelectWorkspace={onSelectWorkspace}
-                      onOpenAgent={openAgent}
-                    />
-                  ) : null}
                   {sidebarProjects.length === 0 ? (
-                    <p
-                      className={cn(
-                        'px-2 py-1.5 text-xs text-sidebar-foreground/60',
-                        query && 'hidden'
-                      )}
-                    >
+                    <p className="px-2 py-1.5 text-xs text-sidebar-foreground/60">
                       No projects yet. Use + to clone a repository or open a folder.
                     </p>
                   ) : groupBy === 'status' ? (
-                    <div className={cn('flex min-h-0 flex-1 flex-col', query && 'hidden')}>
+                    <div className="flex min-h-0 flex-1 flex-col">
                       <StatusGroups
                         projects={sidebarProjects}
                         catalog={projects}
@@ -1967,7 +1815,7 @@ export function AppSidebar({
                       />
                     </div>
                   ) : (
-                    <SidebarMenu className={query ? 'hidden' : 'gap-0'}>
+                    <SidebarMenu className="gap-0">
                       {sidebarProjects.map((project) => {
                         if (isPlainDirectoryProject(project)) {
                           return (
@@ -2065,13 +1913,14 @@ export function AppSidebar({
             }}
           />
         ) : null}
-        <SessionSearchDialog
-          request={sessionSearch}
+        <CommandPalette
+          open={paletteOpen}
           projects={sidebarProjects}
-          onOpen={(hit) => openAgentSession(hit, onSelectWorkspace)}
-          onClose={(): void => setSessionSearch(null)}
+          activeWorkspaceId={activeWorkspaceId}
+          onChoose={choosePaletteRow}
+          onClose={(): void => setPaletteOpen(false)}
         />
       </>
-    </OpenSessionSearchContext.Provider>
+    </RevealProjectContext.Provider>
   )
 }

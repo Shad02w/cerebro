@@ -4,6 +4,7 @@ export {
   findKeybindConflict,
   getKeybindAction,
   isKeybindActionId,
+  migrateKeybindOverrides,
   normalizeKeybindOverrides,
   resolveKeybinds,
   type KeybindAction,

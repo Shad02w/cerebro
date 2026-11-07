@@ -12,7 +12,7 @@ import type { Project, Workspace } from '@shared/types'
 import { useSidebar } from '@/components/ui/sidebar'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ShortcutKbd, useKeybindBinding } from '@/keybinds'
-import { openSessionSearch } from '@/lib/app-events'
+import { openCommandPalette } from '@/lib/app-events'
 import { cn } from '@/lib/utils'
 
 /*
@@ -84,7 +84,7 @@ export function ActivityRail({
   onOpenSettings
 }: ChromeActions): React.JSX.Element {
   const { open, toggleSidebar } = useSidebar()
-  const searchHotkey = useKeybindBinding('searchSessions')
+  const searchHotkey = useKeybindBinding('openCommandPalette')
   const sidebarHotkey = useKeybindBinding('toggleSidebar')
   const settingsHotkey = useKeybindBinding('openSettings')
   return (
@@ -103,9 +103,9 @@ export function ActivityRail({
         <FolderOpen className="size-[18px]" />
       </RailButton>
       <RailButton
-        label="Search sessions"
+        label="Command palette"
         hotkey={searchHotkey}
-        onClick={openSessionSearch}
+        onClick={openCommandPalette}
         testId="rail-search"
       >
         <Search className="size-[18px]" />
@@ -135,7 +135,7 @@ export function StatusBar({
   workspace: Workspace | null
   projects: Project[]
 }): React.JSX.Element {
-  const searchHotkey = useKeybindBinding('searchSessions')
+  const searchHotkey = useKeybindBinding('openCommandPalette')
   const project = workspace ? projects.find((item) => item.id === workspace.projectId) : null
   return (
     <footer
@@ -155,7 +155,7 @@ export function StatusBar({
         <span>No workspace selected</span>
       )}
       <span className="ml-auto flex shrink-0 items-center gap-1.5">
-        Search sessions <ShortcutKbd hotkey={searchHotkey} />
+        Command palette <ShortcutKbd hotkey={searchHotkey} />
       </span>
     </footer>
   )
@@ -170,7 +170,7 @@ export function CommandBar({
   onOpenSettings
 }: ChromeActions & { workspace: Workspace | null; projects: Project[] }): React.JSX.Element {
   const { toggleSidebar } = useSidebar()
-  const searchHotkey = useKeybindBinding('searchSessions')
+  const searchHotkey = useKeybindBinding('openCommandPalette')
   const project = workspace ? projects.find((item) => item.id === workspace.projectId) : null
   return (
     <header
@@ -204,12 +204,12 @@ export function CommandBar({
       </div>
       <button
         type="button"
-        onClick={openSessionSearch}
+        onClick={openCommandPalette}
         data-testid="command-bar-search"
         className="app-no-drag flex h-7 w-full items-center gap-2 rounded-md border border-border bg-background px-2.5 text-xs text-muted-foreground shadow-card transition-colors hover:border-ring hover:text-foreground"
       >
         <Search className="size-3.5" aria-hidden="true" />
-        <span className="flex-1 text-left">Search sessions…</span>
+        <span className="flex-1 text-left">Search projects, workspaces, sessions…</span>
         <ShortcutKbd hotkey={searchHotkey} />
       </button>
       <div className="flex items-center justify-end gap-1">
