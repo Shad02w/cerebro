@@ -4,6 +4,7 @@ import type { AppSettings, AppSettingsPatch } from '@shared/types'
 import {
   KEYBIND_CATALOG,
   findKeybindConflict,
+  migrateKeybindOverrides,
   resolveKeybinds,
   type KeybindActionId,
   type KeybindOverrides
@@ -25,7 +26,9 @@ export function KeyboardSettings({
   onUpdate
 }: KeyboardSettingsProps): React.JSX.Element {
   const { setRecording } = useKeybinds()
-  const bindings = resolveKeybinds(settings.keybinds)
+  // Overrides saved under a renamed action show (and save) under the current id.
+  const overrides: KeybindOverrides = migrateKeybindOverrides(settings.keybinds) ?? {}
+  const bindings = resolveKeybinds(overrides)
   const [editingId, setEditingId] = useState<KeybindActionId | null>(null)
   const [localError, setLocalError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -56,7 +59,7 @@ export function KeyboardSettings({
         return
       }
       const action = KEYBIND_CATALOG.find((item) => item.id === editingId)
-      const next: KeybindOverrides = { ...settings.keybinds }
+      const next: KeybindOverrides = { ...overrides }
       if (action && hotkey === action.defaultHotkey) {
         delete next[editingId]
       } else {
@@ -92,8 +95,8 @@ export function KeyboardSettings({
   }
 
   const resetBinding = async (id: KeybindActionId): Promise<void> => {
-    if (!(id in settings.keybinds)) return
-    const next: KeybindOverrides = { ...settings.keybinds }
+    if (!(id in overrides)) return
+    const next: KeybindOverrides = { ...overrides }
     delete next[id]
     await persistOverrides(next)
   }
@@ -108,7 +111,7 @@ export function KeyboardSettings({
         {KEYBIND_CATALOG.map((action) => {
           const hotkey = bindings[action.id]
           const isEditing = editingId === action.id && recorder.isRecording
-          const isCustom = Boolean(settings.keybinds?.[action.id])
+          const isCustom = Boolean(overrides[action.id])
           return (
             <div
               key={action.id}

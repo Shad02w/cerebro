@@ -445,13 +445,11 @@ describe('sidebar project rows', () => {
     expectSectionLabel(row)
     expect(row).toHaveAttribute('data-workspace-role', 'directory')
     const menuRow = row.closest('[data-sidebar="menu-row"]')
-    const nameLine = screen
-      .getByTestId('workspace-search-sessions-41')
-      .closest('[data-directory-name-line]')
+    const nameLine = screen.getByTestId('workspace-menu-41').closest('[data-directory-name-line]')
     const group = screen.getByTestId('workspace-root-41')
     expect(menuRow).not.toContainElement(screen.getByTestId('workspace-nested-repo-frontend'))
     expect(nameLine).not.toContainElement(screen.getByTestId('workspace-nested-repos-41'))
-    expect(menuRow).toContainElement(screen.getByTestId('workspace-search-sessions-41'))
+    expect(menuRow).toContainElement(screen.getByTestId('workspace-menu-41'))
     expect(nameLine?.querySelector('.sidebar-row-actions')).toHaveAttribute('data-overlay', '')
     expect(nameLine).toContainElement(screen.getByTestId('workspace-multi-root-41'))
     expect(screen.getByTestId('workspace-row-41')).not.toContainElement(
