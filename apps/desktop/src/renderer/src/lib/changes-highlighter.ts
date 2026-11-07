@@ -8,7 +8,18 @@ export const changesWorkerPool: WorkerPoolOptions = {
   totalASTLRUCacheSize: 50
 }
 
+// Both palettes load once; `themeType` on each diff picks the one matching the color mode.
+export const DIFF_THEMES = { dark: 'pierre-dark', light: 'pierre-light' } as const
+
+// Paint the diff canvas with the app's opaque surface so every UI style lines up with the panes around it.
+export const DIFF_SURFACE_CSS = `
+  :host {
+    --diffs-dark-bg: var(--background);
+    --diffs-light-bg: var(--background);
+  }
+`
+
 export const changesHighlighterOptions: WorkerInitializationRenderOptions = {
-  theme: 'pierre-dark',
+  theme: DIFF_THEMES,
   preferredHighlighter: 'shiki-js'
 }

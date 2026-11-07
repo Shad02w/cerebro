@@ -289,7 +289,7 @@ export function ContentTabBar({
       data-testid="content-tab-bar"
       data-dragging={draggingTabId != null ? 'true' : undefined}
       data-variant="pill"
-      className="app-drag-region relative z-50 flex shrink-0 items-center bg-background pr-2 shadow-[inset_0_-1px_0_0_var(--border)]"
+      className="app-drag-region relative z-50 flex shrink-0 items-center bg-header pr-2 shadow-[inset_0_-1px_0_0_var(--border)]"
       style={{ height: TITLEBAR_HEIGHT }}
       role="tablist"
       aria-label="Workspace tabs"

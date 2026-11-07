@@ -175,7 +175,7 @@ function SessionSearchPanel({
   return (
     <DialogContent
       data-testid="session-search-dialog"
-      className="top-[12%] z-[60] flex min-h-[min(36rem,calc(100%-8rem))] max-h-[min(36rem,calc(100%-6rem))] w-[min(44rem,calc(100%-2rem))] max-w-none translate-y-0 flex-col gap-0 overflow-hidden bg-popover p-0 opacity-100 shadow-xl transition-none data-starting-style:opacity-100! sm:max-w-none"
+      className="top-[12%] z-[60] flex min-h-[min(36rem,calc(100%-8rem))] max-h-[min(36rem,calc(100%-6rem))] w-[min(44rem,calc(100%-2rem))] max-w-none translate-y-0 flex-col gap-0 overflow-hidden bg-popover p-0 opacity-100 shadow-dialog transition-none data-starting-style:opacity-100! sm:max-w-none"
       showCloseButton={false}
     >
       <SessionSearchHeader

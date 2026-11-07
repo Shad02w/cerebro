@@ -1,0 +1,466 @@
+/*
+  UI style variants.
+
+  Every variant fills the same shadcn token contract declared in main.css
+  (background, card, popover, primary, secondary, muted, accent, destructive,
+  border, input, ring, sidebar-*) plus Cerebro's extensions (status colors,
+  header, tab-active, overlay, code, elevation, density, selection, eyebrow).
+  Surfaces are always opaque: no backdrop blur and no translucent panels.
+
+  `classic` is the default and keeps the original values in main.css.
+  Light mode is the bare attribute selector; dark mode adds `.dark` on the
+  element or an ancestor. Selectors match any element, not only <html>, so a
+  `[data-ui-style]` wrapper renders a live preview of another style.
+*/
+
+/* ───────────── Graphite: flat monochrome ───────────── */
+:is(:root, *)[data-ui-style='graphite'] {
+  --radius: 0.5rem;
+  --row-height: 2rem;
+  --elevation-card: none;
+  --elevation-popover: 0 0 0 1px var(--border), 0 4px 8px -4px oklch(0 0 0 / 0.08);
+  --elevation-dialog: 0 0 0 1px var(--border), 0 16px 32px -16px oklch(0 0 0 / 0.18);
+  --sidebar-selected-fill: 7%;
+  --sidebar-selected-ring: 0%;
+  --sidebar-selected-glow: 0px;
+
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.16 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.16 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.16 0 0);
+  --primary: oklch(0.18 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.965 0 0);
+  --secondary-foreground: oklch(0.18 0 0);
+  --muted: oklch(0.965 0 0);
+  --muted-foreground: oklch(0.5 0 0);
+  --accent: oklch(0.955 0 0);
+  --accent-foreground: oklch(0.18 0 0);
+  --destructive: oklch(0.56 0.21 27);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.915 0 0);
+  --input: oklch(0.89 0 0);
+  --ring: oklch(0.55 0 0);
+  --sidebar: oklch(0.982 0 0);
+  --sidebar-foreground: oklch(0.2 0 0);
+  --sidebar-primary: oklch(0.18 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.945 0 0);
+  --sidebar-accent-foreground: oklch(0.16 0 0);
+  --sidebar-border: oklch(0.915 0 0);
+  --sidebar-ring: oklch(0.55 0 0);
+  --sidebar-selected: oklch(0.16 0 0);
+  --pane-border: oklch(0.86 0 0);
+  --header: oklch(1 0 0);
+  --tab-active: oklch(0.945 0 0);
+  --tab-active-foreground: oklch(0.16 0 0);
+  --tab-active-border: transparent;
+  --code: oklch(0.975 0 0);
+  --overlay: oklch(0.2 0 0 / 0.35);
+}
+
+:is(:root, *)[data-ui-style='graphite']:is(.dark, .dark *) {
+  --elevation-popover: 0 0 0 1px var(--border), 0 8px 16px -8px oklch(0 0 0 / 0.6);
+  --elevation-dialog: 0 0 0 1px var(--border), 0 24px 48px -16px oklch(0 0 0 / 0.7);
+  --sidebar-selected-fill: 9%;
+
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.97 0 0);
+  --card: oklch(0.175 0 0);
+  --card-foreground: oklch(0.97 0 0);
+  --popover: oklch(0.175 0 0);
+  --popover-foreground: oklch(0.97 0 0);
+  --primary: oklch(0.97 0 0);
+  --primary-foreground: oklch(0.16 0 0);
+  --secondary: oklch(0.225 0 0);
+  --secondary-foreground: oklch(0.97 0 0);
+  --muted: oklch(0.21 0 0);
+  --muted-foreground: oklch(0.66 0 0);
+  --accent: oklch(0.235 0 0);
+  --accent-foreground: oklch(0.97 0 0);
+  --destructive: oklch(0.65 0.2 25);
+  --border: oklch(0.255 0 0);
+  --input: oklch(0.29 0 0);
+  --ring: oklch(0.6 0 0);
+  --sidebar: oklch(0.165 0 0);
+  --sidebar-foreground: oklch(0.88 0 0);
+  --sidebar-primary: oklch(0.97 0 0);
+  --sidebar-primary-foreground: oklch(0.16 0 0);
+  --sidebar-accent: oklch(0.225 0 0);
+  --sidebar-accent-foreground: oklch(0.97 0 0);
+  --sidebar-border: oklch(0.245 0 0);
+  --sidebar-ring: oklch(0.6 0 0);
+  --sidebar-selected: oklch(1 0 0);
+  --pane-border: oklch(0.32 0 0);
+  --header: oklch(0.145 0 0);
+  --tab-active: oklch(0.235 0 0);
+  --tab-active-foreground: oklch(0.97 0 0);
+  --code: oklch(0.12 0 0);
+  --overlay: oklch(0 0 0 / 0.6);
+}
+
+/* ───────────── Editor: dense, layered, code-editor feel ───────────── */
+:is(:root, *)[data-ui-style='editor'] {
+  --radius: 0.375rem;
+  --row-height: 1.75rem;
+  --elevation-card: none;
+  --elevation-popover: 0 0 0 1px var(--border), 0 6px 16px -4px oklch(0 0 0 / 0.14);
+  --elevation-dialog: 0 0 0 1px var(--border), 0 20px 40px -12px oklch(0 0 0 / 0.25);
+  --sidebar-selected-fill: 14%;
+  --sidebar-selected-ring: 0%;
+  --sidebar-selected-glow: 0px;
+
+  --background: oklch(0.99 0 0);
+  --foreground: oklch(0.24 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.24 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.24 0 0);
+  --primary: oklch(0.55 0.17 255);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.955 0 0);
+  --secondary-foreground: oklch(0.24 0 0);
+  --muted: oklch(0.955 0 0);
+  --muted-foreground: oklch(0.52 0 0);
+  --accent: oklch(0.94 0 0);
+  --accent-foreground: oklch(0.2 0 0);
+  --destructive: oklch(0.56 0.2 27);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.905 0 0);
+  --input: oklch(0.88 0 0);
+  --ring: oklch(0.55 0.17 255);
+  --sidebar: oklch(0.965 0 0);
+  --sidebar-foreground: oklch(0.3 0 0);
+  --sidebar-primary: oklch(0.55 0.17 255);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.925 0 0);
+  --sidebar-accent-foreground: oklch(0.2 0 0);
+  --sidebar-border: oklch(0.9 0 0);
+  --sidebar-ring: oklch(0.55 0.17 255);
+  --sidebar-selected: oklch(0.55 0.17 255);
+  --pane-border: oklch(0.86 0 0);
+  --header: oklch(0.965 0 0);
+  --tab-active: oklch(0.99 0 0);
+  --tab-active-foreground: oklch(0.2 0 0);
+  --tab-active-border: oklch(0.9 0 0);
+  --code: oklch(0.965 0 0);
+  --overlay: oklch(0.2 0 0 / 0.3);
+}
+
+:is(:root, *)[data-ui-style='editor']:is(.dark, .dark *) {
+  --elevation-popover: 0 0 0 1px var(--border), 0 10px 24px -6px oklch(0 0 0 / 0.65);
+  --elevation-dialog: 0 0 0 1px var(--border), 0 28px 56px -16px oklch(0 0 0 / 0.75);
+  --sidebar-selected-fill: 20%;
+
+  --background: oklch(0.205 0 0);
+  --foreground: oklch(0.9 0 0);
+  --card: oklch(0.235 0 0);
+  --card-foreground: oklch(0.9 0 0);
+  --popover: oklch(0.235 0 0);
+  --popover-foreground: oklch(0.9 0 0);
+  --primary: oklch(0.64 0.15 255);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.26 0 0);
+  --secondary-foreground: oklch(0.9 0 0);
+  --muted: oklch(0.25 0 0);
+  --muted-foreground: oklch(0.64 0 0);
+  --accent: oklch(0.275 0 0);
+  --accent-foreground: oklch(0.95 0 0);
+  --destructive: oklch(0.65 0.19 25);
+  --border: oklch(0.28 0 0);
+  --input: oklch(0.31 0 0);
+  --ring: oklch(0.64 0.15 255);
+  --sidebar: oklch(0.18 0 0);
+  --sidebar-foreground: oklch(0.82 0 0);
+  --sidebar-primary: oklch(0.64 0.15 255);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.245 0 0);
+  --sidebar-accent-foreground: oklch(0.95 0 0);
+  --sidebar-border: oklch(0.26 0 0);
+  --sidebar-ring: oklch(0.64 0.15 255);
+  --sidebar-selected: oklch(0.64 0.15 255);
+  --pane-border: oklch(0.33 0 0);
+  --header: oklch(0.18 0 0);
+  --tab-active: oklch(0.205 0 0);
+  --tab-active-foreground: oklch(0.95 0 0);
+  --tab-active-border: oklch(0.28 0 0);
+  --code: oklch(0.18 0 0);
+  --overlay: oklch(0 0 0 / 0.55);
+}
+
+/* ───────────── Paper: soft, warm, rounded ───────────── */
+:is(:root, *)[data-ui-style='paper'] {
+  --radius: 0.875rem;
+  --row-height: 2.125rem;
+  --elevation-card: 0 1px 2px oklch(0.4 0.03 60 / 0.06), 0 4px 12px -6px oklch(0.4 0.03 60 / 0.1);
+  --elevation-popover:
+    0 2px 4px oklch(0.4 0.03 60 / 0.06), 0 12px 28px -8px oklch(0.4 0.03 60 / 0.18);
+  --elevation-dialog:
+    0 4px 8px oklch(0.4 0.03 60 / 0.06), 0 32px 64px -16px oklch(0.4 0.03 60 / 0.28);
+  --sidebar-selected-fill: 12%;
+  --sidebar-selected-ring: 0%;
+  --sidebar-selected-glow: 0px;
+
+  --background: oklch(0.985 0.004 80);
+  --foreground: oklch(0.24 0.012 60);
+  --card: oklch(1 0.002 80);
+  --card-foreground: oklch(0.24 0.012 60);
+  --popover: oklch(1 0.002 80);
+  --popover-foreground: oklch(0.24 0.012 60);
+  --primary: oklch(0.6 0.15 42);
+  --primary-foreground: oklch(0.99 0.005 80);
+  --secondary: oklch(0.955 0.008 75);
+  --secondary-foreground: oklch(0.26 0.012 60);
+  --muted: oklch(0.955 0.008 75);
+  --muted-foreground: oklch(0.52 0.016 60);
+  --accent: oklch(0.94 0.012 70);
+  --accent-foreground: oklch(0.24 0.012 60);
+  --destructive: oklch(0.56 0.19 27);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.91 0.01 75);
+  --input: oklch(0.88 0.012 75);
+  --ring: oklch(0.6 0.15 42);
+  --sidebar: oklch(0.962 0.008 78);
+  --sidebar-foreground: oklch(0.3 0.014 60);
+  --sidebar-primary: oklch(0.6 0.15 42);
+  --sidebar-primary-foreground: oklch(0.99 0.005 80);
+  --sidebar-accent: oklch(0.93 0.012 72);
+  --sidebar-accent-foreground: oklch(0.22 0.012 60);
+  --sidebar-border: oklch(0.91 0.01 75);
+  --sidebar-ring: oklch(0.6 0.15 42);
+  --sidebar-selected: oklch(0.6 0.15 42);
+  --pane-border: oklch(0.86 0.014 70);
+  --header: oklch(0.985 0.004 80);
+  --tab-active: oklch(1 0.002 80);
+  --tab-active-foreground: oklch(0.22 0.012 60);
+  --tab-active-border: oklch(0.9 0.01 75);
+  --code: oklch(0.965 0.008 78);
+  --overlay: oklch(0.3 0.02 60 / 0.3);
+}
+
+:is(:root, *)[data-ui-style='paper']:is(.dark, .dark *) {
+  --elevation-card: 0 1px 2px oklch(0 0 0 / 0.3), 0 6px 16px -8px oklch(0 0 0 / 0.5);
+  --elevation-popover: 0 2px 4px oklch(0 0 0 / 0.3), 0 16px 32px -8px oklch(0 0 0 / 0.6);
+  --elevation-dialog: 0 4px 8px oklch(0 0 0 / 0.3), 0 32px 64px -16px oklch(0 0 0 / 0.75);
+  --sidebar-selected-fill: 18%;
+
+  --background: oklch(0.205 0.008 60);
+  --foreground: oklch(0.94 0.008 80);
+  --card: oklch(0.235 0.009 60);
+  --card-foreground: oklch(0.94 0.008 80);
+  --popover: oklch(0.245 0.009 60);
+  --popover-foreground: oklch(0.94 0.008 80);
+  --primary: oklch(0.72 0.13 45);
+  --primary-foreground: oklch(0.2 0.02 45);
+  --secondary: oklch(0.265 0.01 60);
+  --secondary-foreground: oklch(0.94 0.008 80);
+  --muted: oklch(0.25 0.009 60);
+  --muted-foreground: oklch(0.7 0.016 70);
+  --accent: oklch(0.28 0.012 60);
+  --accent-foreground: oklch(0.95 0.008 80);
+  --destructive: oklch(0.66 0.18 28);
+  --border: oklch(0.3 0.01 60);
+  --input: oklch(0.33 0.012 60);
+  --ring: oklch(0.72 0.13 45);
+  --sidebar: oklch(0.18 0.008 60);
+  --sidebar-foreground: oklch(0.86 0.012 75);
+  --sidebar-primary: oklch(0.72 0.13 45);
+  --sidebar-primary-foreground: oklch(0.2 0.02 45);
+  --sidebar-accent: oklch(0.255 0.01 60);
+  --sidebar-accent-foreground: oklch(0.95 0.008 80);
+  --sidebar-border: oklch(0.27 0.01 60);
+  --sidebar-ring: oklch(0.72 0.13 45);
+  --sidebar-selected: oklch(0.72 0.13 45);
+  --pane-border: oklch(0.36 0.012 60);
+  --header: oklch(0.205 0.008 60);
+  --tab-active: oklch(0.265 0.01 60);
+  --tab-active-foreground: oklch(0.95 0.008 80);
+  --tab-active-border: oklch(0.31 0.01 60);
+  --code: oklch(0.175 0.008 60);
+  --overlay: oklch(0.1 0.01 60 / 0.6);
+}
+
+/* ───────────── Swiss: sharp, high contrast, typographic ───────────── */
+:is(:root, *)[data-ui-style='swiss'] {
+  --app-font-sans: 'Helvetica Neue', Helvetica, Arial, ui-sans-serif, system-ui, sans-serif;
+  --radius: 0.125rem;
+  --row-height: 2rem;
+  --elevation-card: none;
+  --elevation-popover: 0 0 0 1px var(--foreground);
+  --elevation-dialog: 0 0 0 1px var(--foreground), 8px 8px 0 0 var(--foreground);
+  --sidebar-selected-fill: 100%;
+  --sidebar-selected-ring: 0%;
+  --sidebar-selected-glow: 0px;
+  --eyebrow-transform: uppercase;
+  --eyebrow-tracking: 0.08em;
+  --eyebrow-weight: 600;
+
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.12 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.12 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.12 0 0);
+  --primary: oklch(0.6 0.23 32);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.95 0 0);
+  --secondary-foreground: oklch(0.12 0 0);
+  --muted: oklch(0.955 0 0);
+  --muted-foreground: oklch(0.42 0 0);
+  --accent: oklch(0.93 0 0);
+  --accent-foreground: oklch(0.12 0 0);
+  --destructive: oklch(0.55 0.22 27);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.82 0 0);
+  --input: oklch(0.12 0 0);
+  --ring: oklch(0.6 0.23 32);
+  --sidebar: oklch(1 0 0);
+  --sidebar-foreground: oklch(0.12 0 0);
+  --sidebar-primary: oklch(0.12 0 0);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.94 0 0);
+  --sidebar-accent-foreground: oklch(0.12 0 0);
+  --sidebar-selected-foreground: oklch(1 0 0);
+  --sidebar-border: oklch(0.12 0 0);
+  --sidebar-ring: oklch(0.6 0.23 32);
+  --sidebar-selected: oklch(0.12 0 0);
+  --pane-border: oklch(0.12 0 0);
+  --header: oklch(1 0 0);
+  --tab-active: oklch(0.12 0 0);
+  --tab-active-foreground: oklch(1 0 0);
+  --tab-active-border: oklch(0.12 0 0);
+  --code: oklch(0.965 0 0);
+  --overlay: oklch(1 0 0 / 0.7);
+}
+
+:is(:root, *)[data-ui-style='swiss']:is(.dark, .dark *) {
+  --elevation-popover: 0 0 0 1px var(--foreground);
+  --elevation-dialog: 0 0 0 1px var(--foreground), 8px 8px 0 0 var(--primary);
+
+  --background: oklch(0.11 0 0);
+  --foreground: oklch(0.98 0 0);
+  --card: oklch(0.11 0 0);
+  --card-foreground: oklch(0.98 0 0);
+  --popover: oklch(0.11 0 0);
+  --popover-foreground: oklch(0.98 0 0);
+  --primary: oklch(0.66 0.22 33);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.2 0 0);
+  --secondary-foreground: oklch(0.98 0 0);
+  --muted: oklch(0.18 0 0);
+  --muted-foreground: oklch(0.7 0 0);
+  --accent: oklch(0.22 0 0);
+  --accent-foreground: oklch(0.98 0 0);
+  --destructive: oklch(0.66 0.21 27);
+  --border: oklch(0.32 0 0);
+  --input: oklch(0.98 0 0);
+  --ring: oklch(0.66 0.22 33);
+  --sidebar: oklch(0.11 0 0);
+  --sidebar-foreground: oklch(0.96 0 0);
+  --sidebar-primary: oklch(0.98 0 0);
+  --sidebar-primary-foreground: oklch(0.11 0 0);
+  --sidebar-accent: oklch(0.2 0 0);
+  --sidebar-accent-foreground: oklch(0.98 0 0);
+  --sidebar-selected-foreground: oklch(0.11 0 0);
+  --sidebar-border: oklch(0.98 0 0);
+  --sidebar-ring: oklch(0.66 0.22 33);
+  --sidebar-selected: oklch(0.98 0 0);
+  --pane-border: oklch(0.98 0 0);
+  --header: oklch(0.11 0 0);
+  --tab-active: oklch(0.98 0 0);
+  --tab-active-foreground: oklch(0.11 0 0);
+  --tab-active-border: oklch(0.98 0 0);
+  --code: oklch(0.16 0 0);
+  --overlay: oklch(0 0 0 / 0.75);
+}
+
+/* ───────────── Indigo: cool tinted neutrals ───────────── */
+:is(:root, *)[data-ui-style='indigo'] {
+  --radius: 0.625rem;
+  --row-height: 2rem;
+  --elevation-card: 0 1px 2px oklch(0.3 0.05 275 / 0.06);
+  --elevation-popover: 0 0 0 1px var(--border), 0 8px 24px -6px oklch(0.3 0.08 275 / 0.18);
+  --elevation-dialog: 0 0 0 1px var(--border), 0 28px 56px -16px oklch(0.3 0.08 275 / 0.32);
+  --sidebar-selected-fill: 13%;
+  --sidebar-selected-ring: 0%;
+  --sidebar-selected-glow: 0px;
+
+  --background: oklch(0.992 0.003 275);
+  --foreground: oklch(0.22 0.02 275);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.22 0.02 275);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.22 0.02 275);
+  --primary: oklch(0.52 0.2 275);
+  --primary-foreground: oklch(0.99 0.005 275);
+  --secondary: oklch(0.955 0.01 275);
+  --secondary-foreground: oklch(0.25 0.03 275);
+  --muted: oklch(0.96 0.008 275);
+  --muted-foreground: oklch(0.52 0.03 275);
+  --accent: oklch(0.945 0.018 275);
+  --accent-foreground: oklch(0.3 0.08 275);
+  --destructive: oklch(0.57 0.21 20);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.915 0.012 275);
+  --input: oklch(0.885 0.015 275);
+  --ring: oklch(0.52 0.2 275);
+  --sidebar: oklch(0.97 0.007 275);
+  --sidebar-foreground: oklch(0.32 0.03 275);
+  --sidebar-primary: oklch(0.52 0.2 275);
+  --sidebar-primary-foreground: oklch(0.99 0.005 275);
+  --sidebar-accent: oklch(0.935 0.014 275);
+  --sidebar-accent-foreground: oklch(0.22 0.04 275);
+  --sidebar-border: oklch(0.915 0.012 275);
+  --sidebar-ring: oklch(0.52 0.2 275);
+  --sidebar-selected: oklch(0.52 0.2 275);
+  --pane-border: oklch(0.86 0.02 275);
+  --header: oklch(0.992 0.003 275);
+  --tab-active: oklch(0.945 0.018 275);
+  --tab-active-foreground: oklch(0.3 0.1 275);
+  --tab-active-border: transparent;
+  --code: oklch(0.97 0.007 275);
+  --overlay: oklch(0.25 0.05 275 / 0.3);
+}
+
+:is(:root, *)[data-ui-style='indigo']:is(.dark, .dark *) {
+  --elevation-card: 0 1px 2px oklch(0 0 0 / 0.3);
+  --elevation-popover: 0 0 0 1px var(--border), 0 12px 28px -6px oklch(0 0 0 / 0.6);
+  --elevation-dialog: 0 0 0 1px var(--border), 0 32px 64px -16px oklch(0 0 0 / 0.75);
+  --sidebar-selected-fill: 22%;
+
+  --background: oklch(0.175 0.012 275);
+  --foreground: oklch(0.95 0.008 275);
+  --card: oklch(0.205 0.014 275);
+  --card-foreground: oklch(0.95 0.008 275);
+  --popover: oklch(0.215 0.016 275);
+  --popover-foreground: oklch(0.95 0.008 275);
+  --primary: oklch(0.66 0.17 275);
+  --primary-foreground: oklch(0.99 0.005 275);
+  --secondary: oklch(0.24 0.018 275);
+  --secondary-foreground: oklch(0.95 0.008 275);
+  --muted: oklch(0.225 0.016 275);
+  --muted-foreground: oklch(0.68 0.025 275);
+  --accent: oklch(0.255 0.03 275);
+  --accent-foreground: oklch(0.95 0.01 275);
+  --destructive: oklch(0.66 0.19 20);
+  --border: oklch(0.27 0.018 275);
+  --input: oklch(0.3 0.02 275);
+  --ring: oklch(0.66 0.17 275);
+  --sidebar: oklch(0.155 0.012 275);
+  --sidebar-foreground: oklch(0.84 0.02 275);
+  --sidebar-primary: oklch(0.66 0.17 275);
+  --sidebar-primary-foreground: oklch(0.99 0.005 275);
+  --sidebar-accent: oklch(0.225 0.02 275);
+  --sidebar-accent-foreground: oklch(0.96 0.01 275);
+  --sidebar-border: oklch(0.24 0.018 275);
+  --sidebar-ring: oklch(0.66 0.17 275);
+  --sidebar-selected: oklch(0.7 0.16 275);
+  --pane-border: oklch(0.34 0.03 275);
+  --header: oklch(0.175 0.012 275);
+  --tab-active: oklch(0.255 0.035 275);
+  --tab-active-foreground: oklch(0.96 0.01 275);
+  --code: oklch(0.15 0.012 275);
+  --overlay: oklch(0.08 0.02 275 / 0.6);
+}

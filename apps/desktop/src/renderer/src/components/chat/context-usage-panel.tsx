@@ -20,7 +20,7 @@ const ringColor = (percentage: number | null): string =>
     : percentage >= 90
       ? 'text-destructive'
       : percentage >= 75
-        ? 'text-amber-500'
+        ? 'text-warning'
         : 'text-muted-foreground'
 
 const swatchStyle = (color: string, swatch: ContextUsageSwatch): React.CSSProperties => {
@@ -100,7 +100,7 @@ function UsageBar({
 }): React.JSX.Element {
   return (
     <div
-      className="mx-2 mt-1 mb-1 flex h-2 overflow-hidden rounded-full bg-[#3f3f46]"
+      className="mx-2 mt-1 mb-1 flex h-2 overflow-hidden rounded-full bg-muted"
       data-testid="context-usage-bar"
       aria-hidden="true"
     >

@@ -302,8 +302,8 @@ function DiffStatLine({ diff }: { diff: DiffStat }): React.JSX.Element | null {
       data-deletions={diff.deletions}
       className="text-xs font-medium whitespace-nowrap tabular-nums"
     >
-      <span className="text-green-500">+{diff.additions}</span>{' '}
-      <span className="text-red-500">-{diff.deletions}</span>
+      <span className="text-success">+{diff.additions}</span>{' '}
+      <span className="text-destructive">-{diff.deletions}</span>
     </span>
   )
 }
@@ -322,7 +322,7 @@ function ChangesRailMark({ diff }: { diff: DiffStat }): React.JSX.Element | null
       aria-hidden="true"
       className={cn(
         'pointer-events-none absolute -top-1 -right-1 z-10 size-2 rounded-full',
-        diff.additions > 0 ? 'bg-green-500' : 'bg-red-500'
+        diff.additions > 0 ? 'bg-success' : 'bg-destructive'
       )}
     />
   )

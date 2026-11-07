@@ -3,8 +3,8 @@ import type { AgentBackgroundTask } from '@cerebro/core'
 import { cn } from '@/lib/utils'
 
 const outcomes = {
-  completed: { label: 'Completed', icon: CircleCheck, tone: 'text-emerald-500' },
-  failed: { label: 'Failed', icon: CircleX, tone: 'text-red-500' },
+  completed: { label: 'Completed', icon: CircleCheck, tone: 'text-success' },
+  failed: { label: 'Failed', icon: CircleX, tone: 'text-destructive' },
   stopped: { label: 'Stopped', icon: CircleStop, tone: 'text-muted-foreground' },
   running: { label: 'Running', icon: CircleStop, tone: 'text-muted-foreground' }
 } as const

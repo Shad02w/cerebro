@@ -1,6 +1,6 @@
 /* App-specific tree styling; shared pane selection keeps its existing treatment. */
 .cerebro-sidebar {
-  --sidebar-row-line: 2rem;
+  --sidebar-row-line: var(--row-height);
 }
 
 .cerebro-sidebar [data-sidebar='group'] {

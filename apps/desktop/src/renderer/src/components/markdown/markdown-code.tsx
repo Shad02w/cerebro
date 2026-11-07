@@ -8,9 +8,8 @@ import { codeLanguage } from './code-languages'
 const DefaultCode = defaultComponents.code
 const fenceLanguage = /language-([^\s]+)/
 
-// Code and Mermaid blocks share one borderless, slightly darker surface with a soft shadow.
-const surface =
-  'my-5 rounded-lg border-0 bg-[oklch(0.085_0_0)] shadow-[inset_0_1px_0_oklch(1_0_0/0.07),0_1px_2px_oklch(0_0_0/0.6),0_10px_22px_-8px_oklch(0_0_0/0.9)]'
+// Code and Mermaid blocks share the opaque `code` surface, a hairline border, and the style's card elevation.
+const surface = 'my-5 rounded-lg border border-border bg-code shadow-card'
 
 // Flattens Streamdown's own card chrome (border, grey background, padding, header, and floating copy button) inside a code block.
 const flatCode = cn(
