@@ -178,8 +178,11 @@ async function openTerminalWithKeybind(page: Page): Promise<void> {
 async function waitForActiveTerminal(page: Page): Promise<void> {
   const host = page.locator('[data-terminal-active="true"] .xterm')
   await expect(host).toBeVisible({ timeout: 30_000 })
-  const box = await host.boundingBox()
-  expect(box?.height ?? 0).toBeGreaterThan(40)
+  // The terminal can remount or still be laying out right after it becomes visible (for
+  // example when returning from Settings), so a single read may see no box. Wait for a size.
+  await expect
+    .poll(async () => (await host.boundingBox())?.height ?? 0, { timeout: 10_000 })
+    .toBeGreaterThan(40)
   await host.click()
 }
 
