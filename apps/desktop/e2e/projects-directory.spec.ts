@@ -52,7 +52,7 @@ test('adds a local git folder as a directory project', async ({ page, electronAp
     const projectRow = page.getByTestId(/project-row-/).filter({ hasText: 'opened-alpha' })
     await expect(projectRow).toBeVisible({ timeout: 30_000 })
     await expect(projectRow).toHaveAttribute('data-project-kind', 'directory')
-    await expect(projectRow).toHaveAttribute('data-project-icon', 'folder')
+    await expect(projectRow).toHaveAttribute('data-project-icon', 'git')
     await expect(page.getByTestId(/workspace-row-/).filter({ hasText: 'main' })).toBeVisible()
     await expect(page.getByTestId(/workspace-row-/).filter({ hasText: 'main' })).toHaveAttribute(
       'data-workspace-icon',
@@ -98,7 +98,7 @@ test('adds a folder of git repos as one workspace', async ({ page, electronApp }
     await expect(row).toHaveAttribute('data-project-kind', 'directory')
     await expect(page.getByTestId(/project-row-/)).toHaveCount(0)
     await expect(page.getByTestId(/project-add-workspace-/)).toHaveCount(0)
-    await expect(page.getByTestId(/workspace-multi-root-/)).toHaveText('multi-root')
+    await expect(page.getByTestId(/workspace-multi-root-/)).toHaveText('2 repos')
     await expect(row).toHaveClass(/sidebar-project-button/)
     await expect(row).toHaveClass(/text-xs/)
     await expect(row).toHaveClass(/text-sidebar-foreground\/60/)
@@ -458,7 +458,7 @@ test('adds a git folder itself when it contains sibling git repos', async ({
     const projectRow = page.getByTestId(/project-row-/).filter({ hasText: 'abc' })
     await expect(projectRow).toBeVisible({ timeout: 30_000 })
     await expect(projectRow).toHaveAttribute('data-project-kind', 'directory')
-    await expect(projectRow).toHaveAttribute('data-project-icon', 'folder')
+    await expect(projectRow).toHaveAttribute('data-project-icon', 'git')
     await expect(page.getByTestId(/workspace-row-/).filter({ hasText: 'main' })).toBeVisible()
     await expect(page.getByText('ark-ui', { exact: true })).toHaveCount(0)
     await expect(page.getByText('other-app', { exact: true })).toHaveCount(0)

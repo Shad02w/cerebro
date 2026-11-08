@@ -7,7 +7,9 @@ import {
   CircleMinus,
   Copy,
   Folder,
+  FolderGit2,
   FolderPlus,
+  FolderTree,
   GitBranch,
   MoreHorizontal,
   Pencil,
@@ -103,8 +105,12 @@ const sectionLabelClass = cn(
 /** Project rows read as section labels. Workspace and worktree rows stay items. */
 const projectSectionLabelClass = cn('sidebar-project-button h-auto!', sectionLabelClass)
 
-/** A plain directory root is a section label too, but stays a selectable workspace row. */
-const directoryRootLabelClass = cn('h-auto!', sectionLabelClass)
+/** A plain directory is one workspace, so it reads as an item row like a branch, not a label. */
+const directoryItemClass = 'h-auto! text-sidebar-foreground'
+
+/** Teal chip that names a multi-root folder on its own name line. */
+const multiRootChipClass =
+  'shrink-0 rounded-[5px] bg-[color-mix(in_oklch,var(--sidebar-selected)_15%,transparent)] px-1.5 text-[10px] leading-4 font-medium text-[var(--sidebar-selected)] tabular-nums'
 
 /** About 10px above a project row, separating it from the previous group's last workspace. */
 const projectGroupSpacingClass = 'not-first:mt-2.5'
@@ -609,7 +615,7 @@ function workspaceBranchButtonClass(singleLine: boolean): string {
 }
 
 function ProjectIcon({ project }: { project: Project }): React.JSX.Element {
-  if (!project.github) return <Folder />
+  if (!project.github) return <FolderGit2 />
   return (
     <Avatar className="size-full" aria-hidden="true">
       <AvatarImage
@@ -735,7 +741,7 @@ function ProjectItem({
                 data-testid={rowTestId ?? `project-row-${project.id}`}
                 data-project-id={project.id}
                 data-project-kind={project.kind}
-                data-project-icon={githubLinked ? 'avatar' : 'folder'}
+                data-project-icon={githubLinked ? 'avatar' : 'git'}
                 title={project.name}
               />
             }
@@ -753,6 +759,13 @@ function ProjectItem({
               onOpenAgent={onOpenAgent}
             />
           </CollapsibleTrigger>
+          <span
+            className="sidebar-row-count"
+            data-testid={`project-workspace-count-${project.id}`}
+            aria-label={`${listed.length} ${listed.length === 1 ? 'workspace' : 'workspaces'}`}
+          >
+            {listed.length}
+          </span>
           <RowActions overlay>
             <ProjectOverflowMenu
               project={project}
@@ -850,13 +863,16 @@ function NestedRepoBody({ repo }: { repo: NestedRepo }): React.JSX.Element {
   return (
     <>
       <span data-row-line="">
+        <span data-row-icon="" data-nested-repo-icon="">
+          <FolderGit2 />
+        </span>
         <span className="text-xs font-medium text-sidebar-foreground/60" data-row-label="">
           {repo.name}
         </span>
       </span>
       {repo.branch ? (
         <span
-          className="text-[11px] leading-4 text-sidebar-foreground/60"
+          className="ml-[0.4375rem] text-[11px] leading-4 text-sidebar-foreground/60"
           data-branch-line=""
           data-testid={`workspace-nested-branch-${repo.name}`}
         >
@@ -1023,6 +1039,45 @@ function DirectoryRowMenu({
   )
 }
 
+/** Folder icon, name, and for a multi-root folder its tree icon and repo count chip. */
+function DirectoryRowName({
+  label,
+  workspaceId,
+  grouped,
+  nestedCount
+}: {
+  label: string
+  workspaceId: number
+  grouped: boolean
+  nestedCount: number
+}): React.JSX.Element {
+  return (
+    <span data-row-line="">
+      <span data-row-icon="">
+        {grouped ? (
+          <span data-row-toggle-icon="">
+            <FolderTree />
+          </span>
+        ) : (
+          <Folder />
+        )}
+      </span>
+      <span className={cn('truncate font-medium', grouped && 'flex-initial!')} data-row-label="">
+        {label}
+      </span>
+      {nestedCount > 1 ? (
+        <span
+          className={multiRootChipClass}
+          data-testid={`workspace-multi-root-${workspaceId}`}
+          title={`Multi-root folder with ${nestedCount} repositories`}
+        >
+          {nestedCount} repos
+        </span>
+      ) : null}
+    </span>
+  )
+}
+
 function DirectoryNameLine({
   project,
   workspace,
@@ -1064,7 +1119,7 @@ function DirectoryNameLine({
             grouped
               ? cn(projectSectionLabelClass, 'w-full! min-w-0 pr-20!')
               : cn(
-                  directoryRootLabelClass,
+                  directoryItemClass,
                   'w-full! min-w-0 pr-14!',
                   muted && !active && todoWorkspaceMuteClass
                 )
@@ -1075,7 +1130,7 @@ function DirectoryNameLine({
               data-testid={`workspace-row-${workspace.id}`}
               data-workspace-id={workspace.id}
               data-workspace-role="directory"
-              data-workspace-icon="folder"
+              data-workspace-icon={grouped ? 'multi-root' : 'folder'}
               data-project-kind="directory"
               data-todo-muted={muted && !active ? 'true' : undefined}
               data-workspace-status={workspaceStatus(workspace.status)}
@@ -1084,20 +1139,12 @@ function DirectoryNameLine({
             />
           }
         >
-          <span data-row-line="">
-            <span data-row-icon="">
-              {grouped ? (
-                <span data-row-toggle-icon="">
-                  <Folder />
-                </span>
-              ) : (
-                <Folder />
-              )}
-            </span>
-            <span className="truncate font-medium" data-row-label="">
-              {workspaceRowLabel(project, workspace)}
-            </span>
-          </span>
+          <DirectoryRowName
+            label={workspaceRowLabel(project, workspace)}
+            workspaceId={workspace.id}
+            grouped={grouped}
+            nestedCount={nestedCount}
+          />
         </SidebarMenuButton>
         {grouped ? (
           <button
@@ -1129,14 +1176,6 @@ function DirectoryNameLine({
           />
         </RowActions>
       </div>
-      {nestedCount > 1 ? (
-        <span
-          className="ml-[calc(0.5rem+1rem+0.375rem)] self-start rounded-md bg-[color-mix(in_oklch,var(--sidebar-selected)_15%,transparent)] px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-[var(--sidebar-selected)] uppercase"
-          data-testid={`workspace-multi-root-${workspace.id}`}
-        >
-          multi-root
-        </span>
-      ) : null}
     </div>
   )
 }

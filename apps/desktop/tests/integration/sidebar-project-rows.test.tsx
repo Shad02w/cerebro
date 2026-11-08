@@ -208,6 +208,11 @@ describe('sidebar project rows', () => {
     expect(notesRow).toHaveAttribute('data-project-icon', 'avatar')
     expect(scratchRow).toHaveAttribute('data-workspace-icon', 'folder')
     expect(scratchRow).toHaveAttribute('data-project-kind', 'directory')
+    // A plain directory is one workspace: an item row, not a quiet label.
+    expectItemRow(scratchRow, 'directory')
+    expect(screen.getByTestId('project-workspace-count-1')).toHaveTextContent(
+      String(screen.getAllByTestId(/^workspace-row-1\d$/).length)
+    )
     expect(screen.queryByTestId('project-row-2')).not.toBeInTheDocument()
     expect(screen.getByTestId('project-add-workspace-1')).toBeInTheDocument()
     expect(screen.getByTestId('project-menu-1')).toBeInTheDocument()
@@ -451,10 +456,14 @@ describe('sidebar project rows', () => {
     expect(nameLine).not.toContainElement(screen.getByTestId('workspace-nested-repos-41'))
     expect(menuRow).toContainElement(screen.getByTestId('workspace-menu-41'))
     expect(nameLine?.querySelector('.sidebar-row-actions')).toHaveAttribute('data-overlay', '')
-    expect(nameLine).toContainElement(screen.getByTestId('workspace-multi-root-41'))
-    expect(screen.getByTestId('workspace-row-41')).not.toContainElement(
-      screen.getByTestId('workspace-multi-root-41')
-    )
+    // The multi-root chip shares the folder's name line instead of a line of its own.
+    const chip = screen.getByTestId('workspace-multi-root-41')
+    expect(row.querySelector('[data-row-line]')).toContainElement(chip)
+    expect(chip).toHaveTextContent('2 repos')
+    expect(row).toHaveAttribute('data-workspace-icon', 'multi-root')
+    expect(
+      screen.getByTestId('workspace-nested-repo-frontend').querySelector('[data-nested-repo-icon]')
+    ).not.toBeNull()
     const nestedList = screen.getByTestId('workspace-nested-repos-41')
     expect(nestedList.className).toContain('sidebar-nested-repos')
     expect(nestedList.className).not.toContain('-mx-1')

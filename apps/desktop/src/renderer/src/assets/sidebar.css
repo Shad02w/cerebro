@@ -541,3 +541,38 @@
     transition: none;
   }
 }
+
+/* Worktree count on a git project row. It sits where the … and + buttons
+   appear, so it gives way to them while the row is hovered or focused. */
+.cerebro-sidebar .sidebar-row-count {
+  position: absolute;
+  top: 0;
+  right: 0.5rem;
+  display: flex;
+  height: var(--sidebar-row-line);
+  align-items: center;
+  pointer-events: none;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1rem;
+  color: color-mix(in oklch, var(--sidebar-foreground) 45%, transparent);
+  transition: opacity 120ms ease;
+}
+
+.cerebro-sidebar [data-sidebar='menu-row']:is(:hover, :focus-within) .sidebar-row-count {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cerebro-sidebar .sidebar-row-count {
+    transition: none;
+  }
+}
+
+/* A nested repo row picks up the same quiet tint as other item rows on hover,
+   one step above the multi-root block's own fill. */
+.cerebro-sidebar
+  .sidebar-root-group
+  button.sidebar-nested-workspace:hover:not([data-active='true'], :focus-visible) {
+  background-color: color-mix(in srgb, var(--sidebar-foreground) 6%, transparent);
+}
