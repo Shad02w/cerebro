@@ -19,7 +19,7 @@ export function ChatQueue({
   if (!session.queue?.length) return null
   return (
     <ul
-      className="flex flex-col gap-1.5 px-2 pb-2"
+      className="flex flex-col gap-1.5 pb-2"
       aria-label="Queued messages"
       data-testid="chat-queue"
     >
