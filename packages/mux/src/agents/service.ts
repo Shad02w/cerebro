@@ -13,6 +13,7 @@ import {
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import {
+  CHAT_VIEW_ITEMS,
   agentActivityStatus,
   agentFinishedLine,
   backgroundTaskOutcome,
@@ -73,6 +74,8 @@ export type AgentScope = {
   paneId: number
   repositoryId: number | null
   cwd: string
+  /** Newest transcript items a returned view carries. */
+  itemLimit?: number
 }
 type Running = {
   controller: AbortController
@@ -80,6 +83,8 @@ type Running = {
   requests: Map<string, (answer: AgentAnswer) => void>
   /** Registered by the adapter once it has a live handle into the running turn. Absent means this harness/run can't be steered right now. */
   steer?: (text: string, attachments: RunAttachment[], skills?: ChatSkillMention[]) => Promise<void>
+  /** Queued message ids the user steered before the adapter registered `steer`. They are folded in once it does. */
+  pendingSteers?: Set<string>
 }
 /** A session's live harness process. Access mode and cwd are launch settings; changing either restarts it. */
 type Live = {
@@ -209,6 +214,10 @@ function validateAttachments(
 }
 const busy = (session: AgentSession): boolean =>
   session.status === 'running' || session.status === 'waiting'
+/** A queued message can join the running turn only when it was queued with that turn's model and access mode. */
+const steerableWith = (session: AgentSession, queued: QueuedMessage): boolean =>
+  queued.model.key === session.model.key &&
+  (queued.accessMode ?? 'full') === (session.accessMode ?? 'full')
 const activityRank: Record<AgentActivityStatus, number> = {
   waiting: 0,
   running: 1,
@@ -321,6 +330,18 @@ function lastReply(session: AgentSession): string {
   return text ? text.text.trim().replace(/\s+/g, ' ').slice(0, 200) : 'Finished the task.'
 }
 
+/** Upper bound on one view's items, so a single reply stays well under the mux frame limit. */
+const MAX_VIEW_ITEMS = 20_000
+/** Session files past this size are rewritten at most once per `LARGE_SAVE_MS` while streaming. */
+const LARGE_SESSION_BYTES = 1_000_000
+const SAVE_MS = 100
+const LARGE_SAVE_MS = 1_000
+function itemLimit(requested: unknown): number {
+  return typeof requested === 'number' && Number.isInteger(requested) && requested > 0
+    ? Math.min(requested, MAX_VIEW_ITEMS)
+    : CHAT_VIEW_ITEMS
+}
+
 const DISCOVERY_TTL_MS = 60_000
 const DISCOVERY_LIMIT = 2
 /** A finished lookup has `at`; one still running shares its promise with later callers. */
@@ -353,7 +374,12 @@ export class AgentSessions {
   private live = new Map<string, Live>()
   /** Per session, the trailing turn that holds background outcomes reported while idle. */
   private events = new Map<string, string>()
+  /** Pending coalesced publish per session. */
   private timers = new Map<string, ReturnType<typeof setTimeout>>()
+  /** Pending coalesced save per session. Large transcripts save less often than they publish. */
+  private saves = new Map<string, ReturnType<typeof setTimeout>>()
+  /** Bytes of each session's last saved file, which picks its save interval. */
+  private sizes = new Map<string, number>()
   private catalog?: AgentCatalog
   private loadingCatalog?: Promise<AgentCatalog>
   /**
@@ -420,14 +446,16 @@ export class AgentSessions {
       // Startup indexing is best-effort. The next persist fills a session that was missed.
     }
   }
-  private atomic(name: string, data: unknown): void {
+  private atomic(name: string, data: unknown): number {
     const file = join(this.directory, name)
-    writeFileSync(`${file}.tmp`, JSON.stringify(data), { mode: 0o600 })
+    const text = JSON.stringify(data)
+    writeFileSync(`${file}.tmp`, text, { mode: 0o600 })
     renameSync(`${file}.tmp`, file)
+    return text.length
   }
   private persist(session: AgentSession): void {
     const { nativeResume: _resume, ...stored } = session
-    this.atomic(`session-${session.id}.json`, stored)
+    this.sizes.set(session.id, this.atomic(`session-${session.id}.json`, stored))
     try {
       this.searchIndex?.upsert(session)
     } catch {
@@ -523,21 +551,39 @@ export class AgentSessions {
     if (immediate) {
       clearTimeout(this.timers.get(session.id))
       this.timers.delete(session.id)
+      clearTimeout(this.saves.get(session.id))
+      this.saves.delete(session.id)
       this.persist(session)
       this.publish(session.workspaceId)
-    } else if (!this.timers.has(session.id)) {
+      return
+    }
+    // Views read memory, so streaming text reaches the UI every 100 ms whatever the file size.
+    if (!this.timers.has(session.id))
       this.timers.set(
         session.id,
         setTimeout(() => {
           this.timers.delete(session.id)
-          try {
-            this.persist(session)
-          } catch (error) {
-            session.error = `Agent storage failed: ${String(error)}`
-            this.running.get(session.id)?.controller.abort()
-          }
           this.publish(session.workspaceId)
-        }, 100)
+        }, SAVE_MS)
+      )
+    // Each save rewrites the whole file and reindexes it, so a long transcript saves less often.
+    if (!this.saves.has(session.id)) {
+      const large = (this.sizes.get(session.id) ?? 0) > LARGE_SESSION_BYTES
+      this.saves.set(
+        session.id,
+        setTimeout(
+          () => {
+            this.saves.delete(session.id)
+            try {
+              this.persist(session)
+            } catch (error) {
+              session.error = `Agent storage failed: ${String(error)}`
+              this.running.get(session.id)?.controller.abort()
+              this.publish(session.workspaceId)
+            }
+          },
+          large ? LARGE_SAVE_MS : SAVE_MS
+        )
       )
     }
   }
@@ -668,13 +714,19 @@ export class AgentSessions {
     const candidate = id ? this.sessions.get(id) : undefined
     const inScope = (session: AgentSession): boolean =>
       session.workspaceId === scope.workspaceId && session.repositoryId === scope.repositoryId
-    return structuredClone({
-      session: candidate && inScope(candidate) ? candidate : null,
-      sessions: [...this.sessions.values()]
-        .filter(inScope)
-        .sort((a, b) => b.updatedAt - a.updatedAt)
-        .map(({ id, title, model, status, updatedAt }) => ({ id, title, model, status, updatedAt }))
-    })
+    const sessions = [...this.sessions.values()]
+      .filter(inScope)
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .map(({ id, title, model, status, updatedAt }) => ({ id, title, model, status, updatedAt }))
+    if (!candidate || !inScope(candidate)) return structuredClone({ session: null, sessions })
+    // Only the newest items cross the wire. Cloning the whole transcript on every update is what
+    // made long chats slow, so the window is cut before the clone.
+    const limit = itemLimit(scope.itemLimit)
+    const earlierItems = Math.max(0, candidate.items.length - limit)
+    const session = earlierItems
+      ? { ...candidate, items: candidate.items.slice(earlierItems) }
+      : candidate
+    return structuredClone({ session, sessions, ...(earlierItems ? { earlierItems } : {}) })
   }
   /**
    * Workspaces with at least one open session. `liveChatPanes` is the set of chat pane IDs
@@ -1016,6 +1068,7 @@ export class AgentSessions {
   }
   async command(scope: AgentScope, command: ChatCommand): Promise<ChatView> {
     if (this.stopping) throw new Error('Agent host is stopping.')
+    scope = { ...scope, itemLimit: itemLimit(command.itemLimit) }
     if (command.action === 'get') return this.view(scope)
     if (command.action === 'new') {
       const previous = this.bindings[String(scope.paneId)]
@@ -1084,32 +1137,32 @@ export class AgentSessions {
       return this.view(scope)
     }
     if (command.action === 'steer') {
-      const runtime = session && this.running.get(session.id)
-      if (!session || !runtime?.steer) throw new Error('No active turn to steer.')
+      if (!session) throw new Error('No active turn to steer.')
       const queued = (session.queue ?? []).find((q) => q.id === command.commandId)
       if (!queued) return this.view(scope) // already steered/removed elsewhere — no-op
-      if (
-        queued.model.key !== session.model.key ||
-        (queued.accessMode ?? 'full') !== (session.accessMode ?? 'full')
-      )
+      if (!busy(session)) {
+        // The turn this message waited on is over (failed, stopped, or cut off by a host restart) and
+        // nothing will auto-send it, so steering it now just sends it.
+        session.queue = (session.queue ?? []).filter((q) => q.id !== queued.id)
+        session.cwd = scope.cwd
+        this.commitRewind(session)
+        this.sendQueued(session, queued)
+        return this.view(scope)
+      }
+      if (!steerableWith(session, queued))
         throw new Error(
           'This message was queued with different model or access settings. Remove it and resend, or let it send automatically after this response.'
         )
-      const attachments = (queued.attachments ?? []).map((meta) => ({
-        ...meta,
-        path: this.attachmentPath(meta)
-      }))
-      // Native call first: on rejection the item stays queued untouched and the error just propagates, like any other action.
-      await runtime.steer(queued.text, attachments, queued.skills)
-      session.queue = (session.queue ?? []).filter((q) => q.id !== command.commandId)
-      session.items.push({
-        id: randomUUID(),
-        turnId: session.turnId!,
-        kind: 'user',
-        text: queued.text,
-        ...(queued.attachments?.length ? { attachments: queued.attachments } : {})
-      })
-      this.changed(session, true)
+      const runtime = this.running.get(session.id)
+      if (!runtime) throw new Error('No active turn to steer.')
+      if (!runtime.steer) {
+        // The turn is still starting (or the harness began it on its own) and has no steer handle yet.
+        // Fold the message in as soon as the adapter registers one; if it never does, the message stays
+        // queued and sends after this response like any other queued message.
+        ;(runtime.pendingSteers ??= new Set()).add(queued.id)
+        return this.view(scope)
+      }
+      await this.deliverSteer(session, runtime, queued)
       return this.view(scope)
     }
     if (command.action === 'dequeue') {
@@ -1197,10 +1250,6 @@ export class AgentSessions {
       if (!capabilities[selected.harness].steering) throw new Error('The agent is already working.')
       return this.enqueue(scope, session, command, selected, attachments, accessMode, skills)
     }
-    if (session && session.items.length > 1500)
-      throw new Error(
-        'This conversation reached its display limit. Start a new Agent; the saved transcript is retained.'
-      )
     let created = false
     if (!session) {
       const slice = threadTitleSlice(command.text)
@@ -1281,6 +1330,64 @@ export class AgentSessions {
     this.changed(session, true)
     return this.view(scope)
   }
+  /** Starts a turn from a message that was waiting in the queue. The caller has already removed it from the queue. */
+  private sendQueued(session: AgentSession, next: QueuedMessage): void {
+    const attachments = (next.attachments ?? []).map((meta) => ({
+      ...meta,
+      path: this.attachmentPath(meta)
+    }))
+    this.beginTurn(
+      session,
+      next.text,
+      attachments,
+      next.model,
+      next.reasoning,
+      next.accessMode ?? 'full',
+      next.skills ?? []
+    )
+  }
+  /** Folds a queued message into the running turn and moves it from the queue into the transcript. */
+  private async deliverSteer(
+    session: AgentSession,
+    runtime: Running,
+    queued: QueuedMessage
+  ): Promise<void> {
+    const attachments = (queued.attachments ?? []).map((meta) => ({
+      ...meta,
+      path: this.attachmentPath(meta)
+    }))
+    // Native call first: on rejection the item stays queued untouched and the error just propagates, like any other action.
+    await runtime.steer!(queued.text, attachments, queued.skills)
+    session.queue = (session.queue ?? []).filter((q) => q.id !== queued.id)
+    session.items.push({
+      id: randomUUID(),
+      turnId: session.turnId!,
+      kind: 'user',
+      text: queued.text,
+      ...(queued.attachments?.length ? { attachments: queued.attachments } : {})
+    })
+    this.changed(session, true)
+  }
+  /** Delivers steers requested before the adapter could take them, in the order they were asked for. */
+  private flushPendingSteers(session: AgentSession, runtime: Running): void {
+    const ids = [...(runtime.pendingSteers ?? [])]
+    runtime.pendingSteers = undefined
+    if (!ids.length) return
+    void (async () => {
+      for (const id of ids) {
+        if (runtime.controller.signal.aborted || this.running.get(session.id) !== runtime) return
+        const queued = (session.queue ?? []).find((q) => q.id === id)
+        // Removed, edited to other settings, or already sent meanwhile: leave the queue as it is.
+        if (!queued || !steerableWith(session, queued)) continue
+        try {
+          await this.deliverSteer(session, runtime, queued)
+        } catch (error) {
+          // It stays queued and sends after this response instead.
+          console.warn(`[agents] session ${session.id} steer failed: ${String(error)}`)
+        }
+      }
+    })()
+  }
   /** Starts a brand-new turn: sets turn/session fields, records the user item, and fires the adapter run. Used for both a live send and an auto-flushed queue item. */
   private beginTurn(
     session: AgentSession,
@@ -1291,13 +1398,6 @@ export class AgentSessions {
     accessMode: AgentAccessMode,
     skills: ChatSkillMention[] = []
   ): void {
-    if (session.items.length > 1500) {
-      session.status = 'failed'
-      session.error =
-        'This conversation reached its display limit. Start a new Agent; the saved transcript is retained.'
-      this.changed(session, true)
-      return
-    }
     session.model = model
     session.accessMode = accessMode
     session.reasoning = reasoning
@@ -1374,11 +1474,7 @@ export class AgentSessions {
       },
       idle: (event) => {
         if (!current()) return
-        try {
-          this.apply(session, event, true)
-        } catch {
-          // Display limit reached; the native transcript still has it.
-        }
+        this.apply(session, event, true)
       },
       exited: (error) => {
         if (!current()) return
@@ -1485,14 +1581,6 @@ export class AgentSessions {
       turnId,
       text: event.append ? (existing?.text ?? '') + event.item.text : event.item.text
     }
-    const projectedSize =
-      JSON.stringify(session).length +
-      JSON.stringify(next).length -
-      (existing ? JSON.stringify(existing).length : 0)
-    if (projectedSize > 2_000_000 || (!existing && session.items.length >= 2000))
-      throw new Error(
-        'Conversation display limit reached. Start a new Agent; native history is retained.'
-      )
     if (existing) Object.assign(existing, next)
     else session.items.push(next)
     this.changed(session, idle)
@@ -1821,6 +1909,7 @@ export class AgentSessions {
         ask,
         registerSteer: (fn) => {
           runtime.steer = fn
+          this.flushPendingSteers(session, runtime)
         }
       })
       if (runtime.controller.signal.aborted) {
@@ -1870,19 +1959,7 @@ export class AgentSessions {
       if (!this.stopping && session.status !== 'failed' && session.queue?.length) {
         const [next, ...rest] = session.queue
         session.queue = rest
-        const attachments = (next.attachments ?? []).map((meta) => ({
-          ...meta,
-          path: this.attachmentPath(meta)
-        }))
-        this.beginTurn(
-          session,
-          next.text,
-          attachments,
-          next.model,
-          next.reasoning,
-          next.accessMode ?? 'full',
-          next.skills ?? []
-        )
+        this.sendQueued(session, next)
       }
       this.releaseIfDetached(session.id)
       await this.noteForkPoints(session)
@@ -1920,6 +1997,8 @@ export class AgentSessions {
     stopCodexAppServer()
     for (const timer of this.timers.values()) clearTimeout(timer)
     this.timers.clear()
+    for (const timer of this.saves.values()) clearTimeout(timer)
+    this.saves.clear()
     for (const session of this.sessions.values()) this.persist(session)
     try {
       this.searchIndex?.close()

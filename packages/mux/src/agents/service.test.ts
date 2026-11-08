@@ -726,6 +726,77 @@ test('steer folds a queued message into the running turn and removes it from the
     rmSync(f.dir, { recursive: true, force: true })
   }
 })
+test('steer requested before the turn can take one is folded in once the adapter registers it', async () => {
+  const steered: string[] = []
+  let register: (() => void) | undefined
+  const f = fixture(async (context) => {
+    // Models a turn still starting up (process spawn, model switch) before it has a steer handle.
+    register = () =>
+      context.registerSteer?.(async (text) => {
+        steered.push(text)
+      })
+    await new Promise<void>((resolve) => context.signal.addEventListener('abort', () => resolve()))
+  })
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    const first = await service.command(scope, send)
+    await service.command(scope, { ...send, commandId: 'second', text: 'steer me early' })
+    const pending = await service.command(scope, {
+      ...send,
+      action: 'steer',
+      sessionId: first.session!.id,
+      commandId: 'second'
+    })
+    assert.equal(pending.session?.queue?.length, 1)
+    assert.deepEqual(steered, [])
+    register!()
+    await new Promise((resolve) => setImmediate(resolve))
+    assert.deepEqual(steered, ['steer me early'])
+    const view = await service.command(scope, { ...send, action: 'get' })
+    assert.equal(view.session?.queue?.length, 0)
+    assert.equal(view.session?.items.at(-1)?.text, 'steer me early')
+    assert.equal(view.session?.items.at(-1)?.turnId, first.session?.turnId)
+  } finally {
+    await service.command(scope, { ...send, action: 'stop' })
+    await service.shutdown()
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
+test('steering a message left queued after the turn failed sends it as a new turn', async () => {
+  const texts: string[] = []
+  let fail: ((error: Error) => void) | undefined
+  const f = fixture(async (context) => {
+    texts.push(context.text)
+    if (texts.length === 1)
+      await new Promise<void>((_resolve, reject) => {
+        fail = reject
+      })
+  })
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    const first = await service.command(scope, send)
+    await service.command(scope, { ...send, commandId: 'second', text: 'still queued' })
+    fail!(new Error('boom'))
+    await new Promise((resolve) => setImmediate(resolve))
+    const failed = await service.command(scope, { ...send, action: 'get' })
+    assert.equal(failed.session?.status, 'failed')
+    assert.equal(failed.session?.queue?.length, 1)
+    const view = await service.command(scope, {
+      ...send,
+      action: 'steer',
+      sessionId: first.session!.id,
+      commandId: 'second'
+    })
+    assert.equal(view.session?.queue?.length, 0)
+    assert.notEqual(view.session?.turnId, first.session?.turnId)
+    assert.equal(view.session?.items.at(-1)?.text, 'still queued')
+    await new Promise((resolve) => setImmediate(resolve))
+    assert.deepEqual(texts, ['hello', 'still queued'])
+  } finally {
+    await service.shutdown()
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
 test('steer rejects a queued message whose model or access mode differs from the running turn', async () => {
   const f = fixture(async (context) => {
     context.registerSteer?.(async () => {})
@@ -2410,5 +2481,48 @@ test('skill lookups share one harness process per folder and run at most two at 
   } finally {
     await service.shutdown()
     rmSync(dir, { recursive: true, force: true })
+  }
+})
+test('a long conversation keeps growing past 2,000 items and views carry only the newest window', async () => {
+  let turn = 0
+  const f = fixture(async (context) => {
+    turn++
+    // Large tool output pushes the session file past the old 2 MB cap too.
+    for (let index = 0; index < 1_200; index++)
+      context.emit({
+        type: 'item',
+        item: {
+          id: `t${turn}-${index}`,
+          kind: 'text',
+          text: `${turn}:${index} ${'x'.repeat(1_000)}`
+        }
+      })
+  })
+  try {
+    const service = new AgentSessions(f.dir, () => {}, f.drivers)
+    await service.command(scope, send)
+    const second = await service.command(scope, { ...send, commandId: 'second', text: 'more' })
+    const third = await service.command(scope, { ...send, commandId: 'third', text: 'even more' })
+    assert.equal(second.session?.error, undefined)
+    assert.equal(third.session?.error, undefined)
+    assert.notEqual(third.session?.status, 'failed')
+    const all = await service.command(scope, { ...send, action: 'get', itemLimit: 100_000 })
+    // 3 prompts and 3 × 1,200 replies, all kept.
+    assert.equal(all.session?.items.length, 3_603)
+    assert.equal(all.earlierItems, undefined)
+    const tail = await service.command(scope, { ...send, action: 'get' })
+    assert.equal(tail.session?.items.length, 400)
+    assert.equal(tail.earlierItems, 3_203)
+    assert.equal(tail.session?.items.at(-1)?.text, all.session?.items.at(-1)?.text)
+    const wider = await service.command(scope, { ...send, action: 'get', itemLimit: 800 })
+    assert.equal(wider.session?.items.length, 800)
+    assert.equal(wider.earlierItems, 2_803)
+    await service.shutdown()
+    const restored = new AgentSessions(f.dir, () => {}, f.drivers)
+    const reopened = await restored.command(scope, { ...send, action: 'get', itemLimit: 100_000 })
+    assert.equal(reopened.session?.items.length, 3_603)
+    await restored.shutdown()
+  } finally {
+    rmSync(f.dir, { recursive: true, force: true })
   }
 })
