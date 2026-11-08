@@ -165,7 +165,7 @@ function stackRowTitle(agent: AgentSubagent): string {
 
 /**
  * Child agents as one-line rows for the side column. The status icon already shows each
- * child's state, so rows carry only the name, elapsed time, and total tokens.
+ * child's state, so rows carry only the name, muted model, elapsed time, and total tokens.
  */
 function SubagentStackGroup({
   label,
@@ -184,6 +184,7 @@ function SubagentStackGroup({
         <span className="tabular-nums opacity-70">{agents.length}</span>
       </li>
       {agents.map((agent) => {
+        const identity = reportedIdentity(agent)
         const meta = [elapsed(agent, now), totalSubagentTokens(agent.tokens)]
           .filter(Boolean)
           .join(' · ')
@@ -198,7 +199,10 @@ function SubagentStackGroup({
             <span className="flex size-3.5 shrink-0 items-center justify-center">
               <AgentStatusIcon status={statusMark(agent.status)} />
             </span>
-            <span className="min-w-0 flex-1 truncate">{agent.title || agent.id}</span>
+            <span className="min-w-0 flex-1 truncate">
+              {agent.title || agent.id}
+              {identity ? <span className="ml-1.5 text-muted-foreground">{identity}</span> : null}
+            </span>
             {meta ? (
               <span className="shrink-0 text-muted-foreground tabular-nums">{meta}</span>
             ) : null}

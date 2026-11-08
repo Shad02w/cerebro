@@ -141,8 +141,9 @@ describe('ChatSessionPanel', () => {
     }
     const agent = within(agents).getByTestId('chat-subagent')
     expect(agent).toHaveAttribute('data-status', 'completed')
-    // One line: the icon shows status, so the row has no status word or model line.
-    expect(agent).toHaveTextContent(/^Review the diff5s · 18\.4k$/)
+    // One line: the icon shows status, so the row has no status word.
+    expect(agent).toHaveTextContent(/^Review the diffsonnet · high5s · 18\.4k$/)
+    expect(within(agent).getByText('sonnet · high')).toHaveClass('text-muted-foreground')
     expect(agent).toHaveAttribute(
       'title',
       'Review the diff · Done · sonnet · high · 18.4k (12.1k in, 6.3k out)'
