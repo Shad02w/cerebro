@@ -141,11 +141,13 @@ describe('ChatSessionPanel', () => {
     }
     const agent = within(agents).getByTestId('chat-subagent')
     expect(agent).toHaveAttribute('data-status', 'completed')
-    expect(agent).toHaveTextContent('Review the diff')
-    expect(agent).toHaveTextContent('sonnet · high')
-    expect(agent).toHaveTextContent('5s')
-    expect(agent).toHaveTextContent('18.4k (12.1k in, 6.3k out)')
-    expect(agent).toHaveTextContent('Done')
+    // One line: the icon shows status, so the row has no status word or model line.
+    expect(agent).toHaveTextContent(/^Review the diff5s · 18\.4k$/)
+    expect(agent).toHaveAttribute(
+      'title',
+      'Review the diff · Done · sonnet · high · 18.4k (12.1k in, 6.3k out)'
+    )
+    expect(within(agents).getByText('Done').parentElement).toHaveTextContent('Done1')
   })
 
   it('omits empty sections and renders nothing when the session has no status', async () => {

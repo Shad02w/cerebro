@@ -145,7 +145,28 @@ export function ChatSubagentList({ agents }: { agents: AgentSubagent[] }): React
   )
 }
 
-/** Child agents stacked for the side column, where the popover grid is too wide. */
+/** Total only. The side column has no room for the in/out split, so the row title carries it. */
+function totalSubagentTokens(tokens: AgentSubagentTokens | undefined): string {
+  const full = formatSubagentTokens(tokens)
+  return full === 'no tokens' ? '' : full.split(' (')[0]
+}
+
+/** Hover text for a one-line row: everything the row leaves out, including the status word. */
+function stackRowTitle(agent: AgentSubagent): string {
+  return [
+    agent.title || agent.id,
+    statusWord(agent.status),
+    reportedIdentity(agent),
+    finished(agent.status) ? formatSubagentTokens(agent.tokens) : ''
+  ]
+    .filter(Boolean)
+    .join(' · ')
+}
+
+/**
+ * Child agents as one-line rows for the side column. The status icon already shows each
+ * child's state, so rows carry only the name, elapsed time, and total tokens.
+ */
 function SubagentStackGroup({
   label,
   agents,
@@ -158,34 +179,29 @@ function SubagentStackGroup({
   if (!agents.length) return null
   return (
     <>
-      <li className="px-2 pt-1 text-[11px] text-muted-foreground">{label}</li>
+      <li className="flex items-baseline gap-1.5 px-2 pt-1.5 pb-0.5 text-[11px] text-muted-foreground">
+        <span>{label}</span>
+        <span className="tabular-nums opacity-70">{agents.length}</span>
+      </li>
       {agents.map((agent) => {
-        const live = !finished(agent.status)
-        const identity = reportedIdentity(agent)
-        const time = elapsed(agent, now)
+        const meta = [elapsed(agent, now), totalSubagentTokens(agent.tokens)]
+          .filter(Boolean)
+          .join(' · ')
         return (
           <li
             key={agent.id}
             data-testid="chat-subagent"
             data-status={agent.status}
-            className="flex items-start gap-2 rounded-sm px-2 py-1.5 text-xs"
+            title={stackRowTitle(agent)}
+            className="flex h-6 items-center gap-2 rounded-sm px-2 text-xs"
           >
-            <span className="mt-0.5 flex size-3.5 shrink-0 items-center justify-center">
+            <span className="flex size-3.5 shrink-0 items-center justify-center">
               <AgentStatusIcon status={statusMark(agent.status)} />
             </span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate" title={agent.title || agent.id}>
-                {agent.title || agent.id}
-              </span>
-              {identity ? (
-                <span className="block truncate text-muted-foreground">{identity}</span>
-              ) : null}
-            </span>
-            <span className="shrink-0 text-right text-muted-foreground tabular-nums">
-              {time ? <span className="block">{time}</span> : null}
-              <span className="block">{statusWord(agent.status)}</span>
-              {live ? null : <span className="block">{formatSubagentTokens(agent.tokens)}</span>}
-            </span>
+            <span className="min-w-0 flex-1 truncate">{agent.title || agent.id}</span>
+            {meta ? (
+              <span className="shrink-0 text-muted-foreground tabular-nums">{meta}</span>
+            ) : null}
           </li>
         )
       })}
