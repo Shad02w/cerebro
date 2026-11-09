@@ -18,6 +18,7 @@ import { useProjects } from '@/hooks/use-projects'
 import { useSettings } from '@/hooks/use-settings'
 import { KeybindProvider, useKeybindHandler } from '@/keybinds'
 import { navigate, projectsPath, settingsPath } from '@/lib/app-route'
+import { warmTerminalFont } from '@/lib/terminal-font'
 import {
   TITLEBAR_HEIGHT,
   TITLEBAR_TRIGGER_LEFT,
@@ -26,6 +27,7 @@ import {
 } from '@/lib/titlebar'
 import {
   DEFAULT_COMPOSER_VIM_MODE,
+  TERMINAL_FONT_FAMILY_AUTO,
   type Project,
   type SidebarGroupBy,
   type WorkspaceStatus
@@ -141,6 +143,13 @@ function App(): React.JSX.Element {
   useEffect(() => {
     if (isSettings) void refreshSettings().catch(() => undefined)
   }, [isSettings, refreshSettings])
+
+  // Resolve and load the terminal face before the first pane needs it.
+  const terminalFontFamily = settings?.terminalFontFamily ?? TERMINAL_FONT_FAMILY_AUTO
+  useEffect(() => {
+    if (settingsLoading) return
+    return warmTerminalFont(terminalFontFamily)
+  }, [settingsLoading, terminalFontFamily])
 
   const catalog = useQuery(catalogOptions)
   const reconciledCatalog = useRef<unknown>(null)

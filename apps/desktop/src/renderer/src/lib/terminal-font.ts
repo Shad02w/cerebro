@@ -34,16 +34,22 @@ export function isNerdTerminalFamily(family: string): boolean {
   return NERD_FONT_NAME.test(family)
 }
 
-export function chooseTerminalFont(preference: string, available: Iterable<string>): string {
-  const installed = new Set(available)
-  if (
-    preference !== TERMINAL_FONT_FAMILY_AUTO &&
-    (installed.has(preference) || preference === BUNDLED_TERMINAL_FONT)
-  ) {
-    return preference
-  }
-  const nerd = [...installed].filter(isNerdTerminalFamily).sort((a, b) => a.localeCompare(b))
-  return nerd[0] ?? BUNDLED_TERMINAL_FONT
+/**
+ * Families to try for a preference, best first, before the bundled face.
+ * An explicit family comes first; Auto (and a saved family that turns out to
+ * be missing) falls back to installed Nerd Font / Meslo families by name.
+ * Names alone are not trusted: the caller keeps the first one that measures
+ * as monospace, so a missing or proportional face is never handed to xterm.
+ */
+export function terminalFontCandidates(
+  preference: string,
+  localFamilies: Iterable<string>
+): string[] {
+  const nerd = [...new Set(localFamilies)]
+    .filter(isNerdTerminalFamily)
+    .sort((a, b) => a.localeCompare(b))
+  if (preference === TERMINAL_FONT_FAMILY_AUTO) return nerd
+  return [preference, ...nerd.filter((family) => family !== preference)]
 }
 
 export function terminalFontCss(family: string): string {
@@ -96,14 +102,20 @@ export function measureTerminalCharWidth(fontFamilyCss: string, fontSize: number
   return Number.isFinite(width) ? width : 0
 }
 
+let probeContext: CanvasRenderingContext2D | null | undefined
+
 function measure(font: string, sample: string): number {
-  const canvas = document.createElement('canvas')
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return Number.NaN
-  ctx.font = font
-  return ctx.measureText(sample).width
+  probeContext ??= document.createElement('canvas').getContext('2d')
+  if (!probeContext) return Number.NaN
+  probeContext.font = font
+  return probeContext.measureText(sample).width
 }
 
+/**
+ * True when the face is installed and monospace. A missing family measures the
+ * proportional default face instead, so this also rejects names that are not
+ * installed (`document.fonts.check()` reports those as available).
+ */
 function familyIsMonospace(family: string): boolean {
   return widthsAreMonospace(
     measure(`${PROBE_SIZE} "${family}"`, WIDE_SAMPLE),
@@ -130,25 +142,46 @@ function queryLocalFontFaces(): Promise<LocalFontFace[]> | null {
   return fonts.queryLocalFonts()
 }
 
+let localFamiliesCache: Promise<readonly string[]> | null = null
+
+/** Installed family names, unmeasured. Cheap: one metadata query, no font loads. */
+function localFamilies(): Promise<readonly string[]> {
+  localFamiliesCache ??= (async () => {
+    const query = queryLocalFontFaces()
+    if (!query) return []
+    try {
+      const faces = await query
+      return [
+        ...new Set(
+          faces.flatMap((face) => {
+            const name = face.family.trim()
+            return name ? [name] : []
+          })
+        )
+      ]
+    } catch {
+      return []
+    }
+  })()
+  return localFamiliesCache
+}
+
+/** Families measured per task before yielding, so the menu probe never freezes the UI. */
+const PROBE_BATCH = 16
+
 let installedFontsCache: Promise<readonly string[]> | null = null
 
+/**
+ * Every installed monospace family. Measuring makes Chromium load each face,
+ * which costs about 2 ms per family, so only the settings font menu runs it.
+ */
 async function probeInstalledMonospaceFamilies(): Promise<readonly string[]> {
-  const query = queryLocalFontFaces()
-  if (!query) return []
-  let faces: LocalFontFace[]
-  try {
-    faces = await query
-  } catch {
-    return []
-  }
-  const seen = new Set<string>()
+  const names = await localFamilies()
   const families: string[] = []
-  for (const face of faces) {
-    const name = face.family.trim()
-    if (!name || seen.has(name)) continue
-    seen.add(name)
-    if (!familyIsMonospace(name)) continue
-    families.push(name)
+  for (let index = 0; index < names.length; index++) {
+    if (index > 0 && index % PROBE_BATCH === 0)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    if (familyIsMonospace(names[index])) families.push(names[index])
   }
   families.sort((a, b) => a.localeCompare(b))
   return families
@@ -159,15 +192,54 @@ function installedMonospaceFamilies(): Promise<readonly string[]> {
   return installedFontsCache
 }
 
-export async function resolveTerminalFont(
-  preference: string = TERMINAL_FONT_FAMILY_AUTO
-): Promise<ResolvedTerminalFont> {
-  const available = await installedMonospaceFamilies()
-  const family = chooseTerminalFont(preference, available)
+async function chooseFamily(preference: string): Promise<string> {
+  if (preference === BUNDLED_TERMINAL_FONT) return BUNDLED_TERMINAL_FONT
+  // An explicit family is checked on its own; installed names are read only
+  // for Auto, or when the saved family is no longer installed.
+  if (preference !== TERMINAL_FONT_FAMILY_AUTO && familyIsMonospace(preference)) return preference
+  for (const family of terminalFontCandidates(preference, await localFamilies()))
+    if (family !== preference && familyIsMonospace(family)) return family
+  return BUNDLED_TERMINAL_FONT
+}
+
+async function resolveUncached(preference: string): Promise<ResolvedTerminalFont> {
+  const family = await chooseFamily(preference)
   await loadFamily(family)
-  await loadFamily(BUNDLED_TERMINAL_FONT)
+  if (family !== BUNDLED_TERMINAL_FONT) await loadFamily(BUNDLED_TERMINAL_FONT)
   await document.fonts.ready
   return { family, css: terminalFontCss(family) }
+}
+
+const resolvedCache = new Map<string, Promise<ResolvedTerminalFont>>()
+
+/**
+ * The face a terminal draws with. Checks only the preferred family (and, for
+ * Auto, Nerd Font names), never every installed font, so the first terminal
+ * opens as fast as later ones. Cached per preference.
+ */
+export function resolveTerminalFont(
+  preference: string = TERMINAL_FONT_FAMILY_AUTO
+): Promise<ResolvedTerminalFont> {
+  let resolved = resolvedCache.get(preference)
+  if (!resolved) {
+    resolved = resolveUncached(preference)
+    resolvedCache.set(preference, resolved)
+    resolved.catch(() => resolvedCache.delete(preference))
+  }
+  return resolved
+}
+
+/** Resolve and load the terminal face while the app is idle, before a pane needs it. */
+export function warmTerminalFont(preference: string = TERMINAL_FONT_FAMILY_AUTO): () => void {
+  const idle = window.requestIdleCallback
+  if (typeof idle !== 'function') {
+    const timer = window.setTimeout(() => void resolveTerminalFont(preference).catch(() => {}))
+    return () => window.clearTimeout(timer)
+  }
+  const handle = idle(() => void resolveTerminalFont(preference).catch(() => {}), {
+    timeout: 2000
+  })
+  return () => window.cancelIdleCallback(handle)
 }
 
 export async function listAvailableTerminalFonts(): Promise<TerminalFontOption[]> {
