@@ -3,8 +3,8 @@ import { test } from 'node:test'
 import { TERMINAL_FONT_FAMILY_AUTO } from '@shared/types'
 import {
   BUNDLED_TERMINAL_FONT,
-  chooseTerminalFont,
   isNerdTerminalFamily,
+  terminalFontCandidates,
   terminalFontCss,
   terminalFontOptions,
   terminalLetterSpacing,
@@ -17,30 +17,35 @@ test('monospace is equal advance for wide and narrow samples', () => {
   assert.equal(widthsAreMonospace(0, 0), false)
 })
 
-test('auto keeps a bundled face unless an installed nerd font is present', () => {
-  assert.equal(chooseTerminalFont(TERMINAL_FONT_FAMILY_AUTO, []), BUNDLED_TERMINAL_FONT)
-  assert.equal(
-    chooseTerminalFont(TERMINAL_FONT_FAMILY_AUTO, ['Menlo', 'JetBrains Mono', 'Cascadia Mono']),
-    BUNDLED_TERMINAL_FONT
+test('auto tries installed nerd fonts by name, then the bundled face', () => {
+  assert.deepEqual(terminalFontCandidates(TERMINAL_FONT_FAMILY_AUTO, []), [])
+  assert.deepEqual(
+    terminalFontCandidates(TERMINAL_FONT_FAMILY_AUTO, ['Menlo', 'JetBrains Mono', 'Cascadia Mono']),
+    []
   )
-  assert.equal(
-    chooseTerminalFont(TERMINAL_FONT_FAMILY_AUTO, [
+  assert.deepEqual(
+    terminalFontCandidates(TERMINAL_FONT_FAMILY_AUTO, [
       'JetBrains Mono',
       'Hack Nerd Font Mono',
-      'FiraCode Nerd Font Mono'
+      'FiraCode Nerd Font Mono',
+      'Hack Nerd Font Mono'
     ]),
-    'FiraCode Nerd Font Mono'
+    ['FiraCode Nerd Font Mono', 'Hack Nerd Font Mono']
   )
   assert.equal(isNerdTerminalFamily('MesloLGS NF'), true)
   assert.equal(isNerdTerminalFamily('JetBrains Mono'), false)
 })
 
-test('an explicit family is used only when that face is installed', () => {
-  const available = ['Menlo', BUNDLED_TERMINAL_FONT]
-  assert.equal(chooseTerminalFont('Menlo', available), 'Menlo')
-  assert.equal(chooseTerminalFont(BUNDLED_TERMINAL_FONT, available), BUNDLED_TERMINAL_FONT)
-  assert.equal(chooseTerminalFont('FiraCode Nerd Font Mono', available), BUNDLED_TERMINAL_FONT)
-  assert.equal(chooseTerminalFont('FiraCode Nerd Font Mono', ['MesloLGS NF']), 'MesloLGS NF')
+test('an explicit family is tried first, then nerd fonts if it is missing', () => {
+  assert.deepEqual(terminalFontCandidates('Menlo', ['Menlo']), ['Menlo'])
+  assert.deepEqual(terminalFontCandidates('FiraCode Nerd Font Mono', ['MesloLGS NF']), [
+    'FiraCode Nerd Font Mono',
+    'MesloLGS NF'
+  ])
+  assert.deepEqual(terminalFontCandidates('MesloLGS NF', ['MesloLGS NF', 'Hack Nerd Font']), [
+    'MesloLGS NF',
+    'Hack Nerd Font'
+  ])
 })
 
 test('the font menu lists only the families it was given', () => {
@@ -68,10 +73,6 @@ test('letter spacing restores the device pixel WebGL floors away', () => {
   assert.equal(terminalLetterSpacing(7.1, 2), 0)
   assert.equal(terminalLetterSpacing(0, 2), 0)
   assert.equal(terminalLetterSpacing(8, 0), 0)
-})
-
-test('an explicit bundled face is kept even when the probe missed it', () => {
-  assert.equal(chooseTerminalFont(BUNDLED_TERMINAL_FONT, []), BUNDLED_TERMINAL_FONT)
 })
 
 test('the bundled face is the glyph fallback after any other family', () => {
