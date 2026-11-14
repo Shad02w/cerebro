@@ -105,6 +105,16 @@ describe('question card', () => {
     })
   })
 
+  it('keeps keyboard focus on the card after Esc leaves the free-text row', async () => {
+    const user = userEvent.setup()
+    const { onReply, card } = renderCard(request([storage]))
+    card!.focus()
+    await user.keyboard('3x{Escape}')
+    expect(card).toHaveFocus()
+    await user.keyboard('{Escape}{Escape}')
+    expect(onReply).toHaveBeenCalledWith('r1', { allow: false, answers: {} })
+  })
+
   it('skips with Esc pressed twice, sending a decline', async () => {
     const user = userEvent.setup()
     const { onReply, card } = renderCard(request([storage, harnesses]))

@@ -330,6 +330,7 @@ export function QuestionCard({
   const submitting = useRef(false)
   const root = useRef<HTMLDivElement>(null)
   const input = useRef<HTMLInputElement>(null)
+  const working = useRef(false)
   const question = questions[state.step]
   const freeText = question ? isFreeText(question) : false
   const typing = state.editing || freeText
@@ -345,6 +346,7 @@ export function QuestionCard({
   }
   // Clicks keep focus on the card so the next key press still drives it.
   const dispatch = (action: StepperAction): void => {
+    working.current = Boolean(root.current?.contains(document.activeElement))
     const result = reduceStepper(state, action, questions)
     setState(result.state)
     if (['pick', 'go', 'next'].includes(action.type) && !result.state.editing) root.current?.focus()
@@ -355,10 +357,11 @@ export function QuestionCard({
   const onGo = (step: number): void => dispatch({ type: 'go', step })
 
   // Follow the step into the text field, but only once the user is already working in the card.
+  // Checked at dispatch time: leaving the field unmounts it, which drops focus to the body first.
   useEffect(() => {
-    if (!root.current?.contains(document.activeElement)) return
+    if (!working.current) return
     if (typing) input.current?.focus()
-    else root.current.focus()
+    else root.current?.focus()
   }, [typing, state.step])
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
