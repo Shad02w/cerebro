@@ -663,6 +663,51 @@ test('queued messages during a running turn can be steered in immediately or sen
   }
 })
 
+test('a pending question takes new prompts into its turn and is answered with the keyboard', async ({
+  page
+}) => {
+  const directory = await mkdtemp(join(tmpdir(), 'cerebro-chat-question-'))
+  try {
+    const project = await page.evaluate(
+      (directory) => window.cerebro.createProjectFromDirectory(directory),
+      directory
+    )
+    await page.reload()
+    await openWorkspace(page, project.workspaces[0].id)
+    await page.getByRole('button', { name: /^New Agent tab/ }).click()
+    await expectPickerHarness(page.getByTestId('chat-model-picker'), 'claude')
+    const message = page.getByRole('textbox', { name: 'Message agent' })
+    const send = page.getByRole('button', { name: 'Send message', exact: true })
+    await message.fill('question')
+    await send.click()
+    const card = page.getByTestId('question-card')
+    await expect(card.getByRole('tab', { name: 'Review' })).toBeVisible()
+    await expect(card.getByRole('radio', { name: 'Mux database' })).toContainText(
+      'Reuses the storage worker.'
+    )
+
+    // The card does not take focus, so the composer still sends, and the prompt joins the turn.
+    await message.fill('also check the retry budget')
+    await send.click()
+    const transcript = page.getByTestId('chat-transcript')
+    await expect(transcript).toContainText('also check the retry budget')
+    await expect(page.getByTestId('chat-queue')).toHaveCount(0)
+    await expect(card).toBeVisible()
+
+    await card.focus()
+    await page.keyboard.press('1')
+    await page.keyboard.press('2')
+    await page.keyboard.press('Enter')
+    await expect(card.getByTestId('question-review')).toContainText('Codex')
+    await page.keyboard.press('Enter')
+    await expect(page.getByTestId('question-answered')).toContainText('Storage: Mux database')
+    await expect(transcript).toContainText('Then read: also check the retry budget')
+    await expect(transcript).toContainText('"Which harnesses should retry on rate limits?":"Codex"')
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test.describe('unavailable native installations', () => {
   test.use({
     agentEnvironment: {
