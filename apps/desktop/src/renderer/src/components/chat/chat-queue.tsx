@@ -23,6 +23,15 @@ export function ChatQueue({
       aria-label="Queued messages"
       data-testid="chat-queue"
     >
+      {session.status === 'waiting' ? (
+        <li
+          role="status"
+          className="px-1 text-xs text-muted-foreground"
+          data-testid="chat-queue-waiting"
+        >
+          The agent is waiting on your answer. Queued messages send after you answer or skip it.
+        </li>
+      ) : null}
       {session.queue.map((item) => {
         const steerable =
           item.model.key === session.model.key &&
