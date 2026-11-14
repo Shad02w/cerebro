@@ -437,9 +437,8 @@ export function ChatView({
     [mutateAsync, notify, workspaceId, paneId]
   )
   const reply = useCallback(
-    (requestId: string, answer: AgentAnswer): void => {
-      void execute({ action: 'reply', sessionId: session?.id, requestId, ...answer })
-    },
+    (requestId: string, answer: AgentAnswer): Promise<boolean> =>
+      execute({ action: 'reply', sessionId: session?.id, requestId, ...answer }),
     [execute, session?.id]
   )
   const steer = useCallback(

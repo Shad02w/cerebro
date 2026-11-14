@@ -1,5 +1,5 @@
 import { memo, useState } from 'react'
-import type { AgentAnswer, AgentSkill, ChatItem as Item } from '@cerebro/core'
+import type { AgentSkill, ChatItem as Item } from '@cerebro/core'
 import { Brain, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { AgentMarkdown } from '@/components/markdown/agent-markdown'
@@ -13,16 +13,17 @@ import { ChatDiff } from './chat-diff'
 import { ToolTypeIcon } from './tool-type-icon'
 import { ChatTaskOutcome } from './chat-task-outcome'
 import { ChatUserMessage } from './chat-user-message'
+import { QuestionAnswered, QuestionCard, type ReplyHandler } from './question-card'
 
-function RequestCard({
-  item,
-  onReply
-}: {
-  item: Item
-  onReply: (id: string, answer: AgentAnswer) => void
-}): React.JSX.Element {
+function RequestCard({ item, onReply }: { item: Item; onReply: ReplyHandler }): React.JSX.Element {
   const [answers, setAnswers] = useState<Record<string, string[]>>({})
   const request = item.request!
+  if (request.kind === 'question' && request.questions?.length)
+    return request.resolved ? (
+      <QuestionAnswered item={item} />
+    ) : (
+      <QuestionCard item={item} onReply={onReply} />
+    )
   return (
     <section
       className="rounded-xl border bg-muted/25 p-4"
@@ -247,7 +248,7 @@ export const ChatItem = memo(function ChatItem({
   streaming = false
 }: {
   item: Item
-  onReply: (id: string, answer: AgentAnswer) => void
+  onReply: ReplyHandler
   onRewind?: (text: string) => void
   workspaceId: number
   sessionId: string
