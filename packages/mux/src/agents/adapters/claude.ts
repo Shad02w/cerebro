@@ -3,6 +3,7 @@ import {
   skillPromptText,
   textFileExtensions,
   type AgentDelta,
+  type AgentQuestion,
   type AgentSession,
   type AttachmentPolicy,
   type ChatItem,
@@ -22,6 +23,28 @@ import { claudeCommands } from '../commands'
 
 const promptText = (text: string, skills?: ChatSkillMention[]): string =>
   skillPromptText(text, skills ?? [])
+
+/** Maps AskUserQuestion input to Cerebro questions. Answers are keyed by the returned index ids. */
+export function claudeQuestions(input: Record<string, unknown>): AgentQuestion[] | undefined {
+  if (!Array.isArray(input.questions)) return undefined
+  return (input.questions as Frame[]).map((question, index) => {
+    const options: Frame[] = Array.isArray(question.options) ? question.options : []
+    const descriptions = Object.fromEntries(
+      options
+        .filter((o) => typeof o.description === 'string' && o.description.trim())
+        .map((o) => [String(o.label), String(o.description).trim()])
+    )
+    const header = typeof question.header === 'string' ? question.header.trim() : ''
+    return {
+      id: String(index),
+      label: String(question.question ?? ''),
+      ...(header ? { header } : {}),
+      ...(options.length ? { options: options.map((o) => String(o.label)) } : {}),
+      ...(Object.keys(descriptions).length ? { descriptions } : {}),
+      multiple: Boolean(question.multiSelect)
+    }
+  })
+}
 
 /** Resume options for one Claude connect. A rewound send forks so Undo can keep the original chain. */
 export function claudeResumeOptions(session: Pick<AgentSession, 'nativeId' | 'nativeResume'>): {
@@ -1001,15 +1024,7 @@ export const claudeAdapter: AgentAdapter = {
                 : 'bypassPermissions',
           allowDangerouslySkipPermissions: !session.accessMode || session.accessMode === 'full',
           canUseTool: async (name, input, options) => {
-            const questions =
-              name === 'AskUserQuestion' && Array.isArray(input.questions)
-                ? (input.questions as Frame[]).map((question, index) => ({
-                    id: String(index),
-                    label: question.question,
-                    options: question.options?.map((o: Frame) => o.label),
-                    multiple: Boolean(question.multiSelect)
-                  }))
-                : undefined
+            const questions = name === 'AskUserQuestion' ? claudeQuestions(input) : undefined
             if (!questions && session.accessMode === 'read')
               return { behavior: 'deny', message: 'Read-only mode does not allow this operation.' }
             if (!questions && (!session.accessMode || session.accessMode === 'full'))
