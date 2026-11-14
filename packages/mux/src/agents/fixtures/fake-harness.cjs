@@ -25,6 +25,9 @@ const notify = (method, params = {}) => {
 let backgroundStarted = 0
 const backgroundLive = new Map()
 let finishApproval
+// An AskUserQuestion permission waiting on the host. Like the CLI, prompts that arrive meanwhile
+// are held and consumed once the question is settled, instead of starting a turn of their own.
+let claudeQuestion
 let claudeContextMode = 'default'
 let codexContextMode = 'default'
 let piContextMode = 'default'
@@ -1417,6 +1420,41 @@ function claudePrompt(prompt, content) {
     })
     return
   }
+  if (prompt.includes('question')) {
+    claudeQuestion = { held: [] }
+    send({
+      type: 'control_request',
+      request_id: 'claude-question',
+      request: {
+        subtype: 'can_use_tool',
+        tool_name: 'AskUserQuestion',
+        tool_use_id: 'tool-question',
+        input: {
+          questions: [
+            {
+              question: 'Where should session history be stored?',
+              header: 'Storage',
+              multiSelect: false,
+              options: [
+                { label: 'Mux database', description: 'Reuses the storage worker.' },
+                { label: 'JSON files', description: 'Simple to inspect by hand.' }
+              ]
+            },
+            {
+              question: 'Which harnesses should retry on rate limits?',
+              header: 'Harnesses',
+              multiSelect: true,
+              options: [
+                { label: 'Claude Code', description: 'Retries on 429.' },
+                { label: 'Codex', description: 'Retries on rate_limit_exceeded.' }
+              ]
+            }
+          ]
+        }
+      }
+    })
+    return
+  }
   if (prompt.includes('refusal-fallback')) {
     // The primary model's draft gets refused, then silently retried on a fallback model. The SDK
     // marks the replacement's `supersedes` and later confirms via a `model_refusal_fallback` notice.
@@ -1955,7 +1993,23 @@ createInterface({ input: process.stdin }).on('line', (line) => {
           }
         }
       })
+    if (frame.type === 'control_response' && claudeQuestion) {
+      const { held } = claudeQuestion
+      claudeQuestion = undefined
+      const decision = frame.response?.response ?? {}
+      const answers =
+        decision.behavior === 'allow'
+          ? `Answers: ${JSON.stringify(decision.updatedInput?.answers ?? {})}`
+          : 'Question declined.'
+      claudeFinish(held.length ? `${answers} Then read: ${held.join(' | ')}` : answers)
+      return
+    }
     if (frame.type === 'control_response') finishApproval?.()
+    if (frame.type === 'user' && claudeQuestion) {
+      const content = frame.message.content
+      claudeQuestion.held.push(typeof content === 'string' ? content : content[0].text)
+      return
+    }
     if (frame.type === 'user')
       claudePrompt(
         typeof frame.message.content === 'string'

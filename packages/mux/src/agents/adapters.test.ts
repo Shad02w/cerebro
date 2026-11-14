@@ -11,7 +11,7 @@ import {
   type RunAttachment,
   type SubagentUpdate
 } from './adapters'
-import { claudeResumeOptions } from './adapters/claude'
+import { claudeQuestions, claudeResumeOptions } from './adapters/claude'
 import type { AgentDelta, AgentHarness, AgentSession } from '@cerebro/core'
 import { codexAppServerPid, stopCodexAppServer } from './codex-server'
 const fixture = resolve(__dirname, 'fixtures/fake-harness.cjs')
@@ -249,6 +249,85 @@ describe('agent adapters', { concurrency: 1 }, () => {
           false
         )
       }
+    }
+  )
+  test('claudeQuestions forwards headers and option descriptions, and tolerates their absence', () => {
+    assert.deepEqual(
+      claudeQuestions({
+        questions: [
+          {
+            question: 'Where?',
+            header: ' Storage ',
+            multiSelect: false,
+            options: [
+              { label: 'Mux database', description: 'Reuses the worker.' },
+              { label: 'JSON files', description: '  ' }
+            ]
+          },
+          { question: 'Which?', multiSelect: true, options: [{ label: 'A' }, { label: 'B' }] },
+          { question: 'Name it?' }
+        ]
+      }),
+      [
+        {
+          id: '0',
+          label: 'Where?',
+          header: 'Storage',
+          options: ['Mux database', 'JSON files'],
+          descriptions: { 'Mux database': 'Reuses the worker.' },
+          multiple: false
+        },
+        { id: '1', label: 'Which?', options: ['A', 'B'], multiple: true },
+        { id: '2', label: 'Name it?', multiple: false }
+      ]
+    )
+    assert.equal(claudeQuestions({}), undefined)
+  })
+  test(
+    'Claude: AskUserQuestion reaches the host with headers and descriptions, and answers go back by label',
+    { timeout: 15_000 },
+    async () => {
+      process.env.CEREBRO_CLAUDE_PATH = fixture
+      const model = (await adapters.claude.models('/tmp'))[0]
+      const events: AgentDelta[] = []
+      let asked: Parameters<Parameters<typeof runTurn>[1]['ask']>[0] | undefined
+      await runTurn(adapters.claude, {
+        session: {
+          version: 1,
+          id: 'logical',
+          workspaceId: 1,
+          repositoryId: null,
+          cwd: '/tmp',
+          title: 'Test',
+          model,
+          status: 'running',
+          generation: 'generation',
+          sequence: 0,
+          updatedAt: 0,
+          items: [],
+          commands: []
+        },
+        text: 'question',
+        signal: new AbortController().signal,
+        emit: (event) => events.push(event),
+        ask: async (request) => {
+          asked = request
+          return { allow: true, answers: { '0': ['Mux database'], '1': ['Claude Code', 'Codex'] } }
+        }
+      })
+      assert.equal(asked?.kind, 'question')
+      assert.equal(asked?.questions?.[0].header, 'Storage')
+      assert.deepEqual(asked?.questions?.[0].descriptions, {
+        'Mux database': 'Reuses the storage worker.',
+        'JSON files': 'Simple to inspect by hand.'
+      })
+      assert.equal(asked?.questions?.[1].multiple, true)
+      const reply = events
+        .filter((event) => event.type === 'item' && event.item.kind === 'text')
+        .map((event) => (event.type === 'item' ? event.item.text : ''))
+        .join('')
+      assert.match(reply, /"Where should session history be stored\?":"Mux database"/)
+      assert.match(reply, /"Which harnesses should retry on rate limits\?":"Claude Code, Codex"/)
     }
   )
   test('context popover fields survive the adapter', { timeout: 20_000 }, async () => {

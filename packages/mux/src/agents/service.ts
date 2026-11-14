@@ -1248,7 +1248,9 @@ export class AgentSessions {
     const skills = skillMentionsFor(selected.harness, command.text, command.skills)
     if (session && busy(session)) {
       if (!capabilities[selected.harness].steering) throw new Error('The agent is already working.')
-      return this.enqueue(scope, session, command, selected, attachments, accessMode, skills)
+      const view = this.enqueue(scope, session, command, selected, attachments, accessMode, skills)
+      if (session.status === 'waiting') this.steerWhileWaiting(session, command.commandId)
+      return view
     }
     let created = false
     if (!session) {
@@ -1367,6 +1369,18 @@ export class AgentSessions {
       ...(queued.attachments?.length ? { attachments: queued.attachments } : {})
     })
     this.changed(session, true)
+  }
+  /**
+   * A turn waiting on the user's answer cannot end, so a message queued behind it would never send.
+   * Fold it into that turn instead. Delivery runs off the command lock: a harness that holds the steer
+   * until the request settles must not block the reply that settles it. On failure it stays queued.
+   */
+  private steerWhileWaiting(session: AgentSession, id: string): void {
+    const runtime = this.running.get(session.id)
+    const queued = session.queue?.find((q) => q.id === id)
+    if (!runtime || !queued || !steerableWith(session, queued)) return
+    ;(runtime.pendingSteers ??= new Set()).add(id)
+    if (runtime.steer) this.flushPendingSteers(session, runtime)
   }
   /** Delivers steers requested before the adapter could take them, in the order they were asked for. */
   private flushPendingSteers(session: AgentSession, runtime: Running): void {

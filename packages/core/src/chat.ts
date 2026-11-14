@@ -178,7 +178,11 @@ export type AgentCatalog = {
 export type AgentQuestion = {
   id: string
   label: string
+  /** Short tab label for the question, such as "Storage". Claude sends one per question. */
+  header?: string
   options?: string[]
+  /** One line explaining an option, keyed by its label. Absent for harnesses that send none. */
+  descriptions?: Record<string, string>
   multiple?: boolean
 }
 export type TodoStatus = 'pending' | 'in_progress' | 'completed'

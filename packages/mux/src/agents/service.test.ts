@@ -726,6 +726,109 @@ test('steer folds a queued message into the running turn and removes it from the
     rmSync(f.dir, { recursive: true, force: true })
   }
 })
+test('a message sent while a question is pending is folded into that turn and the question stays answerable', async () => {
+  const steered: string[] = []
+  let answered: unknown
+  const f = fixture(async (context) => {
+    context.registerSteer?.(async (text) => {
+      steered.push(text)
+    })
+    const answer = await context.ask({
+      id: 'q1',
+      kind: 'question',
+      title: 'AskUserQuestion',
+      text: '',
+      questions: [{ id: '0', label: 'Color?', options: ['Blue', 'Green'] }]
+    })
+    answered = answer
+  })
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    const first = await service.command(scope, send)
+    assert.equal(first.session?.status, 'waiting')
+    await service.command(scope, { ...send, commandId: 'second', text: 'also check the docs' })
+    await new Promise((resolve) => setImmediate(resolve))
+    assert.deepEqual(steered, ['also check the docs'])
+    const waiting = await service.command(scope, { ...send, action: 'get' })
+    assert.equal(waiting.session?.status, 'waiting')
+    assert.equal(waiting.session?.queue?.length, 0)
+    assert.equal(waiting.session?.items.at(-1)?.kind, 'user')
+    assert.equal(waiting.session?.items.at(-1)?.text, 'also check the docs')
+    assert.equal(waiting.session?.items.at(-1)?.turnId, first.session?.turnId)
+    assert.equal(waiting.session?.items.find((i) => i.request)?.request?.resolved, undefined)
+    const replied = await service.command(scope, {
+      ...send,
+      action: 'reply',
+      sessionId: first.session!.id,
+      requestId: 'q1',
+      allow: true,
+      answers: { '0': ['Blue'] }
+    })
+    assert.deepEqual(answered, { allow: true, answers: { '0': ['Blue'] } })
+    assert(replied.session?.items.find((i) => i.request)?.request?.resolved)
+  } finally {
+    await service.shutdown()
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
+test('a steer the harness holds until the question settles does not block the reply', async () => {
+  let release: (() => void) | undefined
+  const f = fixture(async (context) => {
+    context.registerSteer?.(() => new Promise<void>((resolve) => (release = resolve)))
+    await context.ask({
+      id: 'q1',
+      kind: 'question',
+      title: 'Question',
+      text: '',
+      questions: [{ id: '0', label: 'Name?' }]
+    })
+  })
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    const first = await service.command(scope, send)
+    await service.command(scope, { ...send, commandId: 'second', text: 'held' })
+    const replied = await service.command(scope, {
+      ...send,
+      action: 'reply',
+      sessionId: first.session!.id,
+      requestId: 'q1',
+      allow: true,
+      answers: { '0': ['x'] }
+    })
+    assert(replied.session?.items.find((i) => i.request)?.request?.resolved)
+    release!()
+  } finally {
+    await service.shutdown()
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
+test('a message sent while a question is pending with other settings stays queued', async () => {
+  const steered: string[] = []
+  const f = fixture(async (context) => {
+    context.registerSteer?.(async (text) => {
+      steered.push(text)
+    })
+    await context.ask({ id: 'q1', kind: 'question', title: 'Q', text: '', questions: [] })
+  })
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    await service.command(scope, send)
+    const view = await service.command(scope, {
+      ...send,
+      commandId: 'second',
+      text: 'read only please',
+      accessMode: 'read'
+    })
+    await new Promise((resolve) => setImmediate(resolve))
+    assert.deepEqual(steered, [])
+    assert.equal(view.session?.queue?.length, 1)
+    assert.equal(view.session?.status, 'waiting')
+  } finally {
+    await service.command(scope, { ...send, action: 'stop' })
+    await service.shutdown()
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
 test('steer requested before the turn can take one is folded in once the adapter registers it', async () => {
   const steered: string[] = []
   let register: (() => void) | undefined
