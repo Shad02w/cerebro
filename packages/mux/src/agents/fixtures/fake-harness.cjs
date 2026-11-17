@@ -28,6 +28,8 @@ let finishApproval
 // An AskUserQuestion permission waiting on the host. Like the CLI, prompts that arrive meanwhile
 // are held and consumed once the question is settled, instead of starting a turn of their own.
 let claudeQuestion
+// Whether a Codex turn is still open, so an interrupt that arrives after it ended is rejected.
+let codexTurnOpen = false
 let claudeDeclined
 let claudeContextMode = 'default'
 let codexContextMode = 'default'
@@ -35,6 +37,7 @@ let piContextMode = 'default'
 const text =
   '**Adapter connected.**\n\n- Native tools stay with the harness.\n- Cerebro renders the conversation.'
 const codexDone = () => {
+  codexTurnOpen = false
   const full = codexContextMode === 'full'
   notify('thread/tokenUsage/updated', {
     threadId: 'thread-test',
@@ -1717,6 +1720,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
         }
         break
       case 'turn/start':
+        codexTurnOpen = true
         reply({ turn: { id: 'turn-test' } })
         setTimeout(
           () => codexPrompt(frame.params.threadId, frame.params.input[0].text, frame.params.input),
@@ -1740,6 +1744,11 @@ createInterface({ input: process.stdin }).on('line', (line) => {
         reply({})
         break
       case 'turn/interrupt':
+        if (!codexTurnOpen) {
+          send({ id: frame.id, error: { code: -32600, message: 'No active turn to interrupt.' } })
+          break
+        }
+        codexTurnOpen = false
         // The app server drops requests the interrupted turn was waiting on.
         codexApprovals.clear()
         reply({})
