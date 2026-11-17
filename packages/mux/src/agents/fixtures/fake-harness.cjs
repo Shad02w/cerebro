@@ -28,6 +28,7 @@ let finishApproval
 // An AskUserQuestion permission waiting on the host. Like the CLI, prompts that arrive meanwhile
 // are held and consumed once the question is settled, instead of starting a turn of their own.
 let claudeQuestion
+let claudeDeclined
 let claudeContextMode = 'default'
 let codexContextMode = 'default'
 let piContextMode = 'default'
@@ -85,6 +86,13 @@ function codexPrompt(threadId, prompt, input) {
   if (prompt.includes('skill-wire')) {
     notify('item/completed', {
       item: { type: 'agentMessage', id: 'skills', text: JSON.stringify(input) }
+    })
+    codexDone()
+    return
+  }
+  if (prompt.startsWith('echo ')) {
+    notify('item/completed', {
+      item: { type: 'agentMessage', id: 'echo', text: `Echo: ${prompt.slice(5)}` }
     })
     codexDone()
     return
@@ -526,6 +534,10 @@ function claudePrompt(prompt, content) {
     claudeContextMode = 'full'
   if (prompt.includes('skill-wire')) {
     claudeFinish(prompt)
+    return
+  }
+  if (prompt.startsWith('echo ')) {
+    claudeFinish(`Echo: ${prompt.slice(5)}`)
     return
   }
   if (prompt === '/context') {
@@ -1883,6 +1895,8 @@ createInterface({ input: process.stdin }).on('line', (line) => {
     }
   } else {
     if (frame.type === 'control_request' && frame.request?.subtype === 'interrupt') {
+      clearTimeout(claudeDeclined)
+      claudeDeclined = undefined
       send({
         type: 'control_response',
         response: { subtype: 'success', request_id: frame.request_id, response: {} }
@@ -1997,10 +2011,16 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       const { held } = claudeQuestion
       claudeQuestion = undefined
       const decision = frame.response?.response ?? {}
-      const answers =
-        decision.behavior === 'allow'
-          ? `Answers: ${JSON.stringify(decision.updatedInput?.answers ?? {})}`
-          : 'Question declined.'
+      if (decision.behavior !== 'allow') {
+        // Like the CLI, the model keeps working after a declined question, so an interrupt still
+        // lands inside this turn.
+        claudeDeclined = setTimeout(() => {
+          claudeDeclined = undefined
+          claudeFinish('Question declined.')
+        }, 300)
+        return
+      }
+      const answers = `Answers: ${JSON.stringify(decision.updatedInput?.answers ?? {})}`
       claudeFinish(held.length ? `${answers} Then read: ${held.join(' | ')}` : answers)
       return
     }
