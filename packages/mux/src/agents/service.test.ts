@@ -17,7 +17,9 @@ import {
   agentFinishedLine,
   type AgentModel,
   type AgentSession,
-  type AgentStatusEvent
+  type AgentStatusEvent,
+  type ChatView,
+  skippedForPrompt
 } from '@cerebro/core'
 import type { AgentAdapter, ConnectionHost, RunContext } from './adapters'
 const model: AgentModel = {
@@ -726,37 +728,112 @@ test('steer folds a queued message into the running turn and removes it from the
     rmSync(f.dir, { recursive: true, force: true })
   }
 })
-test('a message sent while a question is pending is folded into that turn and the question stays answerable', async () => {
-  const steered: string[] = []
-  let answered: unknown
-  const f = fixture(async (context) => {
-    context.registerSteer?.(async (text) => {
-      steered.push(text)
-    })
-    const answer = await context.ask({
-      id: 'q1',
-      kind: 'question',
-      title: 'AskUserQuestion',
-      text: '',
-      questions: [{ id: '0', label: 'Color?', options: ['Blue', 'Green'] }]
-    })
-    answered = answer
+/** A harness turn that asks one question, then waits until it is answered or interrupted. */
+function questionTurns(turns: RunContext[], answers: unknown[]): ReturnType<typeof fixture> {
+  return fixture(async (context) => {
+    turns.push(context)
+    if (context.text !== 'hello') {
+      context.emit({
+        type: 'item',
+        item: { id: 'reply', kind: 'text', text: `read: ${context.text}` }
+      })
+      return
+    }
+    context.registerSteer?.(async () => {})
+    answers.push(
+      await context.ask({
+        id: 'q1',
+        kind: 'question',
+        title: 'AskUserQuestion',
+        text: '',
+        questions: [{ id: '0', label: 'Color?', options: ['Blue', 'Green'] }]
+      })
+    )
+    if (!context.signal.aborted)
+      await new Promise((resolve) => context.signal.addEventListener('abort', resolve))
+    throw new Error('Turn interrupted.')
   })
+}
+async function idle(service: AgentSessions): Promise<ChatView> {
+  for (let i = 0; i < 100; i++) {
+    const view = await service.command(scope, { ...send, action: 'get' })
+    if (view.session?.status === 'idle') return view
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  }
+  assert.fail('the session never went idle')
+}
+test('a message sent while a question is pending skips the question and becomes the next turn', async () => {
+  const turns: RunContext[] = []
+  const answers: unknown[] = []
+  const f = questionTurns(turns, answers)
   const service = new AgentSessions(f.dir, () => {}, f.drivers)
   try {
     const first = await service.command(scope, send)
     assert.equal(first.session?.status, 'waiting')
-    await service.command(scope, { ...send, commandId: 'second', text: 'also check the docs' })
-    await new Promise((resolve) => setImmediate(resolve))
-    assert.deepEqual(steered, ['also check the docs'])
-    const waiting = await service.command(scope, { ...send, action: 'get' })
-    assert.equal(waiting.session?.status, 'waiting')
-    assert.equal(waiting.session?.queue?.length, 0)
-    assert.equal(waiting.session?.items.at(-1)?.kind, 'user')
-    assert.equal(waiting.session?.items.at(-1)?.text, 'also check the docs')
-    assert.equal(waiting.session?.items.at(-1)?.turnId, first.session?.turnId)
-    assert.equal(waiting.session?.items.find((i) => i.request)?.request?.resolved, undefined)
-    const replied = await service.command(scope, {
+    const sent = await service.command(scope, {
+      ...send,
+      commandId: 'second',
+      text: 'also check the docs'
+    })
+    const question = sent.session?.items.find((item) => item.request)
+    assert.equal(question?.request?.resolved, true)
+    assert.equal(question?.text, skippedForPrompt)
+    assert.deepEqual(answers, [{ allow: false, answers: {} }])
+    const view = await idle(service)
+    assert.deepEqual(
+      turns.map((turn) => turn.text),
+      ['hello', 'also check the docs']
+    )
+    assert.equal(view.session?.queue?.length ?? 0, 0)
+    const prompt = view.session!.items.find((item) => item.text === 'also check the docs')
+    assert.equal(prompt?.kind, 'user')
+    assert.notEqual(prompt?.turnId, first.session?.turnId)
+    assert.equal(view.session?.items.at(-1)?.text, 'read: also check the docs')
+    await assert.rejects(
+      service.command(scope, {
+        ...send,
+        action: 'reply',
+        sessionId: first.session!.id,
+        requestId: 'q1',
+        allow: true,
+        answers: { '0': ['Blue'] }
+      }),
+      /skipped when you sent a new message/
+    )
+  } finally {
+    await service.shutdown()
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
+test('a message with other settings also skips the question and sends with its own settings', async () => {
+  const turns: RunContext[] = []
+  const f = questionTurns(turns, [])
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    await service.command(scope, send)
+    await service.command(scope, {
+      ...send,
+      commandId: 'second',
+      text: 'read only please',
+      accessMode: 'read'
+    })
+    const view = await idle(service)
+    assert.equal(turns.at(-1)?.text, 'read only please')
+    assert.equal(turns.at(-1)?.session.accessMode, 'read')
+    assert.equal(view.session?.items.find((item) => item.request)?.text, skippedForPrompt)
+  } finally {
+    await service.shutdown()
+    rmSync(f.dir, { recursive: true, force: true })
+  }
+})
+test('a question answered just before a message is sent stays answered, and the message queues', async () => {
+  const turns: RunContext[] = []
+  const answers: unknown[] = []
+  const f = questionTurns(turns, answers)
+  const service = new AgentSessions(f.dir, () => {}, f.drivers)
+  try {
+    const first = await service.command(scope, send)
+    await service.command(scope, {
       ...send,
       action: 'reply',
       sessionId: first.session!.id,
@@ -764,67 +841,57 @@ test('a message sent while a question is pending is folded into that turn and th
       allow: true,
       answers: { '0': ['Blue'] }
     })
-    assert.deepEqual(answered, { allow: true, answers: { '0': ['Blue'] } })
-    assert(replied.session?.items.find((i) => i.request)?.request?.resolved)
+    const sent = await service.command(scope, { ...send, commandId: 'second', text: 'next' })
+    assert.deepEqual(answers, [{ allow: true, answers: { '0': ['Blue'] } }])
+    assert.equal(sent.session?.items.find((item) => item.request)?.text, '{"0":["Blue"]}')
+    assert.equal(sent.session?.status, 'running')
+    assert.equal(sent.session?.queue?.length, 1)
   } finally {
+    await service.command(scope, { ...send, action: 'stop' })
     await service.shutdown()
     rmSync(f.dir, { recursive: true, force: true })
   }
 })
-test('a steer the harness holds until the question settles does not block the reply', async () => {
+test('a message sent while an approval is pending is still steered in and the approval stays answerable', async () => {
+  const steered: string[] = []
   let release: (() => void) | undefined
+  let answered: unknown
   const f = fixture(async (context) => {
-    context.registerSteer?.(() => new Promise<void>((resolve) => (release = resolve)))
-    await context.ask({
-      id: 'q1',
-      kind: 'question',
-      title: 'Question',
-      text: '',
-      questions: [{ id: '0', label: 'Name?' }]
+    context.registerSteer?.(
+      (text) =>
+        new Promise<void>((resolve) => {
+          steered.push(text)
+          release = resolve
+        })
+    )
+    answered = await context.ask({
+      id: 'a1',
+      kind: 'approval',
+      title: 'Bash',
+      text: 'rm -rf build'
     })
   })
   const service = new AgentSessions(f.dir, () => {}, f.drivers)
   try {
     const first = await service.command(scope, send)
     await service.command(scope, { ...send, commandId: 'second', text: 'held' })
+    await new Promise((resolve) => setImmediate(resolve))
+    assert.deepEqual(steered, ['held'])
+    const waiting = await service.command(scope, { ...send, action: 'get' })
+    assert.equal(waiting.session?.status, 'waiting')
+    assert.equal(waiting.session?.items.find((item) => item.request)?.request?.resolved, undefined)
+    // The harness holds the steer until the approval settles; that must not block the reply.
     const replied = await service.command(scope, {
       ...send,
       action: 'reply',
       sessionId: first.session!.id,
-      requestId: 'q1',
-      allow: true,
-      answers: { '0': ['x'] }
+      requestId: 'a1',
+      allow: true
     })
-    assert(replied.session?.items.find((i) => i.request)?.request?.resolved)
+    assert.deepEqual(answered, { allow: true, answers: {} })
+    assert(replied.session?.items.find((item) => item.request)?.request?.resolved)
     release!()
   } finally {
-    await service.shutdown()
-    rmSync(f.dir, { recursive: true, force: true })
-  }
-})
-test('a message sent while a question is pending with other settings stays queued', async () => {
-  const steered: string[] = []
-  const f = fixture(async (context) => {
-    context.registerSteer?.(async (text) => {
-      steered.push(text)
-    })
-    await context.ask({ id: 'q1', kind: 'question', title: 'Q', text: '', questions: [] })
-  })
-  const service = new AgentSessions(f.dir, () => {}, f.drivers)
-  try {
-    await service.command(scope, send)
-    const view = await service.command(scope, {
-      ...send,
-      commandId: 'second',
-      text: 'read only please',
-      accessMode: 'read'
-    })
-    await new Promise((resolve) => setImmediate(resolve))
-    assert.deepEqual(steered, [])
-    assert.equal(view.session?.queue?.length, 1)
-    assert.equal(view.session?.status, 'waiting')
-  } finally {
-    await service.command(scope, { ...send, action: 'stop' })
     await service.shutdown()
     rmSync(f.dir, { recursive: true, force: true })
   }
