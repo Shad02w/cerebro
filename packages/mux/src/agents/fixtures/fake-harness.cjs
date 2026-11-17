@@ -1740,6 +1740,8 @@ createInterface({ input: process.stdin }).on('line', (line) => {
         reply({})
         break
       case 'turn/interrupt':
+        // The app server drops requests the interrupted turn was waiting on.
+        codexApprovals.clear()
         reply({})
         codexActive = frame.params.threadId
         notify('turn/completed', {
@@ -1897,6 +1899,8 @@ createInterface({ input: process.stdin }).on('line', (line) => {
     if (frame.type === 'control_request' && frame.request?.subtype === 'interrupt') {
       clearTimeout(claudeDeclined)
       claudeDeclined = undefined
+      // The CLI cancels a pending permission on interrupt and ignores a late response to it.
+      if (claudeQuestion) claudeQuestion = { cancelled: true }
       send({
         type: 'control_response',
         response: { subtype: 'success', request_id: frame.request_id, response: {} }
@@ -2008,8 +2012,9 @@ createInterface({ input: process.stdin }).on('line', (line) => {
         }
       })
     if (frame.type === 'control_response' && claudeQuestion) {
-      const { held } = claudeQuestion
+      const { held, cancelled } = claudeQuestion
       claudeQuestion = undefined
+      if (cancelled) return
       const decision = frame.response?.response ?? {}
       if (decision.behavior !== 'allow') {
         // Like the CLI, the model keeps working after a declined question, so an interrupt still
@@ -2025,7 +2030,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       return
     }
     if (frame.type === 'control_response') finishApproval?.()
-    if (frame.type === 'user' && claudeQuestion) {
+    if (frame.type === 'user' && claudeQuestion && !claudeQuestion.cancelled) {
       const content = frame.message.content
       claudeQuestion.held.push(typeof content === 'string' ? content : content[0].text)
       return

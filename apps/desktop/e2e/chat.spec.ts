@@ -704,6 +704,9 @@ for (const harness of ['claude', 'codex'] as const)
       await expect(transcript).toContainText('Echo: use the mux database')
       await expect(page.getByTestId('chat-queue')).toHaveCount(0)
       await expect(page.locator('[data-chat-agent-status="finished"]')).toBeVisible()
+      // The skipped turn was interrupted, so no late reply from it follows the new one.
+      await page.waitForTimeout(500)
+      await expect(transcript).not.toContainText(/Question declined\.|Answer received\./)
     } finally {
       await rm(directory, { recursive: true, force: true })
     }
