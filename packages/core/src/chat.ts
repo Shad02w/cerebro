@@ -660,4 +660,6 @@ export type AgentDelta =
   /** Shown on the session while a turn continues, or while idle after the runtime reports a problem. */
   | { type: 'alert'; message: string }
 export type AgentAnswer = { allow: boolean; answers: Record<string, string[]> }
+/** Text of a question item the user skipped by sending a new prompt instead of answering. */
+export const skippedForPrompt = 'Skipped for a new message'
 export type AgentRequest = NonNullable<ChatItem['request']> & { title: string; text: string }

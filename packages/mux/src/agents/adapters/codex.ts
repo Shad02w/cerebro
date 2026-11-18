@@ -483,6 +483,8 @@ export const codexAdapter: AgentAdapter = {
           break
         }
         case 'turn/completed': {
+          // A late completion of an earlier turn (an interrupt that lost the race) is not this one's.
+          if (p.turn?.id && turnId && p.turn.id !== turnId) break
           // Unified exec yields long-running commands back to the model; they outlive the turn.
           for (const [id, { command, startedAt }] of commands) {
             background.add(id)
@@ -553,6 +555,7 @@ export const codexAdapter: AgentAdapter = {
         const done = new Promise<void>((resolve, reject) => {
           current = activeTurn(context, (error) => (error ? reject(error) : resolve()), native)
         })
+        void done.catch(() => {})
         const turn = current
         try {
           await ready

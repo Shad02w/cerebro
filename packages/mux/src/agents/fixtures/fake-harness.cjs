@@ -28,12 +28,16 @@ let finishApproval
 // An AskUserQuestion permission waiting on the host. Like the CLI, prompts that arrive meanwhile
 // are held and consumed once the question is settled, instead of starting a turn of their own.
 let claudeQuestion
+// Whether a Codex turn is still open, so an interrupt that arrives after it ended is rejected.
+let codexTurnOpen = false
+let claudeDeclined
 let claudeContextMode = 'default'
 let codexContextMode = 'default'
 let piContextMode = 'default'
 const text =
   '**Adapter connected.**\n\n- Native tools stay with the harness.\n- Cerebro renders the conversation.'
 const codexDone = () => {
+  codexTurnOpen = false
   const full = codexContextMode === 'full'
   notify('thread/tokenUsage/updated', {
     threadId: 'thread-test',
@@ -85,6 +89,13 @@ function codexPrompt(threadId, prompt, input) {
   if (prompt.includes('skill-wire')) {
     notify('item/completed', {
       item: { type: 'agentMessage', id: 'skills', text: JSON.stringify(input) }
+    })
+    codexDone()
+    return
+  }
+  if (prompt.startsWith('echo ')) {
+    notify('item/completed', {
+      item: { type: 'agentMessage', id: 'echo', text: `Echo: ${prompt.slice(5)}` }
     })
     codexDone()
     return
@@ -526,6 +537,10 @@ function claudePrompt(prompt, content) {
     claudeContextMode = 'full'
   if (prompt.includes('skill-wire')) {
     claudeFinish(prompt)
+    return
+  }
+  if (prompt.startsWith('echo ')) {
+    claudeFinish(`Echo: ${prompt.slice(5)}`)
     return
   }
   if (prompt === '/context') {
@@ -1705,6 +1720,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
         }
         break
       case 'turn/start':
+        codexTurnOpen = true
         reply({ turn: { id: 'turn-test' } })
         setTimeout(
           () => codexPrompt(frame.params.threadId, frame.params.input[0].text, frame.params.input),
@@ -1728,6 +1744,13 @@ createInterface({ input: process.stdin }).on('line', (line) => {
         reply({})
         break
       case 'turn/interrupt':
+        if (!codexTurnOpen) {
+          send({ id: frame.id, error: { code: -32600, message: 'No active turn to interrupt.' } })
+          break
+        }
+        codexTurnOpen = false
+        // The app server drops requests the interrupted turn was waiting on.
+        codexApprovals.clear()
         reply({})
         codexActive = frame.params.threadId
         notify('turn/completed', {
@@ -1883,6 +1906,10 @@ createInterface({ input: process.stdin }).on('line', (line) => {
     }
   } else {
     if (frame.type === 'control_request' && frame.request?.subtype === 'interrupt') {
+      clearTimeout(claudeDeclined)
+      claudeDeclined = undefined
+      // The CLI cancels a pending permission on interrupt and ignores a late response to it.
+      if (claudeQuestion) claudeQuestion = { cancelled: true }
       send({
         type: 'control_response',
         response: { subtype: 'success', request_id: frame.request_id, response: {} }
@@ -1994,18 +2021,25 @@ createInterface({ input: process.stdin }).on('line', (line) => {
         }
       })
     if (frame.type === 'control_response' && claudeQuestion) {
-      const { held } = claudeQuestion
+      const { held, cancelled } = claudeQuestion
       claudeQuestion = undefined
+      if (cancelled) return
       const decision = frame.response?.response ?? {}
-      const answers =
-        decision.behavior === 'allow'
-          ? `Answers: ${JSON.stringify(decision.updatedInput?.answers ?? {})}`
-          : 'Question declined.'
+      if (decision.behavior !== 'allow') {
+        // Like the CLI, the model keeps working after a declined question, so an interrupt still
+        // lands inside this turn.
+        claudeDeclined = setTimeout(() => {
+          claudeDeclined = undefined
+          claudeFinish('Question declined.')
+        }, 300)
+        return
+      }
+      const answers = `Answers: ${JSON.stringify(decision.updatedInput?.answers ?? {})}`
       claudeFinish(held.length ? `${answers} Then read: ${held.join(' | ')}` : answers)
       return
     }
     if (frame.type === 'control_response') finishApproval?.()
-    if (frame.type === 'user' && claudeQuestion) {
+    if (frame.type === 'user' && claudeQuestion && !claudeQuestion.cancelled) {
       const content = frame.message.content
       claudeQuestion.held.push(typeof content === 'string' ? content : content[0].text)
       return

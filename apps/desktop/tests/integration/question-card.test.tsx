@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import type { AgentQuestion, ChatItem as Item } from '@cerebro/core'
+import { skippedForPrompt, type AgentQuestion, type ChatItem as Item } from '@cerebro/core'
 
 vi.mock('@/components/chat/chat-user-message', () => ({ ChatUserMessage: () => null }))
 vi.mock('@/components/markdown/agent-markdown', () => ({ AgentMarkdown: () => null }))
@@ -162,7 +162,23 @@ describe('question card', () => {
         request: { id: 'r1', kind: 'question', questions: [storage], resolved: true }
       })
     )
-    expect(screen.getByTestId('question-skipped')).toHaveTextContent('Skipped')
+    expect(screen.getByTestId('question-skipped')).toHaveTextContent(
+      'Skipped · the agent continued without your answer'
+    )
+  })
+
+  it('says a question was skipped for a new message', () => {
+    renderCard(
+      request([storage], {
+        status: 'completed',
+        text: skippedForPrompt,
+        request: { id: 'r1', kind: 'question', questions: [storage], resolved: true }
+      })
+    )
+    expect(screen.queryByTestId('question-card')).toBeNull()
+    expect(screen.getByTestId('question-skipped')).toHaveTextContent(
+      'Skipped · you sent a new message instead'
+    )
   })
 
   it('leaves approvals on the Allow once / Decline card', async () => {

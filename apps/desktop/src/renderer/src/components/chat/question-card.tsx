@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
-import type { AgentAnswer, AgentQuestion, ChatItem } from '@cerebro/core'
+import {
+  skippedForPrompt,
+  type AgentAnswer,
+  type AgentQuestion,
+  type ChatItem
+} from '@cerebro/core'
 import { Check, CircleSlash, CornerDownLeft, MessageCircleQuestion, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -467,9 +472,11 @@ export function QuestionAnswered({ item }: { item: ChatItem }): React.JSX.Elemen
         className="flex items-center gap-2 text-xs text-muted-foreground"
       >
         <CircleSlash aria-hidden="true" className="size-3.5" />
-        {item.text === 'Declined'
-          ? 'Skipped · the agent continued without your answer'
-          : 'Not answered · the question closed when the turn ended'}
+        {item.text === skippedForPrompt
+          ? 'Skipped · you sent a new message instead'
+          : item.text === 'Declined'
+            ? 'Skipped · the agent continued without your answer'
+            : 'Not answered · the question closed when the turn ended'}
       </p>
     )
   return (

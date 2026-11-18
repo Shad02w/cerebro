@@ -37,6 +37,8 @@ import {
   type ChatAttachmentContent,
   type ChatCommand,
   type ChatImageType,
+  type ChatItem,
+  skippedForPrompt,
   type AgentActivityStatus,
   type AgentBackgroundTask,
   type AgentSubagent,
@@ -218,6 +220,14 @@ const busy = (session: AgentSession): boolean =>
 const steerableWith = (session: AgentSession, queued: QueuedMessage): boolean =>
   queued.model.key === session.model.key &&
   (queued.accessMode ?? 'full') === (session.accessMode ?? 'full')
+/** Question items of this turn the user can still answer. */
+const pendingQuestions = (session: AgentSession, runtime: Running): ChatItem[] =>
+  session.items.filter(
+    (item) =>
+      item.request?.kind === 'question' &&
+      !item.request.resolved &&
+      runtime.requests.has(item.request.id)
+  )
 const activityRank: Record<AgentActivityStatus, number> = {
   waiting: 0,
   running: 1,
@@ -1114,8 +1124,10 @@ export class AgentSessions {
     if (command.action === 'reply') {
       const runtime = session && this.running.get(session.id)
       const resolve = runtime?.requests.get(command.requestId ?? '')
+      const pendingItem = session?.items.find((item) => item.request?.id === command.requestId)
+      if (pendingItem?.text === skippedForPrompt)
+        throw new Error('This question was skipped when you sent a new message.')
       if (!session || !runtime || !resolve) throw new Error('This request is no longer pending.')
-      const pendingItem = session.items.find((item) => item.request?.id === command.requestId)
       if (pendingItem?.request?.questions && command.allow !== false)
         for (const question of pendingItem.request.questions)
           if (!command.answers?.[question.id]?.some((answer) => answer.trim()))
@@ -1247,10 +1259,14 @@ export class AgentSessions {
     // since nothing below the mux server's own request serialization guards against a concurrent command.
     const skills = skillMentionsFor(selected.harness, command.text, command.skills)
     if (session && busy(session)) {
-      if (!capabilities[selected.harness].steering) throw new Error('The agent is already working.')
-      const view = this.enqueue(scope, session, command, selected, attachments, accessMode, skills)
-      if (session.status === 'waiting') this.steerWhileWaiting(session, command.commandId)
-      return view
+      const runtime = this.running.get(session.id)
+      const questions = runtime ? pendingQuestions(session, runtime) : []
+      if (!questions.length && !capabilities[selected.harness].steering)
+        throw new Error('The agent is already working.')
+      this.enqueue(session, command, selected, attachments, accessMode, skills)
+      if (questions.length) this.skipForPrompt(session, runtime!, questions)
+      else if (session.status === 'waiting') this.steerWhileWaiting(session, command.commandId)
+      return this.view(scope)
     }
     let created = false
     if (!session) {
@@ -1309,14 +1325,13 @@ export class AgentSessions {
   }
   /** Queues a message instead of starting a turn, for a busy session on a harness that supports steering. */
   private enqueue(
-    scope: AgentScope,
     session: AgentSession,
     command: ChatCommand,
     selected: AgentModel,
     attachments: Array<{ meta: ChatAttachment; bytes: Buffer }>,
     accessMode: AgentAccessMode,
     skills: ChatSkillMention[]
-  ): ChatView {
+  ): void {
     const stored = this.writeAttachments(attachments)
     session.commands.push(command.commandId!)
     const queued: QueuedMessage = {
@@ -1330,7 +1345,26 @@ export class AgentSessions {
     }
     session.queue = [...(session.queue ?? []), queued]
     this.changed(session, true)
-    return this.view(scope)
+  }
+  /**
+   * A prompt sent while the agent waits on a question answers it with a skip. The turn is blocked
+   * inside the question, so the harness cannot read the prompt until it settles: decline the
+   * questions, end that turn, and the queued prompt starts the next one. Other pending requests in
+   * the turn are declined with it.
+   */
+  private skipForPrompt(session: AgentSession, runtime: Running, questions: ChatItem[]): void {
+    for (const item of questions) {
+      const request = item.request!
+      const resolve = runtime.requests.get(request.id)!
+      runtime.requests.delete(request.id)
+      request.resolved = true
+      item.status = 'completed'
+      item.text = skippedForPrompt
+      resolve({ allow: false, answers: {} })
+    }
+    session.status = 'running'
+    this.changed(session, true)
+    runtime.controller.abort()
   }
   /** Starts a turn from a message that was waiting in the queue. The caller has already removed it from the queue. */
   private sendQueued(session: AgentSession, next: QueuedMessage): void {
@@ -1371,7 +1405,7 @@ export class AgentSessions {
     this.changed(session, true)
   }
   /**
-   * A turn waiting on the user's answer cannot end, so a message queued behind it would never send.
+   * A turn waiting on an approval cannot end, so a message queued behind it would never send.
    * Fold it into that turn instead. Delivery runs off the command lock: a harness that holds the steer
    * until the request settles must not block the reply that settles it. On failure it stays queued.
    */

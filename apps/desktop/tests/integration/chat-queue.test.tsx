@@ -58,7 +58,7 @@ describe('chat queue', () => {
     expect(screen.getByTestId('chat-queue-item')).toHaveTextContent('please steer this in')
   })
 
-  it('explains why messages stay queued while the agent waits on a question', () => {
+  it('explains why messages stay queued while the agent waits on an approval', () => {
     const { rerender } = render(
       <ChatQueue session={session} onSteer={vi.fn()} onDequeue={vi.fn()} onEdit={vi.fn()} />
     )
@@ -72,7 +72,7 @@ describe('chat queue', () => {
       />
     )
     expect(screen.getByTestId('chat-queue-waiting')).toHaveTextContent(
-      'Queued messages send after you answer or skip it.'
+      'Queued messages send after you respond.'
     )
   })
 })

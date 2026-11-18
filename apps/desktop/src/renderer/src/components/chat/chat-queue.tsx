@@ -29,7 +29,7 @@ export function ChatQueue({
           className="px-1 text-xs text-muted-foreground"
           data-testid="chat-queue-waiting"
         >
-          The agent is waiting on your answer. Queued messages send after you answer or skip it.
+          The agent is waiting on your approval. Queued messages send after you respond.
         </li>
       ) : null}
       {session.queue.map((item) => {
